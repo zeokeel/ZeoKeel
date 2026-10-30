@@ -8,6 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -1621,9 +1622,20 @@ fn channel_validate(index_dir: &Path) -> Result<()> {
             bail!("channel {id}: bad depth");
         }
         let customer = index_dir.join(&entry.submodule);
-        let actual_pin = dir_hash(&customer)?;
-        if actual_pin != entry.pin {
-            bail!("channel {id}: pin mismatch (fixture pin = directory hash)");
+        if let Some(gitlink) = gitlink_hash(index_dir, &entry.submodule) {
+            if gitlink != entry.pin {
+                bail!(
+                    "channel {id}: pin mismatch (submodule gitlink {gitlink}, index pin {})",
+                    entry.pin
+                );
+            }
+        } else {
+            let actual_pin = dir_hash(&customer)?;
+            if actual_pin != entry.pin {
+                bail!(
+                    "channel {id}: pin mismatch (non-git index fallback: directory hash {actual_pin})"
+                );
+            }
         }
         let gitmodules = fs::read_to_string(index_dir.join(".gitmodules")).unwrap_or_default();
         if !gitmodules.contains(&entry.submodule) {
@@ -1807,6 +1819,33 @@ fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     haystack
         .windows(needle.len())
         .any(|window| window == needle)
+}
+
+/// Resolve an OEM submodule pin from the index repository's gitlink (mode 160000).
+///
+/// Production indexes are private repos with the customer as a submodule, so the
+/// pin is the gitlink commit. Fixture/exported indexes are plain directories with
+/// no tracked gitlink; those fall back to [`dir_hash`].
+fn gitlink_hash(index_dir: &Path, submodule: &str) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["-C", index_dir.to_str()?, "ls-files", "-s", "--", submodule])
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let line = text.lines().next()?;
+    let mut fields = line.split_whitespace();
+    let mode = fields.next()?;
+    let hash = fields.next()?;
+    if mode == "160000" && hash.len() == 40 {
+        Some(hash.to_owned())
+    } else {
+        None
+    }
 }
 
 fn dir_hash(dir: &Path) -> Result<String> {
@@ -2792,6 +2831,41 @@ fn scan_forbidden_dirs(dir: &Path, root: &Path, bad: &mut Vec<String>) -> Result
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod pin_tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+    use super::gitlink_hash;
+    use std::path::PathBuf;
+
+    #[test]
+    fn gitlink_is_read_from_a_repository_index() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("zk-pin-test-{stamp}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&dir)
+                .status()
+                .unwrap()
+        };
+        assert!(run(&["init", "-q"]).success());
+        let hash = "0123456789abcdef0123456789abcdef01234567";
+        let cache = format!("160000,{hash},customer");
+        assert!(std::process::Command::new("git")
+            .args(["update-index", "--add", "--cacheinfo", &cache])
+            .current_dir(&dir)
+            .status()
+            .unwrap()
+            .success());
+        assert_eq!(gitlink_hash(&dir, "customer").as_deref(), Some(hash));
+        assert_eq!(gitlink_hash(&dir, "missing"), None);
+    }
 }
 
 #[cfg(test)]

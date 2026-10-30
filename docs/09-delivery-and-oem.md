@@ -88,7 +88,7 @@ depth = "basic"
 
 | 规则 | 内容 | 门禁 |
 | --- | --- | --- |
-| pin 一致性 | `.gitmodules` + submodule gitlink + `index.toml.pin` 三处必须一致；pin 是**发布 tag 上的硬要求** | 不一致 → 红（防"以为更新了 submodule"） |
+| pin 一致性 | `.gitmodules` + submodule gitlink + `index.toml.pin` 三处必须一致；pin 是**发布 tag 上的硬要求**。`zk channel verify` 对 git 索引仓读取 `git ls-files -s` 的 mode 160000 gitlink 校验 pin；纯目录夹具/导出包无 gitlink 时回退目录哈希（仅 demo/测试，错误信息会标明 fallback） | 不一致 → 红（防"以为更新了 submodule"） |
 | 版本 | 客户仓不独立定版本；产物版本 = 主仓 git tag（OEM 热修复走新 tag） | tag == 产物 VERSION == 镜像 tag |
 | 公开仓零客户信息 | 主仓只留 `oem-demo`（假客户夹具）+ `brands/official/` | 域名/渠道名白名单扫描 |
 | 深度 OEM | 代码包必须声明契约 + conformance + 许可证 + 来源；生成物 diff 最小性同官方 | 同一 CI 门禁，不另建流程 |
