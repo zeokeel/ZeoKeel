@@ -32,7 +32,7 @@
 ## 2. 组件与交互基线
 
 - 采用 assistant-ui primitives（Thread/Message/Composer/ActionBar/Suggestion/Markdown），不自己写聊天层/Markdown/焦点管理。
-- 消息区最大宽 760px 居中；侧栏 288px；用户消息右对齐 `thread` 圆角 + muted 底；助手无头像/无气泡，靠留白与内容层级区分。
+- 消息区最大宽 760px 居中；侧栏 248px（M1 高密度；旧 288 已废弃）；用户消息右对齐 `thread` 圆角 + muted 底；助手无头像/无气泡，靠留白与内容层级区分。
 - hover/focus 才显示操作条（复制/重发）；流式光标 blue-500；工具卡 hairline + 状态点（running 蓝/done 中性/error destructive）；审批卡用 data part 占位，后续接 tool-approval 协议。
 - **六态**：空/加载/错误/离线/流式中/已取消，每个交互组件必须覆盖；离线禁用发送并显示横幅；取消保留已生成内容并标记。
 - **可访问性**：键盘全流程、焦点可见、aria-label、对比度 ≥4.5、axe serious/critical = 0；i18n zh-CN/en-US，`<html lang>`/`data-theme` 同步。

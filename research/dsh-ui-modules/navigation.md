@@ -10,7 +10,7 @@
 - `S` = `P/dsh-client-ui-sidebar/README.md`；`W` = `P/dsh-client-ui-workspace/README.md`
 - `L` = `P/dsh-client-ui-layout/README.md`；`C` = `P/dsh-client-ui-commands/README.md`
 - `K` = `P/dsh-client-ui-shortcuts/README.md`；`U` = `P/dsh-client-ui-session/README.md`
-- `Z16/Z19/Z26/Z27` = `docs/16-ui-packages.md`、`19-client-ux-flows.md`、`26-workspace-and-conversations.md`、`27-ui-design-system.md`
+- `Z16/Z19/Z26/Z27/Z28` = `docs/16-ui-packages.md`、`19-client-ux-flows.md`、`26-workspace-and-conversations.md`、`27-ui-design-system.md`、`28-ui-module-map-and-skeleton.md`
 - 行号引用统一写作 `S:34`、`W:30`、类型声明写作 `P/<pkg>/lib/types/...:N`。
 
 ## 1. 模块清单
@@ -176,7 +176,7 @@ leading seat 只在“主状态 idle”（无 pending、无自身/后代 activit
 
 ### 4.1 M1 先做什么
 
-1. **保持 `@zeokeel/ui-sessions` 单包单 slot `ui.sessions`，作为侧栏 owner**。现状已有 6 个 slot：`ui.sessions/chat/settings` + `ui.shell/inspector/commands` 骨架（Z16:62-67）；`ui.shell` 尚未接入 app（Z16:65）。新增/拆分 slot 必须同步改 `tools/zk` 的 `slot_binding` 与 Z16（Z16:69），M1 不值得为侧栏再付一次生成器成本。
+1. **保持 `@zeokeel/ui-sessions` 单包单 slot `ui.sessions`，作为侧栏 owner**。现状注册 6 个 slot，但 M1 active 仍只有 `sessions/chat/settings`；`ui.shell/inspector/commands` 是骨架、post-M1 接入（Z28:37-47、Z28:96-97；Z16:62-67）；`ui.shell` 尚未接入 app（Z16:65）。新增/拆分 slot 必须同步改 `tools/zk` 的 `slot_binding` 与 Z16（Z16:69），M1 不值得为侧栏再付一次生成器成本。
 2. **包内拆文件，不拆包**：把当前 `web/src/index.tsx`（763 行）拆成 `SidebarShell`、`WorkspaceSection`、`SessionRow`、`WorkspaceDialogs`、`useSidebarView` 五块；对外仍只导出 `components["sessions.sidebar"]`。这是低风险的结构准备，不改变 registry。
 3. **先定义纯 view model**：借鉴 `GroupNode`/`SessionNode` 的字段形状，但只保留 M1 已有事实：`Workspace{id,path,title,is_default}`、`Conversation{id,workspace_id,title,updated_at_ms}`、`activeWorkspaceId`、`activeConversationId`、`streaming`、`workspaceError`。不要把 DSH 的 `pinned/archived/completed/pendingInteraction` 填成假值。
 4. **M1 交互优先级**：新会话目标规则（显式→当前→最近→无 Workspace 的空态）、Workspace 展开/折叠、搜索过滤、Workspace 重命名/移除（`reassign_to` 二次确认）、running 状态点、空/加载/错误/离线/流式中/已取消六态（Z27:37）、`ui.sessions` 的无工作区/目录不可用/切换取消流式（Z19:44）、窄窗抽屉 + Esc、焦点可见。Z26:37 已把 pin/archive/order 排除出 M1，不要提前做。
@@ -189,13 +189,14 @@ leading seat 只在“主状态 idle”（无 pending、无自身/后代 activit
 | --- | --- | --- |
 | `ui.sessions` 内子槽：`brand` / `panels` / `footer` / `settings` | 侧栏壳局部可替换（品牌、全局面板、footer、设置 seat） | 需要嵌套 slot + registry 生成器支持；M1 不做 |
 | `ui.sessions.row.leading` / `.row.menu` / `.row.action` | 行前导装饰、菜单项、hover 按钮的 list seat | 出现 approval/schedule/plugin 等第二个消费者时 |
-| `ui.shell.overlay` | 重命名、stop-and-archive、toast、快捷键参考 | `ui.shell` 接入 app、且浮层需要共享层级时 |
-| `ui.shortcuts` | Settings 入口 + 快捷键参考 overlay | 需要录制/冲突检测时 |
-| `ui.commands`（已有 ⌘K 骨架） | 补命令面板；DSH 的 `/` popup 是 Composer 上方表面，与本骨架不是同一交互 | M1 后实现 `commands.palette`；`/` 另立 composer overlay 槽或显式扩展本包 |
+| `ui.shell.overlay` | 重命名、stop-and-archive、toast 等共享浮层 | `ui.shell` 接入 app、且浮层需要共享层级时 |
+| `ui.commands`（已有 ⌘K 骨架） | 补 `/` 菜单 + 快捷键参考 + 可选全局面板；注意 `/` popup 与 `commands.palette` 是不同 surface | Z28 §4.5 暂定合并到本包；实现时分开组件/状态，不要混成一套 |
 | `ui.inspector`（已有骨架） | 右栏文件/变更/终端内容 | M1 后实现右栏 |
 | `ui.sidebar` 独立包（可选，最后手段） | 只拿走侧栏壳，不拿走 Workspace 数据与行行为 | 必须替换整个侧栏壳而不动浏览器时；否则会多一套实现 |
 
-拆分时必须同步：`zk.toml` 的 `[[ui.contributions]]`、`tools/zk` 的 slot binding、Z16 §2.2 槽位表、Z19 页面/槽位表。不要只改代码。**注意**：DSH `ui-commands` 的 popupSelect 挂在 `conversation.input.overlay`（Composer 上方），不是 ZeoKeel `commands.palette` 的 ⌘K modal；映射时不要合并成一套。
+docs 28 §2 已把“命令面板/快捷键”合并为 `ui-commands`，因此不再建议单独 `ui.shortcuts` 包；快捷键参考作为 `ui-commands` 的一个 overlay surface，Settings 入口仍走 `ui.settings`。
+
+拆分时必须同步：`zk.toml` 的 `[[ui.contributions]]`、`tools/zk` 的 slot binding、Z16 §2.2 槽位表、Z19 页面/槽位表。不要只改代码。**注意**：DSH `ui-commands` 的 popupSelect 挂在 `conversation.input.overlay`（Composer 上方），ZeoKeel 的 `commands.palette` 是 ⌘K 面板；docs 28 §4.5 暂定把 `/` 菜单、快捷键参考、可选全局面板都归 `ui-commands`，实现时必须按 surface 分开组件与状态。
 
 ### 4.3 与现有 `@zeokeel/ui-sessions` 的关系
 
@@ -209,12 +210,12 @@ leading seat 只在“主状态 idle”（无 pending、无自身/后代 activit
 
 - Z27:35 写“侧栏 288px”，当前 `apps/desktop/web/src/app.css:477-478` 是 **248px**；Z27:39 写 ≤900px 抽屉，当前实现也是 ≤900px 抽屉（`app.css:494`）。骨架 spec 需要先定 248/288 与是否引入 56px rail，否则截图/axe 基线会漂。
 - `ui.shell` 骨架尚未接入 app（Z16:65）；当前 248px/抽屉仍由 `App.tsx` + `app.css` 直排。接入 `ui.shell` 后应以 `AppShellProps`（`navigation`/`inspector`/`overlay`）重新冻结布局基线，而不是把 app 直排当成最终形态。
-- Z19:43 仍写“M1 三 slot 组合 / M1 无 ui.shell”，与 Z16:62-67 的 6 slot（含 `ui.shell` 骨架）冲突；当前 app 只 import `SessionsSlot/ChatSlot/SettingsSlot`（`apps/desktop/web/src/App.tsx:18`）。骨架 spec 必须先统一 Z16/Z19 口径。
+- 注册/骨架 vs M1 active：Z16:62-67 列 6 个注册 slot，Z19:43 写 M1 active 3 个；Z28:44-47、Z28:96-97 已裁决 M1 active 仍为 `sessions/chat/settings`，`ui.shell/inspector/commands` 只是 post-M1 骨架。当前 app 只 import `SessionsSlot/ChatSlot/SettingsSlot`（`apps/desktop/web/src/App.tsx:18`），与裁决一致。
 - 当前 `ui-sessions` 的展开状态是 `useState` 本地集合（`packages/ui/ui-sessions/web/src/index.tsx:140`），没有持久化；DSH 的 group expansion 是 browser-persisted（W:44）。M1 可不持久化，但要在 spec 里写明，避免后续误判为回归。
 
 ## 5. 待确认问题
 
-1. **侧栏槽位边界**：现状文档口径不一致（Z16 列 6 slot，Z19:43 仍写 3 slot，见 §4.4）。侧栏采用哪种？A 继续 `ui.sessions` 一体（推荐 M1）；B 在 `ui.sessions` 内加 `brand/panels/footer/settings` 子槽；C 新增 `ui.sidebar` 包。B/C 都要改 `tools/zk` slot binding 与 Z16/Z19，建议 T21 再做，请确认。
+1. **post-M1 侧栏拆分**：Z28:22、Z28:44-47 已定 M1 将导航内聚到 `ui.sessions`（3 个 active slot 之一），因此 M1 不拆。post-M1 若要支持局部替换，选 B 在 `ui.sessions` 内加 `brand/panels/footer/settings` 子槽，还是 C 新增 `ui.sidebar` 包？B/C 都要改 `tools/zk` slot binding 与 Z16/Z19，建议 T21 再做，请确认。
 2. **Session 级动作范围**：Z26:37 只排除了 pin/archive/order；**rename/fork/copy ID** 是否属于 M1？DSH 把它们都放在行菜单（W:56），ZeoKeel 当前只有 Workspace rename/remove。需要明确 M1 的会话行菜单最小集。
 3. **状态契约**：M1 只有 `streaming`；DSH 的 `pendingInteraction`/`completionUnread`/scheduled mark 依赖 approval/schedule/job 域。是否现在就在 UI view model 预留 `status?: {running, pending?, completed?}`（不填值），还是等这些域落地再加？另外 “unread” 的定义是否等同 DSH 的“完成时未被 main view 查看”？
 4. **扁平 vs 树/ungrouped**：Z26:25 明确平铺、Z26:49 排除 ungrouped，DSH 却支持 Workspace Tree 与 Ungrouped（W:44、W:56）。请确认 ZeoKeel **永久不做**树/ungrouped，还是 post-M1 以显式开关引入；这决定 Workspace 行是否需要 `parentId`/路径祖先计算。

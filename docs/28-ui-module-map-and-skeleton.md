@@ -109,3 +109,13 @@
 - `research/dsh-ui-modules/conversation.md`：conversation/chat/tool/approval/plan/goal/jobs/subagent/deliverables/input-trigger/attachment/feedback。
 - `research/dsh-ui-modules/inspector-settings.md`：sidebar-right/files/terminal/preview/browser/settings/commands/shortcuts/theme/plugins。
 这些报告只作事实参考（C15），不进入依赖/构建输入。
+
+## 4.7 导航后置项裁决（回应 navigation 报告 §5）
+
+1. **post-M1 侧栏拆分**：M1 保持 `ui-sessions` 单包单 slot；不建 `ui.sidebar`/子 slot。只有出现第二消费者或明确替换需求时才拆。
+2. **M1 会话操作**：仅新建/选择/workspace 重命名/workspace 移除；**session rename/fork/copy ID 后置**（与 pin/archive/reorder 一起）。
+3. **状态契约**：M1 `running | idle`；`unread | pending | scheduled` 后置。不提前定义 unread 语义。
+4. **平铺/ungrouped**：永久平铺 Workspace（用户要求），**不做 ungrouped**；移除有会话必须 reassign（C18 唯一例外）。
+5. **归档/删除**：M1 无 session delete/archive；post-M1 先做 archive-only，**不提供硬删除**；是否删除由后续 spec 决定。
+6. **/ 菜单与 ⌘K**：同一 `ui-commands` 包内**按 surface 分开组件/状态**（composer `/` popup vs shell ⌘K palette），不共享一个组件状态。
+7. **侧栏宽度**：以实际 248px 为准（docs/27 已同步）；docs/27 的 288 为旧值。
