@@ -255,7 +255,7 @@
 低于 `ZEOKEEL_MIN_CLIENT_VERSION` 返回 426 `CLIENT_TOO_OLD`，目录/模型加载失败返回 503 `CONFIG_UNAVAILABLE`；
 `GET /api/channel` 已提供渠道/品牌/资产基址/更新策略（ETag/304）。`/api/updates/manifest` 已提供 ETag/304、
 `min_supported`/`forced`（服务端设置或发布元数据）、签名状态（配置 ed25519 公钥时 fail-closed）、下载 Range/206/416；
-业务面全局 426 层与真实签名密钥/证书仍 UNVERIFIED（见 §9）。
+业务面全局 426 层已实现（`/api/client/v1/*`，登录/刷新/bootstrap 例外；缺失/非法 `X-ZeoKeel-Client` fail-closed），客户端已发送客户端标识并展示强制升级门禁；真实签名密钥/证书仍 UNVERIFIED（见 §9）。
 access JWT 含 iss/aud/uid/role/epoch/device/channel/jti 并在服务端校验；refresh 绑定 device+channel；
 admin 会话 TTL/idle 由设置键 `admin.session_ttl_secs`/`admin.session_idle_secs` 控制。
 

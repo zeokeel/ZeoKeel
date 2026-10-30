@@ -1,7 +1,7 @@
 # 2026-10-31-round5-upgrade-and-e2e · 验收
 
-- 状态：`in-progress`
-- 验收人：lead；C19 独立评审：待定
+- 状态：`in-progress`（实现完成；C19 复评待）
+- 验收人：lead；C19 独立评审：auditor-rig
 
 ## 1. 验收结果
 
@@ -10,9 +10,16 @@
 | cargo fmt/clippy/test --workspace | 0 |
 | zk validate/compose personal --check/capability/docs/db lock/lint duplicates | 0 |
 | pnpm -r typecheck/lint/test:unit/build | 0 |
-| m1/agent/login/admin e2e + m1-serve usage/changes | 全绿 |
+| m1/agent/login/admin e2e + m1-serve usage/changes | m1 含 serve 7 passed（usage 重启 + changes 真实 git）；agent 9；login 4；admin 11 |
 | docs/spec/review gates | 0 |
-| C19 评审 | APPROVED |
+| e2e apps/updates/oem | 全 0 |
+
+## 1.1 实现记录
+
+- 服务端 426：`/api/client/v1/*` 校验 `X-ZeoKeel-Client`；login/refresh/bootstrap/稳定面例外；CORS preflight 放行；缺头/非法 fail-closed；单测+真实 PG smoke。
+- 客户端：生成 `BRAND.clientVersion`，所有 server 请求带 `X-ZeoKeel-Client: <semver>;<channel>;desktop;<device>`；426 统一升级门禁（不可关闭、门户链接、不重试）。
+- e2e：m1-e2e 拆分 mock profile 与 personal serve（serve 只用 personal baseline 构建）；真实 SQLite usage reload、真实 git changes/空态；运行期 settings.json 已加入 serve workspace gitignore。
+- OEM pin：git 索引读 submodule gitlink（mode 160000），fixture/非 git 回退目录哈希；docs/09 明确两种路径。
 
 ## 2. UNVERIFIED
 

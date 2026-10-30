@@ -23,6 +23,7 @@ cp demo-data/hello.txt "$HOME_DIR/demo-data/hello.txt"
 printf 'delete me\n' > "$HOME_DIR/demo-data/old.txt"
 cat > "$HOME_DIR/.gitignore" <<'GITIGNORE'
 sessions.db*
+settings.json
 agent-memory/
 .agents/
 GITIGNORE

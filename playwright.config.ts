@@ -27,12 +27,14 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 180_000,
     },
-    {
+    // The mock-profile run sets ZEOKEEL_E2E_SKIP_SERVE=1: the real serve carrier must be
+    // built from the committed personal baseline, not from the temporary mock composition.
+    ...(process.env["ZEOKEEL_E2E_SKIP_SERVE"] === "1" ? [] : [{
       // Deterministic fake upstream + baseline git workspace + real serve/SQLite.
       command: "bash e2e/serve-m1.sh",
       url: "http://127.0.0.1:8788/healthz",
       reuseExistingServer: false,
       timeout: 300_000,
-    },
+    }]),
   ],
 });
