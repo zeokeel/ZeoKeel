@@ -510,3 +510,66 @@ fn chat_cancel(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
     emit_kind(&state.bus, stream_id, state.seq(), "agent", json!({ "type": "turn_cancelled" }));
     CommandResponse::ok(json!({ "cancelled": true }))
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)] // test-only
+    use base64::Engine;
+    use std::io::Write;
+
+    fn zip_bytes(entries: &[(&str, &[u8], Option<u32>)]) -> Vec<u8> {
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        for (name, content, mode) in entries {
+            let mut options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            if let Some(mode) = mode { options = options.unix_permissions(*mode); }
+            writer.start_file(*name, options).unwrap();
+            writer.write_all(content).unwrap();
+        }
+        writer.finish().unwrap().into_inner()
+    }
+
+    fn install(name: &str, version: &str, bytes: &[u8]) -> serde_json::Value {
+        let payload = serde_json::json!({
+            "name": name,
+            "version": version,
+            "archive_base64": base64::engine::general_purpose::STANDARD.encode(bytes),
+        });
+        let response = super::install_skill(&payload);
+        serde_json::to_value(response).unwrap()
+    }
+
+    fn zip_symlink_bytes() -> Vec<u8> {
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        writer.start_file("SKILL.md", options).unwrap();
+        writer.write_all(b"# link\n").unwrap();
+        writer.add_symlink("link", "target", options).unwrap();
+        writer.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn installs_valid_archive_and_rejects_hostile_entries() {
+        let home = std::env::temp_dir().join(format!("zk-skill-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", &home);
+
+        let valid = zip_bytes(&[("SKILL.md", b"# demo\n", None), ("scripts/run.sh", b"echo ok\n", None)]);
+        let ok = install("demo-skill", "1.0.0", &valid);
+        assert_eq!(ok["ok"], serde_json::Value::Bool(true), "{ok}");
+        assert_eq!(ok["data"]["tree_sha256"].as_str().unwrap().len(), 64);
+        assert!(home.join("skills/demo-skill/1.0.0/SKILL.md").is_file());
+
+        let duplicate = install("demo-skill", "1.0.0", &valid);
+        assert_eq!(duplicate["ok"], serde_json::Value::Bool(false));
+        assert_eq!(duplicate["error"], "CONFLICT");
+
+        let traversal = zip_bytes(&[("SKILL.md", b"# bad\n", None), ("../evil.txt", b"x", None)]);
+        let bad = install("evil-skill", "1.0.0", &traversal);
+        assert_eq!(bad["ok"], serde_json::Value::Bool(false), "{bad}");
+
+        let link = install("link-skill", "1.0.0", &zip_symlink_bytes());
+        assert_eq!(link["ok"], serde_json::Value::Bool(false), "{link}");
+
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+}

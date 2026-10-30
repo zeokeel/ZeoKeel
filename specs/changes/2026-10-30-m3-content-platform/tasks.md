@@ -13,7 +13,7 @@
 | 6 | connectors 契约/服务端/页面 | `packages/server/connectors/`, `packages/admin/admin-connectors/`, `apps/admin/web/src/app.tsx` | 4 | `bash scripts/srv-store-test.sh`, `pnpm --dir apps/admin/web build` | ✅ |
 | 7 | 客户端 `ui-skills`/`ui-connectors` 安装/冲突/删除/OAuth | `packages/ui/ui-skills/`, `packages/ui/ui-connectors/`, `apps/desktop/web/src/{App,protocol,auth}.ts(x)`, `tools/zk/src/main.rs`, `apps/desktop/web/package.json` | 4,6 | `pnpm --dir apps/desktop/web test`, `pnpm --dir apps/desktop/web build` | ✅ |
 | 8 | 客户端恶意 zip / 树哈希 / OAuth 测试 | `packages/ui/ui-skills/tests/`, `packages/ui/ui-connectors/tests/`, `crates/zk-kit-content/tests/` | 7 | `pnpm --dir apps/desktop/web test` | ☐ |
-| 9 | 管理台 e2e + axe + admin-e2e 接入 | `e2e/m3-admin-skills.spec.ts`, `e2e/m3-admin-connectors.spec.ts`, `scripts/admin-e2e.sh` | 5,6 | `bash scripts/admin-e2e.sh`, `pnpm exec playwright test e2e/m3-*.spec.ts` | ☐ |
+| 9 | 管理台 e2e + axe + admin-e2e 接入 | `e2e/m3-admin-skills.spec.ts`, `e2e/m3-admin-connectors.spec.ts`, `scripts/admin-e2e.sh` | 5,6 | `bash scripts/admin-e2e.sh`, `pnpm exec playwright test e2e/m3-*.spec.ts` | ✅ |
 | 10 | 文档/验收 | `docs/04`, `docs/08`, `docs/12`, `docs/16`, `AGENTS.md`, `acceptance.md` | 1–9 | `docs-check`/`spec-check`/`review-check` | ☐ |
 
 ## 2. 写作用域

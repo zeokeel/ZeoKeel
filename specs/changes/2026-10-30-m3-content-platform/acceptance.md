@@ -8,6 +8,16 @@
 
 ## 1. 自动验证（实现后填写真实结果）
 
+### task 8 evidence (partial, 2026-10-30)
+
+- `cargo test -p zk-desktop installs_valid_archive`：valid zip 安装且 tree_sha256 64 位；重复 409；`../evil` 拒绝；zip symlink 拒绝。
+- 仍未做：OAuth 刷新/过期/失败客户端测试（当前 client 只有启停，无 OAuth 授权流程）。
+
+### task 9 evidence (2026-10-30)
+
+- `bash scripts/admin-e2e.sh`：8 passed（M2 6 + M3 skills/connectors，axe 0 serious/critical）
+- 截图：`target/evidence/m3/admin-skills.png` / `admin-connectors.png`
+
 ### task 7 evidence (2026-10-30)
 
 - 新增 `@zeokeel/ui-skills` / `@zeokeel/ui-connectors`，接入 registry、⌘K 命令、shell overlay。
