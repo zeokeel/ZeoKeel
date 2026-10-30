@@ -1,6 +1,7 @@
 import { clientHeaders } from "./client";
 import { isRecord, readNumber, readString } from "@zeokeel/ui-kit";
 import { readJsonOrUpgrade } from "./upgrade";
+import { serverFetch } from "./client";
 
 /** Enterprise auth session (M2 P4). Tokens stay in local storage for now; keychain later. */
 export interface AuthSession {
@@ -79,7 +80,7 @@ export interface BootstrapInfo {
 }
 
 export async function fetchBootstrapInfo(session: AuthSession, serverUrl: string): Promise<BootstrapInfo> {
-  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/config/bootstrap`, {
+  const response = await serverFetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/config/bootstrap`, {
     headers: { ...clientHeaders(), authorization: `Bearer ${session.access_token}` },
   });
   if (!response.ok) return { defaultModel: "", models: [] };
@@ -99,7 +100,7 @@ export async function fetchBootstrapInfo(session: AuthSession, serverUrl: string
 }
 
 export async function refreshSession(session: AuthSession, serverUrl: string): Promise<AuthSession> {
-  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/auth/refresh`, {
+  const response = await serverFetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/auth/refresh`, {
     method: "POST",
     headers: { ...clientHeaders(), "content-type": "application/json" },
     body: JSON.stringify({ refresh_token: session.refresh_token, device_id: session.device_name || "client" }),
@@ -113,7 +114,7 @@ export async function refreshSession(session: AuthSession, serverUrl: string): P
 }
 
 export async function login(serverUrl: string, username: string, password: string, deviceName: string): Promise<AuthSession> {
-  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/auth/login`, {
+  const response = await serverFetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/auth/login`, {
     method: "POST",
     headers: { ...clientHeaders(), "content-type": "application/json" },
     body: JSON.stringify({ username, password, device_id: deviceName }),

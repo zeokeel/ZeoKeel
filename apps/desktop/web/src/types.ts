@@ -32,5 +32,7 @@ export interface TauriGlobal {
 declare global {
   interface Window {
     __TAURI__?: TauriGlobal;
+    /** Tauri 2 runtime marker used to choose host commands vs browser fallbacks. */
+    __TAURI_INTERNALS__?: unknown;
   }
 }

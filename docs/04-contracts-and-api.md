@@ -158,7 +158,7 @@
 | 稳定面 | `/api/meta/*`、`/api/channel`、`/api/updates/*` 跨 major 不变、只增不改；老客户端靠它发现服务端并自更新 |
 | 能力协商 | `GET /api/meta/capabilities` 返回 `api_version`、`server_version`、`min_client_version`、`features[]`、`event_topics[]`；客户端缓存并随登录刷新；未知 feature 一律忽略，不得假设存在 |
 | 客户端标识 | 所有请求带 `X-ZeoKeel-Client`（版本/渠道/平台/设备）；服务端记录用于灰度与排障，不用于授权 |
-| 最小版本 | 服务端按渠道配置 `min_client_version`（硬门槛）与 `recommended`；低于硬门槛：业务面返回 `426 CLIENT_TOO_OLD`（稳定面、登录/刷新除外），客户端展示强制升级页 |
+| 最小版本 | 服务端按渠道配置 `min_client_version`（硬门槛；`ZEOKEEL_MIN_CLIENT_VERSION_<CHANNEL>` 或品牌编译值，全局 `ZEOKEEL_MIN_CLIENT_VERSION` 兜底）与 `recommended`；低于硬门槛：业务面返回 `426 CLIENT_TOO_OLD`（稳定面、登录/刷新除外），客户端展示强制升级页 |
 | 灰度/强制升级 | 客户端渠道（official/beta/oem）+ 服务端清单 `rollout`/`forced`/`deadline`；按渠道/用户比例灰度（D53，管理台配置），到期限后业务面 426；本地 agent 离线能力在升级前保持可用（宽限默认值：允许仅本地 agent，M3 spec 确认，15 §C）；同一用户不得在灰度中反复横跳 |
 
 ## 5. 权限模型与路由真源
@@ -193,7 +193,7 @@
 
 ## 7. 错误模型
 
-统一信封：`error{code, message, retryable, request_id, details?, retry_after_ms?}`。message 不含上游细节、密钥、内部路径；`request_id` 全链路透传；同一 code 的 HTTP 状态唯一、不允许一处 400 一处 422，客户端按 code 分支而不是只看状态码。
+统一信封：`error{code, message, retryable, request_id, details?, retry_after_ms?}`（426 强制升级使用嵌套 `error{code,message,retryable,request_id,current,minimum,portal_url}` 并回显 `X-Request-Id`；其余 handler 逐步迁移，客户端兼容 flat/nested）。message 不含上游细节、密钥、内部路径；`request_id` 全链路透传；同一 code 的 HTTP 状态唯一、不允许一处 400 一处 422，客户端按 code 分支而不是只看状态码。
 
 | HTTP | 代表错误码 | 可重试 | 客户端动作 |
 | --- | --- | --- | --- |
@@ -255,7 +255,7 @@
 低于 `ZEOKEEL_MIN_CLIENT_VERSION` 返回 426 `CLIENT_TOO_OLD`，目录/模型加载失败返回 503 `CONFIG_UNAVAILABLE`；
 `GET /api/channel` 已提供渠道/品牌/资产基址/更新策略（ETag/304）。`/api/updates/manifest` 已提供 ETag/304、
 `min_supported`/`forced`（服务端设置或发布元数据）、签名状态（配置 ed25519 公钥时 fail-closed）、下载 Range/206/416；
-业务面全局 426 层已实现（`/api/client/v1/*`，登录/刷新/bootstrap 例外；缺失/非法 `X-ZeoKeel-Client` fail-closed），客户端已发送客户端标识并展示强制升级门禁；真实签名密钥/证书仍 UNVERIFIED（见 §9）。
+业务面全局 426 层已实现（`/api/client/v1/*`，登录/刷新/bootstrap 例外；缺失/非法 `X-ZeoKeel-Client` fail-closed），支持渠道级最小版本与 `X-Request-Id` 回显；客户端统一发送客户端标识（真实平台）并展示强制升级门禁（版本说明 + 门户，不重试业务请求）；真实签名密钥/证书仍 UNVERIFIED（见 §9）。
 access JWT 含 iss/aud/uid/role/epoch/device/channel/jti 并在服务端校验；refresh 绑定 device+channel；
 admin 会话 TTL/idle 由设置键 `admin.session_ttl_secs`/`admin.session_idle_secs` 控制。
 

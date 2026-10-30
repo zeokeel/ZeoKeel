@@ -277,6 +277,7 @@ async fn serve(app: Router) -> Result<ServeOutcome, String> {
                     axum::http::header::CONTENT_TYPE,
                     axum::http::header::AUTHORIZATION,
                     axum::http::header::HeaderName::from_static("x-zeokeel-client"),
+                    axum::http::header::HeaderName::from_static("x-request-id"),
                 ]),
         )
     } else {

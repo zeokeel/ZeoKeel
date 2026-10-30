@@ -290,6 +290,10 @@ const zhCN = {
   upgradeMinimum: "最低支持版本",
   upgradePortal: "打开下载页",
   upgradeUnknown: "未知",
+  upgradeNotes: "查看版本说明",
+  upgradeServer: "服务器版本",
+  inspectorChangesFile: "文件变更",
+  inspectorChangesItem: "{path}，新增 {add}，删除 {del}",
 } as const;
 
 export type MessageKey = keyof typeof zhCN;
@@ -580,6 +584,10 @@ const enUS: Record<MessageKey, string> = {
   upgradeMinimum: "Minimum supported",
   upgradePortal: "Open download page",
   upgradeUnknown: "Unknown",
+  upgradeNotes: "Version details",
+  upgradeServer: "Server version",
+  inspectorChangesFile: "File change",
+  inspectorChangesItem: "{path}, added {add}, deleted {del}",
 };
 
 const dictionaries: Record<Locale, Record<string, string>> = {

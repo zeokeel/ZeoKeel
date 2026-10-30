@@ -1,5 +1,5 @@
 /** Enterprise content catalog (skills/connectors) API client. */
-import { clientHeaders } from "./client";
+import { serverFetch } from "./client";
 import { isRecord } from "@zeokeel/ui-kit";
 import type { AuthSession } from "./auth";
 
@@ -37,8 +37,8 @@ function bool(value: unknown): boolean | null {
 }
 
 export async function fetchSkills(session: AuthSession, serverUrl: string): Promise<SkillItem[]> {
-  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/skills`, {
-    headers: { ...clientHeaders(), authorization: `Bearer ${session.access_token}` },
+  const response = await serverFetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/skills`, {
+    headers: { authorization: `Bearer ${session.access_token}` },
   });
   if (!response.ok) throw new Error(`skills HTTP ${String(response.status)}`);
   const body: unknown = await response.json();
@@ -57,8 +57,8 @@ export async function fetchSkills(session: AuthSession, serverUrl: string): Prom
 }
 
 export async function fetchConnectors(session: AuthSession, serverUrl: string): Promise<ConnectorItem[]> {
-  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/connectors`, {
-    headers: { ...clientHeaders(), authorization: `Bearer ${session.access_token}` },
+  const response = await serverFetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/connectors`, {
+    headers: { authorization: `Bearer ${session.access_token}` },
   });
   if (!response.ok) throw new Error(`connectors HTTP ${String(response.status)}`);
   const body: unknown = await response.json();
@@ -93,8 +93,8 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 export async function downloadSkillArchive(session: AuthSession, serverUrl: string, item: SkillItem): Promise<{ archive_base64: string; sha256: string }> {
-  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/skills/${encodeURIComponent(item.name)}/${encodeURIComponent(item.version)}/archive`, {
-    headers: { ...clientHeaders(), authorization: `Bearer ${session.access_token}` },
+  const response = await serverFetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/skills/${encodeURIComponent(item.name)}/${encodeURIComponent(item.version)}/archive`, {
+    headers: { authorization: `Bearer ${session.access_token}` },
   });
   if (!response.ok) throw new Error(`skills download HTTP ${String(response.status)}`);
   const header = response.headers.get("x-zeokeel-skill-sha256");
@@ -108,16 +108,16 @@ export async function downloadSkillArchive(session: AuthSession, serverUrl: stri
 
 export async function toggleConnector(session: AuthSession, serverUrl: string, item: ConnectorItem): Promise<void> {
   const action = item.enabled ? "disable" : "enable";
-  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/connectors/${encodeURIComponent(item.id)}/${action}`, {
+  const response = await serverFetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/connectors/${encodeURIComponent(item.id)}/${action}`, {
     method: "POST",
-    headers: { ...clientHeaders(), authorization: `Bearer ${session.access_token}` },
+    headers: { authorization: `Bearer ${session.access_token}` },
   });
   if (!response.ok) throw new Error(`connector HTTP ${String(response.status)}`);
 }
 
 export async function fetchTombstones(session: AuthSession, serverUrl: string): Promise<string[]> {
-  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/skills/tombstones`, {
-    headers: { ...clientHeaders(), authorization: `Bearer ${session.access_token}` },
+  const response = await serverFetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/skills/tombstones`, {
+    headers: { authorization: `Bearer ${session.access_token}` },
   });
   if (!response.ok) return [];
   const body: unknown = await response.json();
@@ -126,9 +126,9 @@ export async function fetchTombstones(session: AuthSession, serverUrl: string): 
 }
 
 export async function sendInstallReceipt(session: AuthSession, serverUrl: string, item: SkillItem, treeSha256: string): Promise<void> {
-  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/skills/${encodeURIComponent(item.name)}/${encodeURIComponent(item.version)}/install`, {
+  const response = await serverFetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/skills/${encodeURIComponent(item.name)}/${encodeURIComponent(item.version)}/install`, {
     method: "POST",
-    headers: { ...clientHeaders(), authorization: `Bearer ${session.access_token}`, "content-type": "application/json" },
+    headers: { authorization: `Bearer ${session.access_token}`, "content-type": "application/json" },
     body: JSON.stringify({ tree_sha256: treeSha256 }),
   });
   if (!response.ok) throw new Error(`install receipt HTTP ${String(response.status)}`);
@@ -137,7 +137,7 @@ export async function sendInstallReceipt(session: AuthSession, serverUrl: string
 export interface AppItem { appId: string; name: string; description: string; version: string; access: string }
 
 export async function fetchApps(session: AuthSession, serverUrl: string): Promise<AppItem[]> {
-  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/apps`, { headers: { ...clientHeaders(), authorization: `Bearer ${session.access_token}` } });
+  const response = await serverFetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/apps`, { headers: { authorization: `Bearer ${session.access_token}` } });
   if (!response.ok) throw new Error(`apps HTTP ${String(response.status)}`);
   const body: unknown = await response.json();
   const items = record(body)?.["items"];
@@ -154,7 +154,7 @@ export async function fetchApps(session: AuthSession, serverUrl: string): Promis
 }
 
 export async function openApp(session: AuthSession, serverUrl: string, item: AppItem): Promise<{ version: string; entry: string }> {
-  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/apps/${encodeURIComponent(item.appId)}/open`, { method: "POST", headers: { ...clientHeaders(), authorization: `Bearer ${session.access_token}` } });
+  const response = await serverFetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/apps/${encodeURIComponent(item.appId)}/open`, { method: "POST", headers: { authorization: `Bearer ${session.access_token}` } });
   if (!response.ok) throw new Error(`open HTTP ${String(response.status)}`);
   const version = response.headers.get("x-zeokeel-app-version") ?? item.version;
   let entry = "index.html";
@@ -170,7 +170,7 @@ export async function openApp(session: AuthSession, serverUrl: string, item: App
 }
 
 export async function fetchAppHtml(session: AuthSession, serverUrl: string, item: AppItem, entry = "index.html"): Promise<string> {
-  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/apps/${encodeURIComponent(item.appId)}/assets/${encodeURIComponent(entry)}`, { headers: { ...clientHeaders(), authorization: `Bearer ${session.access_token}` } });
+  const response = await serverFetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/apps/${encodeURIComponent(item.appId)}/assets/${encodeURIComponent(entry)}`, { headers: { authorization: `Bearer ${session.access_token}` } });
   if (!response.ok) throw new Error(`app asset HTTP ${String(response.status)}`);
   return response.text();
 }

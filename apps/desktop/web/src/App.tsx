@@ -290,7 +290,7 @@ export function App(props: { transport: Transport }) {
   if (state.upgrade !== null) {
     return (
       <UiProvider value={ui}>
-        <UpgradeGate info={state.upgrade} serverUrl={activeServerUrl} locale={state.settings.locale} />
+        <UpgradeGate info={state.upgrade} serverUrl={activeServerUrl} serverVersion={state.meta.version === "" ? null : state.meta.version} locale={state.settings.locale} transport={props.transport} />
       </UiProvider>
     );
   }

@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
+import { UpgradeGate } from "../src/UpgradeGate";
 import { portalHref, parseUpgradeInfo, upgradeInfoOf, UpgradeRequiredError } from "../src/upgrade";
 import type { Transport } from "../src/types";
 import { readyTransport } from "./fixtures";
@@ -59,8 +61,9 @@ describe("forced upgrade gate", () => {
 
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(screen.getByText("需要更新客户端")).toBeTruthy();
-    expect(screen.getByText("0.1.0")).toBeTruthy();
-    expect(screen.getByText("0.3.0")).toBeTruthy();
+    expect(screen.getAllByText("0.1.0").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("0.3.0").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("查看版本说明")).toBeTruthy();
     const link = screen.getByRole("link", { name: "打开下载页" });
     expect(link.getAttribute("href")).toBe("https://srv.example/portal");
     expect(link.getAttribute("target")).toBe("_blank");
@@ -75,6 +78,57 @@ describe("forced upgrade gate", () => {
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(calls.length).toBe(afterGate);
     warn.mockRestore();
+  });
+
+  it("resolves a relative portal_url against the active server URL", async () => {
+    localStorage.setItem("zk.enterprise.server", "https://srv.example");
+    const calls: string[] = [];
+    const transport = upgradeTransport(
+      new UpgradeRequiredError({ current: "0.1.0", minimum: "9.9.9", portalUrl: "/portal" }),
+      calls,
+    );
+    render(<App transport={transport} />);
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    const link = screen.getByRole("link", { name: "打开下载页" });
+    expect(link.getAttribute("href")).toBe("https://srv.example/portal");
+  });
+
+  it("shows the server version in the version-details block when available", () => {
+    const base = readyTransport([]);
+    render(
+      <UpgradeGate
+        info={{ current: "0.1.0", minimum: "9.9.9", portalUrl: "/portal" }}
+        serverUrl="https://srv.example"
+        serverVersion="1.4.2"
+        locale="zh-CN"
+        transport={base}
+      />,
+    );
+    expect(screen.getByText("查看版本说明")).toBeTruthy();
+    expect(screen.getByText("服务器版本")).toBeTruthy();
+    expect(screen.getByText("1.4.2")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "打开下载页" }).getAttribute("href")).toBe("https://srv.example/portal");
+  });
+
+  it("opens the portal through system.open_url in Tauri and window.open in the browser", async () => {
+    const calls: string[] = [];
+    const transport = upgradeTransport(new UpgradeRequiredError({ current: "0.1.0", minimum: "9.9.9", portalUrl: "https://srv.example/portal" }), calls);
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const first = render(<App transport={transport} />);
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    await userEvent.click(screen.getByRole("link", { name: "打开下载页" }));
+    expect(openSpy).toHaveBeenCalledWith("https://srv.example/portal", "_blank", "noopener");
+    first.unmount();
+
+    Reflect.set(window, "__TAURI_INTERNALS__", {});
+    const tauriCalls: string[] = [];
+    const tauriTransport = upgradeTransport(new UpgradeRequiredError({ current: "0.1.0", minimum: "9.9.9", portalUrl: "https://srv.example/portal" }), tauriCalls);
+    render(<App transport={tauriTransport} />);
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    await userEvent.click(screen.getByRole("link", { name: "打开下载页" }));
+    expect(tauriCalls).toContain("system.open_url");
+    Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
+    openSpy.mockRestore();
   });
 
   it("falls back to server_url + /portal and unknown versions for bare 426 errors", async () => {

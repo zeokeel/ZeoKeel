@@ -509,6 +509,7 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 Err(error) => CommandResponse::err(format!("update/check: {error}")),
             }
         }
+        commands::SYSTEM_OPEN_URL => open_url(payload),
         commands::APP_REQUEST => app_request(payload),
         commands::SKILLS_INSTALL => install_skill(payload),
         commands::SKILLS_INSTALLED => installed_skills(),
@@ -592,6 +593,73 @@ fn list_workspace_files(root: &str) -> Result<WorkspaceFilesResult, String> {
     }
     items.sort_unstable_by_key(|entry| entry.path.clone());
     Ok(WorkspaceFilesResult { items })
+}
+
+/// Validate an external URL for `system.open_url`.
+///
+/// Only absolute http(s) URLs without credentials or fragments are accepted;
+/// the length cap matches the IPC boundary. Pure so tests never launch a browser.
+fn validate_open_url(raw: &str) -> Result<String, String> {
+    if raw.is_empty() || raw.len() > 2048 {
+        return Err("open-url/invalid-url".to_owned());
+    }
+    let url = tauri::Url::parse(raw).map_err(|_| "open-url/invalid-url".to_owned())?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("open-url/invalid-scheme".to_owned());
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("open-url/credentials-not-allowed".to_owned());
+    }
+    if url.fragment().is_some() {
+        return Err("open-url/fragment-not-allowed".to_owned());
+    }
+    Ok(url.to_string())
+}
+
+fn open_platform_browser(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    let mut command = {
+        let mut command = std::process::Command::new("xdg-open");
+        command.arg(url);
+        command
+    };
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut command = std::process::Command::new("open");
+        command.arg(url);
+        command
+    };
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut command = std::process::Command::new("cmd");
+        command.args(["/C", "start", "", url]);
+        command
+    };
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    return Err("open-url/unsupported-platform".to_owned());
+
+    command
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(|_child| ())
+        .map_err(|error| format!("open-url/launch-failed: {error}"))
+}
+
+/// `system.open_url`: validate, then spawn the platform opener without waiting.
+fn open_url(payload: &Value) -> CommandResponse {
+    let Some(raw) = payload.get("url").and_then(Value::as_str) else {
+        return CommandResponse::err("missing url");
+    };
+    let url = match validate_open_url(raw) {
+        Ok(url) => url,
+        Err(error) => return CommandResponse::err(error),
+    };
+    match open_platform_browser(&url) {
+        Ok(()) => CommandResponse::ok(json!({ "opened": true })),
+        Err(error) => CommandResponse::err(error),
+    }
 }
 
 fn app_request(payload: &Value) -> CommandResponse {
@@ -1475,5 +1543,38 @@ mod tests {
         assert_eq!(files_value["items"][0]["kind"], "file");
         assert!(files_value["items"][0]["badge"].is_string());
         std::fs::remove_dir_all(&root).unwrap();
+    }
+    #[test]
+    fn system_open_url_validates_scheme_length_and_credentials() {
+        assert_eq!(
+            super::validate_open_url("https://example.com/portal?x=1"),
+            Ok("https://example.com/portal?x=1".to_owned())
+        );
+        assert_eq!(
+            super::validate_open_url("http://127.0.0.1:8787/portal"),
+            Ok("http://127.0.0.1:8787/portal".to_owned())
+        );
+        for bad in [
+            "",
+            "ftp://example.com/file",
+            "javascript:alert(1)",
+            "file:///etc/passwd",
+            "https://user:pass@example.com/",
+            "https://example.com/#fragment",
+        ] {
+            assert!(
+                super::validate_open_url(bad).is_err(),
+                "must reject {bad:?}"
+            );
+        }
+        assert!(
+            super::validate_open_url(&format!("https://example.com/{}", "a".repeat(2049))).is_err()
+        );
+        let response = super::open_url(&serde_json::json!({"url": "javascript:alert(1)"}));
+        assert!(!response.ok);
+        assert_eq!(response.error.as_deref(), Some("open-url/invalid-scheme"));
+        let missing = super::open_url(&serde_json::json!({}));
+        assert!(!missing.ok);
+        assert_eq!(missing.error.as_deref(), Some("missing url"));
     }
 }

@@ -1,13 +1,30 @@
 import { translate } from "./i18n";
-import { portalHref, type UpgradeInfo } from "./upgrade";
-import type { Locale } from "./types";
+import { resolvePortalHref, type UpgradeInfo } from "./upgrade";
+import type { Locale, Transport } from "./types";
 
-/** Full-screen forced-upgrade gate (round-5 §2): no dismiss, no retry, portal link only. */
-export function UpgradeGate(props: { info: UpgradeInfo; serverUrl: string; locale: Locale }) {
+/** Full-screen forced-upgrade gate (round-5 §2, round-6 §3): no dismiss/business retry. */
+export function UpgradeGate(props: {
+  info: UpgradeInfo;
+  serverUrl: string;
+  serverVersion: string | null;
+  locale: Locale;
+  transport: Transport;
+}) {
   const t = (key: string, vars?: Record<string, string | number>): string =>
     translate(props.locale, key, vars);
-  const href = props.info.portalUrl ?? portalHref(props.serverUrl);
+  const href = resolvePortalHref(props.info.portalUrl, props.serverUrl);
   const unknown = t("upgradeUnknown");
+  const tauri = Reflect.get(window, "__TAURI_INTERNALS__") !== undefined;
+  const openPortal = (): void => {
+    if (href === null) return;
+    if (tauri) {
+      void props.transport.call("system.open_url", { url: href }).catch((error: unknown) => {
+        console.warn("[zk] system.open_url failed", String(error));
+      });
+      return;
+    }
+    window.open(href, "_blank", "noopener");
+  };
   return (
     <div
       role="alert"
@@ -23,11 +40,27 @@ export function UpgradeGate(props: { info: UpgradeInfo; serverUrl: string; local
           <dt className="text-muted-foreground">{t("upgradeMinimum")}</dt>
           <dd className="font-mono">{props.info.minimum ?? unknown}</dd>
         </dl>
+        <details className="mt-4 rounded-document border border-border px-3 py-2 text-[12px]">
+          <summary className="cursor-pointer text-muted-foreground">{t("upgradeNotes")}</summary>
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+            <dt className="text-muted-foreground">{t("upgradeCurrent")}</dt>
+            <dd className="font-mono">{props.info.current ?? unknown}</dd>
+            <dt className="text-muted-foreground">{t("upgradeMinimum")}</dt>
+            <dd className="font-mono">{props.info.minimum ?? unknown}</dd>
+            {props.serverVersion === null ? null : (
+              <>
+                <dt className="text-muted-foreground">{t("upgradeServer")}</dt>
+                <dd className="font-mono">{props.serverVersion}</dd>
+              </>
+            )}
+          </dl>
+        </details>
         {href === null ? null : (
           <a
             href={href}
             target="_blank"
             rel="noreferrer noopener"
+            onClick={(event) => { event.preventDefault(); openPortal(); }}
             className="mt-5 inline-block rounded-control bg-foreground px-3 py-2 text-[13px] text-background"
           >
             {t("upgradePortal")}

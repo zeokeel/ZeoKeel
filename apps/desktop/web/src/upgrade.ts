@@ -117,6 +117,36 @@ export function portalHref(serverUrl: string): string | null {
   return base === "" ? null : `${base}/portal`;
 }
 
+/**
+ * Resolves the 426 `portal_url`:
+ * - absolute http(s) URL → used as-is;
+ * - `/portal` (absolute path) → resolved against the server origin;
+ * - other relative paths → resolved against `<server_url>/`;
+ * - missing portal_url → `<server_url>/portal` fallback.
+ */
+export function resolvePortalHref(portalUrl: string | null, serverUrl: string): string | null {
+  const base = serverUrl.trim().replace(/\/$/, "");
+  const fallback = portalHref(base);
+  if (portalUrl === null || portalUrl.trim() === "") return fallback;
+  if (/^https?:\/\//i.test(portalUrl)) return portalUrl;
+  const origin = (() => {
+    if (base === "") return null;
+    try {
+      return new URL(base).origin;
+    } catch {
+      return null;
+    }
+  })() ?? window.location.origin;
+  try {
+    if (portalUrl.startsWith("/")) {
+      return new URL(portalUrl, origin).toString();
+    }
+    return new URL(portalUrl, `${base}/`).toString();
+  } catch {
+    return fallback;
+  }
+}
+
 /** Fetches a server response body, throwing `UpgradeRequiredError` on HTTP 426. */
 export async function readJsonOrUpgrade(response: Response): Promise<unknown> {
   if (response.status === 426) {

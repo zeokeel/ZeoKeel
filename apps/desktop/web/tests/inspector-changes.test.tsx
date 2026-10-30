@@ -24,8 +24,8 @@ describe("inspector changes tab (workspace.changes)", () => {
       warning: "not a git repository or git status failed: exit status: 128",
     }));
     await openChangesTab(transport);
-    expect(await screen.findByText("src/main.rs +1 −0")).toBeTruthy();
-    expect(screen.getByText("docs/old.md +0 −1")).toBeTruthy();
+    expect(await screen.findByText(/src\/main\.rs \+1 −0/)).toBeTruthy();
+    expect(screen.getByText(/docs\/old\.md \+0 −1/)).toBeTruthy();
     expect(screen.getByRole("status").textContent).toContain("变更扫描提示");
     expect(transport.callsFor("workspace.changes")[0]).toMatchObject({ workspace_id: "ws-home" });
   });
@@ -48,7 +48,7 @@ describe("inspector changes tab (workspace.changes)", () => {
       if (resolveScan !== null) resolveScan({ items: [{ path: "a.txt", add: 1, del: 0 }] });
       await Promise.resolve();
     });
-    expect(await screen.findByText("a.txt +1 −0")).toBeTruthy();
+    expect(await screen.findByText(/a\.txt \+1 −0/)).toBeTruthy();
   });
 
   it("renders a retryable error and refetches on retry", async () => {
@@ -61,7 +61,7 @@ describe("inspector changes tab (workspace.changes)", () => {
     transport.failures.delete("workspace.changes");
     transport.handle("workspace.changes", () => ({ items: [{ path: "b.txt", add: 1, del: 1 }] }));
     await userEvent.click(screen.getByRole("button", { name: "重新加载" }));
-    expect(await screen.findByText("b.txt +1 −1")).toBeTruthy();
+    expect(await screen.findByText(/b\.txt \+1 −1/)).toBeTruthy();
     expect(transport.callsFor("workspace.changes").length).toBeGreaterThanOrEqual(2);
   });
 

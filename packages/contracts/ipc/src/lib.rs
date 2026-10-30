@@ -132,6 +132,8 @@ pub mod commands {
     pub const AUTH_CONFIGURE: &str = "auth.configure";
     /// Clear enterprise gateway credentials after logout (local session is UI-owned).
     pub const AUTH_LOGOUT: &str = "auth.logout";
+    /// Open an http(s) URL in the platform browser (fixed argv; fire-and-forget).
+    pub const SYSTEM_OPEN_URL: &str = "system.open_url";
 }
 
 /// Typed command payloads (single source for `schemars` JSON Schema).

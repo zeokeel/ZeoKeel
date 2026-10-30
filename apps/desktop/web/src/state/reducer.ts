@@ -648,8 +648,19 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, sidebarOpen: action.open };
     case "commands_open":
       return { ...state, commandsOpen: action.open };
-    case "upgrade_required":
-      return { ...state, upgrade: action.info };
+    case "upgrade_required": {
+      const previous = state.upgrade;
+      // Multiple server surfaces can 426 (middleware envelope + legacy flat bootstrap body);
+      // merge so known versions/portal from any response win over a later bare 426.
+      const info = previous === null
+        ? action.info
+        : {
+            current: action.info.current ?? previous.current,
+            minimum: action.info.minimum ?? previous.minimum,
+            portalUrl: action.info.portalUrl ?? previous.portalUrl,
+          };
+      return { ...state, upgrade: info };
+    }
     case "question_answered": {
       const messages = state.messages.map((message) => {
         const questions = message.questions.map((question) =>
