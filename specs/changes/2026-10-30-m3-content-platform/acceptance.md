@@ -8,6 +8,13 @@
 
 ## 1. 自动验证（实现后填写真实结果）
 
+### task 5 evidence (2026-10-30)
+
+- `bash scripts/admin-e2e.sh`：7 passed（M2 6 + M3 skills 1）
+- M3 真人操作：登录 → 技能页 → 创建 → 审批 → 管理 → 上传 zip 1.0.0 → 全员可安装 → axe 0 serious/critical → 删除
+- 修复：admin 登录误用 client LoginRequest schema（device_id）→ 新增 AdminLoginRequest schema/Ajv；admin hint 对比度 4.47→合规
+- 截图：`target/evidence/m3/admin-skills.png`
+
 ### task 4 evidence (2026-10-30)
 
 - `bash scripts/srv-store-test.sh`：上传 zip（SKILL.md）→ 归档 sha256；同版本 409；`../evil` zip 400；下载 archive 校验 `X-ZeoKeel-Skill-Sha256` 与内容；`store ok: content schema wired + skill upload/download`

@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AdminLoginRequest",
+  "description": "Admin cookie login payload.",
+  "type": "object",
+  "required": [
+    "password",
+    "username"
+  ],
+  "properties": {
+    "password": {
+      "type": "string"
+    },
+    "username": {
+      "type": "string"
+    }
+  }
+}

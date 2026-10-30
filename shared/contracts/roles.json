@@ -29,6 +29,12 @@
     "contract": "zk-contract-admin-ui",
     "cardinality": "singleton"
   },
+  "admin.page.skills": {
+    "package": "zeokeel/admin-skills",
+    "crate_name": "zk-admin-admin-skills",
+    "contract": "zk-contract-admin-ui",
+    "cardinality": "singleton"
+  },
   "admin.page.usage": {
     "package": "zeokeel/admin-usage",
     "crate_name": "zk-admin-admin-usage",

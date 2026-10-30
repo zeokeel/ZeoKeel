@@ -40,6 +40,14 @@
     ]
   },
   {
+    "id": "zeokeel/admin-skills",
+    "version": "0.1.0",
+    "kind": "ui",
+    "roles": [
+      "admin.page.skills"
+    ]
+  },
+  {
     "id": "zeokeel/admin-usage",
     "version": "0.1.0",
     "kind": "ui",

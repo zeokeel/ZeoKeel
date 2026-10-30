@@ -22,7 +22,13 @@ ZEOKEEL_ADMIN_DIST="apps/admin/web/dist" \
 ./target/debug/zk-server >/tmp/zk-admin-e2e.log 2>&1 &
 SERVER_PID=$!
 for _ in $(seq 1 40); do curl -fsS "$BASE/healthz" >/dev/null 2>&1 && break; sleep 0.25; done
-mkdir -p target/evidence/m2/admin
+python3 - <<'PYZIP'
+import zipfile
+with zipfile.ZipFile('/tmp/zk-admin-skill.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+    z.writestr('SKILL.md', '# admin e2e skill\n')
+PYZIP
+mkdir -p target/evidence/m2/admin target/evidence/m3
+export ZEOKEEL_SKILL_ZIP=/tmp/zk-admin-skill.zip
 ZEOKEEL_ADMIN_URL="$BASE/admin" ZEOKEEL_ADMIN_PASSWORD="admin-pass" \
-  pnpm exec playwright test e2e/m2-admin.spec.ts --reporter=line
+  pnpm exec playwright test e2e/m2-admin.spec.ts e2e/m3-admin-skills.spec.ts --reporter=line
 echo "admin e2e ok"

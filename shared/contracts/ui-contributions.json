@@ -28,6 +28,13 @@
     "slot": "admin.page.settings"
   },
   {
+    "component": "page.skills",
+    "order": 10,
+    "package": "zeokeel/admin-skills",
+    "role": "admin.page.skills",
+    "slot": "admin.page.skills"
+  },
+  {
     "component": "page.usage",
     "order": 10,
     "package": "zeokeel/admin-usage",

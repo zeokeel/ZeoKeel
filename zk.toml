@@ -52,6 +52,11 @@ contract = "zk-contract-server"
 cardinality = "singleton"
 editions = ["enterprise"]
 
+[roles."admin.page.skills"]
+contract = "zk-contract-admin-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
 [roles."admin.page.users"]
 contract = "zk-contract-admin-ui"
 cardinality = "singleton"
