@@ -11,7 +11,7 @@ import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
 import type { FileEntry, Transport } from "./types";
 import { parseFileEntries } from "./protocol";
-import { clearSession, fetchBootstrapModel, loadGatewayModel, loadServerUrl, loadSession, login as loginRequest, refreshSession, saveGatewayModel, saveServerUrl, saveSession, type AuthSession } from "./auth";
+import { clearSession, fetchBootstrapInfo, loadGatewayModel, loadServerUrl, loadSession, login as loginRequest, refreshSession, saveGatewayModel, saveServerUrl, saveSession, type AuthSession } from "./auth";
 
 
 function isMockMode(): boolean {
@@ -24,6 +24,8 @@ export function App(props: { transport: Transport }) {
   const [serverUrl, setServerUrl] = useState<string>(loadServerUrl);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginLoading, setLoginLoading] = useState(false);
+  const [gatewayModels, setGatewayModels] = useState<string[]>([]);
+  const [gatewayModel, setGatewayModel] = useState<string>(loadGatewayModel);
   const { state } = controller;
   useEffect(() => {
     if (state.meta.edition !== "enterprise" || session === null) return;
@@ -106,8 +108,11 @@ export function App(props: { transport: Transport }) {
           saveSession(next);
           saveServerUrl(serverUrl);
           setServerUrl(serverUrl);
-          void fetchBootstrapModel(next, serverUrl)
-            .then((model) => {
+          void fetchBootstrapInfo(next, serverUrl)
+            .then((info) => {
+              setGatewayModels(info.models);
+              const model = info.defaultModel === "" ? loadGatewayModel() : info.defaultModel;
+              setGatewayModel(model);
               if (model !== "") saveGatewayModel(model);
               return props.transport.call("auth.configure", { server_url: serverUrl, access_token: next.access_token, model });
             })
@@ -126,13 +131,27 @@ export function App(props: { transport: Transport }) {
 
   return (
     <UiProvider value={ui}>
-      <AppShell controller={controller} ui={ui} transport={props.transport} />
+      <AppShell
+        controller={controller}
+        ui={ui}
+        transport={props.transport}
+        gatewayModels={gatewayModels}
+        gatewayModel={gatewayModel}
+        onSelectGatewayModel={(model) => {
+          setGatewayModel(model);
+          saveGatewayModel(model);
+          if (session !== null) {
+            const url = serverUrl === "" ? state.settings.server_url : serverUrl;
+            void props.transport.call("auth.configure", { server_url: url, access_token: session.access_token, model }).catch(() => {});
+          }
+        }}
+      />
     </UiProvider>
   );
 }
 
-function AppShell(props: { controller: AppController; ui: UiValue; transport: Transport }) {
-  const { ui, controller, transport } = props;
+function AppShell(props: { controller: AppController; ui: UiValue; transport: Transport; gatewayModels: string[]; gatewayModel: string; onSelectGatewayModel: (model: string) => void }) {
+  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel } = props;
   const t = ui.t;
   const state = controller.state;
   const [commandsOpen, setCommandsOpen] = useState(false);
@@ -204,7 +223,7 @@ function AppShell(props: { controller: AppController; ui: UiValue; transport: Tr
       workspaceError={ui.workspaceError}
       navigation={<SessionsSlot />}
       conversation={<ChatSlot key={ui.activeWorkspaceId === null ? "none" : ui.activeWorkspaceId} />}
-      settings={<SettingsSlot />}
+      settings={<SettingsSlot gatewayModels={gatewayModels} gatewayModel={gatewayModel} onSelectGatewayModel={onSelectGatewayModel} />}
       inspector={<InspectorSlot open={inspectorOpen} tab={inspectorTab} files={files} changes={[]} onTab={setInspectorTab} onClose={() => { setInspectorOpen(false); }} />}
       inspectorOpen={inspectorOpen}
       onToggleInspector={() => { setInspectorOpen((value) => !value); }}

@@ -13,6 +13,9 @@ test.describe("M2 enterprise chat through gateway", () => {
     await page.getByLabel("账号").fill("admin");
     await page.getByLabel("密码").fill("admin-pass");
     await page.getByRole("button", { name: "登录" }).click();
+    await page.getByRole("button", { name: "打开设置" }).click();
+    await expect(page.getByLabel("企业模型")).toBeVisible({ timeout: 10_000 });
+    await page.keyboard.press("Escape");
     const firstRun = page.getByRole("heading", { name: "先选择一个工作区" });
     if (await firstRun.isVisible().catch(() => false)) {
       await page.getByRole("button", { name: /使用默认/ }).click();

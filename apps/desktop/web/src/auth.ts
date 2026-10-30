@@ -60,15 +60,28 @@ export function saveGatewayModel(model: string): void {
   localStorage.setItem(MODEL_KEY, model);
 }
 
-export async function fetchBootstrapModel(session: AuthSession, serverUrl: string): Promise<string> {
+export interface BootstrapInfo {
+  defaultModel: string;
+  models: string[];
+}
+
+export async function fetchBootstrapInfo(session: AuthSession, serverUrl: string): Promise<BootstrapInfo> {
   const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/config/bootstrap`, {
     headers: { authorization: `Bearer ${session.access_token}` },
   });
-  if (!response.ok) return "";
+  if (!response.ok) return { defaultModel: "", models: [] };
   const body: unknown = await response.json();
-  if (typeof body !== "object" || body === null) return "";
-  const gateway = (body as { gateway?: { default_model?: unknown } }).gateway;
-  return typeof gateway?.default_model === "string" ? gateway.default_model : "";
+  if (typeof body !== "object" || body === null) return { defaultModel: "", models: [] };
+  const gateway = (body as { gateway?: { default_model?: unknown; models?: unknown } }).gateway;
+  const defaultModel = typeof gateway?.default_model === "string" ? gateway.default_model : "";
+  const models = Array.isArray(gateway?.models)
+    ? gateway.models.flatMap((item) => {
+        if (typeof item !== "object" || item === null) return [];
+        const id = (item as { id?: unknown }).id;
+        return typeof id === "string" ? [id] : [];
+      })
+    : [];
+  return { defaultModel, models };
 }
 
 export async function refreshSession(session: AuthSession, serverUrl: string): Promise<AuthSession> {

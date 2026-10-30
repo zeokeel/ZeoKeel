@@ -36,9 +36,16 @@ function localeOf(value: string): Locale {
   return value === "en-US" ? "en-US" : "zh-CN";
 }
 
+export interface SettingsDialogProps {
+  gatewayModels?: string[];
+  gatewayModel?: string;
+  onSelectGatewayModel?: (model: string) => void;
+}
+
 /** `settings.dialog` slot: reads settings/open state and actions from useUi. */
-export function SettingsDialog() {
+export function SettingsDialog(props: SettingsDialogProps = {}) {
   const ui = useUi();
+  const models = props.gatewayModels ?? [];
   const { t, settings, settingsOpen, actions } = ui;
   const [form, setForm] = useState<SettingsForm>(() => toForm(settings));
   const [errors, setErrors] = useState<SettingsErrors>(EMPTY_ERRORS);
@@ -275,7 +282,20 @@ export function SettingsDialog() {
                 {saving ? t("settingsSaving") : t("settingsSave")}
               </Button>
             </div>
-          </form>
+            {models.length > 0 ? (
+            <section className="grid gap-2 border-t border-border pt-3">
+              <h3 className={labelClass}>{t("settingsGatewayModel")}</h3>
+              <select
+                aria-label={t("settingsGatewayModel")}
+                className={inputClass}
+                value={props.gatewayModel ?? ""}
+                onChange={(event) => { props.onSelectGatewayModel?.(event.target.value); }}
+              >
+                {models.map((model) => <option key={model} value={model}>{model}</option>)}
+              </select>
+            </section>
+          ) : null}
+        </form>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
