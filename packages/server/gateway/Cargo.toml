@@ -12,8 +12,11 @@ sqlx = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 sha2 = { workspace = true }
-zk-kit-server = { path = "../../../crates/zk-kit-server" }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }
 zk-contract-gateway = { path = "../../contracts/gateway" }
+zk-kit-server = { path = "../../../crates/zk-kit-server" }
 
 [lints]
 workspace = true

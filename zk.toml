@@ -12,6 +12,46 @@ docs_generated = "docs/generated"
 [personal_only]
 file = "editions/personal-only.toml"
 
+[roles."srv.auth.session"]
+contract = "zk-contract-auth"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[roles."srv.users"]
+contract = "zk-contract-user"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[roles."srv.wallet"]
+contract = "zk-contract-wallet"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[roles."srv.pricing"]
+contract = "zk-contract-wallet"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[roles."srv.gateway"]
+contract = "zk-contract-gateway"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[roles."srv.audit"]
+contract = "zk-contract-server"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[roles."srv.settings"]
+contract = "zk-contract-server"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[roles."srv.jobs"]
+contract = "zk-contract-server"
+cardinality = "singleton"
+editions = ["enterprise"]
+
 [roles."srv.http"]
 contract = "zk-contract-server"
 cardinality = "singleton"
@@ -88,3 +128,7 @@ editions = ["personal", "enterprise"]
 "zk.contract.config" = "zk-contract-config"
 "zk.contract.ui" = "zk-contract-ui"
 "zk.contract.server" = "zk-contract-server"
+"zk.contract.gateway" = "zk-contract-gateway"
+"zk.contract.wallet" = "zk-contract-wallet"
+"zk.contract.user" = "zk-contract-user"
+"zk.contract.auth" = "zk-contract-auth"

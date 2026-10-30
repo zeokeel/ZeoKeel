@@ -12,27 +12,6 @@ use sqlx::postgres::PgPoolOptions;
 use zk_contract_server::ServerModule;
 pub use zk_kit_server::AppState;
 
-/// Compatibility re-exports while domains migrate out of this package.
-pub mod auth {
-    pub use zk_kit_server::{
-        cookie, encode_token, error as auth_error, hash_password, random_token, require_admin,
-        sha256_hex, verify_password, ServerError as AuthError, AppState,
-    };
-    /// Current employee context (compat name).
-    pub async fn current_user_public(
-        state: &AppState,
-        headers: &axum::http::HeaderMap,
-    ) -> Result<(String, String, i32), AuthError> {
-        zk_kit_server::current_user(state, headers).await
-    }
-}
-pub mod wallet;
-pub mod pricing;
-pub mod audit;
-pub mod jobs;
-pub mod config;
-pub mod gateway;
-
 /// Stable module descriptor.
 #[must_use]
 pub fn module() -> ServerModule {
@@ -78,12 +57,6 @@ pub fn router_from(state: AppState) -> Router {
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .route("/api/meta", get(meta))
-        .merge(wallet::routes())
-        .merge(pricing::routes())
-        .merge(audit::routes())
-        .merge(jobs::routes())
-        .merge(config::routes())
-        .merge(gateway::routes())
         .with_state(state)
 }
 

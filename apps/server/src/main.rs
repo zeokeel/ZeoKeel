@@ -22,7 +22,7 @@ async fn main() -> Result<(), String> {
         .await
         .map_err(|error| format!("apply migrations: {error}"))?;
     let state = state(pool);
-    zk_srv_http::jobs::spawn_loop(state.pool.clone());
+    zk_srv_jobs::spawn_loop(state.pool.clone());
     if let Ok(password) = std::env::var("ZEOKEEL_BOOTSTRAP_ADMIN_PASSWORD") {
         let username = std::env::var("ZEOKEEL_BOOTSTRAP_ADMIN_USERNAME").unwrap_or_else(|_| "admin".to_owned());
         let created = ensure_bootstrap_admin(&state, &username, &password)
@@ -34,7 +34,13 @@ async fn main() -> Result<(), String> {
     }
     let app = router_from(state.clone())
         .merge(zk_srv_auth_local::routes().with_state(state.clone()))
-        .merge(zk_srv_users::routes().with_state(state));
+        .merge(zk_srv_users::routes().with_state(state.clone()))
+        .merge(zk_srv_wallet::routes().with_state(state.clone()))
+        .merge(zk_srv_pricing::routes().with_state(state.clone()))
+        .merge(zk_srv_gateway::routes().with_state(state.clone()))
+        .merge(zk_srv_audit::routes().with_state(state.clone()))
+        .merge(zk_srv_settings::routes().with_state(state.clone()))
+        .merge(zk_srv_jobs::routes().with_state(state));
     serve(app).await
 }
 

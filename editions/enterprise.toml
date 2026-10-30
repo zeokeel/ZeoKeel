@@ -1,4 +1,13 @@
 [packages]
+"srv.auth.session" = "zeokeel/auth"
+"srv.users" = "zeokeel/users"
+"srv.wallet" = "zeokeel/wallet"
+"srv.pricing" = "zeokeel/pricing"
+"srv.gateway" = "zeokeel/gateway"
+"srv.audit" = "zeokeel/audit"
+"srv.settings" = "zeokeel/settings"
+"srv.jobs" = "zeokeel/jobs"
+
 "srv.http" = "zeokeel/srv-http"
 
 [edition]
