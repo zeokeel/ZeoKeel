@@ -10,6 +10,18 @@ async function newConversation(page: Page): Promise<void> {
 }
 
 test.describe("personal rig agent (real serve + fake upstream)", () => {
+  test("rejecting an approval is fail-closed", async ({ page }) => {
+    await page.goto("/", { waitUntil: "networkidle" });
+    await newConversation(page);
+    const composer = page.getByRole("textbox").first();
+    await composer.fill("write a file");
+    await page.keyboard.press("Enter");
+    const approval = page.getByRole("group", { name: "需要审批" });
+    await expect(approval).toBeVisible();
+    await approval.getByRole("button", { name: "拒绝" }).click();
+    await expect(page.getByText(/denied by approval policy/).first()).toBeVisible();
+  });
+
   test("write approval, ask-user and final answer", async ({ page }) => {
     await page.goto("/", { waitUntil: "networkidle" });
     await newConversation(page);
@@ -34,18 +46,6 @@ test.describe("personal rig agent (real serve + fake upstream)", () => {
     const serious = axe.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical");
     expect(serious, JSON.stringify(serious.map((violation) => violation.id))).toEqual([]);
     await page.screenshot({ path: "target/evidence/agent-rig/question.png" });
-  });
-
-  test("rejecting an approval is fail-closed", async ({ page }) => {
-    await page.goto("/", { waitUntil: "networkidle" });
-    await newConversation(page);
-    const composer = page.getByRole("textbox").first();
-    await composer.fill("write a file");
-    await page.keyboard.press("Enter");
-    const approval = page.getByRole("group", { name: "需要审批" });
-    await expect(approval).toBeVisible();
-    await approval.getByRole("button", { name: "拒绝" }).click();
-    await expect(page.getByText(/denied by approval policy/).first()).toBeVisible();
   });
 
   test("stops a slow non-streaming turn", async ({ page }) => {
