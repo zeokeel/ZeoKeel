@@ -1,0 +1,18 @@
+[package]
+name = "zk-bootstrap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+zeokeel-cordis = { workspace = true }
+zk-contract-kernel = { path = "../../packages/contracts/kernel" }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+[lints]
+workspace = true

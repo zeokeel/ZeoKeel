@@ -8186,6 +8186,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "zeokeel-cordis"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4e87ee9361c4d0898d8d3ad711b6aae5c3f6b5c03b24a623a521ab0439f6498"
+dependencies = [
+ "futures-util",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "zerocopy"
 version = "0.8.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8407,6 +8418,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-bootstrap"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "zeokeel-cordis",
+ "zk-contract-kernel",
+]
+
+[[package]]
 name = "zk-cap-audio"
 version = "0.1.0"
 
@@ -8429,6 +8451,13 @@ version = "0.1.0"
 [[package]]
 name = "zk-cap-vector"
 version = "0.1.0"
+dependencies = [
+ "futures",
+ "rig-core",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+]
 
 [[package]]
 name = "zk-client-auth"
@@ -8543,13 +8572,16 @@ dependencies = [
 name = "zk-contract-admin-ui"
 version = "0.1.0"
 dependencies = [
+ "schemars 0.8.22",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "zk-contract-agent"
 version = "0.1.0"
 dependencies = [
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -8578,13 +8610,16 @@ dependencies = [
 name = "zk-contract-auth-client"
 version = "0.1.0"
 dependencies = [
+ "schemars 0.8.22",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "zk-contract-config"
 version = "0.1.0"
 dependencies = [
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -8612,16 +8647,21 @@ dependencies = [
 name = "zk-contract-gateway"
 version = "0.1.0"
 dependencies = [
+ "schemars 0.8.22",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "zk-contract-ipc"
 version = "0.1.0"
 dependencies = [
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "zk-contract-agent",
+ "zk-contract-config",
 ]
 
 [[package]]
@@ -8632,6 +8672,8 @@ version = "0.1.0"
 name = "zk-contract-llm"
 version = "0.1.0"
 dependencies = [
+ "schemars 0.8.22",
+ "serde_json",
  "thiserror 1.0.69",
 ]
 
@@ -8639,6 +8681,7 @@ dependencies = [
 name = "zk-contract-package"
 version = "0.1.0"
 dependencies = [
+ "schemars 0.8.22",
  "serde",
  "serde_json",
 ]
@@ -8647,13 +8690,16 @@ dependencies = [
 name = "zk-contract-server"
 version = "0.1.0"
 dependencies = [
+ "schemars 0.8.22",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "zk-contract-session"
 version = "0.1.0"
 dependencies = [
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -8672,6 +8718,7 @@ dependencies = [
 name = "zk-contract-tool"
 version = "0.1.0"
 dependencies = [
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -8681,6 +8728,7 @@ dependencies = [
 name = "zk-contract-ui"
 version = "0.1.0"
 dependencies = [
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -8690,7 +8738,9 @@ dependencies = [
 name = "zk-contract-update"
 version = "0.1.0"
 dependencies = [
+ "schemars 0.8.22",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -8730,6 +8780,7 @@ dependencies = [
  "tower-http",
  "uuid",
  "zip",
+ "zk-bootstrap",
  "zk-composed",
  "zk-contract-agent",
  "zk-contract-config",
@@ -8890,6 +8941,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tower-http",
+ "zk-bootstrap",
  "zk-composed",
  "zk-kit-server",
  "zk-srv-app-db",

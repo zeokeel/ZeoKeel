@@ -10,6 +10,7 @@ axum = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
 zk-composed = { path = "../../crates/zk-composed" }
+zk-bootstrap = { path = "../../crates/zk-bootstrap" }
 zk-srv-http = { path = "../../packages/server/http" }
 zk-srv-auth-local = { path = "../../packages/server/auth" }
 zk-srv-users = { path = "../../packages/server/users" }

@@ -19,6 +19,41 @@ use zk_contract_ipc::CommandResponse;
 
 use crate::ipc::AppState;
 
+/// Kernel service: composed runtime identity (name/version/edition/packages).
+static COMPOSED_RUNTIME_SERVICE: zk_bootstrap::ServiceKey<ComposedRuntimeIdentity> =
+    zk_bootstrap::ServiceKey::new("zk.desktop.composed");
+/// Kernel service: the composed desktop state (IPC/event/approval runtime).
+static APP_STATE_SERVICE: zk_bootstrap::ServiceKey<AppState> =
+    zk_bootstrap::ServiceKey::new("zk.desktop.state");
+
+/// Identity of the composed desktop runtime, exposed as a kernel service.
+#[derive(Clone, Debug)]
+struct ComposedRuntimeIdentity {
+    version: &'static str,
+    edition: &'static str,
+    package_count: usize,
+}
+
+/// Plugin that registers the composed runtime identity in the kernel (ADR-009/064).
+struct ComposedRuntimePlugin {
+    identity: ComposedRuntimeIdentity,
+}
+
+impl zk_bootstrap::Plugin for ComposedRuntimePlugin {
+    fn name(&self) -> &'static str {
+        "zk.desktop.composed"
+    }
+
+    fn apply(
+        &self,
+        ctx: zk_bootstrap::Context,
+        _config: serde_json::Value,
+    ) -> zk_bootstrap::CordisResult<()> {
+        ctx.provide(COMPOSED_RUNTIME_SERVICE, Arc::new(self.identity.clone()))?;
+        Ok(())
+    }
+}
+
 /// Single IPC entry point exposed to the web UI.
 #[tauri::command]
 fn ipc_call(
@@ -102,10 +137,62 @@ fn app_request(
     ipc::dispatch(&state, zk_contract_ipc::commands::APP_REQUEST, &payload)
 }
 
-fn build_state() -> Result<Arc<AppState>, String> {
+fn build_state() -> Result<
+    (
+        Arc<AppState>,
+        zk_bootstrap::Bootstrap,
+        tokio::runtime::Runtime,
+    ),
+    String,
+> {
+    // Kernel tasks need a host runtime that outlives the Tauri event loop.
+    let task_runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| format!("start kernel runtime: {error}"))?;
+    // Enter only while booting/registering tasks; Tauri/serve own the thread later.
+    let (state, bootstrap) = {
+        let _guard = task_runtime.enter();
+        boot_desktop()?
+    };
+    Ok((state, bootstrap, task_runtime))
+}
+
+fn boot_desktop() -> Result<(Arc<AppState>, zk_bootstrap::Bootstrap), String> {
+    // Kernel root first: the host owns every plugin effect and background task.
+    let bootstrap =
+        zk_bootstrap::boot("zk-desktop").map_err(|error| format!("boot kernel: {error}"))?;
     let runtime = zk_composed::build()?;
     apply_persisted_provider(&runtime);
-    Ok(AppState::new(runtime))
+    let state = AppState::new(runtime);
+    bootstrap
+        .provide(APP_STATE_SERVICE, Arc::clone(&state))
+        .map_err(|error| format!("register app state: {error}"))?;
+    let identity = ComposedRuntimeIdentity {
+        version: env!("CARGO_PKG_VERSION"),
+        edition: zk_composed::EDITION,
+        package_count: zk_composed::PACKAGES.len(),
+    };
+    eprintln!(
+        "zk-desktop: composed runtime edition={} version={} packages={}",
+        identity.edition, identity.version, identity.package_count
+    );
+    bootstrap
+        .register_plugin(
+            Arc::new(ComposedRuntimePlugin { identity }),
+            serde_json::json!({ "edition": zk_composed::EDITION }),
+        )
+        .map_err(|error| format!("register composed runtime: {error}"))?;
+    // Schedule executor runs as a kernel-owned task (abort-on-dispose). Its inner
+    // worker thread is started and owns its own lifecycle until process exit.
+    let schedule_state = Arc::clone(&state);
+    bootstrap
+        .spawn_task("zk.desktop.schedule", async move {
+            automation::start(schedule_state);
+            std::future::pending::<()>().await;
+        })
+        .map_err(|error| format!("start schedule executor: {error}"))?;
+    Ok((state, bootstrap))
 }
 
 /// Apply the provider persisted by a previous run (settings hot-swap, ADR-064).
@@ -156,34 +243,37 @@ fn main() {
             .map(|v| v == "1")
             .unwrap_or(false);
 
-    let state = match build_state() {
-        Ok(state) => state,
+    let (state, bootstrap, _task_runtime) = match build_state() {
+        Ok(built) => built,
         Err(error) => {
             eprintln!("zk-desktop: failed to build composed runtime: {error}");
             eprintln!("zk-desktop: run `zk compose --edition personal --profile default --channel official` first");
             std::process::exit(1);
         }
     };
-
-    automation::start(Arc::clone(&state));
+    let bootstrap = Arc::new(bootstrap);
 
     if serve_mode {
         let addr =
             std::env::var("ZEOKEEL_SERVE_ADDR").unwrap_or_else(|_| "127.0.0.1:8788".to_owned());
-        if let Err(error) = serve::run(state, &addr) {
+        let result = serve::run(state, &addr);
+        if let Err(error) = bootstrap.shutdown() {
+            eprintln!("zk-desktop: bootstrap shutdown failed: {error}");
+        }
+        if let Err(error) = result {
             eprintln!("zk-desktop serve: {error}");
             std::process::exit(1);
         }
         return;
     }
 
-    if let Err(error) = run_window(state) {
+    if let Err(error) = run_window(state, Arc::clone(&bootstrap)) {
         eprintln!("zk-desktop: {error}");
         std::process::exit(1);
     }
 }
 
-fn run_window(state: Arc<AppState>) -> Result<(), String> {
+fn run_window(state: Arc<AppState>, bootstrap: Arc<zk_bootstrap::Bootstrap>) -> Result<(), String> {
     let bus = state.bus.clone();
     let builder = tauri::Builder::default()
         .manage(Arc::clone(&state))
@@ -266,9 +356,14 @@ document.title='SELFTEST|'+JSON.stringify({appRequest,ipc,open,core});
             }
             Ok(())
         });
-    builder
+    let result = builder
         .run(tauri::generate_context!())
-        .map_err(|error| format!("failed to run window: {error}"))
+        .map_err(|error| format!("failed to run window: {error}"));
+    // Desktop exit: dispose kernel effects (reverse order, exactly once).
+    if let Err(error) = bootstrap.shutdown() {
+        eprintln!("zk-desktop: bootstrap shutdown failed: {error}");
+    }
+    result
 }
 
 #[cfg(test)]

@@ -46,6 +46,11 @@ ZeoKeel/
 └─ docs/                       # 规划文档 + generated/（zk docs 生成）
 ```
 
+- **实现状态（task-13）**：`crates/zk-bootstrap` 已存在（ADR-009 的非包引导代码）：创建并持有
+  `zeokeel-cordis` kernel root、注册 `zk-contract-kernel` 的三个宿主服务、以 kernel effect 监督后台任务、
+  统一 `dispose_all()` 关闭；`apps/desktop` 与 `apps/server` 的 `main.rs` 都经它启动/关闭。
+  内核版本精确钉在 `Cargo.toml` 的 `zeokeel-cordis = "=0.6.0"`（见 §5）。
+
 **为什么客户端与服务端共用一个 Cargo workspace**：
 
 - 契约 crate 必须**单实例**（trait 身份）；跨 workspace 的 path 依赖会破坏 `workspace = true` 继承。
@@ -84,7 +89,7 @@ profile 在 edition 解析结果之上做环境覆盖（`profiles/base.toml` →
 
 - Rust glue 在 `crates/zk-composed/`；UI registry 在 `apps/desktop/web/src/generated/`；服务端 glue 在
   `apps/server/src/generated/`；管理台在 `apps/admin/web/src/generated/`。
-- 契约产物在 `shared/contracts/`（`zk api` 与 `zk compose` 分工见 `24` §3）；TS/Schema 由 ts-rs/schemars 导出。
+- 契约产物在 `shared/contracts/`（`zk api` 与 `zk compose` 分工见 `24` §3）；Schema 由 schemars（`export_schema`）导出，TS 由 `scripts/schema-ts.py` 从 schema 生成。
 - 文档索引在 `docs/generated/`，writer 是 `zk docs`。
 
 规则：**基线 `personal × default × official` 的产物入库**；其它组合在 CI 内生成不提交；头部

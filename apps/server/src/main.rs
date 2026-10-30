@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 use std::future::IntoFuture;
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
@@ -20,8 +21,45 @@ const DEFAULT_ADDR: &str = "127.0.0.1:8787";
 const INSTANCE_LOCK_KEY: i64 = 0x5A4B_5345_5256_4552;
 const SHUTDOWN_DEADLINE_SECS: u64 = 30;
 
+/// Kernel service: server state (PG pool + JWT keys).
+static SERVER_STATE_SERVICE: zk_bootstrap::ServiceKey<AppState> =
+    zk_bootstrap::ServiceKey::new("zk.server.state");
+/// Kernel service: server identity (version/edition).
+static SERVER_RUNTIME_SERVICE: zk_bootstrap::ServiceKey<ServerRuntimeIdentity> =
+    zk_bootstrap::ServiceKey::new("zk.server.runtime");
+
+/// Identity of the server runtime, exposed as a kernel service.
+#[derive(Clone, Debug)]
+struct ServerRuntimeIdentity {
+    version: &'static str,
+    edition: &'static str,
+}
+
+/// Plugin that registers the server identity in the kernel (ADR-009).
+struct ServerRuntimePlugin {
+    identity: ServerRuntimeIdentity,
+}
+
+impl zk_bootstrap::Plugin for ServerRuntimePlugin {
+    fn name(&self) -> &'static str {
+        "zk.server.runtime"
+    }
+
+    fn apply(
+        &self,
+        ctx: zk_bootstrap::Context,
+        _config: serde_json::Value,
+    ) -> zk_bootstrap::CordisResult<()> {
+        ctx.provide(SERVER_RUNTIME_SERVICE, Arc::new(self.identity.clone()))?;
+        Ok(())
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), String> {
+    // Kernel root before any pool/route/task work (docs/06 §1).
+    let bootstrap =
+        zk_bootstrap::boot("zk-server").map_err(|error| format!("boot kernel: {error}"))?;
     let database_url = std::env::var("ZEOKEEL_DATABASE_URL")
         .map_err(|_| "ZEOKEEL_DATABASE_URL is required".to_owned())?;
     let pool = connect(&database_url)
@@ -52,12 +90,42 @@ async fn main() -> Result<(), String> {
         .await
         .map_err(|error| format!("apply migrations: {error}"))?;
     let state = state(pool);
+    bootstrap
+        .provide(SERVER_STATE_SERVICE, Arc::new(state.clone()))
+        .map_err(|error| format!("register server state: {error}"))?;
+    let identity = ServerRuntimeIdentity {
+        version: env!("CARGO_PKG_VERSION"),
+        edition: zk_composed::EDITION,
+    };
+    println!(
+        "zk-server: composed runtime edition={} version={}",
+        identity.edition, identity.version
+    );
+    bootstrap
+        .register_plugin(
+            Arc::new(ServerRuntimePlugin { identity }),
+            serde_json::json!({ "edition": zk_composed::EDITION }),
+        )
+        .map_err(|error| format!("register server runtime: {error}"))?;
     // Startup compensation for admissions that crashed before settlement.
     let startup_key = format!("usage-pending:startup:{}", zk_kit_server::now_secs());
     if let Err(error) = zk_srv_jobs::run_job(&state.pool, "usage-pending", &startup_key).await {
         eprintln!("startup pending-usage compensation failed: {error}");
     }
-    let jobs = zk_srv_jobs::spawn_loop(state.pool.clone());
+    // The job loop runs under kernel supervision; the package's loop handle stays
+    // host-aborted after the HTTP drain so shutdown ordering is unchanged.
+    let (jobs_tx, jobs_rx) = tokio::sync::oneshot::channel::<tokio::task::JoinHandle<()>>();
+    let jobs_pool = state.pool.clone();
+    let _jobs_supervisor = bootstrap
+        .spawn_task("srv.jobs", async move {
+            let jobs = zk_srv_jobs::spawn_loop(jobs_pool);
+            let _ = jobs_tx.send(jobs);
+            std::future::pending::<()>().await;
+        })
+        .map_err(|error| format!("start jobs scheduler: {error}"))?;
+    let jobs = jobs_rx
+        .await
+        .map_err(|_| "jobs scheduler stopped before its loop was registered".to_owned())?;
     if let Ok(password) = std::env::var("ZEOKEEL_BOOTSTRAP_ADMIN_PASSWORD") {
         let username = std::env::var("ZEOKEEL_BOOTSTRAP_ADMIN_USERNAME")
             .unwrap_or_else(|_| "admin".to_owned());
@@ -87,6 +155,10 @@ async fn main() -> Result<(), String> {
     jobs.abort();
     let _ = jobs.await;
     shutdown_sequence(&state).await;
+    // Dispose kernel effects (server plugins/tasks) after the drain/settlement phase.
+    if let Err(error) = bootstrap.shutdown() {
+        eprintln!("zk-server: bootstrap shutdown failed: {error}");
+    }
     result
 }
 

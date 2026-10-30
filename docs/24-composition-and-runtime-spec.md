@@ -289,7 +289,9 @@ SIGTERM
 - 启动取 PG advisory lock；拿不到=拒启（防多实例重复发放/退役）。
 - pending 结算表 + 启动扫描：超时未结算 → 按最后 usage 结算或 void，差异进对账。
 - **实现状态（M2）**：SIGTERM 按上述顺序执行（drain 30s → 停止 cron → pending 结算 → 审计链校验 → 关闭 PG → exit 0）；
-  启动先取 PG advisory lock，拿不到即拒启。
+  启动先取 PG advisory lock，拿不到即拒启。关闭编排由 `crates/zk-bootstrap` 承载：apps 启动时
+  `boot()` 创建 cordis root，jobs loop 作为 kernel task 监督；drain/结算/审计校验完成后
+  `Bootstrap::shutdown()`（`Context::dispose_all()`）逆序回收插件 effects 与任务，再退出。
 
 ## 7. 客户端会话存储（冻结）
 

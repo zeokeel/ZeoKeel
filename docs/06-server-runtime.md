@@ -27,6 +27,11 @@ zeokeel-server（单二进制；crate 名 `zk-server`）
 └─ 进程内基础设施：有界任务队列、TTL 缓存、事件总线（无 Redis/MQ/S3）
 ```
 
+- **实现状态（task-13）**：`apps/server/src/main.rs` 在连接池之前调用
+  `zk_bootstrap::boot("zk-server")` 创建 kernel root，并把 `zk_kit_server::AppState` 注册为 kernel
+  service、jobs loop 由 `Bootstrap::spawn_task` 监督；SIGTERM drain + 结算 + 审计校验后调用
+  `Bootstrap::shutdown()` 逆序回收 effects（`docs/24` §6）。
+
 设计约束（参考实现的取舍，已确认沿用）：
 
 - **无外部中间件**：不引入 Redis/MQ/S3。缓存用进程内 TTL；队列用有界 in-process 队列；

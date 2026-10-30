@@ -44,6 +44,8 @@ rig-agent = "0.45"
 rig-memory = { version = "0.45", features = ["fs"] }
 http = "1"
 reqwest = { version = "0.12", features = ["json", "blocking", "rustls-tls", "stream"] }
+# Kernel is an external dependency pinned to an exact patch (docs/10 §3).
+zeokeel-cordis = "=0.6.0"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

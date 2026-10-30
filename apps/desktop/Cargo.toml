@@ -13,6 +13,7 @@ tauri = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 zk-composed = { path = "../../crates/zk-composed" }
+zk-bootstrap = { path = "../../crates/zk-bootstrap" }
 zk-kit-approval = { path = "../../crates/zk-kit-approval" }
 zk-kit-questions = { path = "../../crates/zk-kit-questions" }
 zk-kit-session = { path = "../../crates/zk-kit-session" }

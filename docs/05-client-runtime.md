@@ -12,9 +12,9 @@
 │ WebView（React，由 UI 包组装）                                             │
 │        ▲  IPC: 命令表 + 流式事件（Transport 抽象：tauri-ipc / http-ws）    │
 │ ┌──────┴──────────────────────────────────────────────────────────────┐ │
-│ │ apps/desktop  ── bootstrap（唯一非包代码）                            │ │
-│ │   读配置 → 装 BlockingExecutor/Clock/LogExporter → Context::root()     │ │
-│ │   → zk_composed::register_all(ctx) → 起 tokio → 开窗口/监听           │ │
+│ │ apps/desktop  ── bootstrap（唯一非包代码：crates/zk-bootstrap）        │ │
+│ │   读配置 → 装 Clock/Config/TaskScheduler → Context::root()             │ │
+│ │   → 注册 composed runtime → 起 tokio → 开窗口/监听 → dispose_all()    │ │
 │ ├─────────────────────────────────────────────────────────────────────┤ │
 │ │ zeokeel-cordis（外部 crate，pin 0.6.x）                                │ │
 │ │   Context 树 / ServiceKey / Fiber / Effect / Events / Registry        │ │
@@ -40,6 +40,10 @@
   但**必须包成 effect**，否则内核回收不到（kernel.md §7.2 H4）。
 - 运行时只允许一个 `BlockingExecutor`（进程级 `OnceLock`，先装者赢）——所以它由 bootstrap 装，
   包不得再装。测试进程天然隔离（nextest 每个测试独立进程），这点写进 testkit 说明。
+- **实现状态（task-13）**：`crates/zk-bootstrap` 已实现——`boot("zk-desktop")` 创建 `Context::root()`、
+  注册 `kernel.clock`/`kernel.config`/`kernel.tasks` 宿主服务；desktop 把 composed runtime 作为
+  plugin/service 注册，schedule executor 以 kernel effect 运行（abort-on-dispose）；退出时
+  `Bootstrap::shutdown()` → `Context::dispose_all()` 逆序回收。
 
 ## 2. 宿主责任 → 包归属
 
@@ -50,8 +54,8 @@
 | H1 | 组合根 / 包清单 | `crates/zk-composed`（生成）+ bootstrap | profile → 注册表，编译期固定 |
 | H2 | 配置来源与分层 | `config-store` 包（`host.config`） | 文件/env/默认值；schema 由包的 `[config]` 提供；内核只做校验合并 |
 | H3 | 运行时/定时器/事件循环 | `runtime` 包 + `timer` 包 | tokio 归 runtime；定时器用 effect 包 `JoinHandle::abort` |
-| H4 | 任务所有权 | `task-service` 包（`host.tasks`） | `spawn` 返回 handle，cleanup 里 abort/await；**禁止裸 `tokio::spawn`**（CI 源码扫描） |
-| H5 | 关闭编排 | bootstrap/runtime | 固定顺序：`when_idle` → `dispose_all`（重试 `LifecycleBusy`）→ `drain_orphan_async_cleanups` → 关 tokio → 关窗口 |
+| H4 | 任务所有权 | `crates/zk-bootstrap::spawn_task` | 任务注册为 kernel effect；cleanup 里 abort，卸载后任务名释放；**禁止裸 `tokio::spawn`**（CI 源码扫描） |
+| H5 | 关闭编排 | `crates/zk-bootstrap` | 固定顺序：`when_idle` → `dispose_all`（重试 `LifecycleBusy`）→ `drain_orphan_async_cleanups` → 关 tokio → 关窗口 |
 | H6 | 权限/审计/能力策略 | `approval` + `audit` 包 | 审批保护**用户**不受 agent 越界，不是包隔离；审计事件落 store |
 | H7 | 资源计量/处置 | `supervisor` 包（`supervision` feature） | 配额、heartbeat、stalled fiber 观测 + cancel；不做"强杀线程" |
 | H8 | 不可信包隔离 | 无（不承诺插件隔离） | 信任边界是构建输入（ADR-012）；未来 L3 进程 / L4 WASM 由宿主自建（§7） |
