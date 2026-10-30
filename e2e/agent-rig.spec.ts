@@ -54,6 +54,8 @@ test.describe("personal rig agent (real serve + fake upstream)", () => {
     const composer = page.getByRole("textbox").first();
     await composer.fill("slow");
     await page.keyboard.press("Enter");
+    await expect(page.getByText("生成中…").first()).toBeVisible();
+    await page.waitForTimeout(200);
     const stop = page.getByRole("button", { name: "停止生成" });
     await expect(stop).toBeVisible();
     await stop.click();
