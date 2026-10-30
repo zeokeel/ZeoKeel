@@ -2,4 +2,4 @@
 #![allow(dead_code)]
 
 pub const EDITION: &str = "personal";
-pub const PACKAGES: &[&str] = &["zeokeel/agent-loop","zeokeel/llm-mock","zeokeel/tool-fs",];
+pub const PACKAGES: &[&str] = &["zeokeel/agent-loop","zeokeel/llm-mock","zeokeel/store-session-sqlite","zeokeel/store-settings-json","zeokeel/tool-fs","zeokeel/ui-kit","zeokeel/ui-chat","zeokeel/ui-sessions","zeokeel/ui-settings",];

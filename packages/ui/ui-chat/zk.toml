@@ -1,0 +1,21 @@
+schema = 1
+id = "zeokeel/ui-chat"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "UI package ui-chat"
+
+[role]
+name = "ui.slot.chat"
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-ui-chat" }
+ui = { package = "@zeokeel/ui-chat" }
+
+[[ui.contributions]]
+slot = "ui.chat"
+component = "chat.thread"
+order = 10

@@ -1,0 +1,11 @@
+# 本地开发：用真实的 OpenAI 兼容端点（密钥只从环境变量读，不写入仓库）。
+# 用法：
+#   set -a; . ./.env.local; set +a
+#   zk compose --edition personal --profile dev-live --channel official
+#   cargo run -p zk-desktop -- --serve
+[profile]
+name = "dev-live"
+base = "default"
+
+[packages]
+"llm.provider.default" = "zeokeel/llm-openai-compatible"

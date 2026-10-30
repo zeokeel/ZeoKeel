@@ -3,6 +3,10 @@ name = "personal"
 targets = ["desktop"]
 
 [packages]
+"ui.kit" = "zeokeel/ui-kit"
+"ui.slot.sessions" = "zeokeel/ui-sessions"
+"ui.slot.chat" = "zeokeel/ui-chat"
+"ui.slot.settings" = "zeokeel/ui-settings"
 "tool.fs" = "zeokeel/tool-fs"
 "llm.provider.default" = "zeokeel/llm-mock"
 "agent.loop" = "zeokeel/agent-loop"

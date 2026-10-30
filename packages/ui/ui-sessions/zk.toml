@@ -1,0 +1,21 @@
+schema = 1
+id = "zeokeel/ui-sessions"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "UI package ui-sessions"
+
+[role]
+name = "ui.slot.sessions"
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-ui-sessions" }
+ui = { package = "@zeokeel/ui-sessions" }
+
+[[ui.contributions]]
+slot = "ui.sessions"
+component = "sessions.sidebar"
+order = 10

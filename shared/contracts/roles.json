@@ -28,5 +28,29 @@
     "crate_name": "zk-tool-fs",
     "contract": "zk-contract-tool",
     "cardinality": "singleton"
+  },
+  "ui.kit": {
+    "package": "zeokeel/ui-kit",
+    "crate_name": "zk-ui-kit",
+    "contract": "zk-contract-ui",
+    "cardinality": "singleton"
+  },
+  "ui.slot.chat": {
+    "package": "zeokeel/ui-chat",
+    "crate_name": "zk-ui-chat",
+    "contract": "zk-contract-ui",
+    "cardinality": "singleton"
+  },
+  "ui.slot.sessions": {
+    "package": "zeokeel/ui-sessions",
+    "crate_name": "zk-ui-sessions",
+    "contract": "zk-contract-ui",
+    "cardinality": "singleton"
+  },
+  "ui.slot.settings": {
+    "package": "zeokeel/ui-settings",
+    "crate_name": "zk-ui-settings",
+    "contract": "zk-contract-ui",
+    "cardinality": "singleton"
   }
 }

@@ -37,6 +37,26 @@ contract = "zk-contract-config"
 cardinality = "singleton"
 editions = ["personal", "enterprise"]
 
+[roles."ui.kit"]
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."ui.slot.sessions"]
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."ui.slot.chat"]
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."ui.slot.settings"]
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
 [contracts]
 "zk.contract.package" = "zk-contract-package"
 "zk.contract.kernel" = "zk-contract-kernel"
@@ -46,3 +66,4 @@ editions = ["personal", "enterprise"]
 "zk.contract.ipc" = "zk-contract-ipc"
 "zk.contract.session" = "zk-contract-session"
 "zk.contract.config" = "zk-contract-config"
+"zk.contract.ui" = "zk-contract-ui"

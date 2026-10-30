@@ -2,6 +2,15 @@
   "schema": 1,
   "id": "official",
   "edition": "personal",
-  "defaults": { "server_url": "" },
-  "brand": { "name": "ZeoKeel", "powered_by": "show" }
+  "defaults": {
+    "server_url": ""
+  },
+  "brand": {
+    "name": "ZeoKeel",
+    "powered_by": "show",
+    "logo": {
+      "light": "logo.svg",
+      "dark": "logo-dark.svg"
+    }
+  }
 }

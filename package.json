@@ -4,6 +4,12 @@
   "version": "0.1.0",
   "packageManager": "pnpm@12.16.1",
   "scripts": {
-    "compose": "cargo run -p zk -- compose --edition personal --profile default --channel official"
+    "compose": "cargo run -p zk -- compose --edition personal --profile default --channel official",
+    "e2e": "playwright test",
+    "e2e:report": "playwright show-report target/evidence/m1/playwright-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@axe-core/playwright": "4.11.0"
   }
 }

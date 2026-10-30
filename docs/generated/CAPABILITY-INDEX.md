@@ -2,12 +2,15 @@
 
 # Capability Index
 
-5 capabilities
+8 capabilities
 
 | id | path |
 | --- | --- |
 | `contract.agent` | `packages/contracts/agent/src/lib.rs` |
+| `contract.config` | `packages/contracts/config/src/lib.rs` |
+| `contract.ipc` | `packages/contracts/ipc/src/lib.rs` |
 | `contract.kernel` | `packages/contracts/kernel/src/lib.rs` |
 | `contract.llm` | `packages/contracts/llm/src/lib.rs` |
 | `contract.package` | `packages/contracts/package/src/lib.rs` |
+| `contract.session` | `packages/contracts/session/src/lib.rs` |
 | `contract.tool` | `packages/contracts/tool/src/lib.rs` |

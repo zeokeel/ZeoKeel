@@ -1,0 +1,9 @@
+{
+  "channel": "official",
+  "logo": {
+    "dark": "brand/logo-dark.svg",
+    "light": "brand/logo.svg"
+  },
+  "name": "ZeoKeel",
+  "powered_by": "show"
+}

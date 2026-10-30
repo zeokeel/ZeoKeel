@@ -175,6 +175,14 @@ struct Manifest {
     facets: Facets,
     #[serde(default)]
     requires: BTreeMap<String, String>,
+    #[serde(default)]
+    ui: Option<UiSection>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct UiSection {
+    #[serde(default)]
+    contributions: Vec<UiContributionDecl>,
 }
 
 impl Manifest {
@@ -189,6 +197,10 @@ impl Manifest {
 
     fn rust_crate(&self) -> Option<&str> {
         self.facets.rust.as_ref().map(|r| r.crate_name.as_str())
+    }
+
+    fn ui_contributions(&self) -> &[UiContributionDecl] {
+        self.ui.as_ref().map_or(&[], |ui| ui.contributions.as_slice())
     }
 }
 
@@ -205,6 +217,21 @@ struct RoleDecl {
 struct Facets {
     #[serde(default)]
     rust: Option<RustFacet>,
+    #[serde(default)]
+    ui: Option<UiFacet>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct UiFacet {
+    package: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct UiContributionDecl {
+    slot: String,
+    component: String,
+    #[serde(default)]
+    order: i32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -252,6 +279,34 @@ struct ProfileDecl {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+struct ChannelFile {
+    #[allow(dead_code)]
+    id: String,
+    #[serde(default)]
+    edition: String,
+    #[serde(default)]
+    brand: Brand,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct Brand {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    powered_by: String,
+    #[serde(default)]
+    logo: BrandLogo,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct BrandLogo {
+    #[serde(default)]
+    light: String,
+    #[serde(default)]
+    dark: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 enum PackageSel {
     One(String),
@@ -284,6 +339,8 @@ struct Resolved {
     manifests: BTreeMap<String, Manifest>,
     roles: BTreeMap<String, RoleDef>,
     paths: Paths,
+    brand: Brand,
+    channel_dir: PathBuf,
 }
 
 fn load_root(root: &Path) -> Result<RootConfig> {
@@ -418,18 +475,33 @@ fn resolve_profile(
     Ok(())
 }
 
-fn channel_file(root: &Path, channel: &str) -> Result<PathBuf> {
-    let path = root.join("brands").join(channel).join("channel.json");
+fn load_channel(root: &Path, channel: &str) -> Result<(ChannelFile, PathBuf)> {
+    let dir = root.join("brands").join(channel);
+    let path = dir.join("channel.json");
     if !path.is_file() {
         bail!("channel {channel} not found at {}", path.display());
     }
-    Ok(path)
+    let text = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let file: ChannelFile = serde_json::from_str(&text).with_context(|| format!("parse {}", path.display()))?;
+    if file.brand.name.trim().is_empty() {
+        bail!("channel {channel}: brand.name is required");
+    }
+    if file.brand.logo.light.trim().is_empty() || file.brand.logo.dark.trim().is_empty() {
+        bail!("channel {channel}: brand.logo.light and brand.logo.dark are required");
+    }
+    for logo in [&file.brand.logo.light, &file.brand.logo.dark] {
+        let logo_path = dir.join(logo);
+        if !logo_path.is_file() {
+            bail!("channel {channel}: logo file missing: {}", logo_path.display());
+        }
+    }
+    Ok((file, dir))
 }
 
 fn resolve(root: &Path, flags: &Flags) -> Result<Resolved> {
     let config = load_root(root)?;
     let manifests = scan_manifests(root)?;
-    channel_file(root, &flags.channel)?;
+    let (channel, channel_dir) = load_channel(root, &flags.channel)?;
 
     let mut chain = Vec::new();
     let mut packages = resolve_edition(root, &flags.edition, &mut chain)?;
@@ -516,6 +588,8 @@ fn resolve(root: &Path, flags: &Flags) -> Result<Resolved> {
         manifests,
         roles: config.roles,
         paths: config.paths,
+        brand: channel.brand,
+        channel_dir,
     })
 }
 
@@ -632,6 +706,33 @@ fn compose(root: &Path, flags: &Flags, check: bool) -> Result<()> {
         root.join("docs/generated/PACKAGE-INDEX.md"),
         package_index_md(&resolved),
     );
+    // Channel brand assets: authoritative logos come from the channel repo; copy them into the app.
+    let light_src = resolved.channel_dir.join(&resolved.brand.logo.light);
+    let dark_src = resolved.channel_dir.join(&resolved.brand.logo.dark);
+    files.insert(
+        root.join("apps/desktop/web/public/brand/logo.svg"),
+        fs::read_to_string(&light_src).with_context(|| format!("read {}", light_src.display()))?,
+    );
+    files.insert(
+        root.join("apps/desktop/web/public/brand/logo-dark.svg"),
+        fs::read_to_string(&dark_src).with_context(|| format!("read {}", dark_src.display()))?,
+    );
+    files.insert(
+        root.join("apps/desktop/web/src/generated/brand.ts"),
+        brand_ts(&resolved),
+    );
+    files.insert(
+        root.join("shared/contracts/brand.json"),
+        brand_json(&resolved)?,
+    );
+    files.insert(
+        root.join("apps/desktop/web/src/generated/registry.ts"),
+        ui_registry_ts(&resolved),
+    );
+    files.insert(
+        root.join("shared/contracts/ui-contributions.json"),
+        ui_contributions_json(&resolved)?,
+    );
 
     if check {
         let mut mismatches = Vec::new();
@@ -742,6 +843,8 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
             sessions = Some(pkg);
         } else if pkg.role == "store.settings" {
             settings = Some(pkg);
+        } else if pkg.role == "ui.kit" || pkg.role.starts_with("ui.slot.") {
+            // UI-only packages are wired by the generated web registry, not the Rust glue.
         } else {
             bail!(
                 "compose: role {} has no glue rule in this M0 demo",
@@ -792,6 +895,99 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
     ));
     out.push_str("    Ok(Runtime { agent, sessions, settings })\n}\n");
     Ok(out)
+}
+
+fn brand_ts(resolved: &Resolved) -> String {
+    format!(
+        "// @generated by zk compose -- do not edit\n\
+         export const BRAND = {{\n  name: \"{}\",\n  poweredBy: \"{}\",\n  channel: \"{}\",\n  logoLight: \"./brand/logo.svg\",\n  logoDark: \"./brand/logo-dark.svg\",\n}} as const;\n\nexport type Brand = typeof BRAND;\n",
+        escape_ts(&resolved.brand.name),
+        escape_ts(&resolved.brand.powered_by),
+        escape_ts(&resolved.channel),
+    )
+}
+
+fn escape_ts(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn brand_json(resolved: &Resolved) -> Result<String> {
+    let value = serde_json::json!({
+        "channel": resolved.channel,
+        "name": resolved.brand.name,
+        "powered_by": resolved.brand.powered_by,
+        "logo": { "light": "brand/logo.svg", "dark": "brand/logo-dark.svg" },
+    });
+    Ok(format!("{}\n", serde_json::to_string_pretty(&value)?))
+}
+
+fn slot_binding(slot: &str) -> Option<&'static str> {
+    match slot {
+        "ui.sessions" => Some("SessionsSlot"),
+        "ui.chat" => Some("ChatSlot"),
+        "ui.settings" => Some("SettingsSlot"),
+        "ui.approval" => Some("ApprovalSlot"),
+        "ui.toolcall" => Some("ToolSlot"),
+        _ => None,
+    }
+}
+
+fn ui_registry_ts(resolved: &Resolved) -> String {
+    let mut imports = String::new();
+    let mut spreads = String::new();
+    let mut bindings = String::new();
+    let mut index = 0usize;
+    for pkg in &resolved.packages {
+        let Some(manifest) = resolved.manifests.get(&pkg.package_id) else {
+            continue;
+        };
+        if manifest.kind != "ui" {
+            continue;
+        }
+        let Some(ui) = manifest.facets.ui.as_ref() else {
+            continue;
+        };
+        if pkg.role == "ui.kit" {
+            continue;
+        }
+        imports.push_str(&format!("import {{ components as c{index} }} from \"{}\";\n", ui.package));
+        spreads.push_str(&format!("  ...c{index},\n"));
+        for contribution in manifest.ui_contributions() {
+            if let Some(binding) = slot_binding(&contribution.slot) {
+                bindings.push_str(&format!(
+                    "export const {binding} = c{index}[\"{}\"];\n",
+                    contribution.component
+                ));
+            }
+        }
+        index += 1;
+    }
+    format!(
+        "// @generated by zk compose -- do not edit\n\n{imports}\nexport const COMPONENTS = {{\n{spreads}}} as const;\n\n{bindings}"
+    )
+}
+
+fn ui_contributions_json(resolved: &Resolved) -> Result<String> {
+    let mut out: Vec<serde_json::Value> = Vec::new();
+    for pkg in &resolved.packages {
+        let Some(manifest) = resolved.manifests.get(&pkg.package_id) else {
+            continue;
+        };
+        if manifest.kind != "ui" {
+            continue;
+        }
+        for contribution in manifest.ui_contributions() {
+            out.push(serde_json::json!({
+                "package": manifest.id,
+                "role": pkg.role,
+                "slot": contribution.slot,
+                "component": contribution.component,
+                "order": contribution.order,
+            }));
+        }
+    }
+    out.sort_by_key(|v| v.get("slot").and_then(|s| s.as_str()).unwrap_or("").to_owned());
+    Ok(format!("{}\n", serde_json::to_string_pretty(&out)?))
 }
 
 fn generated_packages_rs(resolved: &Resolved) -> String {

@@ -1,0 +1,23 @@
+[
+  {
+    "component": "chat.thread",
+    "order": 10,
+    "package": "zeokeel/ui-chat",
+    "role": "ui.slot.chat",
+    "slot": "ui.chat"
+  },
+  {
+    "component": "sessions.sidebar",
+    "order": 10,
+    "package": "zeokeel/ui-sessions",
+    "role": "ui.slot.sessions",
+    "slot": "ui.sessions"
+  },
+  {
+    "component": "settings.dialog",
+    "order": 10,
+    "package": "zeokeel/ui-settings",
+    "role": "ui.slot.settings",
+    "slot": "ui.settings"
+  }
+]

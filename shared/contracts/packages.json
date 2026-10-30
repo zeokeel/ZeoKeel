@@ -38,5 +38,37 @@
     "roles": [
       "tool.fs"
     ]
+  },
+  {
+    "id": "zeokeel/ui-kit",
+    "version": "0.1.0",
+    "kind": "ui",
+    "roles": [
+      "ui.kit"
+    ]
+  },
+  {
+    "id": "zeokeel/ui-chat",
+    "version": "0.1.0",
+    "kind": "ui",
+    "roles": [
+      "ui.slot.chat"
+    ]
+  },
+  {
+    "id": "zeokeel/ui-sessions",
+    "version": "0.1.0",
+    "kind": "ui",
+    "roles": [
+      "ui.slot.sessions"
+    ]
+  },
+  {
+    "id": "zeokeel/ui-settings",
+    "version": "0.1.0",
+    "kind": "ui",
+    "roles": [
+      "ui.slot.settings"
+    ]
   }
 ]

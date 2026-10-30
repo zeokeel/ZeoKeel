@@ -15,10 +15,15 @@ zk-contract-llm = { path = "../../packages/contracts/llm" }
 zk-contract-package = { path = "../../packages/contracts/package" }
 zk-contract-session = { path = "../../packages/contracts/session" }
 zk-contract-tool = { path = "../../packages/contracts/tool" }
+zk-contract-ui = { path = "../../packages/contracts/ui" }
 zk-llm-mock = { path = "../../packages/client/llm-mock" }
 zk-store-session-sqlite = { path = "../../packages/client/store-session-sqlite" }
 zk-store-settings-json = { path = "../../packages/client/store-settings-json" }
 zk-tool-fs = { path = "../../packages/client/tool-fs" }
+zk-ui-chat = { path = "../../packages/ui/ui-chat" }
+zk-ui-kit = { path = "../../packages/ui/ui-kit" }
+zk-ui-sessions = { path = "../../packages/ui/ui-sessions" }
+zk-ui-settings = { path = "../../packages/ui/ui-settings" }
 serde_json = { workspace = true }
 
 [lints]

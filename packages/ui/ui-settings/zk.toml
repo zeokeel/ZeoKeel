@@ -1,0 +1,21 @@
+schema = 1
+id = "zeokeel/ui-settings"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "UI package ui-settings"
+
+[role]
+name = "ui.slot.settings"
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-ui-settings" }
+ui = { package = "@zeokeel/ui-settings" }
+
+[[ui.contributions]]
+slot = "ui.settings"
+component = "settings.dialog"
+order = 10

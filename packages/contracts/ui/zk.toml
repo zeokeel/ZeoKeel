@@ -1,0 +1,9 @@
+schema = 1
+id = "zeokeel/contract-ui"
+kind = "contract"
+version = "0.1.0"
+license = "MIT"
+summary = "UI 贡献/槽位/组件契约（最小 M1 子集）"
+
+[facets]
+rust = { crate = "zk-contract-ui" }
