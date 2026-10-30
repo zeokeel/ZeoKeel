@@ -5,7 +5,7 @@
 #![forbid(unsafe_code)]
 
 use axum::Router;
-use zk_srv_http::{connect, router, run_migrations};
+use zk_srv_http::{auth::ensure_bootstrap_admin, connect, router_from, run_migrations, state};
 
 const DEFAULT_ADDR: &str = "127.0.0.1:8787";
 
@@ -19,7 +19,17 @@ async fn main() -> Result<(), String> {
     run_migrations(&pool)
         .await
         .map_err(|error| format!("apply migrations: {error}"))?;
-    serve(router(pool)).await
+    let state = state(pool);
+    if let Ok(password) = std::env::var("ZEOKEEL_BOOTSTRAP_ADMIN_PASSWORD") {
+        let username = std::env::var("ZEOKEEL_BOOTSTRAP_ADMIN_USERNAME").unwrap_or_else(|_| "admin".to_owned());
+        let created = ensure_bootstrap_admin(&state, &username, &password)
+            .await
+            .map_err(|error| format!("bootstrap admin: {error}"))?;
+        if created {
+            println!("bootstrap admin created: {username}");
+        }
+    }
+    serve(router_from(state)).await
 }
 
 async fn serve(app: Router) -> Result<(), String> {

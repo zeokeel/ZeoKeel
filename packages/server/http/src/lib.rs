@@ -11,6 +11,8 @@ use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use zk_contract_server::ServerModule;
 
+pub mod auth;
+
 /// Stable module descriptor.
 #[must_use]
 pub fn module() -> ServerModule {
@@ -39,13 +41,49 @@ pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
-/// Build the server router.
-pub fn router(pool: PgPool) -> Router {
+/// Shared server state (P1: pool + JWT keys).
+#[derive(Clone)]
+pub struct AppState {
+    /// PostgreSQL pool.
+    pub pool: PgPool,
+    /// EdDSA signing/verification material.
+    pub jwt: auth::JwtKeys,
+}
+
+impl AppState {
+    /// Build state with a fresh ephemeral JWT key.
+    #[must_use]
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool, jwt: auth::JwtKeys::ephemeral() }
+    }
+
+    #[cfg(test)]
+    #[allow(clippy::expect_used)] // test-only
+    fn new_for_test() -> Self {
+        let pool = PgPoolOptions::new().connect_lazy("postgres://localhost/zk_never").expect("lazy pool");
+        Self::new(pool)
+    }
+}
+
+/// Build server state (fresh ephemeral JWT key).
+#[must_use]
+pub fn state(pool: PgPool) -> AppState {
+    AppState::new(pool)
+}
+
+/// Build the server router from shared state.
+pub fn router_from(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .route("/api/meta", get(meta))
-        .with_state(pool)
+        .merge(auth::routes())
+        .with_state(state)
+}
+
+/// Build the server router with a fresh state.
+pub fn router(pool: PgPool) -> Router {
+    router_from(state(pool))
 }
 
 async fn healthz() -> impl IntoResponse {
@@ -56,8 +94,8 @@ async fn healthz() -> impl IntoResponse {
     }))
 }
 
-async fn readyz(State(pool): State<PgPool>) -> impl IntoResponse {
-    match sqlx::query_scalar::<_, i32>("SELECT 1").fetch_one(&pool).await {
+async fn readyz(State(state): State<AppState>) -> impl IntoResponse {
+    match sqlx::query_scalar::<_, i32>("SELECT 1").fetch_one(&state.pool).await {
         Ok(_) => (axum::http::StatusCode::OK, Json(json!({ "status": "ready" }))),
         Err(_) => (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "status": "not_ready" }))),
     }

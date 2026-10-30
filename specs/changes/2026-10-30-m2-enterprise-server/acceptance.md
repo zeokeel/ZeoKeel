@@ -10,3 +10,10 @@
 - [ ] 企业客户端无 provider 设置入口（构建裁剪）；enterprise `zk compose --check` 绿
 - [ ] 升级/回滚/备份恢复演练
 - [ ] `zk db lock --check`、`zk api --check`、enterprise/personal `zk compose --check`、e2e 全绿
+
+
+## P1 evidence (progress)
+
+- `bash scripts/srv-migration-test.sh` → `migration ok: 17 tables`（真实 PG 16）。
+- `bash scripts/srv-auth-test.sh` → `auth ok: login/me/refresh/reuse/admin-csrf`（真实 server + PG）。
+- `/healthz`、`/readyz` 200；`schema_migrations(0001_init)` 写入。
