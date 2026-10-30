@@ -1216,7 +1216,7 @@ fn compose(root: &Path, flags: &Flags, check: bool) -> Result<()> {
     );
     files.insert(
         root.join("crates/zk-composed/src/lib.rs"),
-        compose_lib(&resolved)?,
+        compose_lib(root, &resolved)?,
     );
     for app in ["desktop", "server"] {
         let template = root.join(format!("tools/zk/templates/app_{app}.Cargo.toml"));
@@ -1383,7 +1383,7 @@ fn compose_cargo_toml(root: &Path, resolved: &Resolved) -> Result<String> {
     Ok(out)
 }
 
-fn compose_lib(resolved: &Resolved) -> Result<String> {
+fn compose_lib(root: &Path, resolved: &Resolved) -> Result<String> {
     let mut tools = Vec::new();
     let mut llm: Option<&Selected> = None;
     let mut agent: Option<&Selected> = None;
@@ -1460,14 +1460,25 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
         out.push_str("pub fn configure_llm(_base_url: &str, _access_token: &str, _model: &str) {}\n\npub fn gateway_credentials() -> Option<(String, String)> { None }\n\n");
     }
     out.push_str("pub fn build() -> Result<Runtime, String> {\n");
-    out.push_str("    let tools: Vec<Arc<dyn zk_contract_tool::Tool>> = vec![\n");
+    out.push_str("    let mut tools: Vec<Arc<dyn zk_contract_tool::Tool>> = vec![\n");
+    let mut extra_tool_crates = Vec::new();
     for pkg in &tools {
         out.push_str(&format!(
             "        Arc::new({}::tool()),\n",
             pkg.crate_name.replace('-', "_")
         ));
+        // Packages may contribute additional tools without a new role/package by
+        // exporting `pub fn extra_tools() -> Vec<Arc<dyn Tool>>` (source marker).
+        let dir = manifest_dir(root, &pkg.package_id, resolved)?;
+        let source = fs::read_to_string(dir.join("src/lib.rs")).unwrap_or_default();
+        if source.contains("pub fn extra_tools") {
+            extra_tool_crates.push(pkg.crate_name.replace('-', "_"));
+        }
     }
     out.push_str("    ];\n");
+    for crate_name in extra_tool_crates {
+        out.push_str(&format!("    tools.extend({crate_name}::extra_tools());\n"));
+    }
     if agent.crate_name == "zk-agent-rig" {
         out.push_str(&format!(
             "    let model = {}::model().map_err(|e| e.to_string())?;\n",
