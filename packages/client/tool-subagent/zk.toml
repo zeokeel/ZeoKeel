@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-subagent"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Delegate a prompt to a child rig agent"
+
+[role]
+name = "tool.subagent"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-subagent" }

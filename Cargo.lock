@@ -8282,6 +8282,8 @@ dependencies = [
  "zk-contract-llm",
  "zk-contract-tool",
  "zk-kit-approval",
+ "zk-kit-subagent",
+ "zk-tool-subagent",
 ]
 
 [[package]]
@@ -8376,15 +8378,22 @@ dependencies = [
  "zk-tool-fs-search",
  "zk-tool-fs-write",
  "zk-tool-glob",
+ "zk-tool-goal",
  "zk-tool-grep",
  "zk-tool-job-kill",
  "zk-tool-job-list",
  "zk-tool-job-output",
  "zk-tool-present",
+ "zk-tool-pwsh",
+ "zk-tool-ralph",
+ "zk-tool-read-image",
+ "zk-tool-schedule",
  "zk-tool-skill",
+ "zk-tool-subagent",
  "zk-tool-terminal",
  "zk-tool-todo",
  "zk-tool-web-fetch",
+ "zk-tool-workflow",
  "zk-tool-working-directory",
  "zk-tool-workspace-dependencies",
  "zk-tool-worktree",
@@ -8641,6 +8650,14 @@ dependencies = [
  "sha2 0.10.9",
  "sqlx",
  "uuid",
+]
+
+[[package]]
+name = "zk-kit-subagent"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zk-contract-tool",
 ]
 
 [[package]]
@@ -9120,6 +9137,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-tool-ralph"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zk-contract-tool",
+ "zk-kit-subagent",
+]
+
+[[package]]
 name = "zk-tool-read-image"
 version = "0.1.0"
 dependencies = [
@@ -9148,6 +9174,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-tool-subagent"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zk-contract-tool",
+ "zk-kit-subagent",
+]
+
+[[package]]
 name = "zk-tool-terminal"
 version = "0.1.0"
 dependencies = [
@@ -9173,6 +9208,15 @@ dependencies = [
  "serde_json",
  "zk-contract-tool",
  "zk-kit-tools",
+]
+
+[[package]]
+name = "zk-tool-workflow"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zk-contract-tool",
+ "zk-kit-subagent",
 ]
 
 [[package]]

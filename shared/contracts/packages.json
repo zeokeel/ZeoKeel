@@ -376,6 +376,14 @@
     ]
   },
   {
+    "id": "zeokeel/tool-ralph",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.ralph"
+    ]
+  },
+  {
     "id": "zeokeel/tool-read-image",
     "version": "0.1.0",
     "kind": "capability",
@@ -400,6 +408,14 @@
     ]
   },
   {
+    "id": "zeokeel/tool-subagent",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.subagent"
+    ]
+  },
+  {
     "id": "zeokeel/tool-terminal",
     "version": "0.1.0",
     "kind": "capability",
@@ -421,6 +437,14 @@
     "kind": "capability",
     "roles": [
       "tool.web.fetch"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-workflow",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.workflow"
     ]
   },
   {

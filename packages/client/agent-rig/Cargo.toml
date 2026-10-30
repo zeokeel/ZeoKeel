@@ -15,8 +15,10 @@ zk-contract-agent = { path = "../../contracts/agent" }
 zk-contract-tool = { path = "../../contracts/tool" }
 zk-contract-llm = { path = "../../contracts/llm" }
 zk-kit-approval = { path = "../../../crates/zk-kit-approval" }
+zk-kit-subagent = { path = "../../../crates/zk-kit-subagent" }
 
 [dev-dependencies]
+zk-tool-subagent = { path = "../tool-subagent" }
 rig-core = { workspace = true, features = ["test-utils"] }
 
 [lints]

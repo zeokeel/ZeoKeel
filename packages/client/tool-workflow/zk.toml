@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-workflow"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Linear subagent workflow runner"
+
+[role]
+name = "tool.workflow"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-workflow" }

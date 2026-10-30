@@ -1,0 +1,12 @@
+[package]
+name = "zk-kit-subagent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde_json = { workspace = true }
+zk-contract-tool = { path = "../../packages/contracts/tool" }
+
+[lints]
+workspace = true

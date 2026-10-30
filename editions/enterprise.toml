@@ -1,4 +1,8 @@
 [packages]
+"tool.workflow" = "zeokeel/tool-workflow"
+"tool.ralph" = "zeokeel/tool-ralph"
+
+"tool.subagent" = "zeokeel/tool-subagent"
 "tool.pwsh" = "zeokeel/tool-pwsh"
 "tool.read_image" = "zeokeel/tool-read-image"
 

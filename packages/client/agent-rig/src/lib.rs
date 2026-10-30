@@ -208,8 +208,26 @@ impl BufferedSink {
 }
 impl EventSink for BufferedSink { fn emit(&self, event: AgentEvent) { if let Ok(mut guard) = self.events.lock() { guard.push(event); } } }
 
+struct RigSubagentRunner { model: DynModel<Completion>, tools: Vec<Arc<dyn Tool>> }
+impl zk_kit_subagent::SubagentRunner for RigSubagentRunner {
+    fn run(&self, prompt: &str, context: &TurnContext, depth: usize) -> Result<String, String> {
+        if depth >= zk_kit_subagent::MAX_DEPTH { return Err("subagent depth limit reached".to_owned()); }
+        let model = self.model.clone();
+        let tools = self.tools.clone();
+        let context = context.clone();
+        let prompt = prompt.to_owned();
+        let handle = std::thread::spawn(move || {
+            let agent = RigAgent::new(model, tools).map_err(|error| error.to_string())?.with_streaming(false);
+            agent.run_in(&context, &prompt).map(|reply| reply.text).map_err(|error| error.to_string())
+        });
+        handle.join().map_err(|_| "subagent thread panicked".to_owned())?
+    }
+}
+
 /// Generated-glue factory: build the rig agent from modular tools + a rig model.
 pub fn agent(tools: Vec<Arc<dyn Tool>>, model: DynModel<Completion>) -> Result<RigAgent, AgentError> {
+    let runner = Arc::new(RigSubagentRunner { model: model.clone(), tools: tools.clone() });
+    zk_kit_subagent::set_runner(runner);
     RigAgent::new(model, tools)
 }
 
@@ -311,6 +329,24 @@ mod tests {
         let reply = agent.run_in(&TurnContext { conversation_id: "c".to_owned(), workspace_id: "w".to_owned(), workspace_root: ".".to_owned() }, "read").unwrap();
         assert_eq!(reply.tool_calls.len(), 1);
         assert!(reply.tool_calls.first().map(|call| call.result.contains("denied")).unwrap_or(false));
+    }
+
+    #[test]
+    fn subagent_tool_delegates_to_child() {
+        struct FakeRunner;
+        impl zk_kit_subagent::SubagentRunner for FakeRunner {
+            fn run(&self, _prompt: &str, _context: &TurnContext, _depth: usize) -> Result<String, String> { Ok("child answer".to_owned()) }
+        }
+        zk_kit_subagent::set_runner(Arc::new(FakeRunner));
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("call-1", "subagent", serde_json::json!({"prompt":"child"})),
+            MockTurn::text("parent final"),
+        ]);
+        let agent = RigAgent::new(model.into(), vec![Arc::new(zk_tool_subagent::tool())]).unwrap().with_streaming(false);
+        zk_kit_subagent::set_runner(Arc::new(FakeRunner));
+        let reply = agent.run_in(&TurnContext { conversation_id: "c".to_owned(), workspace_id: "w".to_owned(), workspace_root: ".".to_owned() }, "delegate").unwrap();
+        assert_eq!(reply.text, "parent final");
+        assert_eq!(reply.tool_calls.first().map(|call| call.result.as_str()), Some("child answer"));
     }
 
     #[test]

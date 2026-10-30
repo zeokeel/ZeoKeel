@@ -281,6 +281,12 @@
     "contract": "zk-contract-tool",
     "cardinality": "singleton"
   },
+  "tool.ralph": {
+    "package": "zeokeel/tool-ralph",
+    "crate_name": "zk-tool-ralph",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
   "tool.read_image": {
     "package": "zeokeel/tool-read-image",
     "crate_name": "zk-tool-read-image",
@@ -299,6 +305,12 @@
     "contract": "zk-contract-tool",
     "cardinality": "singleton"
   },
+  "tool.subagent": {
+    "package": "zeokeel/tool-subagent",
+    "crate_name": "zk-tool-subagent",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
   "tool.terminal": {
     "package": "zeokeel/tool-terminal",
     "crate_name": "zk-tool-terminal",
@@ -314,6 +326,12 @@
   "tool.web.fetch": {
     "package": "zeokeel/tool-web-fetch",
     "crate_name": "zk-tool-web-fetch",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.workflow": {
+    "package": "zeokeel/tool-workflow",
+    "crate_name": "zk-tool-workflow",
     "contract": "zk-contract-tool",
     "cardinality": "singleton"
   },

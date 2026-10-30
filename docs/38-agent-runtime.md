@@ -23,7 +23,7 @@
 
 ## 4. 工具矩阵
 
-- 已实现：`fs.read`、`fs.write`、`fs.edit`、`fs.search`、`bash`、`bash_persistent`、`job_output/list/kill`、`glob`、`grep`、`skill`、`web.fetch`、`working_directory`、`todo`、`present`、`load_workspace_dependencies`、`create_worktree`、`terminal`、`goal`、`schedule`、`pwsh`、`read_image`。
+- 已实现：`fs.read`、`fs.write`、`fs.edit`、`fs.search`、`bash`、`bash_persistent`、`job_output/list/kill`、`glob`、`grep`、`skill`、`web.fetch`、`working_directory`、`todo`、`present`、`load_workspace_dependencies`、`create_worktree`、`terminal`、`goal`、`schedule`、`pwsh`、`read_image`、`subagent`、`workflow`、`ralph`。
 - 待实现（DSH 参考）：fs-search 完整、bash-persistent、pwsh、terminal、jobs、schedule、goal、ralph、subagent(+control)、workflow、worktree、session-query、call-timeout、workspace-dependencies、agent-team、tool-cordis。
 - 平台不支持必须返回明确错误，不得静默缺失。
 
