@@ -72,6 +72,7 @@ M0 起点角色表（`[roles]` 的键；提供者声明的 contract/cardinality 
 | `srv.content` / `srv.skills` / `srv.apps` | `zk-contract-content` / `zk-contract-skill` / `zk-contract-app` | singleton | enterprise | 内容发布内核/技能/应用 |
 | `srv.app.runtime` / `srv.app.db` | `zk-contract-app` | singleton | enterprise | WASM 执行/每应用 SQLite |
 | `srv.connectors` | `zk-contract-connector` | singleton | enterprise | MCP 下发 |
+| `srv.updates` | `zk-contract-server` | singleton | enterprise | 企业稳定更新面 |
 | `srv.audit` / `srv.settings` / `srv.jobs` / `srv.http` | `zk-contract-server` | singleton | enterprise | 审计/配置/调度/HTTP |
 | `admin.shell` | `zk-contract-admin-ui` | singleton | enterprise | 管理台壳（导航/布局/主题） |
 | `admin.page.*` / `admin.slot.*` | `zk-contract-admin-ui` | singleton / multi | enterprise | 管理台页面与槽位 |

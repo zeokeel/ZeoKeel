@@ -198,6 +198,7 @@ epoch/fuel + StoreLimits 做超时/内存；内存/CPU/时间/并发限额；
 | gateway | `zk-srv-gateway`、`zk-srv-gateway-upstream-openai`、`zk-srv-gateway-meter` | `srv.gateway`、`srv.gateway.upstream`、`srv.gateway.meter` |
 | content | `zk-srv-content`（发布内核）、`zk-srv-skills` | `srv.content`、`srv.skills` |
 | apps | `zk-srv-apps`、`zk-srv-app-runtime`、`zk-srv-app-db` | `srv.apps`、`srv.app.runtime`、`srv.app.db` |
+| updates | `zk-srv-updates` | `srv.updates` |
 | connectors | `zk-srv-connectors` | `srv.connectors` |
 | ops | `zk-srv-audit`、`zk-srv-settings`、`zk-srv-jobs`、`zk-srv-http` | `srv.audit`、`srv.settings`、`srv.jobs`、`srv.http` |
 
