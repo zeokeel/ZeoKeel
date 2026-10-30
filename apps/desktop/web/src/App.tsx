@@ -5,11 +5,12 @@ import {
   type UiValue,
 } from "@zeokeel/ui-kit";
 import { BRAND } from "./generated/brand";
-import { ChatSlot, CommandsSlot, LoginSlot, SessionsSlot, SettingsSlot, ShellSlot } from "./generated/registry";
+import { ChatSlot, CommandsSlot, InspectorSlot, LoginSlot, SessionsSlot, SettingsSlot, ShellSlot } from "./generated/registry";
 import { translate } from "./i18n";
 import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
-import type { Transport } from "./types";
+import type { FileEntry, Transport } from "./types";
+import { parseFileEntries } from "./protocol";
 import { clearSession, loadServerUrl, loadSession, login as loginRequest, refreshSession, saveServerUrl, saveSession, type AuthSession } from "./auth";
 
 
@@ -120,16 +121,37 @@ export function App(props: { transport: Transport }) {
 
   return (
     <UiProvider value={ui}>
-      <AppShell controller={controller} ui={ui} />
+      <AppShell controller={controller} ui={ui} transport={props.transport} />
     </UiProvider>
   );
 }
 
-function AppShell(props: { controller: AppController; ui: UiValue }) {
-  const { ui, controller } = props;
+function AppShell(props: { controller: AppController; ui: UiValue; transport: Transport }) {
+  const { ui, controller, transport } = props;
   const t = ui.t;
   const state = controller.state;
   const [commandsOpen, setCommandsOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [inspectorTab, setInspectorTab] = useState<"files" | "changes" | "terminal">("files");
+  const [files, setFiles] = useState<FileEntry[]>([]);
+  useEffect(() => {
+    if (!inspectorOpen || ui.activeWorkspaceId === null) { setFiles([]); return; }
+    let cancelled = false;
+    void transport.call("workspace.files", { workspace_id: ui.activeWorkspaceId })
+      .then((value) => { if (!cancelled) setFiles(parseFileEntries(value) ?? []); })
+      .catch(() => { if (!cancelled) setFiles([]); });
+    return () => { cancelled = true; };
+  }, [inspectorOpen, ui.activeWorkspaceId, transport]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
+        event.preventDefault();
+        setInspectorOpen((value) => !value);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); };
+  }, []);
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -144,11 +166,13 @@ function AppShell(props: { controller: AppController; ui: UiValue }) {
     { id: "new-conversation", title: t("newConversation"), group: t("workspaceActions") },
     { id: "toggle-sidebar", title: t("sidebarToggle"), group: t("workspaceActions") },
     { id: "open-settings", title: t("settingsTitle"), group: t("settings") },
+    { id: "toggle-inspector", title: t("inspectorToggle"), group: t("workspaceActions") },
   ];
   const runCommand = (id: string): void => {
     if (id === "new-conversation") ui.actions.createConversation();
     if (id === "toggle-sidebar") ui.actions.toggleSidebar();
     if (id === "open-settings") ui.actions.openSettings();
+    if (id === "toggle-inspector") setInspectorOpen((value) => !value);
   };
   const activeWorkspace = ui.workspaces.find((workspace) => workspace.id === ui.activeWorkspaceId);
   const active = ui.conversations.find((conversation) => conversation.id === ui.activeConversationId);
@@ -176,6 +200,9 @@ function AppShell(props: { controller: AppController; ui: UiValue }) {
       navigation={<SessionsSlot />}
       conversation={<ChatSlot key={ui.activeWorkspaceId === null ? "none" : ui.activeWorkspaceId} />}
       settings={<SettingsSlot />}
+      inspector={<InspectorSlot open={inspectorOpen} tab={inspectorTab} files={files} changes={[]} onTab={setInspectorTab} onClose={() => { setInspectorOpen(false); }} />}
+      inspectorOpen={inspectorOpen}
+      onToggleInspector={() => { setInspectorOpen((value) => !value); }}
       onRetryBoot={ui.actions.retryBoot}
       onToggleSidebar={ui.actions.toggleSidebar}
       onDismissToast={controller.dismissToast}

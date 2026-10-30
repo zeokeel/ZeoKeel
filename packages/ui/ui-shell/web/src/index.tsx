@@ -24,10 +24,13 @@ export interface ShellFrameProps {
   navigation: ReactNode;
   conversation: ReactNode;
   settings: ReactNode;
+  inspector: ReactNode;
+  inspectorOpen: boolean;
   onRetryBoot: () => void;
   onToggleSidebar: () => void;
   onDismissToast: () => void;
   onOpenCommands: () => void;
+  onToggleInspector: () => void;
   onCreateWorkspace: (path: string, title: string) => void;
 }
 
@@ -131,6 +134,9 @@ export function ShellFrame(props: ShellFrameProps) {
               <button type="button" className={`${iconButtonClass} hidden sm:inline-flex`} aria-label={t("commandPalette")} title={t("commandPalette")} onClick={props.onOpenCommands}>
                 <span className="font-mono text-[11px]">⌘K</span>
               </button>
+              <button type="button" className={iconButtonClass} aria-label={t("inspectorToggle")} title={t("inspectorToggle")} aria-expanded={props.inspectorOpen} onClick={props.onToggleInspector}>
+                <span className="font-mono text-[11px]">⌘B</span>
+              </button>
             </header>
             {props.conversation}
             <footer className="flex h-6 shrink-0 items-center gap-3 border-t border-border bg-background px-3 text-[11px] text-muted-foreground">
@@ -142,6 +148,7 @@ export function ShellFrame(props: ShellFrameProps) {
               <span className="truncate">{props.packageLine}</span>
             </footer>
           </main>
+          {props.inspectorOpen ? props.inspector : null}
         </div>
         {props.settings}
         {props.toast !== null ? (

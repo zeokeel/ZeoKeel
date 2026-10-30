@@ -16,7 +16,7 @@ export interface InspectorPanelProps {
 export function InspectorPanel(props: InspectorPanelProps) {
   if (!props.open) return null;
   return (
-    <aside className="flex w-[288px] shrink-0 flex-col border-s border-border" data-slot="inspector">
+    <aside aria-label="右侧检查器" className="flex w-[288px] shrink-0 flex-col border-s border-border" data-slot="inspector">
       <div className="flex h-9 items-center gap-1 border-b border-border px-2 text-[11px]">
         {(["files", "changes", "terminal"] as const).map((tab) => (
           <button key={tab} type="button" onClick={() => props.onTab(tab)} className={`rounded-sm px-2 py-1 ${props.tab === tab ? "bg-muted" : ""}`}>

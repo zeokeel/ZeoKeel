@@ -29,3 +29,7 @@
 
 - `@zeokeel/ui-commands` 接入：⌘K/Ctrl+K 打开、搜索过滤、方向键/Enter/Esc、动作由 app 注入。
 - Vitest 36 tests；Playwright mock flow + axe 0 serious/critical。
+
+## Inspector
+
+- `workspace.files` IPC（workspace 边界内、深度≤2、≤300 项、跳过 `.git`）→ `@zeokeel/ui-inspector`；⌘B 开关；Playwright 真 serve 文件树 + axe 0 serious/critical。

@@ -166,6 +166,21 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 Err(error) => CommandResponse::err(error.to_string()),
             }
         }
+        commands::WORKSPACE_FILES => {
+            let Some(workspace_id) = payload.get("workspace_id").and_then(Value::as_str) else {
+                return CommandResponse::err("missing workspace_id");
+            };
+            match state.runtime.sessions().list_workspaces() {
+                Ok(workspaces) => match workspaces.iter().find(|workspace| workspace.id == workspace_id) {
+                    Some(workspace) => match list_workspace_files(&workspace.path) {
+                        Ok(items) => CommandResponse::ok(json!({ "items": items })),
+                        Err(error) => CommandResponse::err(format!("workspace/files: {error}")),
+                    },
+                    None => CommandResponse::err("workspace/not-found"),
+                },
+                Err(error) => CommandResponse::err(error.to_string()),
+            }
+        }
         commands::AUTH_CONFIGURE => {
             let (Some(base_url), Some(access_token)) = (
                 payload.get("server_url").and_then(Value::as_str),
@@ -183,6 +198,42 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
         }
         other => CommandResponse::err(format!("unknown command: {other}")),
     }
+}
+
+/// Bounded, read-only file listing under one workspace root.
+fn list_workspace_files(root: &str) -> Result<Vec<Value>, String> {
+    const MAX_ENTRIES: usize = 300;
+    let mut items = Vec::new();
+    let mut stack = vec![(std::path::PathBuf::from(root), 0_usize)];
+    while let Some((dir, depth)) = stack.pop() {
+        if depth > 2 || items.len() >= MAX_ENTRIES {
+            continue;
+        }
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let mut children: Vec<_> = entries.filter_map(Result::ok).collect();
+        children.sort_by_key(|entry| entry.file_name());
+        for entry in children {
+            if items.len() >= MAX_ENTRIES {
+                break;
+            }
+            let path = entry.path();
+            let rel = path.strip_prefix(root).map(|value| value.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+            if rel.is_empty() || rel.starts_with(".git") || rel.contains("/.git/") {
+                continue;
+            }
+            let is_dir = entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false);
+            items.push(json!({ "path": rel, "depth": depth, "kind": if is_dir { "dir" } else { "file" } }));
+            if is_dir {
+                stack.push((path, depth.saturating_add(1)));
+            }
+        }
+    }
+    items.sort_by(|a, b| {
+        let a_path = a.get("path").and_then(Value::as_str).unwrap_or("");
+        let b_path = b.get("path").and_then(Value::as_str).unwrap_or("");
+        a_path.cmp(b_path)
+    });
+    Ok(items)
 }
 
 fn masked_settings(settings: &AppSettings) -> Value {

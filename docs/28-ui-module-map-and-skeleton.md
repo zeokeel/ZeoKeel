@@ -37,14 +37,14 @@
 | `ui.shell`（M1 已接入） | `ui.shell` | `@zeokeel/ui-shell` | `ShellFrame`（`shell.frame`） | `boot/bootError/workspaceCount/workspaceError/sidebarOpen/offline/streaming/mock/title/packageLine/workspacePath/toast/navigation/conversation/settings/onRetryBoot/onToggleSidebar/onDismissToast/onCreateWorkspace/t` |
 | `ui.sessions` | `ui.slot.sessions` | `@zeokeel/ui-sessions` | `Sidebar` | 现有 |
 | `ui.chat` | `ui.slot.chat` | `@zeokeel/ui-chat` | `ChatView` | 现有 |
-| `ui.inspector`（骨架，M1 不接入） | `ui.slot.inspector` | `@zeokeel/ui-inspector` | `InspectorPanel`（`inspector.panel`） | `open/tab/onTab/onClose/files/changes` |
+| `ui.inspector`（M1 已接入） | `ui.slot.inspector` | `@zeokeel/ui-inspector` | `InspectorPanel`（`inspector.panel`） | `open/tab/files/changes/onTab/onClose`；⌘B |
 | `ui.commands`（M1 已接入） | `ui.slot.commands` | `@zeokeel/ui-commands` | `CommandPalette`（`commands.palette`） | `open/commands/onRun/onClose`（内部搜索/方向键/Enter/Esc） |
 | `ui.settings` | `ui.slot.settings` | `@zeokeel/ui-settings` | `SettingsDialog` | 现有 |
 
-- 新包先只提供**空壳组件 + props 类型 + README 功能说明**；`zk compose` 生成 registry。`ui.shell`/`ui.commands` 已在 M1 接入；`ui.inspector` 仍未接入。
+- 新包先只提供**空壳组件 + props 类型 + README 功能说明**；`zk compose` 生成 registry。`ui.shell`/`ui.commands`/`ui.inspector` 均已在 M1 接入。
 - `ui-shell` 已承接 AppShell 布局/header/status/overlay；app 薄壳保留 transport/controller/reducer/i18n/theme/first-run。
 - 工具/计划/审批的独立 slot 预留（`ui.toolcall`/`ui.approval`/`ui.plan`），M1 不建独立包。
-- **冲突裁决**：`docs/16/19` 的 M1 active slot 以 `ui.shell` + `ui.sessions/chat/settings` 为准；`ui.inspector` 是已建骨架、post-M1 接入，不计 M1 验收；`ui.commands` 已接入。
+- **冲突裁决**：`docs/16/19` 的 M1 active slot 以 `ui.shell` + `ui.sessions/chat/settings` + `ui.commands` + `ui.inspector` 为准；`ui.inspector` 本轮已接入（文件树只读）。
 
 ## 4. 交互行为（UX 骨架目标）
 

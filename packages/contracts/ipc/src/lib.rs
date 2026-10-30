@@ -96,6 +96,8 @@ pub mod commands {
     pub const SETTINGS_SET: &str = "settings.set";
     /// Decide an approval request.
     pub const APPROVAL_DECIDE: &str = "approval.decide";
+    /// List workspace files (bounded, read-only).
+    pub const WORKSPACE_FILES: &str = "workspace.files";
     /// Runtime metadata (edition/packages).
     pub const META_GET: &str = "meta.get";
     /// Inject enterprise gateway server URL/access token after login.

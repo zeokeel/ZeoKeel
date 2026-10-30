@@ -11,6 +11,7 @@ import {
   type AppSettings,
   type CommandResult,
   type Conversation,
+  type FileEntry,
   type Locale,
   type Message,
   type Meta,
@@ -94,6 +95,22 @@ export function parseWorkspace(value: unknown): Workspace | null {
   }
   const nested = value["workspace"];
   return isRecord(nested) ? parseWorkspaceRecord(nested) : null;
+}
+
+export function parseFileEntries(value: unknown): FileEntry[] | null {
+  if (!isRecord(value)) return null;
+  const items = readArray(value, "items");
+  if (items === null) return null;
+  const out: FileEntry[] = [];
+  for (const item of items) {
+    if (!isRecord(item)) continue;
+    const path = readString(item, "path");
+    const depth = readNumber(item, "depth");
+    const kind = readString(item, "kind");
+    if (path === null || depth === null || (kind !== "dir" && kind !== "file")) continue;
+    out.push({ path, depth, kind });
+  }
+  return out;
 }
 
 export function parseWorkspaces(value: unknown): Workspace[] | null {
