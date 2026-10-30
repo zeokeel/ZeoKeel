@@ -19,3 +19,8 @@
 - [x] 取消流式 → 已生成内容保留（message.status 持久化）
 - [x] 重启后会话/设置恢复（SQLite + JSON）
 - [x] 键盘操作 + 焦点可见（e2e + modal focus trap）
+
+## UI shell wiring
+
+- `AppShell`（boot/error/first-run/layout/header/status/toast）已从 `apps/desktop/web` 移入 `@zeokeel/ui-shell`（`shell.frame`），app 只经 registry 接入。
+- 开发原型/截图已移出 `apps/desktop/web` 到 `research/ui-prototypes/`。
