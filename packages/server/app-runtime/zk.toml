@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/app-runtime"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "WASM execution/limits (M4)"
+
+[role]
+name = "srv.app.runtime"
+contract = "zk-contract-app"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-srv-app-runtime" }

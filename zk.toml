@@ -127,6 +127,21 @@ contract = "zk-contract-connector"
 cardinality = "singleton"
 editions = ["enterprise"]
 
+[roles."srv.apps"]
+contract = "zk-contract-app"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[roles."srv.app.runtime"]
+contract = "zk-contract-app"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[roles."srv.app.db"]
+contract = "zk-contract-app"
+cardinality = "singleton"
+editions = ["enterprise"]
+
 [roles."srv.content"]
 contract = "zk-contract-content"
 cardinality = "singleton"
@@ -233,6 +248,7 @@ editions = ["personal", "enterprise"]
 "zk.contract.update" = "zk-contract-update"
 "zk.contract.connector" = "zk-contract-connector"
 "zk.contract.skill" = "zk-contract-skill"
+"zk.contract.app" = "zk-contract-app"
 "zk.contract.content" = "zk-contract-content"
 "zk.contract.gateway" = "zk-contract-gateway"
 "zk.contract.wallet" = "zk-contract-wallet"

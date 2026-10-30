@@ -1,4 +1,7 @@
 [packages]
+"srv.app.db" = "zeokeel/app-db"
+"srv.app.runtime" = "zeokeel/app-runtime"
+"srv.apps" = "zeokeel/apps"
 "ui.slot.connectors" = "zeokeel/ui-connectors"
 "ui.slot.skills" = "zeokeel/ui-skills"
 "admin.page.connectors" = "zeokeel/admin-connectors"

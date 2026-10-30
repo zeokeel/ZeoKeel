@@ -16,6 +16,9 @@ zk-srv-users = { path = "../../packages/server/users" }
 zk-srv-content = { path = "../../packages/server/content" }
 zk-srv-skills = { path = "../../packages/server/skills" }
 zk-srv-connectors = { path = "../../packages/server/connectors" }
+zk-srv-app-db = { path = "../../packages/server/app-db" }
+zk-srv-app-runtime = { path = "../../packages/server/app-runtime" }
+zk-srv-apps = { path = "../../packages/server/apps" }
 zk-srv-jobs = { path = "../../packages/server/jobs" }
 zk-srv-settings = { path = "../../packages/server/settings" }
 zk-srv-audit = { path = "../../packages/server/audit" }

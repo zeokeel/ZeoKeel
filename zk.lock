@@ -55,6 +55,11 @@
       "version": "0011_connectors",
       "package": "packages/server/connectors/migrations/0011_connectors.sql",
       "checksum": "4c6eb028fcfb89784647d529c228cd828a9be4e065630e3078fb669af601318a"
+    },
+    {
+      "version": "0012_apps",
+      "package": "packages/server/apps/migrations/0012_apps.sql",
+      "checksum": "5a4c861530fd75ca4b5e7bd0cbc8641605aaf324757c2dec4c23d7f06d2426ae"
     }
   ]
 }

@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/apps"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "WASM app publishing/lifecycle (M4)"
+
+[role]
+name = "srv.apps"
+contract = "zk-contract-app"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-srv-apps" }

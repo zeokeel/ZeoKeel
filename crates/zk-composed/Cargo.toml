@@ -21,6 +21,7 @@ zk-agent-loop = { path = "../../packages/client/agent-loop" }
 zk-client-auth = { path = "../../packages/client/auth" }
 zk-contract-admin-ui = { path = "../../packages/contracts/admin-ui" }
 zk-contract-agent = { path = "../../packages/contracts/agent" }
+zk-contract-app = { path = "../../packages/contracts/app" }
 zk-contract-auth = { path = "../../packages/contracts/auth" }
 zk-contract-auth-client = { path = "../../packages/contracts/auth-client" }
 zk-contract-config = { path = "../../packages/contracts/config" }
@@ -40,6 +41,9 @@ zk-contract-update = { path = "../../packages/contracts/update" }
 zk-contract-user = { path = "../../packages/contracts/user" }
 zk-contract-wallet = { path = "../../packages/contracts/wallet" }
 zk-llm-gateway = { path = "../../packages/client/llm-gateway" }
+zk-srv-app-db = { path = "../../packages/server/app-db" }
+zk-srv-app-runtime = { path = "../../packages/server/app-runtime" }
+zk-srv-apps = { path = "../../packages/server/apps" }
 zk-srv-audit = { path = "../../packages/server/audit" }
 zk-srv-auth-local = { path = "../../packages/server/auth" }
 zk-srv-connectors = { path = "../../packages/server/connectors" }

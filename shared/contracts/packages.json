@@ -112,6 +112,30 @@
     ]
   },
   {
+    "id": "zeokeel/app-db",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "srv.app.db"
+    ]
+  },
+  {
+    "id": "zeokeel/app-runtime",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "srv.app.runtime"
+    ]
+  },
+  {
+    "id": "zeokeel/apps",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "srv.apps"
+    ]
+  },
+  {
     "id": "zeokeel/audit",
     "version": "0.1.0",
     "kind": "service",

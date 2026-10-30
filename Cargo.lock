@@ -7766,6 +7766,7 @@ dependencies = [
  "zk-client-auth",
  "zk-contract-admin-ui",
  "zk-contract-agent",
+ "zk-contract-app",
  "zk-contract-auth",
  "zk-contract-auth-client",
  "zk-contract-config",
@@ -7785,6 +7786,9 @@ dependencies = [
  "zk-contract-user",
  "zk-contract-wallet",
  "zk-llm-gateway",
+ "zk-srv-app-db",
+ "zk-srv-app-runtime",
+ "zk-srv-apps",
  "zk-srv-audit",
  "zk-srv-auth-local",
  "zk-srv-connectors",
@@ -8085,6 +8089,9 @@ dependencies = [
  "tower-http",
  "zk-composed",
  "zk-kit-server",
+ "zk-srv-app-db",
+ "zk-srv-app-runtime",
+ "zk-srv-apps",
  "zk-srv-audit",
  "zk-srv-auth-local",
  "zk-srv-connectors",
@@ -8097,6 +8104,47 @@ dependencies = [
  "zk-srv-skills",
  "zk-srv-users",
  "zk-srv-wallet",
+]
+
+[[package]]
+name = "zk-srv-app-db"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "zk-contract-app",
+]
+
+[[package]]
+name = "zk-srv-app-runtime"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "zk-contract-app",
+ "zk-kit-wasm",
+]
+
+[[package]]
+name = "zk-srv-apps"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "tokio",
+ "uuid",
+ "zip",
+ "zk-contract-app",
+ "zk-kit-content",
+ "zk-kit-server",
+ "zk-srv-app-db",
+ "zk-srv-app-runtime",
 ]
 
 [[package]]

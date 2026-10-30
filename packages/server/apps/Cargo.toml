@@ -1,0 +1,25 @@
+[package]
+name = "zk-srv-apps"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+axum = { workspace = true }
+chrono = { workspace = true }
+tokio = { workspace = true }
+base64 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+sqlx = { workspace = true }
+uuid = { workspace = true }
+zip = { workspace = true }
+zk-contract-app = { path = "../../contracts/app" }
+zk-kit-content = { path = "../../../crates/zk-kit-content" }
+zk-kit-server = { path = "../../../crates/zk-kit-server" }
+zk-srv-app-db = { path = "../app-db" }
+zk-srv-app-runtime = { path = "../app-runtime" }
+
+[lints]
+workspace = true

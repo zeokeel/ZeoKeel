@@ -83,6 +83,24 @@
     "contract": "zk-contract-llm",
     "cardinality": "singleton"
   },
+  "srv.app.db": {
+    "package": "zeokeel/app-db",
+    "crate_name": "zk-srv-app-db",
+    "contract": "zk-contract-app",
+    "cardinality": "singleton"
+  },
+  "srv.app.runtime": {
+    "package": "zeokeel/app-runtime",
+    "crate_name": "zk-srv-app-runtime",
+    "contract": "zk-contract-app",
+    "cardinality": "singleton"
+  },
+  "srv.apps": {
+    "package": "zeokeel/apps",
+    "crate_name": "zk-srv-apps",
+    "contract": "zk-contract-app",
+    "cardinality": "singleton"
+  },
   "srv.audit": {
     "package": "zeokeel/audit",
     "crate_name": "zk-srv-audit",

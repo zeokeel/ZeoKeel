@@ -2,7 +2,7 @@
 
 # Package Index
 
-edition `enterprise` · channel `official` · 39 packages
+edition `enterprise` · channel `official` · 42 packages
 
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
@@ -20,6 +20,9 @@ edition `enterprise` · channel `official` · 39 packages
 | `agent.loop` | `zeokeel/agent-loop` | `zk-agent-loop` | `zk-contract-agent` | singleton |
 | `auth.client` | `zeokeel/client-auth` | `zk-client-auth` | `zk-contract-auth-client` | singleton |
 | `llm.provider.default` | `zeokeel/llm-gateway` | `zk-llm-gateway` | `zk-contract-llm` | singleton |
+| `srv.app.db` | `zeokeel/app-db` | `zk-srv-app-db` | `zk-contract-app` | singleton |
+| `srv.app.runtime` | `zeokeel/app-runtime` | `zk-srv-app-runtime` | `zk-contract-app` | singleton |
+| `srv.apps` | `zeokeel/apps` | `zk-srv-apps` | `zk-contract-app` | singleton |
 | `srv.audit` | `zeokeel/audit` | `zk-srv-audit` | `zk-contract-server` | singleton |
 | `srv.auth.session` | `zeokeel/auth` | `zk-srv-auth-local` | `zk-contract-auth` | singleton |
 | `srv.connectors` | `zeokeel/connectors` | `zk-srv-connectors` | `zk-contract-connector` | singleton |
