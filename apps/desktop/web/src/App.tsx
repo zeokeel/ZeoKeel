@@ -50,7 +50,7 @@ interface SurfaceState {
 }
 
 interface SurfaceRequestPayload {
-  app_id: string;
+  app_id?: string;
   method: string;
   path: string;
   query: string;
