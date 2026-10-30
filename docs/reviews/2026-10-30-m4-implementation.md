@@ -148,3 +148,93 @@
 - P0-2/P0-3/P0-4/P0-5 见上一节。
 - P1：request 改用 `zk-contract-app::AppRequest` DTO；`asset.read` 注入 UI 资源；SQL busy_timeout 5s；host migration 32/64KB；上传拒绝 auditor；transfer。
 - 仍未做：Tauri capability 文件（权限 ACL）、真实 Tauri 窗口 e2e（无显示环境）、app-retire job、app_runtime_logs、并发/队列全量、golden 未去 ignored。
+
+---
+
+## 8. 第二轮复评（R2，2026-10-30）
+
+> 对象：R1 修复后的 M4 实现。只读复跑；未改产品代码/spec（仅本记录）。
+> 仅列剩余 P0/P1。
+
+### 8.1 结论
+
+**CHANGES REQUIRED（CHANGES-REQUESTED）**
+
+- **P0：1**（Tauri capability 未落，`withGlobalTauri`/无 capability 文件）。
+- **P1：5 组**（退役/20GB/日志、SQL/限额、UI 入口/测试、Tauri partition、权限/生命周期边界）。
+- **M4 实现仍不可 APPROVED**。
+
+### 8.2 已关闭（R1 P0/P1）
+
+- **R1 P0-1 独立窗口**：`apps/desktop/src/main.rs:39-58` 已实现 `open_app_window`、`zk-app://localhost/<app_id>/index.html`、`register_uri_scheme_protocol("zk-app")`、`incognito`/per-app data_directory、navigation gate；`App.tsx:253-256` Tauri 路径调用 `open_app_window`，serve 才用 iframe；`ipc_call`/`open_app_window` 拒绝 `zk-app-*`，`app_request` 只接受 `zk-app-*`。**但 capability 文件仍未落：`apps/desktop/capabilities/` 不存在，`tauri.conf` 仍 `withGlobalTauri:true`/`csp:null`（见 P0-1）。**
+- **R1 P0-2 can_open**：`apps/src/lib.rs:139,159,183,249` 查询已加 `g.can_install`；`admin_grants` 写 `can_open`；catalog/open/request/asset 统一拒绝 `can_open=false`。
+- **R1 P0-3 rollback/delete/purge**：`admin_action` 已处理 rollback（切 current_release + deployment）、delete（deleted_at + deployment）、purge（删 DB/contents + audit）；transfer 路由存在。**retire job 仍缺失（P1-1）。**
+- **R1 P0-4 限额**：per-user/global semaphore、60s timeout、request 1MiB、response 8MiB、DB post-run quota、`app_calls` fail-closed、`app_databases` upsert、runtime_limits fuel 已落。**20GB/log 表/queue 仍缺失（P1-1）。**
+- **R1 P0-5 静态 UI**：`apps/src/lib.rs:244-264` 按 `ui_manifest` 白名单 + MIME；`ui-apps` `srcDoc` 注入 CSP；Tauri HTML 注入 CSP/inline app_request。XSS/外网基本收口。
+- **R1 P1**：AppRequest DTO、asset.read assets、SQL busy_timeout、migration count/size、role check、transfer 已落。
+
+### 8.3 剩余 P0
+
+#### P0-1 · Tauri capability 未落，`withGlobalTauri` 仍开启
+
+- `apps/desktop/capabilities/` **不存在**（`find apps/desktop -maxdepth 3 -name capabilities` 无结果）；`tauri.conf.json` 仍是 `withGlobalTauri: true`、`security.csp: null`。
+- `open_app_window`/`ipc_call`/`app_request` 只靠 window label 判断；没有 capability 文件把 app 窗口允许的命令限定为 `app_request`。要么 app 窗口无法调用 `app_request`（功能失败），要么 global Tauri 暴露过多 core/plugin 命令（安全失败）。
+- 因此“per-app capability-only app_request”并未实现；这是 M4 独立窗口安全边界。
+
+**修法**：新增 `apps/desktop/capabilities/app-window.json`（`windows:["zk-app-*"]`，只允许 `app_request`），主窗口 capability 仅 `ipc_call`/`open_app_window`；`tauri.conf` 移除 `withGlobalTauri:true`（或 app window 单独 `withGlobalTauri:false`）；`csp` 至少对 app window 去掉 null；补 capability 单测/手动验证（app 调其他命令 403）。
+
+### 8.4 剩余 P1
+
+#### P1-1 · 退役/20GB/日志/queue 仍缺失
+
+- 没有 `app-retire` job（docs/06:99、spec:32）；`app_calls`/DB 文件/UI/日志的真删保留期没有调度。
+- 没有 20GB 全局 DB 配额；没有 `app_runtime_logs` 表；没有 global/per-user 排队 queue（semaphore `try_acquire` 直接 429，spec 的 64 排队未实现）。
+- 修：加 `app-retire` job（每小时、幂等、审计、保留 30d、真删 DB/logs/calls/wasm/UI）；20GB 总量检查（`app_databases.sum(size_bytes)`）；`app_runtime_logs` 表/全局 cap；queue + 429 Retry-After。
+
+#### P1-2 · SQL 5s / DB 写入配额仍不严格
+
+- `zk-kit-wasm` 只设置 `busy_timeout(5s)`（`crates/zk-kit-wasm/src/lib.rs:131`），这是锁等待，不是“单条 SQL 5s”；没有 per-query interrupt/进度 handler，长 SELECT 仍可跑到 guest 30s。
+- `app_db::enforce_quota` 只在 guest 跑完/前检查；guest 写超 100MB 时先落盘再报错，未回滚。
+- 修：在 `db.exec/query` 用 `sqlite3_progress_handler`/interrupt + 5s deadline；写前后均配额；超限回滚/拒绝；补长 SQL/大写入测试。
+
+#### P1-3 · `app_runtime_limits` 仅 fuel；UI 入口/静态资源仍有固定 index 假设
+
+- `app_runtime_limits` 只读取 `fuel`；`max_concurrency`/`max_memory_bytes` 未生效；`app_runtime_logs` 缺失。
+- `fetchAppHtml`/`open_app_window` 固定 `/index.html`（`store.ts:161-164`、`main.rs:47`），忽略 `X-ZeoKeel-App-Ui`/manifest 的入口；`ui_manifest` 可含非 index 入口，窗口会 404。
+- 修：按 app 配置读取 limits；open/asset 返回明确 `ui_entry`，窗口 URL/iframe 使用 entry；补多入口/无 index 测试。
+
+#### P1-4 · UI/安全负向 e2e 缺失，golden 仍 ignored
+
+- `apps-e2e.sh` 仍只跑 server happy path；`admin-e2e` 的 `m4-admin-apps.spec.ts` 只测 seeded app 的 approve/grant/delist；`login-e2e` 3 个用例无 M4 app；没有 `surface.apps`/Tauri 窗口/静态 UI 的 Playwright；没有 AI/network/file/其他 DB/limits/SQL/can_open 负向。
+- `cargo test` 的 `go_and_rust_guests_share_frame_semantics` 仍 `#[ignore]`；`memory_limit_is_memory_error` 接受 `Memory|Fuel|Timeout`，不证明内存限额。
+- 修：补 employee/can_open/open/asset/Tauri capability 负向、每个 limit 的错误码、SQL/AI/network/file 用例；把 golden 纳入 CI（或明确证据脚本）；memory 断言收紧。
+
+#### P1-5 · `purge` 非 superadmin、rollback 不校验 schema 兼容、窗口 partition
+
+- `admin_action` 的 purge 只 `require_admin`，docs/04 要求 `super_admin`；rollback 直接按 created_at 取第二个 release，不校验 `db_schema_version` 兼容（回滚到旧 schema 后 request 会 `DB_SCHEMA_DOWNGRADE`）。
+- `open_app_window` 有 `incognito`/`data_directory`，但没有 per-app partition；docs/04:222 明确独立 partition。
+- 修：purge 仅 super_admin；rollback 校验 DB schema 兼容/迁移；Tauri 窗口加独立 partition（或 ADR 说明 data_directory 等价）；补 rollback/schema 测试。
+
+### 8.5 R2 证据
+
+| 命令 | 结果 |
+| --- | --- |
+| `bash scripts/apps-e2e.sh` | **PASS**（EXIT 0）`apps e2e ok`；仍 happy path |
+| `bash scripts/admin-e2e.sh` | **PASS**（EXIT 0）9 passed，M4 admin 只 approve/grant/delist |
+| `bash scripts/login-e2e.sh` | **PASS**（EXIT 0）3 passed，无 M4 client |
+| `cargo test -p zk-kit-wasm -p zk-srv-apps -p zk-srv-app-db --offline` | **PASS**（EXIT 0）；golden 1 ignored |
+| `cargo test --workspace --offline` | **PASS**（EXIT 0） |
+| `zk compose --edition enterprise --profile default --channel official --check` | **PASS**：`compose: up to date (16 files)` |
+| `zk validate` | **PASS**：69 packages scanned |
+| `bash scripts/schema-check.sh` / `zk db lock --check` | **PASS** |
+| `find apps/desktop -maxdepth 3 -name capabilities` | **无结果**（P0-1） |
+| `cat apps/desktop/tauri.conf.json` | `withGlobalTauri:true`、`csp:null`（P0-1） |
+
+### 8.6 结论
+
+- **P0：1**（Tauri capability）。
+- **P1：5**（退役/20GB/日志/queue；SQL5s/写配额；runtime limits/UI entry；UI/安全 e2e/golden；purge/rollback/partition）。
+- **M4 实现仍不可 APPROVED**：修 P0/P1 后再复评。
+
+- 关联 spec：`specs/changes/2026-10-30-wasm-app-center`。
+- 复评结论（第二轮）：**CHANGES-REQUESTED**

@@ -286,6 +286,8 @@ async fn admin_action(State(state): State<AppState>, headers: HeaderMap, Path((i
         return Err(error(StatusCode::BAD_REQUEST, "VALIDATION"));
     }
     if action == "purge" {
+        let role: String = sqlx::query_scalar("SELECT role FROM users WHERE id=$1").bind(admin.user_id).fetch_one(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        if role != "super_admin" { return Err(error(StatusCode::FORBIDDEN, "FORBIDDEN")); }
         let file = std::path::Path::new(&std::env::var("ZEOKEEL_APP_DB_DIR").unwrap_or_else(|_| "target/app-db".to_owned())).join(format!("{app}.sqlite"));
         let _ = std::fs::remove_file(file);
         sqlx::query("DELETE FROM contents WHERE id=$1 AND kind='app'").bind(app).execute(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
@@ -293,8 +295,10 @@ async fn admin_action(State(state): State<AppState>, headers: HeaderMap, Path((i
         return Ok(Json(json!({ "ok": true })));
     }
     if action == "rollback" {
-        let target: Option<Uuid> = sqlx::query_scalar("SELECT id FROM content_releases WHERE content_id=$1 ORDER BY created_at DESC OFFSET 1 LIMIT 1").bind(app).fetch_optional(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-        let Some(target) = target else { return Err(error(StatusCode::CONFLICT, "APP_NOT_FOUND")); };
+        let target: Option<(Uuid, i32)> = sqlx::query_as("SELECT id, db_schema_version FROM content_releases WHERE content_id=$1 ORDER BY created_at DESC OFFSET 1 LIMIT 1").bind(app).fetch_optional(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        let Some((target, target_schema)) = target else { return Err(error(StatusCode::CONFLICT, "APP_NOT_FOUND")); };
+        let current_schema: i32 = sqlx::query_scalar("SELECT db_schema_version FROM content_releases WHERE content_id=$1 ORDER BY created_at DESC LIMIT 1").bind(app).fetch_one(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        if target_schema != current_schema { return Err(error(StatusCode::CONFLICT, "APP_DB_SCHEMA")); }
         sqlx::query("UPDATE contents SET current_release_id=$1, status='approved', updated_at=now() WHERE id=$2").bind(target).bind(app).execute(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
         sqlx::query("INSERT INTO content_deployments (content_id, release_id, action, actor_id, reason) VALUES ($1,$2,'rollback',$3,'')").bind(app).bind(target).bind(admin.user_id).execute(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
         audit(&state, admin.user_id, "app.rollback", &app.to_string(), &json!({ "release_id": target.to_string() })).await?;

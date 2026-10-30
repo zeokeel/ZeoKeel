@@ -1,1 +1,1 @@
-{}
+{"main-window":{"identifier":"main-window","description":"ZeoKeel main window: shell IPC and event stream only.","local":true,"windows":["main"],"permissions":["core:default"]},"zk-app-window":{"identifier":"zk-app-window","description":"Isolated app window: app_request only; no shell commands.","local":true,"windows":["zk-app-*"],"permissions":[]}}
