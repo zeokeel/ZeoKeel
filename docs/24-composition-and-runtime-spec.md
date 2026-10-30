@@ -248,7 +248,8 @@ protected = false
 | `shared/schema/*.json`、包内 `schema/*.json` | `cargo test --workspace export_schema`（schemars） | 同上 |
 | `shared/contracts/brand.json`、`apps/desktop/web/public/brand/*.svg`、`apps/desktop/web/src/generated/brand.ts` | `zk compose`（读 `brands/<channel>/channel.json`，校验路径/大小/内容） | 临时目录比较 |
 | `apps/desktop/icons/icon.png` | `scripts/gen-icons.sh`（从渠道 `logo.svg` 渲染，派生而非手绘） | 运行脚本后 `git diff --exit-code`（T21 接入 CI） |
-| `docs/generated/*.md` | `zk docs`（数据来自 `zk plan`/`zk api`/`zk capability`/`zk db lock`） | 临时目录比较，不写 |
+| `docs/generated/{PACKAGE-INDEX,CONTRACT-INDEX,PROFILE-MATRIX,CAPABILITY-INDEX}.md` | `zk compose`/`zk docs`/`zk capability`（按 `docs/generated/README.md` 分工） | 临时目录比较，不写 |
+| `docs/generated/AGENT-TOOL-MATRIX.md` | `scripts/agent-tool-matrix.py`（DSH 工具对照矩阵；研究/对照用，不是产品 SSOT） | `python3 scripts/agent-tool-matrix.py --check`（CI/check.sh） |
 | `shared/contracts/capability-index.json`、`docs/generated/CAPABILITY-INDEX.md` | `zk capability`（从 `@capability` 注释生成，`25` §3） | 只校验 |
 | `migrations.lock` | `zk db lock`（`--check` 只校验） | 不写 |
 | 根 `Cargo.toml` 的 `[patch]`/`[workspace.lints]` | `zk compose` 在 `@generated:begin/end` 块内 | 块外内容不覆盖 |

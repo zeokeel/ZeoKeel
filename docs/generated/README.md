@@ -16,5 +16,5 @@
   `zk capability` 写 `CAPABILITY-INDEX.md` + `shared/contracts/capability-index.json`。
 - `zk api`（`shared/contracts/{api-catalog,http-routes,openapi,permissions,errors}.json`）与 `schema.md`
   （迁移表结构）**尚未实现**，见 `target/evidence/audit/build.md`；`docs/24` §3 的对应行仍是 M0 待办。
-- 生成物内容一致性：`zk docs --check`、`zk compose ... --check`、`zk capability --check`；
+- 生成物内容一致性：`zk docs --check`、`zk compose ... --check`、`zk capability --check`、`python3 scripts/agent-tool-matrix.py --check`；
   CI 需在 drift job 中同时运行三者（Lead 负责 `.github/workflows/ci.yml`）。

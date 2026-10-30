@@ -138,3 +138,8 @@
 - [ ] 隐私口径评审；材料不得声称"服务端不读取会话"除非网关不落库已验证。
 
 > M3 连接器仅支持无静态 secret 配置（ADR-060）；OAuth public client + PKCE 令牌只在客户端本地。MCP 静态 secret 加密/受控交付延后 M3.1。
+
+## 7.1 审计完整性链与 request_id
+
+- 审计 hash 链覆盖 `prev_hash + action + target + detail`；`request_id` 是运营/排障字段（用于串联 HTTP 响应、日志与审计行），**不参与 hash 计算**，避免历史链因运营字段变化而不可验证。
+- 如需把 actor/request_id 纳入完整性证明，必须走 schema/链版本化迁移（旧链按旧算法验证，新链按新算法），不得原地改算法。

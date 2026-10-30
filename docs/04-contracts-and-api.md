@@ -193,7 +193,7 @@
 
 ## 7. 错误模型
 
-统一信封：`error{code, message, retryable, request_id, details?, retry_after_ms?}`（426 强制升级使用嵌套 `error{code,message,retryable,request_id,current,minimum,portal_url}` 并回显 `X-Request-Id`；其余 handler 逐步迁移，客户端兼容 flat/nested）。message 不含上游细节、密钥、内部路径；`request_id` 全链路透传；同一 code 的 HTTP 状态唯一、不允许一处 400 一处 422，客户端按 code 分支而不是只看状态码。
+统一信封；每个请求只生成/接受一次 `X-Request-Id`（最外层中间件），业务/稳定面/gateway/审计复用同一 id，响应头回显。统一信封：`error{code, message, retryable, request_id, details?, retry_after_ms?}`（426 强制升级使用嵌套 `error{code,message,retryable,request_id,current,minimum,portal_url}` 并回显 `X-Request-Id`；其余 handler 逐步迁移，客户端兼容 flat/nested）。message 不含上游细节、密钥、内部路径；`request_id` 全链路透传；同一 code 的 HTTP 状态唯一、不允许一处 400 一处 422，客户端按 code 分支而不是只看状态码。
 
 | HTTP | 代表错误码 | 可重试 | 客户端动作 |
 | --- | --- | --- | --- |

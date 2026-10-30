@@ -7,6 +7,7 @@ cargo run -q -p zk -- compose --edition personal --profile default --channel off
 cargo run -q -p zk -- capability --check
 cargo run -q -p zk -- lint --duplicates
 cargo check --workspace
+python3 scripts/agent-tool-matrix.py --check
 python3 scripts/docs-check.py
 python3 scripts/spec-check.py
 python3 scripts/review-check.py
