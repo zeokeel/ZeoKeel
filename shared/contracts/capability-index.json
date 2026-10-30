@@ -48,7 +48,43 @@
     "path": "packages/contracts/ui/src/lib.rs"
   },
   {
+    "id": "kit.approval",
+    "path": "crates/zk-kit-approval/src/lib.rs"
+  },
+  {
     "id": "kit.content",
     "path": "crates/zk-kit-content/src/lib.rs"
+  },
+  {
+    "id": "kit.events",
+    "path": "crates/zk-kit-events/src/lib.rs"
+  },
+  {
+    "id": "kit.extractor",
+    "path": "crates/zk-kit-extractor/src/lib.rs"
+  },
+  {
+    "id": "kit.jobs",
+    "path": "crates/zk-kit-jobs/src/lib.rs"
+  },
+  {
+    "id": "kit.questions",
+    "path": "crates/zk-kit-questions/src/lib.rs"
+  },
+  {
+    "id": "kit.session",
+    "path": "crates/zk-kit-session/src/lib.rs"
+  },
+  {
+    "id": "kit.subagent",
+    "path": "crates/zk-kit-subagent/src/lib.rs"
+  },
+  {
+    "id": "kit.tools",
+    "path": "crates/zk-kit-tools/src/lib.rs"
+  },
+  {
+    "id": "wasm.runtime",
+    "path": "crates/zk-kit-wasm/src/lib.rs"
   }
 ]

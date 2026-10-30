@@ -2,7 +2,7 @@
 
 # Capability Index
 
-13 capabilities
+22 capabilities
 
 | id | path |
 | --- | --- |
@@ -18,4 +18,13 @@
 | `contract.skill` | `packages/contracts/skill/src/lib.rs` |
 | `contract.tool` | `packages/contracts/tool/src/lib.rs` |
 | `contract.ui` | `packages/contracts/ui/src/lib.rs` |
+| `kit.approval` | `crates/zk-kit-approval/src/lib.rs` |
 | `kit.content` | `crates/zk-kit-content/src/lib.rs` |
+| `kit.events` | `crates/zk-kit-events/src/lib.rs` |
+| `kit.extractor` | `crates/zk-kit-extractor/src/lib.rs` |
+| `kit.jobs` | `crates/zk-kit-jobs/src/lib.rs` |
+| `kit.questions` | `crates/zk-kit-questions/src/lib.rs` |
+| `kit.session` | `crates/zk-kit-session/src/lib.rs` |
+| `kit.subagent` | `crates/zk-kit-subagent/src/lib.rs` |
+| `kit.tools` | `crates/zk-kit-tools/src/lib.rs` |
+| `wasm.runtime` | `crates/zk-kit-wasm/src/lib.rs` |
