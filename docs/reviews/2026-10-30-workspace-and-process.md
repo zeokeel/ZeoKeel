@@ -564,3 +564,155 @@ P0-A、P1-A、P1-B、P1-E 核心已关闭；P1-C/P1-D/P1-F 仍有小型但明确
 - 本记录只追加评审文本；未改任何规范正文/代码。
 
 复评结论（第四轮）：**APPROVED**
+
+---
+
+### 第五轮复评（2026-10-30，R5）：Workspace 平铺 + 默认 home
+
+> 复评对象：用户新反馈后的文档/原型变更（`26` 平铺 Workspace + 默认 `~`、ADR-058、spec design、store README/代码注释）。
+> 方式：只读文档 + 代码对照；未改规范正文/代码。
+> 版本（SHA256）：`26` `5f11afd0…`；`13` `65a92288…`；`16` `3f042161…`；`19` `58d926cf…`；`README` `30a59488…`；spec `design.md` `8139a57c…`、`acceptance.md` `ae92eb98…`、`tasks.md` `3e9af92b…`；store `README.md` `fc0ce29f…`、`lib.rs` `cf1aead6…`。
+
+#### R5.0. 结论
+
+**`CHANGES-REQUESTED`（无 P0；3 个 P1 需修）**
+
+产品决策本身自洽：Workspace 平铺（`26:16/25/50/177`）、默认 Workspace = home `~`（`26:30/105`、ADR-058:493、spec design:16-17）与 C18 不冲突；DSH 的 workspace 列表本身是平铺有序列表，因此"平铺"与 DSH 事实一致。平铺/默认 home 的**规范文本**已一致；问题集中在**验收未覆盖**、**包 README/代码注释仍写 Documents**、**home 不可用时的代码回退与规范相反**。
+
+**文档能否据以写 approved spec**：修完 P1-1～P1-3 后可以；当前 spec `proposal.md` 已是 `approved`，但本记录最新结论为 CHANGES，`review-check` 会正确阻断该 spec，需先修 P1 并复评/更新 spec 评审状态。
+
+#### R5.1. P1
+
+**P1-1 · `26` §7 验收未覆盖"默认 home + 平铺"新决策；spec acceptance/T5 也没有对应断言**
+
+- `26:185-194` 验收只有迁移回填、隔离、移除、目录不可用等；**没有**：
+  - 首用默认 Workspace path == `canonicalize(dirs::home_dir())`（`~`）且不自动建会话；
+  - home 不可用时进入目录选择（而不是静默 fallback / 使用别的目录）；
+  - 侧栏 Workspace 列表平铺（不嵌套/不分组）、会话行平铺（M1 不做日期分组）；
+  - 迁移得到的默认 Workspace path = home。
+- `specs/changes/2026-10-30-workspace-scoped-conversations/acceptance.md:1-9` 的 T5 只写"UI 首用/切换/重启/不可用目录 e2e + axe"，`tasks.md:9` 的 T5 只写"workspace switcher/首用/切换取消"，均未包含 flat/home 断言。
+- 这是用户本轮明确要求的两个行为；缺验收会导致实现/截图通过但可能默认 Documents 或嵌套分组。修法：在 `26:187-194` 增加上述 4 条（含证据命令/截图），并同步 spec `acceptance.md`/`tasks.md` T5。
+
+**P1-2 · `store-session-sqlite` 的 README/代码注释仍说 Documents，与 `26`/spec 的 home 冲突**
+
+- `packages/client/store-session-sqlite/README.md:4-5`："默认 Workspace 在平台 Documents 的用户 home `~`"——"Documents"与"home"并存，且与 `26:30/105`、`spec design:16` 冲突；
+- `packages/client/store-session-sqlite/src/lib.rs:30`：`/// ... the default workspace lives under the platform Documents dir.`；同文件 `:62` 注释已写"default workspace is the user's home"，同文件自相矛盾。
+- 这是 package README（C3 四件套之一）与代码注释的 SSOT 残留；修法：README 改为"默认 Workspace = 用户 home `~`（`dirs::home_dir()`）；`ZEOKEEL_HOME` 仅测试/嵌入 override"；`lib.rs:30` 同步；删除"Documents"。
+
+**P1-3 · home 不可用时代码回退 data 目录，规范要求"让用户选择/不猜"**
+
+- `26:30`："home 不可用则让用户选择目录"；`26:105`："home 不可用 → 迁移失败，让用户选择目录，不猜"；`spec design:16`："home 不可用 → 启动时返回错误让 UI 选择目录（不猜）"；
+- 但 `packages/client/store-session-sqlite/src/lib.rs:69-71`：`dirs::home_dir().unwrap_or_else(|| dirs::data_local_dir().unwrap_or_else(|| "."))` —— home 不可用时**静默回退** data 目录/当前目录，与文档相反。
+- 修法：`default_workspace_root()` 在 home 不可用时返回 `SessionError::WorkspacePathUnavailable`（由 bridge 转 UI 选择目录），不要自动回退；若保留回退，必须改 `26:30/105`/spec design 并写明产品选择（不推荐）。
+
+#### R5.2. P2（建议，不阻塞 spec 方向）
+
+- **P2-1 DSH 差异不完整**：`26:197-202` 列了移除/初始化/文件/事件差异，但未写默认路径差异——DSH 默认 `<Documents>/deepseek-harness`（`dsh-api-workspace-controller` README:34），我们选择 home `~`；应在 §8 加一条"默认路径不同（用户指定 home）"。平铺列表与 DSH 一致，可明示"一致"。
+- **P2-2 `16` UI 包描述未提平铺**：`docs/16:21` `ui-sessions` 仍写"Sidebar（会话列表/新建/选中/设置入口/窄窗）"、`:59` 写"侧栏（工作区切换/会话列表）"；建议提"平铺 Workspace 列表"或直接引用 `26` §6。
+- **P2-3 `26:3` 状态未更新**：仍写"复评修订 R3，待 C19 复评"；第五轮后应更新为 R5/当前评审状态（APPROVED 后再写"冻结"）。
+- **P2-4 `13:552` 计数**：仍 `D1–D66`，而 `15:1/159`、`README:107`、`AGENTS:273/305` 已是 `D1–D67`（D67=C10 例外）。
+- **P2-5 `README:169` 措辞**：`review-check` 后的"（后者仅结构检查…）"仍把 review-check 说成只做结构检查；实际 spec-check 才是结构检查，review-check 校验 C19/approved。
+- **P2-6 `26:109` 迁移占位**：`CREATE TABLE workspaces (...)` 在"可执行"脚本中仍是占位（§3 有完整 schema）。
+- **P2-7 store 测试未覆盖默认 home**：`tests/conformance.rs:15/115` 用显式 `default-workspace` root；虽然 5 tests 绿，但没有对 `store()`/`default_workspace_root()==home` 的断言；`ZEOKEEL_HOME` override 也未在文档说明（仅代码注释 `lib.rs:63`）。
+- **P2-8 `26:32` 括注**："用户先在文件管理器创建，或后续 UI 显式建目录"建议写明是 UI 先建目录再调用 create（create 本身不建目录），避免读成 `create_if_missing`。
+
+#### R5.3. 与 C18 / DSH / 迁移 / 验收的一致性
+
+- **C18**：平铺 Workspace 不影响"会话必属/隔离/不可变（唯一 reassign 例外）"；默认 home 只是默认 Workspace 路径，不改变 C18；**PASS**。
+- **DSH 事实**：Workspace 列表本身是平铺有序列表（`dsh-workspace`/controller），平铺**与事实一致**；默认路径 DSH 用 Documents，我们按用户选择 home，属**有意差异**，但 §8 未记录（P2-1）。
+- **迁移**：`26:105` 已把默认 path 改为 `canonicalize(dirs::home_dir())`，与 §2.8/§3.1/ spec design 一致；迁移脚本逻辑仍成立；**PASS（实现细节 P2-6）**。但验收缺默认 home 断言（P1-1）。
+- **验收**：默认 home、平铺列表、home 不可用选择器均未进 §7/spec acceptance（P1-1）；修后 PASS。
+
+#### R5.4. 门禁与复评记录
+
+- 追加本记录前 `docs-check` 0/0、`spec-check` 0/0、`review-check` `ok (3 records)`；追加后 `latest_conclusion()` = `CHANGES-REQUESTED`，因此已 `approved` 的 `specs/changes/2026-10-30-workspace-scoped-conversations` 会被 `review-check` 正确阻断，直到 P1-1～P1-3 修复并第五轮复评 APPROVED。这是 C19 门禁的预期行为，不是工具故障。
+- 修完后由同一评审者（audit-arch）复评；通过后本记录追加"第五轮 APPROVED"，spec 可保持/恢复 `approved`。
+- 本记录只追加评审文本；未改规范正文/代码。
+
+复评结论（第五轮）：**CHANGES-REQUESTED**
+
+---
+
+### 第六轮复评（2026-10-30，R6）：P1-1~P1-3 修复核验
+
+> 复评对象：P1-1~P1-3 修复后的文档/spec/实现注释（`26` §7/§8、spec acceptance/tasks、store README/代码）。方式：只读；未改规范/代码。
+> 版本（SHA256）：`26` `e109465f…`；`16` `c488ffa5…`；`13` `26990c74…`；`README` `82023753…`；spec `acceptance.md` `01bc81c6…`、`tasks.md` `77a02426…`、`proposal.md` `c49120d0…`；store `README.md` `fc0ce29f…`、`lib.rs` `7bc96d7e…`。
+
+#### R6.0. 结论
+
+**`CHANGES-REQUESTED`（无 P0；1 个 P1）**
+
+P1-1（验收补全）、P1-3（home 不可用不再回退 data 目录）**已关闭**；P2 大部分已顺手修复。**P1-2 只修了 `lib.rs:30` 注释，`packages/client/store-session-sqlite/README.md:4-5` 仍写"平台 Documents 的用户 home"**，与 `26:30/105`、spec design:16 的 home 冲突——包 README 是 C3 四件套之一，不能保留旧路径表述。
+
+**修 README 后即可 APPROVED**；spec 当前 `draft`，修复并第七轮复评 APPROVED 后再改回 `approved`。
+
+#### R6.1. 已关闭
+
+- **P1-1 验收补全：RESOLVED**。`26:187-191` 已新增：默认 Workspace `path == canonicalize(dirs::home_dir())` 且首用不自动建会话；列表/会话行平铺（不嵌套/不分组/M1 不做日期分组）；home 不可用返回 `workspace/path-unavailable`、UI 选择、不静默回退。`spec acceptance.md:8` 增加同名项，`tasks.md:9` T5 改为"平铺 workspace 列表/默认 ~ /首用/切换取消 + Playwright/截图/axe/DOM 断言"。
+- **P1-3 home 回退：RESOLVED（核心）**。`src/lib.rs:62-75` 的 `default_workspace_root() -> Result<PathBuf, SessionError>` 已改为 `dirs::home_dir().ok_or_else(WorkspacePathUnavailable(...))`，无 `data_local_dir()` fallback；`open()` 用 `?` 传播。残留 P2（`store()` 仍吞错，见 R6.2）。
+- **P2 顺手修复**：`26:205` 已记录 DSH 默认 `<Documents>/deepseek-harness` 与我们的 home 差异；`16:21` 已标注平铺并链 `26` §6；`26:3` 已改 R5；`13:552` 已 D1–D67/19–27；`README:169` 已拆清 spec-check/review-check 语义；`26:32` 已明确 create 不建目录、UI 先建目录再调用。
+
+#### R6.2. 仍存在 P1
+
+**P1-2 · `store-session-sqlite/README.md` 仍把默认 Workspace 写成 Documents**
+
+- `packages/client/store-session-sqlite/README.md:4-5`："默认 Workspace 在平台 Documents 的用户 home `~`（测试用 `open_with_root`）"；
+- 与 `26:30/105`（`dirs::home_dir()`）、`src/lib.rs:62-75`（home）、spec design:16（home）冲突；同文件 `src/lib.rs:30` 已改 home，README 未改。
+- 修法：第 4–5 行改为"默认 Workspace = 用户 home `~`（`dirs::home_dir()` canonicalize）；`ZEOKEEL_HOME` 仅测试/嵌入 override；无 Documents 路径"。
+
+#### R6.3. 仍存在的 P2（建议）
+
+- **P2-A `store()` 仍吞错**：`src/lib.rs:20-28` 的 `store()` 对 `default_workspace_root()`/`open_with_root` 的 Err 返回 `SqliteSessionStore { conn: None }`；`26:191` 要求 home 不可用返回 `workspace/path-unavailable`。若 T4 bridge 用 `store()`，UI 拿不到 typed error；建议 `store() -> Result<SqliteSessionStore, SessionError>` 或明确 bridge 只用 `open()` 并传播错误。
+- **P2-B `26:110` 迁移 DDL 仍占位**：`CREATE TABLE workspaces (...)`（完整 schema 在 §3）；建议引用 §3 或写全。
+- **P2-C `16:59` 槽位说明未改平铺**：`ui.sessions` 说明仍是"侧栏（工作区切换/会话列表）"，建议补"平铺 Workspace 列表"（`16:21` 已改）。
+- **P2-D store 测试未覆盖默认 home**：`tests/conformance.rs:15/115` 用显式 `default-workspace` root；5 tests 绿但未断言 `store()`/`default_workspace_root()==home` 或 home 不可用错误；建议补 `ZEOKEEL_HOME` 测试或 `open_with_root` + 单独 `default_workspace_root` 测试。
+- **P2-E `ZEOKEEL_HOME` override 未在 `26` 文档说明**：验收 `26:189` 提"仅测试/嵌入 override"，但 §2.8/§3.1 正文未提；建议一句话说明（不是 UI 默认）。
+
+#### R6.4. 门禁与复评记录
+
+- `docs-check` 0/0、`spec-check` 0/0；spec `proposal.md` 当前 `draft`，`review-check` 不会因本记录 CHANGES 报错（draft 跳过）；修 P1-2 并第七轮复评 APPROVED 后，spec 可改回 `approved`。
+- 本记录只追加评审文本；未改规范正文/代码。
+
+复评结论（第六轮）：**CHANGES-REQUESTED**
+
+---
+
+### 第七轮复评（2026-10-30，R7）：P1-README 修复核验
+
+> 复评对象：`store-session-sqlite/README.md` 与 `26` §2.8 的 `ZEOKEEL_HOME` 说明。方式：只读；未改规范/代码。
+> 版本（SHA256）：`README.md`（store）`ab98e7cf…`；`26` `9be74ba5…`；spec `proposal.md` `c49120d0…`（draft）。
+
+#### R7.0. 结论
+
+**`APPROVED`**
+
+- **P0：无。P1：无。**
+- P1-2 已关闭：`packages/client/store-session-sqlite/README.md:4-6` 已改为“默认 Workspace = 用户 home `~`（`dirs::home_dir()` canonicalize；`ZEOKEEL_HOME` 仅测试/嵌入 override，不是 UI 默认；无 Documents 路径）；home 不可用返回 `workspace/path-unavailable`，由 UI 选择目录，不静默回退”。
+- `26:30` 已补 `ZEOKEEL_HOME` 仅测试/嵌入 override，不再是 P2-E。
+- 第六轮其余 P1 已在 R6 关闭；无回归。
+
+**文档可以据以写 approved spec**：`specs/changes/2026-10-30-workspace-scoped-conversations/` 当前 `draft` 可在本轮 APPROVED 后改回 `approved`；proposal 已引用本记录，acceptance 回链本记录与 `26` §7/§9。
+
+#### R7.1. 仍有 P2（建议，不阻塞 APPROVED）
+
+- **P2-A `store()` 吞错**：`src/lib.rs:20-28` 的 `store()` 对 `default_workspace_root()`/`open_with_root` 的 Err 返回 `conn: None`，而 `26:191`/README 说返回 `workspace/path-unavailable`；T4 bridge 应使用 `open()` 并传播错误，或把 `store()` 改为 `Result`。
+- **P2-B `26:110` 迁移 DDL 占位**：`CREATE TABLE workspaces (...)` 在“可执行”脚本里仍是占位（完整 schema 在 §3）。
+- **P2-C `16:59` 槽位说明**：`ui.sessions` 说明仍是“侧栏（工作区切换/会话列表）”，建议补“平铺 Workspace 列表”（`16:21` 已改）。
+- **P2-D store 测试未覆盖默认 home/home 不可用**：`tests/conformance.rs:15/115` 仍用显式 `default-workspace` root；建议补 `ZEOKEEL_HOME`/home 负向测试。
+- **P2-E spec proposal 状态文案**：`proposal.md:3` 仍写“待第五轮 P1 修复复评 APPROVED 后改回 approved”，应改为“待第七轮 APPROVED 后恢复 approved”（纯文案）。
+- **P2-F `26:3` 状态**：仍写“复评修订 R5，待 C19 复评”，可更新为 R7 当前状态。
+
+#### R7.2. 与 C18 / DSH / 迁移 / 验收
+
+- **C18**：默认 home、Workspace 平铺不影响“会话必属/隔离/不可变（唯一 reassign 例外）”；PASS。
+- **DSH 事实**：`26:205` 已记录 DSH 默认 `<Documents>/deepseek-harness` 与我们 home 的有意差异；平铺与 DSH 列表方向一致；PASS。
+- **迁移**：`26:105` 默认 path = `canonicalize(dirs::home_dir())`；spec design:16 一致；迁移逻辑与验收（`26:187-191`）已覆盖；PASS（DDL 占位为 P2）。
+- **验收**：`26:189-191` 与 spec `acceptance.md:8`/`tasks.md:9` T5 已覆盖默认 home、平铺列表、home 不可用；PASS。
+
+#### R7.3. 门禁与复评记录
+
+- `docs-check` 0/0；`spec-check` 0/0（1 warning：spec `draft`，符合待复评状态）；`review-check` `ok (3 records)`（draft 跳过）。
+- 本轮追加后 `latest_conclusion()` = `APPROVED`；lead 把 spec 改回 `approved` 后，`review-check` 应通过（记录已含关联 spec/change id）。
+- 本记录只追加评审文本；未改规范正文/代码。
+
+复评结论（第七轮）：**APPROVED**

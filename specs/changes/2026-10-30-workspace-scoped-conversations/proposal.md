@@ -1,6 +1,6 @@
 # 2026-10-30-workspace-scoped-conversations · 提案
 
-- 状态：`approved`
+- 状态：`approved`（第七轮复评 APPROVED）
 - Owner：lead
 - 日期：2026-10-30
 - 关联：docs/26、docs/24 §7、ADR-058、C18、D66、T4/T5

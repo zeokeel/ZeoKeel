@@ -21,15 +21,16 @@ pub struct SqliteSessionStore {
 #[must_use]
 pub fn store() -> SqliteSessionStore {
     let path = default_path();
-    match open_with_root(path, default_workspace_root()) {
+    match default_workspace_root().and_then(|root| open_with_root(path, root)) {
         Ok(store) => store,
         Err(_) => SqliteSessionStore { conn: Mutex::new(None) },
     }
 }
 
-/// Open (and migrate) a store at `path`; the default workspace lives under the platform Documents dir.
+/// Open (and migrate) a store at `path`; the default workspace is the user home (`~`).
 pub fn open(path: PathBuf) -> Result<SqliteSessionStore, SessionError> {
-    open_with_root(path, default_workspace_root())
+    let root = default_workspace_root()?;
+    open_with_root(path, root)
 }
 
 /// Open a store with an explicit default workspace root (tests / embedded use).
@@ -58,16 +59,18 @@ fn default_path() -> PathBuf {
     base.join("zeokeel").join("sessions.db")
 }
 
-fn default_workspace_root() -> PathBuf {
+fn default_workspace_root() -> Result<PathBuf, SessionError> {
     // Per product decision: the default workspace is the user's home (`~`).
     // A custom ZEOKEEL_HOME is a test/embedding escape hatch, not the UI default.
     if let Ok(home) = std::env::var("ZEOKEEL_HOME") {
         if !home.is_empty() {
-            return PathBuf::from(home);
+            return Ok(PathBuf::from(home));
         }
     }
-    dirs::home_dir().unwrap_or_else(|| {
-        dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."))
+    dirs::home_dir().ok_or_else(|| {
+        SessionError::WorkspacePathUnavailable(
+            "home directory unavailable; choose a workspace directory".to_owned(),
+        )
     })
 }
 

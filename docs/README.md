@@ -166,4 +166,4 @@
 - 变更流程：先建 `specs/changes/<id>/` 五件套；`python3 scripts/spec-check.py` 与 `python3 scripts/review-check.py`（仅结构检查）通过；C16 的 approved 门由 `scripts/review-check.py`（C19）与评审记录共同执行；完成后归档 `specs/archive/`。
 - 待定项只登记 `15` §C；实现前在对应 milestone spec 冻结，不散落在各文档。
 - 新增可复用能力前必须先查 `25` §5 的搜索步骤与能力索引；新能力必须进 kit/契约并登记。
-- 门禁：`python3 scripts/docs-check.py` + `python3 scripts/spec-check.py` + `python3 scripts/review-check.py` 都需 0 error（后者仅结构检查，不校验 C16 的 approved 状态）。
+- 门禁：`python3 scripts/docs-check.py` + `python3 scripts/spec-check.py` + `python3 scripts/review-check.py` 都需 0 error（`spec-check` 只做结构检查；`review-check` 校验 C19 评审/结论/关联 spec）。

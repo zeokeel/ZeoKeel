@@ -1,6 +1,6 @@
 # 26 · 工作区与对话（Workspace-scoped conversations）
 
-> 状态：**M1 冻结候选（复评修订 R3，待 C19 复评）**；代码尚未实现，实现清单见 §9，M1 交付见 `12`。
+> 状态：**M1 冻结（第七轮复评 APPROVED）**；代码尚未实现，实现清单见 §9，M1 交付见 `12`。
 > 来源：DSH（DeepSeek Harness）`dsh-workspace` / `dsh-session` / `dsh-api-workspace-controller` /
 > `dsh-agent-loop` 的公开行为（MIT；**只作事实参考，不作依赖/构建输入**，C15）；取舍与冲突见 §2.5/§2.6。
 > **本文是工作区、会话归属、agent cwd 与工作区 schema 的唯一权威**；`24` §7 只保留存储引擎不变量，
@@ -27,9 +27,9 @@ M1 **默认拒绝**绝对路径/工作区外访问；post-M1 才由 `TurnContext
 5. **相对路径先解析到 Workspace 根；M1 默认拒绝绝对路径/`~`/工作区外路径**（`tool-fs` 根内）；显式越界（`TurnContext.allow_outside`）为 post-M1，未实现前不得宣称支持。
 6. **消息不跨 Workspace**：会话命令必须携带当前 `workspace_id` 并与会话归属比对，不匹配 = `session/workspace-mismatch`。
 7. **一个 Workspace 可多会话**：共享目录，但各自独立 agent/loop；同一会话同一时刻只允许一个 turn。
-8. **首用 Workspace**：首次启动无 Workspace 时创建默认 Workspace = **用户 home 目录 `~`**（canonicalize；home 不可用则让用户选择目录）；**创建默认 Workspace 后不自动建会话、不发消息**。
+8. **首用 Workspace**：首次启动无 Workspace 时创建默认 Workspace = **用户 home 目录 `~`**（canonicalize；`ZEOKEEL_HOME` 仅测试/嵌入 override，不是 UI 默认；home 不可用则让用户选择目录）；**创建默认 Workspace 后不自动建会话、不发消息**。
 9. **Workspace 生命周期**：
-   - 创建：`path` 必须是**已存在的目录**且可读写；不提供 `create_if_missing`（用户先在文件管理器创建，或后续 UI 显式建目录）。错误：`workspace/path-not-found`、`workspace/not-a-directory`、`workspace/not-writable`、`workspace/duplicate-path`（同一 canonical path 已登记）。
+   - 创建：`path` 必须是**已存在的目录**且可读写；不提供 `create_if_missing`（用户先在文件管理器创建；`workspace.create` 本身不建目录；UI 只能在用户确认后先建目录再调用 create）。错误：`workspace/path-not-found`、`workspace/not-a-directory`、`workspace/not-writable`、`workspace/duplicate-path`（同一 canonical path 已登记）。
    - 重命名：只改 `title`，不动 path/id。
    - 移除：只从注册表移除、不删目录。无会话时直接移除；有会话时必须 `reassign_to`（目标存在、≠自身、目录可用），事务内迁移会话后移除，返回 `moved_sessions`；用户需二次确认，写审计日志（M1 可本地日志）。**默认 Workspace 不可直接移除**：需先 `workspace.set_default` 指定另一个 default，再移除；`workspace.set_default` 目标必须存在且可用。
    - 重新登记：移除后同 path 可重新 create，生成**新 id**（旧会话已迁移/不存在）；同 path 已登记时 create 返回 `duplicate-path`，不幂等返回旧对象。
@@ -186,6 +186,9 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_m
 
 - [ ] `store-session-sqlite` v2 迁移：旧库（有会话）→ 默认 Workspace 回填 → 两会话归属正确；失败注入回滚/只读兜底。证据：`cargo test -p zk-store-session-sqlite`。
 - [ ] 无 Workspace/无 conversation 时 `session.create`/`chat.send` 失败（删除 auto-create）。证据：bridge 单测 + Playwright。
+- [ ] 默认 Workspace `path == canonicalize(dirs::home_dir())`（`~`），且首用**不自动建会话**；`ZEOKEEL_HOME` 只作测试/嵌入 override。证据：store 测试 + API 断言。
+- [ ] Workspace 列表**平铺**（不嵌套/不分组），每行可切换/重命名/移除；会话行平铺（M1 不做日期分组）。证据：Playwright 截图 + DOM 断言。
+- [ ] home 不可用：返回 `workspace/path-unavailable`，UI 进入选择目录，不静默回退 data 目录。证据：store 负向测试 + e2e 错误态截图。
 - [ ] 两个 Workspace 隔离：切换后列表/消息互不可见；跨工作区 `session.messages`/`chat.send` 返回 mismatch。证据：Rust 负向测试 + Playwright。
 - [ ] agent cwd/工具相对路径读取该 Workspace 根下文件；M1 绝对路径/越界默认拒绝（post-M1 `allow_outside`）。证据：agent-loop/tool-fs conformance。
 - [ ] Workspace 移除：空 Workspace 移除不删目录；默认 Workspace 需先 `set_default`；有会话时无 `reassign_to` 报错，有则迁移后移除；reassign 目标非法报错。证据：store 测试。
@@ -199,6 +202,7 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_m
 - DSH 移除 project 保留会话为 ungrouped；我们为满足 C18 **不允许 ungrouped**，移除时要求 `reassign_to`。
 - DSH `initializeDefault` 仅在空注册表且无 live/persisted/archived session 时创建默认 project；我们 M1 仅"无 Workspace 时创建默认 Workspace"，不自动建会话。
 - DSH 有 workspace files listing/watch 与 typed errors（`workspace-file/outside-workspace` 等）；我们 M1 不做文件浏览，post-M1 按 `26` §13 扩展。
+- DSH 默认项目路径为 `<Documents>/deepseek-harness`；我们按用户决策默认 **home `~`**，且 Workspace 列表平铺（DSH 也支持 flat 列表，方向一致）。
 - DSH session log 是事件日志；我们 M1 仍是 SQLite **消息表**（`conversations/messages`）；`turns`/事件溯源/tool_calls 等表 post-M1（`24` §7）。
 
 ## 9. 现有实现差距与迁移（M1 tasks）

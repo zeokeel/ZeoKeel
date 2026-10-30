@@ -18,7 +18,7 @@
 | 包 | 角色 | 内容 | 依赖 |
 | --- | --- | --- | --- |
 | `@zeokeel/ui-kit` | `ui.kit` | 类型/DTO、`UiProvider/useUi`、BrandLogo、icons、Button/Switch/StatusDot/Chip | react |
-| `@zeokeel/ui-sessions` | `ui.slot.sessions` | Sidebar（会话列表/新建/选中/设置入口/窄窗） | ui-kit |
+| `@zeokeel/ui-sessions` | `ui.slot.sessions` | Sidebar（**平铺 Workspace 列表**/会话列表/新建/选中/设置入口/窄窗；规则见 `26` §6） | ui-kit |
 | `@zeokeel/ui-chat` | `ui.slot.chat` | ChatView + assistant-ui primitives + 工具卡/审批/空态 + ExternalStoreRuntime adapter | ui-kit + `@assistant-ui/*` |
 | `@zeokeel/ui-settings` | `ui.slot.settings` | SettingsDialog + 校验 | ui-kit + Radix dialog |
 | `apps/desktop/web` | 薄壳 | transport/controller/reducer/i18n/theme/UiProvider/registry/boot/error/header/toast | registry 生成的包 |
@@ -56,7 +56,7 @@ order = 10
 
 | slotId | 角色 | 组件 | 说明 |
 | --- | --- | --- | --- |
-| `ui.sessions` | `ui.slot.sessions` | `sessions.sidebar` | 侧栏（工作区切换/会话列表） |
+| `ui.sessions` | `ui.slot.sessions` | `sessions.sidebar` | 侧栏（**平铺 Workspace 列表**/会话列表） |
 | `ui.chat` | `ui.slot.chat` | `chat.thread` | 对话区（含 composer/工具卡/审批/空态） |
 | `ui.settings` | `ui.slot.settings` | `settings.dialog` | 设置弹窗 |
 
