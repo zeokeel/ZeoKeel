@@ -102,6 +102,14 @@ CONN=$(curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST
 CONN_ID=$(printf '%s' "$CONN" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
 curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X PUT "http://127.0.0.1:$SERVER_PORT/api/admin/connectors/$CONN_ID/grants" -H 'content-type: application/json' -d '{"grants":[{"grantee":"all","can_enable":true}]}' >/dev/null
 curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/connectors/$CONN_ID/oauth" -H 'content-type: application/json' -d '{"client_id":"public-client","scopes":["mcp"],"redirect_uri":"http://127.0.0.1:8789/"}' >/dev/null
+# Seed one approved app for the client apps panel.
+ADMIN_JWT=$(curl -fsS -X POST "http://127.0.0.1:$SERVER_PORT/api/client/v1/auth/login" -H 'content-type: application/json' -d '{"username":"admin","password":"admin-pass","device_id":"seed-app"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
+printf '\0asm\1\0\0\0' > /tmp/zk-client-app.wasm
+printf '{"name":"client-app","version":"1.0.0","description":"client e2e","icon":"","db_schema_version":0,"db_migrations":[],"ui":[]}' > /tmp/zk-client-app.json
+APP=$(curl -fsS -X POST "http://127.0.0.1:$SERVER_PORT/api/client/v1/apps" -H "Authorization: Bearer $ADMIN_JWT" -F "manifest=</tmp/zk-client-app.json" -F "wasm=@/tmp/zk-client-app.wasm")
+APP_ID=$(printf '%s' "$APP" | python3 -c 'import json,sys;print(json.load(sys.stdin)["app_id"])')
+curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/apps/$APP_ID/approve" >/dev/null
+curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X PUT "http://127.0.0.1:$SERVER_PORT/api/admin/apps/$APP_ID/grants" -H 'content-type: application/json' -d '{"grants":[{"grantee":"all","can_open":true}]}' >/dev/null
 ZEOKEEL_CLIENT_SKILL_ZIP=/tmp/zk-client-skill.zip ZEOKEEL_LOGIN_URL="http://127.0.0.1:$UI_PORT" ZEOKEEL_LOGIN_SERVER="http://127.0.0.1:$SERVER_PORT" \
   pnpm exec playwright test e2e/m2-login.spec.ts e2e/m2-gateway-chat.spec.ts e2e/m3-client-content.spec.ts --reporter=line
 echo "login e2e ok"

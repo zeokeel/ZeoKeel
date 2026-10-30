@@ -20,6 +20,10 @@
 
 - task 6：`@zeokeel/admin-apps` 页面；`admin-e2e.sh` 9 passed（含 apps 审批/grants/下架 + axe），截图 `target/evidence/m4/admin-apps.png`
 
+## 进展（续 2）
+
+- task 7（部分）：`@zeokeel/ui-apps` 目录/打开/错误状态 + ⌘K 应用；服务端 open 票据；`login-e2e.sh` 3 passed，截图 `target/evidence/m4/client-apps.png`。**独立 origin 窗口/隔离页/app_request IPC 尚未实现。**
+
 ## 检查
 
 - [ ] `bash scripts/apps-e2e.sh`

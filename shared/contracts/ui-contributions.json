@@ -77,6 +77,13 @@
     "slot": "admin.shell"
   },
   {
+    "component": "panel.apps",
+    "order": 10,
+    "package": "zeokeel/ui-apps",
+    "role": "ui.slot.apps",
+    "slot": "ui.apps"
+  },
+  {
     "component": "chat.thread",
     "order": 10,
     "package": "zeokeel/ui-chat",

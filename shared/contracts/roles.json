@@ -209,6 +209,12 @@
     "contract": "zk-contract-ui",
     "cardinality": "singleton"
   },
+  "ui.slot.apps": {
+    "package": "zeokeel/ui-apps",
+    "crate_name": "zk-ui-apps",
+    "contract": "zk-contract-ui",
+    "cardinality": "singleton"
+  },
   "ui.slot.chat": {
     "package": "zeokeel/ui-chat",
     "crate_name": "zk-ui-chat",

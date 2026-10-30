@@ -280,6 +280,14 @@
     ]
   },
   {
+    "id": "zeokeel/ui-apps",
+    "version": "0.1.0",
+    "kind": "ui",
+    "roles": [
+      "ui.slot.apps"
+    ]
+  },
+  {
     "id": "zeokeel/ui-chat",
     "version": "0.1.0",
     "kind": "ui",
