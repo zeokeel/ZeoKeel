@@ -28,6 +28,21 @@ test.describe("M1 mock UI (human flow)", () => {
     expect(serious, JSON.stringify(serious.map((v) => v.id))).toEqual([]);
   });
 
+  test("command palette opens with keyboard, filters and runs settings", async ({ page }) => {
+    await page.goto("/?mock=1", { waitUntil: "networkidle" });
+    await page.keyboard.press("Control+k");
+    const palette = page.getByRole("dialog", { name: "命令面板" });
+    await expect(palette).toBeVisible();
+    await page.getByRole("textbox", { name: "搜索命令" }).fill("设置");
+    await expect(page.getByRole("option", { name: /设置/ })).toBeVisible();
+    await page.screenshot({ path: "target/evidence/m1/e2e-commands.png" });
+    await page.getByRole("option", { name: /设置/ }).click();
+    await expect(page.getByRole("dialog", { name: "设置" })).toBeVisible();
+    const results = await new AxeBuilder({ page }).analyze();
+    const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+    expect(serious, JSON.stringify(serious.map((v) => v.id))).toEqual([]);
+  });
+
   test("empty state and composer keyboard hint", async ({ page }) => {
     await page.goto("/?mock=1", { waitUntil: "networkidle" });
     await expect(page.getByText(/今天想完成什么|What would you like/)).toBeVisible();

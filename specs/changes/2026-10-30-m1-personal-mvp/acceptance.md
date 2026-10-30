@@ -24,3 +24,8 @@
 
 - `AppShell` + FirstRun（boot/error/首用/layout/header/status/toast）已从 `apps/desktop/web` 移入 `@zeokeel/ui-shell`（`shell.frame`），app 只经 registry 接入（App 约 139 行）。
 - 开发原型/截图已移出 `apps/desktop/web` 到 `research/ui-prototypes/`。
+
+## Command palette
+
+- `@zeokeel/ui-commands` 接入：⌘K/Ctrl+K 打开、搜索过滤、方向键/Enter/Esc、动作由 app 注入。
+- Vitest 36 tests；Playwright mock flow + axe 0 serious/critical。

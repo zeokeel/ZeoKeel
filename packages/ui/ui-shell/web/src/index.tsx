@@ -27,6 +27,7 @@ export interface ShellFrameProps {
   onRetryBoot: () => void;
   onToggleSidebar: () => void;
   onDismissToast: () => void;
+  onOpenCommands: () => void;
   onCreateWorkspace: (path: string, title: string) => void;
 }
 
@@ -127,6 +128,9 @@ export function ShellFrame(props: ShellFrameProps) {
                 </span>
                 {props.mock ? <Chip>{t("mockBadge")}</Chip> : null}
               </div>
+              <button type="button" className={`${iconButtonClass} hidden sm:inline-flex`} aria-label={t("commandPalette")} title={t("commandPalette")} onClick={props.onOpenCommands}>
+                <span className="font-mono text-[11px]">⌘K</span>
+              </button>
             </header>
             {props.conversation}
             <footer className="flex h-6 shrink-0 items-center gap-3 border-t border-border bg-background px-3 text-[11px] text-muted-foreground">

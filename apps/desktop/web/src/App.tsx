@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   UiProvider,
   type BrandConfig,
   type UiValue,
 } from "@zeokeel/ui-kit";
 import { BRAND } from "./generated/brand";
-import { ChatSlot, LoginSlot, SessionsSlot, SettingsSlot, ShellSlot } from "./generated/registry";
+import { ChatSlot, CommandsSlot, LoginSlot, SessionsSlot, SettingsSlot, ShellSlot } from "./generated/registry";
 import { translate } from "./i18n";
 import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
@@ -105,6 +105,27 @@ function AppShell(props: { controller: AppController; ui: UiValue }) {
   const { ui, controller } = props;
   const t = ui.t;
   const state = controller.state;
+  const [commandsOpen, setCommandsOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandsOpen((value) => !value);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); };
+  }, []);
+  const commands = [
+    { id: "new-conversation", title: t("newConversation"), group: t("workspaceActions") },
+    { id: "toggle-sidebar", title: t("sidebarToggle"), group: t("workspaceActions") },
+    { id: "open-settings", title: t("settingsTitle"), group: t("settings") },
+  ];
+  const runCommand = (id: string): void => {
+    if (id === "new-conversation") ui.actions.createConversation();
+    if (id === "toggle-sidebar") ui.actions.toggleSidebar();
+    if (id === "open-settings") ui.actions.openSettings();
+  };
   const activeWorkspace = ui.workspaces.find((workspace) => workspace.id === ui.activeWorkspaceId);
   const active = ui.conversations.find((conversation) => conversation.id === ui.activeConversationId);
   const title = active === undefined ? t("noConversation") : active.title;
@@ -113,6 +134,7 @@ function AppShell(props: { controller: AppController; ui: UiValue }) {
       ? t("metaPackagesEmpty")
       : t("metaLine", { version: ui.meta.version, packages: ui.meta.packages.length });
   return (
+    <>
     <ShellSlot
       t={t}
       boot={ui.boot}
@@ -133,7 +155,10 @@ function AppShell(props: { controller: AppController; ui: UiValue }) {
       onRetryBoot={ui.actions.retryBoot}
       onToggleSidebar={ui.actions.toggleSidebar}
       onDismissToast={controller.dismissToast}
+      onOpenCommands={() => { setCommandsOpen(true); }}
       onCreateWorkspace={(path, title) => { ui.actions.createWorkspace(path, title); }}
     />
+    <CommandsSlot open={commandsOpen} commands={commands} onRun={runCommand} onClose={() => { setCommandsOpen(false); }} />
+    </>
   );
 }
