@@ -65,6 +65,11 @@
       "version": "0013_app_logs",
       "package": "packages/server/apps/migrations/0013_app_logs.sql",
       "checksum": "190bff80a9e0071e8c124835500752e23febe55073aff111238df8586b6145eb"
+    },
+    {
+      "version": "0014_wallet_overdraft",
+      "package": "packages/server/wallet/migrations/0014_wallet_overdraft.sql",
+      "checksum": "28096b8f8fe119e56b8972321c64e204314caef001af951133f9fed6a2af1959"
     }
   ]
 }

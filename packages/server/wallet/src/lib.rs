@@ -112,24 +112,39 @@ async fn admin_adjust(
     }
     let uuid = Uuid::parse_str(&user_id)
         .map_err(|_| auth_error(StatusCode::BAD_REQUEST, "INVALID_USER"))?;
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    // Idempotency replay is scoped to (user, key): a key owned by another user
+    // must not silently return their balance nor skip this user's adjustment.
     let existing =
-        sqlx::query("SELECT balance_after FROM wallet_ledger WHERE idempotency_key = $1")
+        sqlx::query("SELECT user_id, balance_after FROM wallet_ledger WHERE idempotency_key = $1")
             .bind(&request.idempotency_key)
-            .fetch_optional(&state.pool)
+            .fetch_optional(&mut *tx)
             .await
             .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     if let Some(row) = existing {
+        let owner: Uuid = row
+            .try_get("user_id")
+            .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        if owner != uuid {
+            return Err(auth_error(StatusCode::CONFLICT, "IDEMPOTENCY_CONFLICT"));
+        }
         let balance: i64 = row
             .try_get("balance_after")
+            .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        tx.commit()
+            .await
             .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
         return Ok(Json(
             json!({ "ok": true, "idempotent": true, "balance_micros": balance }),
         ));
     }
-    ensure_wallet(&state, uuid).await?;
-    let mut tx = state
-        .pool
-        .begin()
+    sqlx::query("INSERT INTO wallet_accounts (user_id, balance_micros) VALUES ($1, 0) ON CONFLICT (user_id) DO NOTHING")
+        .bind(uuid)
+        .execute(&mut *tx)
         .await
         .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let balance: i64 = sqlx::query_scalar(
@@ -163,6 +178,22 @@ async fn admin_adjust(
         .execute(&mut *tx)
         .await
         .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    // Money audit is fail-closed: audit row shares the ledger transaction
+    // (docs/22 §8 钱审计矩阵; docs/07 §8).
+    zk_kit_server::audit_tx(
+        &mut tx,
+        admin.user_id,
+        "wallet.adjust",
+        &uuid.to_string(),
+        &json!({
+            "delta_micros": request.delta_micros,
+            "balance_before": balance,
+            "balance_after": next,
+            "reason": request.reason,
+            "idempotency_key": request.idempotency_key,
+        }),
+    )
+    .await?;
     tx.commit()
         .await
         .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
@@ -179,5 +210,10 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// Immutable migrations owned by this domain.
-pub const MIGRATIONS: &[(&str, &str)] =
-    &[("0003_wallet", include_str!("../migrations/0003_wallet.sql"))];
+pub const MIGRATIONS: &[(&str, &str)] = &[
+    ("0003_wallet", include_str!("../migrations/0003_wallet.sql")),
+    (
+        "0014_wallet_overdraft",
+        include_str!("../migrations/0014_wallet_overdraft.sql"),
+    ),
+];

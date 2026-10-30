@@ -69,6 +69,13 @@ async fn upsert(
     {
         return Err(auth_error(StatusCode::BAD_REQUEST, "INVALID_PRICE"));
     }
+    // Price change + audit in one transaction (fail-closed); price changes are
+    // part of the money audit matrix (docs/22 §8).
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     sqlx::query(
         "INSERT INTO model_prices (model, input_per_1k_micros, output_per_1k_micros, cached_per_1k_micros, peak_multiplier_bps, offpeak_multiplier_bps, enabled)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -84,17 +91,27 @@ async fn upsert(
     .bind(request.peak_multiplier_bps)
     .bind(request.offpeak_multiplier_bps)
     .bind(request.enabled)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await
     .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    zk_kit_server::audit(
-        &state,
+    zk_kit_server::audit_tx(
+        &mut tx,
         admin.user_id,
         "pricing.upsert",
         &model,
-        &json!({ "enabled": request.enabled }),
+        &json!({
+            "enabled": request.enabled,
+            "input_per_1k_micros": request.input_per_1k_micros,
+            "output_per_1k_micros": request.output_per_1k_micros,
+            "cached_per_1k_micros": request.cached_per_1k_micros,
+            "peak_multiplier_bps": request.peak_multiplier_bps,
+            "offpeak_multiplier_bps": request.offpeak_multiplier_bps,
+        }),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true })))
 }
 

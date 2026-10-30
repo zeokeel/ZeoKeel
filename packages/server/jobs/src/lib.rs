@@ -35,10 +35,8 @@ pub async fn run_job(pool: &PgPool, job: &str, idempotency: &str) -> Result<Valu
             .await
             .map(|done| json!({ "expired": done.rows_affected() }))
             .map_err(|error| error.to_string()),
-        "usage-pending" => sqlx::query("UPDATE usage SET status = 'voided' WHERE status = 'pending' AND created_at < now() - interval '1 hour'")
-            .execute(pool)
+        "usage-pending" => sweep_pending_usage(pool)
             .await
-            .map(|done| json!({ "voided": done.rows_affected() }))
             .map_err(|error| error.to_string()),
         "wallet-reconcile" => sqlx::query_scalar::<_, i64>(
             "SELECT count(*) FROM wallet_accounts w WHERE w.balance_micros <> COALESCE((SELECT sum(l.delta_micros) FROM wallet_ledger l WHERE l.user_id = w.user_id), 0)",
@@ -72,6 +70,47 @@ pub async fn run_job(pool: &PgPool, job: &str, idempotency: &str) -> Result<Valu
         }
     }
     result
+}
+
+/// Compensate admissions that crashed before settlement (`docs/22` §5.2,
+/// `docs/24` §6): stale `usage_pending` rows are voided, the matching hold is
+/// released, and a `voided` usage row records the request for reconciliation.
+async fn sweep_pending_usage(pool: &PgPool) -> Result<Value, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let rows = sqlx::query(
+        "SELECT user_id, request_id, model FROM usage_pending
+         WHERE status = 'pending' AND created_at < now() - interval '1 hour'
+         FOR UPDATE",
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut voided = 0_i64;
+    for row in rows {
+        let user_id: uuid::Uuid = row.try_get("user_id")?;
+        let request_id: String = row.try_get("request_id")?;
+        let model: String = row.try_get("model")?;
+        sqlx::query(
+            "UPDATE usage_pending SET status = 'void', settled_at = now() WHERE request_id = $1",
+        )
+        .bind(&request_id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("INSERT INTO usage (request_id, user_id, model, amount_micros, status, source, settled_at) VALUES ($1, $2, $3, 0, 'voided', 'local', now()) ON CONFLICT (request_id) DO NOTHING")
+            .bind(&request_id)
+            .bind(user_id)
+            .bind(&model)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(
+            "UPDATE wallet_holds SET status = 'void' WHERE request_id = $1 AND status = 'held'",
+        )
+        .bind(&request_id)
+        .execute(&mut *tx)
+        .await?;
+        voided = voided.saturating_add(1);
+    }
+    tx.commit().await?;
+    Ok(json!({ "voided": voided, "source": "usage_pending" }))
 }
 
 async fn app_retire(pool: &PgPool) -> Result<Value, sqlx::Error> {
@@ -240,8 +279,9 @@ async fn trigger(
     Ok(Json(json!({ "ok": true, "detail": detail })))
 }
 
-/// Start the background loop (5 min interval).
-pub fn spawn_loop(pool: PgPool) {
+/// Start the background loop (5 min interval); returns the task handle so the
+/// composition root can stop cron on SIGTERM (`docs/24` §6).
+pub fn spawn_loop(pool: PgPool) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(Duration::from_secs(300));
         loop {
@@ -261,7 +301,7 @@ pub fn spawn_loop(pool: PgPool) {
                 }
             }
         }
-    });
+    })
 }
 
 /// Admin job routes.

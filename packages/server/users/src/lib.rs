@@ -67,6 +67,13 @@ async fn create(
     validate_role(&request.role)?;
     let hash = hash_password(&request.password)
         .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "HASH_ERROR"))?;
+    // Identity mutation + audit in one transaction: an audit failure aborts the
+    // user creation (fail-closed, docs/07 §8).
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let id: Uuid = sqlx::query_scalar(
         "INSERT INTO users (username, display_name, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id",
     )
@@ -74,7 +81,7 @@ async fn create(
     .bind(&request.display_name)
     .bind(hash)
     .bind(&request.role)
-    .fetch_one(&state.pool)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|error| {
         if error.to_string().contains("duplicate") {
@@ -83,15 +90,18 @@ async fn create(
             auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR")
         }
     })?;
-    sqlx::query("INSERT INTO wallet_accounts (user_id, balance_micros) VALUES ($1, 0) ON CONFLICT (user_id) DO NOTHING").bind(id).execute(&state.pool).await.map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    zk_kit_server::audit(
-        &state,
+    sqlx::query("INSERT INTO wallet_accounts (user_id, balance_micros) VALUES ($1, 0) ON CONFLICT (user_id) DO NOTHING").bind(id).execute(&mut *tx).await.map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    zk_kit_server::audit_tx(
+        &mut tx,
         admin.user_id,
         "user.create",
         &id.to_string(),
         &json!({ "role": request.role }),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true, "id": id.to_string() })))
 }
 
@@ -137,6 +147,14 @@ async fn update(
         Some(_) => return Err(auth_error(StatusCode::BAD_REQUEST, "INVALID_PASSWORD")),
         None => None,
     };
+    // Identity mutation + revocation + audit in one transaction (fail-closed).
+    // Disabling revokes refresh tokens and admin sessions immediately; re-enabling
+    // must not resurrect them (docs/07 §1: 停用后会话/刷新令牌全部失效).
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     sqlx::query(
         "UPDATE users SET role = $1, status = $2, password_hash = COALESCE($3, password_hash), token_epoch = token_epoch + 1, updated_at = now() WHERE id = $4",
     )
@@ -144,17 +162,36 @@ async fn update(
     .bind(&next_status)
     .bind(password_hash)
     .bind(user_id)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await
     .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    zk_kit_server::audit(
-        &state,
+    if next_status == "disabled" {
+        sqlx::query(
+            "UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL",
+        )
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        sqlx::query(
+            "UPDATE admin_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL",
+        )
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    }
+    zk_kit_server::audit_tx(
+        &mut tx,
         admin.user_id,
         "user.update",
         &id,
         &json!({ "role": next_role, "status": next_status }),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -178,33 +215,41 @@ async fn remove(
     if role == "super_admin" && last_super_admin(&state, user_id).await? {
         return Err(auth_error(StatusCode::CONFLICT, "LAST_SUPER_ADMIN"));
     }
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     sqlx::query("UPDATE users SET deleted_at = now(), status = 'disabled', token_epoch = token_epoch + 1 WHERE id = $1")
         .bind(user_id)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     sqlx::query(
         "UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL",
     )
     .bind(user_id)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await
     .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     sqlx::query(
         "UPDATE admin_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL",
     )
     .bind(user_id)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await
     .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    zk_kit_server::audit(
-        &state,
+    zk_kit_server::audit_tx(
+        &mut tx,
         admin.user_id,
         "user.delete",
         &id,
         &json!({ "soft": true }),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true })))
 }
 

@@ -1,6 +1,7 @@
 //! Shared server infrastructure (state, JWT, password, admin guard, audit chain).
 #![forbid(unsafe_code)]
 
+use std::collections::BTreeSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
@@ -318,18 +319,31 @@ pub async fn require_admin(
     })
 }
 
-/// Append an audit row with a hash chain.
-pub async fn audit(
-    state: &AppState,
+/// Advisory-lock slot serializing audit hash-chain appends.
+const AUDIT_CHAIN_LOCK: i64 = 0x5A4B_4155_4449_5453;
+
+/// Append an audit row with a hash chain inside a caller-owned transaction.
+///
+/// Fail-closed contract (`docs/07` §8, `docs/22` §8): callers must invoke this
+/// before committing the business mutation, so an audit failure aborts both the
+/// mutation and the audit row. The transaction-scoped advisory lock serializes
+/// `prev_hash` reads so concurrent writers cannot fork the chain.
+pub async fn audit_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     actor: uuid::Uuid,
     action: &str,
     target: &str,
     detail: &serde_json::Value,
 ) -> Result<(), ServerError> {
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(AUDIT_CHAIN_LOCK)
+        .execute(&mut **tx)
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "AUDIT_FAILED"))?;
     let prev: String = sqlx::query_scalar(
         "SELECT COALESCE((SELECT hash FROM audit_log ORDER BY id DESC LIMIT 1), '')",
     )
-    .fetch_one(&state.pool)
+    .fetch_one(&mut **tx)
     .await
     .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "AUDIT_FAILED"))?;
     let hash = sha256_hex(&format!("{prev}{action}{target}{detail}"));
@@ -340,23 +354,121 @@ pub async fn audit(
         .bind(detail)
         .bind(&prev)
         .bind(hash)
-        .execute(&state.pool)
+        .execute(&mut **tx)
         .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "AUDIT_FAILED"))?;
     Ok(())
 }
 
-/// Apply an ordered, immutable migration list and record checksums.
+/// Append an audit row in its own transaction.
+///
+/// Retained for read-mostly domains; money and identity mutations must use
+/// [`audit_tx`] inside their business transaction (fail-closed).
+pub async fn audit(
+    state: &AppState,
+    actor: uuid::Uuid,
+    action: &str,
+    target: &str,
+    detail: &serde_json::Value,
+) -> Result<(), ServerError> {
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "AUDIT_FAILED"))?;
+    audit_tx(&mut tx, actor, action, target, detail).await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "AUDIT_FAILED"))?;
+    Ok(())
+}
+
+/// Acquire the single-instance PostgreSQL advisory lock.
+///
+/// The returned connection holds the session-level lock; callers keep it alive
+/// for the process lifetime and drop it on shutdown (`docs/24` §6).
+pub async fn acquire_instance_lock(
+    pool: &sqlx::PgPool,
+    key: i64,
+) -> Result<sqlx::pool::PoolConnection<sqlx::Postgres>, sqlx::Error> {
+    let mut conn = pool.acquire().await?;
+    let acquired: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock($1)")
+        .bind(key)
+        .fetch_one(&mut *conn)
+        .await?;
+    if !acquired {
+        return Err(sqlx::Error::Protocol(
+            "another zk-server instance already holds the advisory lock".to_owned(),
+        ));
+    }
+    Ok(conn)
+}
+
+/// Apply the ordered, immutable migration list and verify recorded checksums.
+///
+/// Startup refuses to run when a recorded migration changed/disappeared or the
+/// list is not strictly ordered (`docs/24` §5: "启动检测 … checksum 变化/顺序漂移
+/// → 拒启（只允许新增）"). Already-applied migrations are skipped.
 pub async fn run_migrations(
     pool: &sqlx::PgPool,
     migrations: &[(&str, &str)],
 ) -> Result<(), sqlx::Error> {
+    let mut seen = BTreeSet::new();
+    let mut previous: Option<&str> = None;
     for (id, sql) in migrations {
+        if !seen.insert(*id) {
+            return Err(sqlx::Error::Protocol(format!(
+                "duplicate migration id in build: {id}"
+            )));
+        }
+        if let Some(prev) = previous {
+            if *id <= prev {
+                return Err(sqlx::Error::Protocol(format!(
+                    "migration order drift: {id} is not after {prev}"
+                )));
+            }
+        }
+        previous = Some(id);
+        let _ = sql;
+    }
+    // The ledger table itself is created by the first (core) migration.
+    let ledger: Option<String> =
+        sqlx::query_scalar("SELECT to_regclass('schema_migrations')::text")
+            .fetch_one(pool)
+            .await?;
+    let applied: Vec<(String, String)> = if ledger.is_some() {
+        sqlx::query_as("SELECT id, checksum FROM schema_migrations")
+            .fetch_all(pool)
+            .await?
+    } else {
+        Vec::new()
+    };
+    let checksum_of = |sql: &str| {
         let mut hash = Sha256::new();
         hash.update(sql.as_bytes());
-        let checksum = format!("{:x}", hash.finalize());
+        format!("{:x}", hash.finalize())
+    };
+    for (id, recorded) in &applied {
+        let Some((_, sql)) = migrations.iter().find(|(candidate, _)| candidate == id) else {
+            return Err(sqlx::Error::Protocol(format!(
+                "applied migration missing from build (history deleted): {id}"
+            )));
+        };
+        let actual = checksum_of(sql);
+        if &actual != recorded {
+            return Err(sqlx::Error::Protocol(format!(
+                "migration checksum changed for {id}: recorded {recorded} != actual {actual}; \
+                 migrations are immutable, append a forward-only migration instead"
+            )));
+        }
+    }
+    for (id, sql) in migrations {
+        if applied.iter().any(|(applied_id, _)| applied_id == id) {
+            continue;
+        }
+        let checksum = checksum_of(sql);
         sqlx::raw_sql(sql).execute(pool).await?;
-        sqlx::query("INSERT INTO schema_migrations (id, checksum) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING")
+        sqlx::query("INSERT INTO schema_migrations (id, checksum) VALUES ($1, $2)")
             .bind(id)
             .bind(checksum)
             .execute(pool)

@@ -141,7 +141,7 @@ async fn refresh(
 ) -> Result<Json<serde_json::Value>, ServerError> {
     let digest = sha256_hex(&request.refresh_token);
     let row = sqlx::query(
-        "SELECT id, user_id, device_id, revoked_at FROM refresh_tokens WHERE token_hash = $1",
+        "SELECT id, user_id, device_id, revoked_at, expires_at FROM refresh_tokens WHERE token_hash = $1",
     )
     .bind(&digest)
     .fetch_optional(&state.pool)
@@ -151,18 +151,27 @@ async fn refresh(
     let revoked: Option<chrono::DateTime<chrono::Utc>> = row
         .try_get("revoked_at")
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    if revoked.is_some() {
-        return Err(error(StatusCode::UNAUTHORIZED, "REFRESH_REUSED"));
-    }
-    let device: String = row
-        .try_get("device_id")
+    let expires_at: chrono::DateTime<chrono::Utc> = row
+        .try_get("expires_at")
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    if device != request.device_id {
-        return Err(error(StatusCode::UNAUTHORIZED, "DEVICE_MISMATCH"));
-    }
     let user_id: uuid::Uuid = row
         .try_get("user_id")
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let device: String = row
+        .try_get("device_id")
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    if revoked.is_some() {
+        // Re-use of a rotated token means the device session family is
+        // compromised: revoke every live token for the device (docs/04 §3).
+        revoke_device_family(&state, user_id, &device).await?;
+        return Err(error(StatusCode::UNAUTHORIZED, "REFRESH_REUSED"));
+    }
+    if expires_at <= chrono::Utc::now() {
+        return Err(error(StatusCode::UNAUTHORIZED, "AUTH_EXPIRED"));
+    }
+    if device != request.device_id {
+        return Err(error(StatusCode::UNAUTHORIZED, "DEVICE_MISMATCH"));
+    }
     let user = sqlx::query(
         "SELECT role, token_epoch, status FROM users WHERE id = $1 AND deleted_at IS NULL",
     )
@@ -184,18 +193,21 @@ async fn refresh(
         .try_get("token_epoch")
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let next = random_token();
-    sqlx::query("UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1")
+    let next_id: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO refresh_tokens (user_id, device_id, token_hash, expires_at) VALUES ($1, $2, $3, now() + interval '30 days') RETURNING id",
+    )
+    .bind(user_id)
+    .bind(&request.device_id)
+    .bind(sha256_hex(&next))
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    sqlx::query("UPDATE refresh_tokens SET revoked_at = now(), replaced_by = $1 WHERE id = $2")
+        .bind(next_id)
         .bind(
             row.try_get::<uuid::Uuid, _>("id")
                 .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?,
         )
-        .execute(&state.pool)
-        .await
-        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    sqlx::query("INSERT INTO refresh_tokens (user_id, device_id, token_hash, expires_at) VALUES ($1, $2, $3, now() + interval '30 days')")
-        .bind(user_id)
-        .bind(&request.device_id)
-        .bind(sha256_hex(&next))
         .execute(&state.pool)
         .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
@@ -209,6 +221,22 @@ async fn refresh(
     Ok(Json(
         json!({ "ok": true, "access_token": access, "refresh_token": next, "expires_in": ACCESS_TTL_SECS }),
     ))
+}
+
+async fn revoke_device_family(
+    state: &AppState,
+    user_id: uuid::Uuid,
+    device_id: &str,
+) -> Result<(), ServerError> {
+    sqlx::query(
+        "UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND device_id = $2 AND revoked_at IS NULL",
+    )
+    .bind(user_id)
+    .bind(device_id)
+    .execute(&state.pool)
+    .await
+    .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    Ok(())
 }
 
 async fn me(
@@ -293,7 +321,9 @@ async fn admin_logout(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Response, ServerError> {
-    require_admin(&state, &headers, true).await?;
+    // Logout is a session-termination, not a privileged mutation: auditors may
+    // terminate their own admin session (docs/06 §1).
+    require_admin(&state, &headers, false).await?;
     let Some(session) = zk_kit_server::cookie(&headers, "zk_admin") else {
         return Err(error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"));
     };

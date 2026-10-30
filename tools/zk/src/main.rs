@@ -1456,13 +1456,13 @@ fn sha256_hex(bytes: &[u8]) -> String {
 
 fn db_lock(root: &Path, check: bool) -> Result<()> {
     use sha2::{Digest, Sha256};
-    #[derive(serde::Serialize)]
+    #[derive(serde::Serialize, serde::Deserialize)]
     struct LockMigration {
         version: String,
         package: String,
         checksum: String,
     }
-    #[derive(serde::Serialize)]
+    #[derive(serde::Serialize, serde::Deserialize)]
     struct LockFile {
         schema: u32,
         migrations: Vec<LockMigration>,
@@ -1508,6 +1508,61 @@ fn db_lock(root: &Path, check: bool) -> Result<()> {
             bail!("duplicate migration version: {version}");
         }
     }
+    let path = root.join("zk.lock");
+    let existing_text = fs::read_to_string(&path).ok();
+    if let Some(text) = &existing_text {
+        let existing: LockFile = serde_json::from_str(text)
+            .with_context(|| "zk.lock is not valid JSON; refusing to rewrite history")?;
+        let mut existing_versions = BTreeSet::new();
+        let mut max_existing: Option<String> = None;
+        for old in &existing.migrations {
+            existing_versions.insert(old.version.clone());
+            // History is immutable: a recorded migration must still exist with
+            // the same package path and content checksum.
+            let Some((package, checksum)) = migrations
+                .iter()
+                .find(|(version, _, _)| version == &old.version)
+                .map(|(_, package, checksum)| (package, checksum))
+            else {
+                bail!(
+                    "migration history deleted or renamed: {} (recorded in zk.lock); migrations are append-only, restore the file or add a new forward-only migration",
+                    old.version
+                );
+            };
+            if package != &old.package {
+                bail!(
+                    "migration history moved: {} recorded package {} != {}",
+                    old.version,
+                    old.package,
+                    package
+                );
+            }
+            if checksum != &old.checksum {
+                bail!(
+                    "migration history changed: {} recorded checksum {} != {}; never edit applied migrations, add a new forward-only migration",
+                    old.version,
+                    old.checksum,
+                    checksum
+                );
+            }
+            max_existing = Some(match max_existing {
+                Some(max) => max.max(old.version.clone()),
+                None => old.version.clone(),
+            });
+        }
+        if let Some(max) = max_existing {
+            for (version, _, _) in &migrations {
+                if existing_versions.contains(version) {
+                    continue;
+                }
+                if version <= &max {
+                    bail!(
+                        "zk.lock is append-only: new migration {version} must sort after the recorded maximum {max}"
+                    );
+                }
+            }
+        }
+    }
     let lock = LockFile {
         schema: 1,
         migrations: migrations
@@ -1520,7 +1575,6 @@ fn db_lock(root: &Path, check: bool) -> Result<()> {
             .collect(),
     };
     let rendered = format!("{}\n", serde_json::to_string_pretty(&lock)?);
-    let path = root.join("zk.lock");
     if check {
         let current =
             fs::read_to_string(&path).with_context(|| "zk.lock missing; run zk db lock")?;

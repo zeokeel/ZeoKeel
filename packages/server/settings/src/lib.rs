@@ -51,6 +51,11 @@ async fn admin_put(
     if key.trim().is_empty() {
         return Err(auth_error(StatusCode::BAD_REQUEST, "INVALID_KEY"));
     }
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     sqlx::query(
         "INSERT INTO system_settings (key, value, hot, updated_by) VALUES ($1, $2, $3, $4)
          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, hot = EXCLUDED.hot, updated_at = now(), updated_by = EXCLUDED.updated_by",
@@ -59,17 +64,20 @@ async fn admin_put(
     .bind(&request.value)
     .bind(request.hot)
     .bind(admin.user_id)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await
     .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    zk_kit_server::audit(
-        &state,
+    zk_kit_server::audit_tx(
+        &mut tx,
         admin.user_id,
         "settings.update",
         &key,
-        &json!({ "hot": request.hot }),
+        &json!({ "hot": request.hot, "value": request.value }),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true })))
 }
 
