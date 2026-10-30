@@ -46,6 +46,8 @@ pub fn configure_llm(base_url: &str, access_token: &str, model: &str) {
     zk_llm_gateway::set_model(model);
 }
 
+pub fn gateway_credentials() -> Option<(String, String)> { zk_llm_gateway::credentials() }
+
 pub fn build() -> Result<Runtime, String> {
     let tools: Vec<Arc<dyn zk_contract_tool::Tool>> = vec![
         Arc::new(zk_tool_fs::tool()),

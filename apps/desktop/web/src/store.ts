@@ -157,3 +157,9 @@ export async function openApp(session: AuthSession, serverUrl: string, item: App
   const version = response.headers.get("x-zeokeel-app-version") ?? item.version;
   return { version };
 }
+
+export async function fetchAppHtml(session: AuthSession, serverUrl: string, item: AppItem): Promise<string> {
+  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/apps/${encodeURIComponent(item.appId)}/assets/index.html`, { headers: { authorization: `Bearer ${session.access_token}` } });
+  if (!response.ok) throw new Error(`app asset HTTP ${response.status}`);
+  return response.text();
+}

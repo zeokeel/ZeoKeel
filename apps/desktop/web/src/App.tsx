@@ -11,7 +11,8 @@ import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
 import type { FileEntry, Transport } from "./types";
 import { parseFileEntries, parseUpdateRelease } from "./protocol";
-import { downloadSkillArchive, fetchApps, fetchConnectors, fetchSkills, fetchTombstones, openApp, sendInstallReceipt, toggleConnector, type AppItem, type ConnectorItem, type SkillItem } from "./store";
+import { AppSurface } from "@zeokeel/ui-apps";
+import { downloadSkillArchive, fetchAppHtml, fetchApps, fetchConnectors, fetchSkills, fetchTombstones, openApp, sendInstallReceipt, toggleConnector, type AppItem, type ConnectorItem, type SkillItem } from "./store";
 import { buildAuthorizeUrl, createPkcePair, exchangeCode, parseOAuthTokens, refreshOAuthToken, savePendingAuth, takePendingAuth, tokenNeedsRefresh } from "./oauth";
 import { clearSession, fetchBootstrapInfo, loadGatewayModel, loadServerUrl, loadSession, login as loginRequest, refreshSession, saveGatewayModel, saveServerUrl, saveSession, type AuthSession } from "./auth";
 
@@ -35,6 +36,7 @@ export function App(props: { transport: Transport }) {
   const [apps, setApps] = useState<AppItem[]>([]);
   const [appOpened, setAppOpened] = useState<string | null>(null);
   const [appError, setAppError] = useState<string | null>(null);
+  const [appSurface, setAppSurface] = useState<{ html: string; nonce: string; appId: string } | null>(null);
   const [installed, setInstalled] = useState<Array<{ name: string; version: string }>>([]);
   const [contentError, setContentError] = useState<string | null>(null);
   const [contentBusy, setContentBusy] = useState<string | null>(null);
@@ -238,12 +240,19 @@ export function App(props: { transport: Transport }) {
         apps={apps}
         appOpened={appOpened}
         appError={appError}
-        onOpenApp={(item) => {
+        surface={appSurface}
+      onCloseSurface={() => { setAppSurface(null); }}
+      onSurfaceRequest={(request) => props.transport.call("app_request", request)}
+      onOpenApp={(item) => {
           if (session === null) return;
           const url = serverUrl === "" ? state.settings.server_url : serverUrl;
           setAppError(null);
           void openApp(session, url, item)
-            .then((result) => setAppOpened(`已打开 ${item.name} v${result.version}`))
+            .then(async (result) => {
+              setAppOpened(`已打开 ${item.name} v${result.version}`);
+              const html = await fetchAppHtml(session, url, item);
+              setAppSurface({ html, nonce: crypto.randomUUID(), appId: item.appId });
+            })
             .catch((error: unknown) => setAppError(error instanceof Error ? error.message : "打开失败"));
         }}
         onToggleConnector={(item) => {
@@ -280,8 +289,9 @@ export function App(props: { transport: Transport }) {
 
 function AppShell(props: { controller: AppController; ui: UiValue; transport: Transport; gatewayModels: string[]; gatewayModel: string; onSelectGatewayModel: (model: string) => void; updateText: string | null; updateBusy: boolean; onCheckUpdate?: (() => void) | undefined;
   skills: SkillItem[]; connectors: ConnectorItem[]; installed: Array<{ name: string; version: string }>; contentError: string | null; contentBusy: string | null;
-  onInstall: (item: SkillItem) => void; onAuthorize: (item: ConnectorItem) => void; onToggleConnector: (item: ConnectorItem) => void; authorized: string[]; apps: AppItem[]; appOpened: string | null; appError: string | null; onOpenApp: (item: AppItem) => void }) {
-  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel, updateText, updateBusy, onCheckUpdate, skills, connectors, installed, contentError, contentBusy, onInstall, onAuthorize, onToggleConnector, authorized, apps, appOpened, appError, onOpenApp } = props;
+  onInstall: (item: SkillItem) => void; onAuthorize: (item: ConnectorItem) => void; onToggleConnector: (item: ConnectorItem) => void; authorized: string[]; apps: AppItem[]; appOpened: string | null; appError: string | null; onOpenApp: (item: AppItem) => void;
+  surface: { html: string; nonce: string; appId: string } | null; onCloseSurface: () => void; onSurfaceRequest: (request: { app_id: string; method: string; path: string; query: string; body_b64: string; request_id: string }) => Promise<unknown> }) {
+  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel, updateText, updateBusy, onCheckUpdate, skills, connectors, installed, contentError, contentBusy, onInstall, onAuthorize, onToggleConnector, authorized, apps, appOpened, appError, onOpenApp, surface, onCloseSurface, onSurfaceRequest } = props;
   const t = ui.t;
   const state = controller.state;
   const [commandsOpen, setCommandsOpen] = useState(false);
@@ -361,6 +371,7 @@ function AppShell(props: { controller: AppController; ui: UiValue; transport: Tr
       navigation={<SessionsSlot />}
       conversation={<ChatSlot key={ui.activeWorkspaceId === null ? "none" : ui.activeWorkspaceId} />}
       settings={<SettingsSlot gatewayModels={gatewayModels} gatewayModel={gatewayModel} onSelectGatewayModel={onSelectGatewayModel} onCheckUpdate={onCheckUpdate} updateText={updateText} updateBusy={updateBusy} renderProvider={SettingsProviderSlot} />}
+      surface={surface === null ? null : <AppSurface html={surface.html} nonce={surface.nonce} onClose={onCloseSurface} onRequest={(request) => { const result = onSurfaceRequest({ app_id: surface.appId, ...request }); return result.then((value) => { const record = typeof value === "object" && value !== null ? value as { status?: unknown; body_b64?: unknown } : {}; return { status: typeof record.status === "number" ? record.status : 500, body_b64: typeof record.body_b64 === "string" ? record.body_b64 : "" }; }); }} />}
       overlay={<>
         <SkillsSlot open={panel === "skills"} items={skills} installed={installed} busy={contentBusy} error={contentError} onInstall={onInstall} onClose={() => { setPanel(null); }} />
         <ConnectorsSlot open={panel === "connectors"} items={connectors} error={contentError} authorized={authorized} onAuthorize={onAuthorize} onToggle={onToggleConnector} onClose={() => { setPanel(null); }} />

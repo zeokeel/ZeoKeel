@@ -34,3 +34,53 @@ export function AppsPanel(props: AppsPanelProps) {
 }
 
 export const components = { "panel.apps": AppsPanel } as const;
+
+export interface AppSurfaceProps {
+  html: string;
+  nonce: string;
+  onRequest: (payload: { method: string; path: string; query: string; body_b64: string; request_id: string }) => Promise<{ status: number; body_b64: string }>;
+  onClose: () => void;
+}
+
+/** Sandboxed static app surface (serve path; desktop uses an isolated Tauri window). */
+export function AppSurface(props: AppSurfaceProps) {
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col bg-background" role="dialog" aria-modal="true" aria-label="应用窗口">
+      <div className="flex h-9 items-center justify-between border-b border-border px-3">
+        <span className="text-[12px] text-muted-foreground">隔离应用窗口</span>
+        <button type="button" onClick={props.onClose} className="text-[12px]">关闭</button>
+      </div>
+      <iframe
+        title="应用"
+        sandbox="allow-scripts"
+        className="flex-1 border-0 bg-background"
+        srcDoc={`<script>window.__zkNonce=${JSON.stringify(props.nonce)};window.zkAppRequest=function(payload){return new Promise(function(resolve){var id=Math.random().toString(36);function onMessage(event){if(event.data&&event.data.zkResponse===id){window.removeEventListener('message',onMessage);resolve(event.data.response);}}window.addEventListener('message',onMessage);window.parent.postMessage({zkRequest:id,nonce:window.__zkNonce,payload:payload},'*');});};</script>${props.html}`}
+        onLoad={(event) => {
+          const frame = event.currentTarget;
+          const listener = (message: MessageEvent) => {
+            const data: unknown = message.data;
+            if (frame.contentWindow === null || message.source !== frame.contentWindow) return;
+            if (typeof data !== "object" || data === null) return;
+            const value = data as { zkRequest?: unknown; nonce?: unknown; payload?: unknown };
+            if (value.nonce !== props.nonce) return;
+            const requestId = String(value.zkRequest ?? "");
+            const payload = value.payload;
+            if (typeof payload !== "object" || payload === null) return;
+            const request = payload as { method?: unknown; path?: unknown; query?: unknown; body_b64?: unknown; request_id?: unknown };
+            void props.onRequest({
+              method: typeof request.method === "string" ? request.method : "GET",
+              path: typeof request.path === "string" ? request.path : "/",
+              query: typeof request.query === "string" ? request.query : "",
+              body_b64: typeof request.body_b64 === "string" ? request.body_b64 : "",
+              request_id: typeof request.request_id === "string" ? request.request_id : requestId,
+            }).then((response) => { frame.contentWindow?.postMessage({ zkResponse: requestId, response }, "*"); });
+          };
+          window.addEventListener("message", listener);
+          frame.addEventListener("load", () => { window.removeEventListener("message", listener); }, { once: true });
+        }}
+      />
+    </div>
+  );
+}
+
+export const componentsWithSurface = { "panel.apps": AppsPanel, "surface.apps": AppSurface } as const;

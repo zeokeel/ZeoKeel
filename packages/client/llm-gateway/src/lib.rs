@@ -38,6 +38,13 @@ pub fn set_credentials(base_url: &str, access_token: &str) {
     }
 }
 
+/// Current injected credentials (base URL, access token), if configured.
+#[must_use]
+pub fn credentials() -> Option<(String, String)> {
+    let config = config().read().ok()?;
+    if config.base_url.is_empty() || config.access_token.is_empty() { None } else { Some((config.base_url.clone(), config.access_token.clone())) }
+}
+
 /// Override the default gateway model (from bootstrap catalog).
 pub fn set_model(model: &str) {
     if model.trim().is_empty() {

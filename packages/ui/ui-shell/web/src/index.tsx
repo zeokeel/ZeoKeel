@@ -26,6 +26,7 @@ export interface ShellFrameProps {
   settings: ReactNode;
   inspector: ReactNode;
   overlay?: ReactNode;
+  surface?: ReactNode;
   inspectorOpen: boolean;
   onRetryBoot: () => void;
   onToggleSidebar: () => void;
@@ -153,6 +154,7 @@ export function ShellFrame(props: ShellFrameProps) {
         </div>
         {props.settings}
         {props.overlay ?? null}
+        {props.surface ?? null}
         {props.toast !== null ? (
           <div className="fixed end-3 top-[52px] z-50 flex max-w-[min(420px,calc(100vw-24px))] items-center gap-2 rounded-xl bg-popover px-2.5 py-1.5 text-[12px] text-foreground shadow-[var(--zk-shadow-lift)]" role="status">
             <span>{props.toast}</span>

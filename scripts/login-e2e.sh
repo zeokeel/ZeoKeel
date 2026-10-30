@@ -104,9 +104,16 @@ curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X PUT "http:/
 curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/connectors/$CONN_ID/oauth" -H 'content-type: application/json' -d '{"client_id":"public-client","scopes":["mcp"],"redirect_uri":"http://127.0.0.1:8789/"}' >/dev/null
 # Seed one approved app for the client apps panel.
 ADMIN_JWT=$(curl -fsS -X POST "http://127.0.0.1:$SERVER_PORT/api/client/v1/auth/login" -H 'content-type: application/json' -d '{"username":"admin","password":"admin-pass","device_id":"seed-app"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
-printf '\0asm\1\0\0\0' > /tmp/zk-client-app.wasm
-printf '{"name":"client-app","version":"1.0.0","description":"client e2e","icon":"","db_schema_version":0,"db_migrations":[],"ui":[]}' > /tmp/zk-client-app.json
-APP=$(curl -fsS -X POST "http://127.0.0.1:$SERVER_PORT/api/client/v1/apps" -H "Authorization: Bearer $ADMIN_JWT" -F "manifest=</tmp/zk-client-app.json" -F "wasm=@/tmp/zk-client-app.wasm")
+cp experiments/wasm-poc/guest-go/guest-go.wasm /tmp/zk-client-app.wasm
+python3 - <<'PYUI'
+import json,zipfile
+open('/tmp/zk-client-app.json','w').write(json.dumps({"name":"client-app","version":"1.0.0","description":"client e2e","icon":"","db_schema_version":1,"db_migrations":[{"version":1,"sql":"CREATE TABLE IF NOT EXISTS items(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);"}],"ui":["index.html"]}))
+html = """<!doctype html><html><body><h1>client app</h1><pre id=out>waiting</pre><script>
+(async()=>{await new Promise(r=>setTimeout(r,500));try{const body=btoa(JSON.stringify({op:'add',name:'client'}));await window.zkAppRequest({method:'POST',path:'/items',body_b64:body,request_id:'a'});const list=await window.zkAppRequest({method:'GET',path:'/items',body_b64:'',request_id:'b'});document.getElementById('out').textContent='rows:'+atob(list.body_b64);}catch(e){document.getElementById('out').textContent='error:'+e;}})();
+</script></body></html>"""
+with zipfile.ZipFile('/tmp/zk-client-app-ui.zip','w') as z: z.writestr('index.html',html)
+PYUI
+APP=$(curl -fsS -X POST "http://127.0.0.1:$SERVER_PORT/api/client/v1/apps" -H "Authorization: Bearer $ADMIN_JWT" -F "manifest=</tmp/zk-client-app.json" -F "wasm=@/tmp/zk-client-app.wasm" -F "ui=@/tmp/zk-client-app-ui.zip")
 APP_ID=$(printf '%s' "$APP" | python3 -c 'import json,sys;print(json.load(sys.stdin)["app_id"])')
 curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/apps/$APP_ID/approve" >/dev/null
 curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X PUT "http://127.0.0.1:$SERVER_PORT/api/admin/apps/$APP_ID/grants" -H 'content-type: application/json' -d '{"grants":[{"grantee":"all","can_open":true}]}' >/dev/null

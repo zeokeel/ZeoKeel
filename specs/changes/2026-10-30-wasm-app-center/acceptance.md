@@ -24,6 +24,10 @@
 
 - task 7（部分）：`@zeokeel/ui-apps` 目录/打开/错误状态 + ⌘K 应用；服务端 open 票据；`login-e2e.sh` 3 passed，截图 `target/evidence/m4/client-apps.png`。**独立 origin 窗口/隔离页/app_request IPC 尚未实现。**
 
+## 进展（续 3）
+
+- task 7（部分）：新增 `AppSurface` sandbox iframe + `app_request` IPC/`gateway_credentials`；`login-e2e` 能打开隔离应用窗口并渲染静态 UI；应用内脚本→host `app_request` 的闭环尚未跑通。Tauri per-app scheme/partition/capability 未实现。
+
 ## 检查
 
 - [ ] `bash scripts/apps-e2e.sh`

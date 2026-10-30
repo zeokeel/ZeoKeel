@@ -100,6 +100,8 @@ pub mod commands {
     pub const WORKSPACE_FILES: &str = "workspace.files";
     /// Check personal update feed.
     pub const UPDATE_CHECK: &str = "update.check";
+    /// Forward one app request envelope to the server (Bearer injected by host).
+    pub const APP_REQUEST: &str = "app_request";
     /// Install a downloaded skill archive (validated/extracted by host).
     pub const SKILLS_INSTALL: &str = "skills.install";
     /// Save connector OAuth tokens in the OS keychain.

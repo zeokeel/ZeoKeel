@@ -199,6 +199,7 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 Err(error) => CommandResponse::err(format!("update/check: {error}")),
             }
         }
+        commands::APP_REQUEST => app_request(payload),
         commands::SKILLS_INSTALL => install_skill(payload),
         commands::SKILLS_INSTALLED => installed_skills(),
         commands::SKILLS_REMOVE => remove_skill(payload),
@@ -248,6 +249,31 @@ fn list_workspace_files(root: &str) -> Result<Vec<Value>, String> {
         a_path.cmp(b_path)
     });
     Ok(items)
+}
+
+fn app_request(payload: &Value) -> CommandResponse {
+    let Some(app_id) = payload.get("app_id").and_then(Value::as_str) else { return CommandResponse::err("missing app_id"); };
+    if app_id.is_empty() || app_id.len() > 64 || !app_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') { return CommandResponse::err("APP_BAD_REQUEST"); }
+    let Some((base_url, token)) = zk_composed::gateway_credentials() else { return CommandResponse::err("AUTH_REQUIRED"); };
+    let request = json!({
+        "abi": "zeokeel-app/1",
+        "app_id": app_id,
+        "method": payload.get("method").and_then(Value::as_str).unwrap_or("GET"),
+        "path": payload.get("path").and_then(Value::as_str).unwrap_or("/"),
+        "query": payload.get("query").and_then(Value::as_str).unwrap_or(""),
+        "headers": payload.get("headers").cloned().unwrap_or(json!({})),
+        "body_b64": payload.get("body_b64").and_then(Value::as_str).unwrap_or(""),
+        "request_id": payload.get("request_id").and_then(Value::as_str).unwrap_or("host"),
+    });
+    let url = format!("{}/api/client/v1/apps/{app_id}/request", base_url.trim_end_matches('/'));
+    let client = reqwest::blocking::Client::new();
+    match client.post(url).bearer_auth(token).json(&request).send() {
+        Ok(response) => match response.error_for_status() {
+            Ok(ok) => match ok.json::<Value>() { Ok(value) => CommandResponse::ok(value), Err(error) => CommandResponse::err(format!("APP_BAD_RESPONSE: {error}")) },
+            Err(error) => CommandResponse::err(format!("APP_UNAVAILABLE: {error}")),
+        },
+        Err(error) => CommandResponse::err(format!("APP_UNAVAILABLE: {error}")),
+    }
 }
 
 fn skill_root() -> Result<std::path::PathBuf, String> {

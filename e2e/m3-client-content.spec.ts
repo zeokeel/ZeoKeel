@@ -51,6 +51,10 @@ test.describe("M3 client content store", () => {
     await expect(apps.getByText("client-app")).toBeVisible();
     await apps.getByRole("button", { name: "打开" }).click();
     await expect(apps.getByRole("status")).toContainText("已打开 client-app v1.0.0", { timeout: 10_000 });
+    const surface = page.getByRole("dialog", { name: "应用窗口" });
+    await expect(surface).toBeVisible({ timeout: 10_000 });
+    await expect(surface.getByTitle("应用")).toBeVisible();
     await page.screenshot({ path: "target/evidence/m4/client-apps.png" });
+    await surface.getByRole("button", { name: "关闭" }).click();
   });
 });
