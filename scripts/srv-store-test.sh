@@ -53,8 +53,12 @@ python3 -c 'import zipfile; z=zipfile.ZipFile("/tmp/zk-downloaded.zip"); assert 
 CATALOG=$(curl -fsS "$BASE/api/client/v1/skills" -H "Authorization: Bearer $ADMIN_JWT")
 [[ "$(printf '%s' "$CATALOG" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["items"]))')" == "1" ]]
 [[ "$(printf '%s' "$CATALOG" | python3 -c 'import json,sys;print(json.load(sys.stdin)["items"][0]["version"])')" == "1.0.0" ]]
+CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/client/v1/skills/demo-skill/1.0.0/install" -H "Authorization: Bearer $ADMIN_JWT" -H 'content-type: application/json' -d '{"tree_sha256":"'$(printf 'a%.0s' {1..64})'"}')
+[[ "$CODE" == "200" ]]
 CODE=$(curl -sS -b /tmp/zk-store-admin.cookies -H "X-CSRF-Token: $CSRF" -o /dev/null -w '%{http_code}' -X DELETE "$BASE/api/admin/skills/$SKILL_ID")
 [[ "$CODE" == "200" ]]
+TOMB=$(curl -fsS "$BASE/api/client/v1/skills/tombstones" -H "Authorization: Bearer $ADMIN_JWT")
+[[ "$(printf '%s' "$TOMB" | python3 -c 'import json,sys;print("demo-skill" in json.load(sys.stdin)["items"])')" == "True" ]]
 CATALOG=$(curl -fsS "$BASE/api/client/v1/skills" -H "Authorization: Bearer $ADMIN_JWT")
 [[ "$(printf '%s' "$CATALOG" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["items"]))')" == "0" ]]
 CONN=$(curl -fsS -b /tmp/zk-store-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/admin/connectors" -H 'content-type: application/json' -d '{"name":"demo-mcp","transport":"http","config":{}}')

@@ -26,5 +26,5 @@ export const SessionsSlot = c4["sessions.sidebar"];
 export const SettingsSlot = c5["settings.dialog"];
 export const SettingsProviderSlot = c6["settings.provider"];
 export function LoginSlot(_props: { serverUrl: string | null; channelLocked: boolean; loading: boolean; error: string | null; onSubmit: (input: { serverUrl?: string; username: string; password: string; deviceName: string }) => void }) { return null; }
-export function SkillsSlot(_props: unknown) { return null; }
-export function ConnectorsSlot(_props: unknown) { return null; }
+export function SkillsSlot(_props: Record<string, unknown>) { return null; }
+export function ConnectorsSlot(_props: Record<string, unknown>) { return null; }

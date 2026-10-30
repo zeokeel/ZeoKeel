@@ -24,6 +24,8 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/admin/skills/{id}/versions", post(upload))
         .route("/api/client/v1/skills/{name}/{version}/archive", get(download))
+        .route("/api/client/v1/skills/{name}/{version}/install", post(receipt))
+        .route("/api/client/v1/skills/tombstones", get(tombstones))
         .layer(DefaultBodyLimit::max(MAX_ARCHIVE))
 }
 
@@ -121,6 +123,50 @@ async fn upload(
     tx.commit().await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     audit(&state, admin.user_id, "skill.release.create", &release_id.to_string(), &json!({ "content_id": content_id.to_string(), "version": version.trim(), "sha256": meta.sha256 })).await?;
     Ok(Json(json!({ "ok": true, "release_id": release_id.to_string(), "sha256": meta.sha256 })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct Receipt { tree_sha256: String }
+
+async fn receipt(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((name, version)): Path<(String, String)>,
+    Json(body): Json<Receipt>,
+) -> Result<Json<serde_json::Value>, ServerError> {
+    let (user_id, _role, _epoch) = current_user(&state, &headers).await?;
+    let user = Uuid::parse_str(&user_id).map_err(|_| error(StatusCode::UNAUTHORIZED, "AUTH_EXPIRED"))?;
+    if body.tree_sha256.len() != 64 || !body.tree_sha256.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(error(StatusCode::BAD_REQUEST, "VALIDATION"));
+    }
+    let row = sqlx::query(
+        "SELECT c.id AS content_id, r.id AS release_id FROM contents c JOIN content_releases r ON r.content_id = c.id
+         WHERE c.kind = 'skill' AND c.name = $1 AND r.version = $2 AND c.status = 'approved' AND c.deleted_at IS NULL
+           AND (COALESCE((SELECT can_install FROM content_grants g WHERE g.content_id = c.id AND g.grantee = 'all'), false)
+                OR COALESCE((SELECT can_install FROM content_grants g WHERE g.content_id = c.id AND g.grantee = $3), false))
+         LIMIT 1",
+    ).bind(&name).bind(&version).bind(user.to_string()).fetch_optional(&state.pool).await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?
+        .ok_or_else(|| error(StatusCode::NOT_FOUND, "SKILL_NOT_FOUND"))?;
+    let content: Uuid = row.try_get("content_id").map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let release: Uuid = row.try_get("release_id").map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    sqlx::query(
+        "INSERT INTO content_installs (user_id, content_id, release_id, tree_sha256, source)
+         VALUES ($1, $2, $3, $4, 'client')
+         ON CONFLICT (user_id, content_id, release_id) DO UPDATE SET tree_sha256 = EXCLUDED.tree_sha256, installed_at = now()",
+    ).bind(user).bind(content).bind(release).bind(&body.tree_sha256).execute(&state.pool).await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    audit(&state, user, "skill.install", &format!("{name}@{version}"), &json!({ "tree_sha256": body.tree_sha256, "source": "client" })).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn tombstones(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<serde_json::Value>, ServerError> {
+    let (user_id, _role, _epoch) = current_user(&state, &headers).await?;
+    let _user = Uuid::parse_str(&user_id).map_err(|_| error(StatusCode::UNAUTHORIZED, "AUTH_EXPIRED"))?;
+    let rows = sqlx::query("SELECT name FROM contents WHERE kind = 'skill' AND deleted_at IS NOT NULL").fetch_all(&state.pool).await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let items: Vec<String> = rows.into_iter().filter_map(|row| row.try_get::<String, _>("name").ok()).collect();
+    Ok(Json(json!({ "ok": true, "items": items })))
 }
 
 async fn download(

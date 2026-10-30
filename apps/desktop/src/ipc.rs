@@ -201,6 +201,7 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
         }
         commands::SKILLS_INSTALL => install_skill(payload),
         commands::SKILLS_INSTALLED => installed_skills(),
+        commands::SKILLS_REMOVE => remove_skill(payload),
         commands::CHAT_SEND => chat_send(state, payload),
         commands::CHAT_CANCEL => chat_cancel(state, payload),
         commands::APPROVAL_DECIDE => {
@@ -339,6 +340,23 @@ fn install_skill(payload: &Value) -> CommandResponse {
         return CommandResponse::err(format!("skills install: {error}"));
     }
     CommandResponse::ok(json!({ "installed": true, "tree_sha256": tree, "path": target.to_string_lossy() }))
+}
+
+fn remove_skill(payload: &Value) -> CommandResponse {
+    let Some(name) = payload.get("name").and_then(Value::as_str) else {
+        return CommandResponse::err("missing name");
+    };
+    if !safe_component(name) {
+        return CommandResponse::err("SKILL_VALIDATION");
+    }
+    let root = match skill_root() { Ok(root) => root, Err(error) => return CommandResponse::err(error) };
+    let target = root.join(name);
+    if target.exists() {
+        if let Err(error) = std::fs::remove_dir_all(&target) {
+            return CommandResponse::err(format!("skills remove: {error}"));
+        }
+    }
+    CommandResponse::ok(json!({ "removed": true }))
 }
 
 fn installed_skills() -> CommandResponse {
@@ -570,6 +588,9 @@ mod tests {
         let link = install("link-skill", "1.0.0", &zip_symlink_bytes());
         assert_eq!(link["ok"], serde_json::Value::Bool(false), "{link}");
 
+        let removed = super::remove_skill(&serde_json::json!({ "name": "demo-skill" }));
+        assert!(removed.ok);
+        assert!(!home.join("skills/demo-skill").exists());
         std::fs::remove_dir_all(&home).unwrap();
     }
 }

@@ -102,6 +102,8 @@ pub mod commands {
     pub const UPDATE_CHECK: &str = "update.check";
     /// Install a downloaded skill archive (validated/extracted by host).
     pub const SKILLS_INSTALL: &str = "skills.install";
+    /// Remove an installed skill (all versions).
+    pub const SKILLS_REMOVE: &str = "skills.remove";
     /// List installed skills (host-managed).
     pub const SKILLS_INSTALLED: &str = "skills.installed";
     /// Runtime metadata (edition/packages).

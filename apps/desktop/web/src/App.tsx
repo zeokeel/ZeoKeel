@@ -11,7 +11,7 @@ import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
 import type { FileEntry, Transport } from "./types";
 import { parseFileEntries, parseUpdateRelease } from "./protocol";
-import { downloadSkillArchive, fetchConnectors, fetchSkills, toggleConnector, type ConnectorItem, type SkillItem } from "./store";
+import { downloadSkillArchive, fetchConnectors, fetchSkills, fetchTombstones, sendInstallReceipt, toggleConnector, type ConnectorItem, type SkillItem } from "./store";
 import { clearSession, fetchBootstrapInfo, loadGatewayModel, loadServerUrl, loadSession, login as loginRequest, refreshSession, saveGatewayModel, saveServerUrl, saveSession, type AuthSession } from "./auth";
 
 
@@ -31,7 +31,7 @@ export function App(props: { transport: Transport }) {
   const [updateBusy, setUpdateBusy] = useState(false);
   const [skills, setSkills] = useState<SkillItem[]>([]);
   const [connectors, setConnectors] = useState<ConnectorItem[]>([]);
-  const [installed, setInstalled] = useState<string[]>([]);
+  const [installed, setInstalled] = useState<Array<{ name: string; version: string }>>([]);
   const [contentError, setContentError] = useState<string | null>(null);
   const [contentBusy, setContentBusy] = useState<string | null>(null);
   const { state } = controller;
@@ -40,12 +40,23 @@ export function App(props: { transport: Transport }) {
     const url = serverUrl === "" ? state.settings.server_url : serverUrl;
     if (url === "") return;
     void props.transport.call("auth.configure", { server_url: url, access_token: session.access_token, model: loadGatewayModel() }).catch(() => {});
-    void Promise.all([fetchSkills(session, url), fetchConnectors(session, url), props.transport.call("skills.installed", {})])
-      .then(([skillItems, connectorItems, installedValue]) => {
+    void Promise.all([fetchSkills(session, url), fetchConnectors(session, url), props.transport.call("skills.installed", {}), fetchTombstones(session, url)])
+      .then(async ([skillItems, connectorItems, installedValue, tombstones]) => {
         setSkills(skillItems);
         setConnectors(connectorItems);
         const rows = typeof installedValue === "object" && installedValue !== null ? (installedValue as { items?: unknown }).items : [];
-        if (Array.isArray(rows)) setInstalled(rows.flatMap((row) => typeof row === "object" && row !== null && typeof (row as { name?: unknown }).name === "string" ? [(row as { name: string }).name] : []));
+        const local = Array.isArray(rows) ? rows.flatMap((row) => {
+          if (typeof row !== "object" || row === null) return [];
+          const name = (row as { name?: unknown }).name;
+          const version = (row as { version?: unknown }).version;
+          return typeof name === "string" && typeof version === "string" ? [{ name, version }] : [];
+        }) : [];
+        for (const entry of local) {
+          if (tombstones.includes(entry.name)) {
+            await props.transport.call("skills.remove", { name: entry.name }).catch(() => undefined);
+          }
+        }
+        setInstalled(local.filter((entry) => !tombstones.includes(entry.name)));
       })
       .catch((error: unknown) => { setContentError(error instanceof Error ? error.message : "catalog failed"); });
     const refreshMs = Math.max(session.expires_in, 60) * 800;
@@ -167,7 +178,14 @@ export function App(props: { transport: Transport }) {
           setContentError(null);
           void downloadSkillArchive(session, url, item)
             .then((archive) => props.transport.call("skills.install", { name: item.name, version: item.version, archive_base64: archive.archive_base64 }))
-            .then(() => { setInstalled((values) => values.includes(item.name) ? values : [...values, item.name]); })
+            .then((result) => {
+              const tree = typeof result === "object" && result !== null && typeof (result as { tree_sha256?: unknown }).tree_sha256 === "string"
+                ? (result as { tree_sha256: string }).tree_sha256
+                : undefined;
+              if (typeof tree !== "string") throw new Error("missing tree_sha256");
+              return sendInstallReceipt(session, url, item, tree);
+            })
+            .then(() => { setInstalled((values) => [...values.filter((entry) => entry.name !== item.name), { name: item.name, version: item.version }]); })
             .catch((error: unknown) => { setContentError(error instanceof Error ? error.message : "install failed"); })
             .finally(() => { setContentBusy(null); });
         }}
@@ -204,7 +222,7 @@ export function App(props: { transport: Transport }) {
 }
 
 function AppShell(props: { controller: AppController; ui: UiValue; transport: Transport; gatewayModels: string[]; gatewayModel: string; onSelectGatewayModel: (model: string) => void; updateText: string | null; updateBusy: boolean; onCheckUpdate?: (() => void) | undefined;
-  skills: SkillItem[]; connectors: ConnectorItem[]; installed: string[]; contentError: string | null; contentBusy: string | null;
+  skills: SkillItem[]; connectors: ConnectorItem[]; installed: Array<{ name: string; version: string }>; contentError: string | null; contentBusy: string | null;
   onInstall: (item: SkillItem) => void; onToggleConnector: (item: ConnectorItem) => void }) {
   const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel, updateText, updateBusy, onCheckUpdate, skills, connectors, installed, contentError, contentBusy, onInstall, onToggleConnector } = props;
   const t = ui.t;

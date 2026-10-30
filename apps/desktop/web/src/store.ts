@@ -98,3 +98,22 @@ export async function toggleConnector(session: AuthSession, serverUrl: string, i
   });
   if (!response.ok) throw new Error(`connector HTTP ${response.status}`);
 }
+
+export async function fetchTombstones(session: AuthSession, serverUrl: string): Promise<string[]> {
+  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/skills/tombstones`, {
+    headers: { authorization: `Bearer ${session.access_token}` },
+  });
+  if (!response.ok) return [];
+  const body: unknown = await response.json();
+  const items = record(body)?.["items"];
+  return Array.isArray(items) ? items.flatMap((item) => (typeof item === "string" ? [item] : [])) : [];
+}
+
+export async function sendInstallReceipt(session: AuthSession, serverUrl: string, item: SkillItem, treeSha256: string): Promise<void> {
+  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/skills/${encodeURIComponent(item.name)}/${encodeURIComponent(item.version)}/install`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${session.access_token}`, "content-type": "application/json" },
+    body: JSON.stringify({ tree_sha256: treeSha256 }),
+  });
+  if (!response.ok) throw new Error(`install receipt HTTP ${response.status}`);
+}

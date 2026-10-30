@@ -12,7 +12,7 @@ export interface SkillItem {
 export interface SkillsPanelProps {
   open: boolean;
   items: SkillItem[];
-  installed: string[];
+  installed: Array<{ name: string; version: string }>;
   busy: string | null;
   error: string | null;
   onInstall: (item: SkillItem) => void;
@@ -33,8 +33,8 @@ export function SkillsPanel(props: SkillsPanelProps) {
             <li key={item.id} className="flex items-center gap-3 rounded-document bg-muted px-3 py-2">
               <div className="min-w-0 flex-1"><p className="truncate text-[13px] text-foreground">{item.name}</p><p className="text-[11px] text-muted-foreground">{item.version || "未发布"} · {item.sha256.slice(0, 12)}</p></div>
               {item.enforced ? <span className="text-[10px] text-destructive">强制</span> : null}
-              {props.installed.includes(item.name) ? <span className="text-[11px] text-muted-foreground">已安装</span> : (
-                <button type="button" disabled={!item.can_install || props.busy === item.name} onClick={() => props.onInstall(item)} className="rounded-control bg-foreground px-2 py-1 text-[11px] text-background disabled:opacity-40">{props.busy === item.name ? "安装中…" : item.can_install ? "安装" : "不可安装"}</button>
+              {props.installed.some((installed) => installed.name === item.name && installed.version === item.version) ? <span className="text-[11px] text-muted-foreground">已安装</span> : (
+                <button type="button" disabled={!item.can_install || props.busy === item.name} onClick={() => props.onInstall(item)} className="rounded-control bg-foreground px-2 py-1 text-[11px] text-background disabled:opacity-40">{props.busy === item.name ? (props.installed.some((installed) => installed.name === item.name) ? "更新中…" : "安装中…") : item.can_install ? (props.installed.some((installed) => installed.name === item.name) ? "更新" : "安装") : "不可安装"}</button>
               )}
             </li>
           ))}

@@ -1100,8 +1100,8 @@ fn ui_registry_ts(resolved: &Resolved) -> String {
     } else {
         "import type { ProviderSettingsProps } from \"@zeokeel/ui-kit\";\nexport function SettingsProviderSlot(_props: ProviderSettingsProps) { return null; }\n".to_owned()
     };
-    let skills_stub = if bindings.contains("SkillsSlot") { String::new() } else { "export function SkillsSlot(_props: unknown) { return null; }\n".to_owned() };
-    let connectors_stub = if bindings.contains("ConnectorsSlot") { String::new() } else { "export function ConnectorsSlot(_props: unknown) { return null; }\n".to_owned() };
+    let skills_stub = if bindings.contains("SkillsSlot") { String::new() } else { "export function SkillsSlot(_props: Record<string, unknown>) { return null; }\n".to_owned() };
+    let connectors_stub = if bindings.contains("ConnectorsSlot") { String::new() } else { "export function ConnectorsSlot(_props: Record<string, unknown>) { return null; }\n".to_owned() };
     let login_stub = if bindings.contains("LoginSlot") {
         String::new()
     } else {
