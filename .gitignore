@@ -25,3 +25,7 @@ experiments/wasm-poc/guest-go/guest-go.wasm
 experiments/wasm-poc/target/
 experiments/composition-poc/target/
 target/evidence/
+
+# playwright local artifacts
+test-results/
+playwright-report/

@@ -9,4 +9,6 @@ cargo check --workspace
 python3 scripts/docs-check.py
 python3 scripts/spec-check.py
 python3 scripts/review-check.py
+pnpm --dir apps/desktop/web build
+pnpm --dir apps/desktop/web test
 echo "check: ok"
