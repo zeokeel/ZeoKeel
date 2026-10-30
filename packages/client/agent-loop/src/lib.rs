@@ -62,9 +62,17 @@ impl AgentLoop {
             .llm
             .complete(&prompt_for(input))
             .map_err(|error| AgentError::Llm(error.to_string()))?;
+        self.run_output(&output, sink, context)
+    }
 
+    fn run_output(
+        &self,
+        output: &str,
+        sink: &dyn EventSink,
+        context: Option<&TurnContext>,
+    ) -> Result<AgentReply, AgentError> {
         let Some(directive) = output.trim().strip_prefix(TOOL_PREFIX) else {
-            return Ok(AgentReply { text: output, tool_calls: Vec::new() });
+            return Ok(AgentReply { text: output.to_owned(), tool_calls: Vec::new() });
         };
 
         let (name, args) = parse_directive(directive)?;
@@ -122,20 +130,7 @@ impl Agent for AgentLoop {
         input: &str,
         sink: &dyn EventSink,
     ) -> Result<AgentReply, AgentError> {
-        sink.emit(AgentEvent::TurnStarted { turn_id: turn_id.to_owned() });
-        match self.run_emitting(input, sink, None) {
-            Ok(reply) => {
-                for delta in chunk_text(&reply.text) {
-                    sink.emit(AgentEvent::TextDelta { delta });
-                }
-                sink.emit(AgentEvent::TurnCompleted { reply: reply.clone() });
-                Ok(reply)
-            }
-            Err(error) => {
-                sink.emit(AgentEvent::Error { message: error.to_string() });
-                Err(error)
-            }
-        }
+        self.run_stream_ctx(turn_id, input, sink, None)
     }
 
     fn run_stream_in(
@@ -148,41 +143,47 @@ impl Agent for AgentLoop {
         if context.workspace_root.trim().is_empty() {
             return Err(AgentError::Tool("workspace_root is empty".to_owned()));
         }
+        self.run_stream_ctx(turn_id, input, sink, Some(context))
+    }
+}
+
+impl AgentLoop {
+    fn run_stream_ctx(
+        &self,
+        turn_id: &str,
+        input: &str,
+        sink: &dyn EventSink,
+        context: Option<&TurnContext>,
+    ) -> Result<AgentReply, AgentError> {
         sink.emit(AgentEvent::TurnStarted { turn_id: turn_id.to_owned() });
-        match self.run_emitting(input, sink, Some(context)) {
-            Ok(reply) => {
-                for delta in chunk_text(&reply.text) {
-                    sink.emit(AgentEvent::TextDelta { delta });
+        let mut buffered = String::new();
+        let result = self.llm.complete_stream(&prompt_for(input), &mut |delta| {
+            buffered.push_str(delta);
+            // Hold the first few chars so a `TOOL ...` directive is never shown as text.
+            if buffered.trim_start().starts_with(TOOL_PREFIX) {
+                return;
+            }
+            if buffered.chars().count() >= 32 {
+                sink.emit(AgentEvent::TextDelta { delta: std::mem::take(&mut buffered) });
+            }
+        });
+        match result {
+            Ok(output) => {
+                if output.trim_start().starts_with(TOOL_PREFIX) {
+                    // Tool directives are represented as tool events, not text.
+                } else if !buffered.is_empty() {
+                    sink.emit(AgentEvent::TextDelta { delta: buffered });
                 }
+                let reply = self.run_output(&output, sink, context)?;
                 sink.emit(AgentEvent::TurnCompleted { reply: reply.clone() });
                 Ok(reply)
             }
             Err(error) => {
                 sink.emit(AgentEvent::Error { message: error.to_string() });
-                Err(error)
+                Err(AgentError::Llm(error.to_string()))
             }
         }
     }
-}
-
-/// Split text into UTF-8-safe chunks of roughly `CHUNK_CHARS` characters.
-fn chunk_text(text: &str) -> Vec<String> {
-    const CHUNK_CHARS: usize = 24;
-    let mut out = Vec::new();
-    let mut current = String::new();
-    let mut count = 0usize;
-    for ch in text.chars() {
-        current.push(ch);
-        count = count.saturating_add(1);
-        if count >= CHUNK_CHARS {
-            out.push(std::mem::take(&mut current));
-            count = 0;
-        }
-    }
-    if !current.is_empty() {
-        out.push(current);
-    }
-    out
 }
 
 /// Split `TOOL <name> <args>`; both parts are required.

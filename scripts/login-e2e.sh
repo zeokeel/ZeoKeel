@@ -17,10 +17,15 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 class H(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("content-length", "0"))
-        self.rfile.read(length)
-        body = b'{"id":"resp_gateway","output":[{"content":[{"type":"output_text","text":"gateway hello"}]}],"usage":{"input_tokens":10,"output_tokens":20}}'
+        raw = self.rfile.read(length)
+        if b'"stream":true' in raw or b'"stream": true' in raw:
+            body = b'data: {"type":"response.output_text.delta","delta":"gateway "}\n\ndata: {"type":"response.output_text.delta","delta":"hello"}\n\ndata: {"type":"response.completed","response":{"usage":{"input_tokens":10,"output_tokens":20}}}\n\ndata: [DONE]\n\n'
+            content_type = "text/event-stream"
+        else:
+            body = b'{"id":"resp_gateway","output":[{"content":[{"type":"output_text","text":"gateway hello"}]}],"usage":{"input_tokens":10,"output_tokens":20}}'
+            content_type = "application/json"
         self.send_response(200)
-        self.send_header("content-type", "application/json")
+        self.send_header("content-type", content_type)
         self.send_header("content-length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

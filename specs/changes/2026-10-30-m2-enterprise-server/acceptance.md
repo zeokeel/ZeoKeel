@@ -78,3 +78,7 @@
 ## Enterprise gateway chat
 
 - `scripts/login-e2e.sh` 增加 fake upstream + pricing + wallet 充值，`e2e/m2-gateway-chat.spec.ts`：登录 → 新建会话 → 发送 → gateway provider → `/v1/responses` → 文本返回；axe 0 serious/critical。
+
+## True streaming
+
+- `zk-contract-llm::complete_stream` + agent-loop 真 delta 转发；gateway 解析上游 SSE `data: {"delta":...}`；fake upstream 端到端已走 SSE。
