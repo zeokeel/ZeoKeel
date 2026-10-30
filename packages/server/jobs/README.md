@@ -1,6 +1,6 @@
 # zk-srv-jobs（server domain）
 
-**功能说明（M2）**：hold 过期/pending 清扫/对账/月发放。
+**功能说明（M2）**：hold 过期/pending 清扫/对账/月发放/审计与用量保留。
 
 ## 边界
 - 只依赖 `zk-kit-server` + 域契约；不 import 其它服务端域实现。

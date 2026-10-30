@@ -47,6 +47,7 @@ pub async fn run_job(pool: &PgPool, job: &str, idempotency: &str) -> Result<Valu
         .map(|mismatches| json!({ "mismatches": mismatches }))
         .map_err(|error| error.to_string()),
         "wallet-grant" => monthly_grant(pool).await.map_err(|error| error.to_string()),
+        "audit-retention" => retention(pool).await.map_err(|error| error.to_string()),
         other => Err(format!("unknown job: {other}")),
     };
     match &result {
@@ -68,6 +69,22 @@ pub async fn run_job(pool: &PgPool, job: &str, idempotency: &str) -> Result<Valu
         }
     }
     result
+}
+
+async fn retention(pool: &PgPool) -> Result<Value, sqlx::Error> {
+    let audit_days = std::env::var("ZEOKEEL_AUDIT_RETENTION_DAYS").ok().and_then(|v| v.parse::<i64>().ok()).unwrap_or(180).max(180);
+    let usage_days = std::env::var("ZEOKEEL_USAGE_RETENTION_DAYS").ok().and_then(|v| v.parse::<i64>().ok()).unwrap_or(365).max(365);
+    let audit = sqlx::query("DELETE FROM audit_log WHERE created_at < now() - ($1 || ' days')::interval")
+        .bind(audit_days.to_string())
+        .execute(pool)
+        .await?
+        .rows_affected();
+    let usage = sqlx::query("DELETE FROM usage WHERE created_at < now() - ($1 || ' days')::interval")
+        .bind(usage_days.to_string())
+        .execute(pool)
+        .await?
+        .rows_affected();
+    Ok(json!({ "audit_deleted": audit, "usage_deleted": usage, "audit_days": audit_days, "usage_days": usage_days }))
 }
 
 async fn monthly_grant(pool: &PgPool) -> Result<Value, sqlx::Error> {
@@ -157,7 +174,7 @@ pub fn spawn_loop(pool: PgPool) {
         let mut ticker = tokio::time::interval(Duration::from_secs(300));
         loop {
             ticker.tick().await;
-            for job in ["hold-expire", "usage-pending", "wallet-reconcile", "wallet-grant"] {
+            for job in ["hold-expire", "usage-pending", "wallet-reconcile", "wallet-grant", "audit-retention"] {
                 let key = format!("{job}:{}", chrono::Utc::now().format("%Y%m%d%H"));
                 if let Err(error) = run_job(&pool, job, &key).await {
                     eprintln!("job {job} failed: {error}");

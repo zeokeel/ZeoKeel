@@ -126,6 +126,8 @@ CODE=$(curl -sS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -o /dev/n
 BOOT=$(curl -fsS "$BASE/api/client/v1/config/bootstrap" -H "Authorization: Bearer $ALICE_JWT")
 [[ "$(printf '%s' "$BOOT" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d["updates"]["channel"])')" == "official" ]]
 [[ "$(printf '%s' "$BOOT" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["gateway"]["models"]))')" == "1" ]]
+RET=$(curl -fsS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/admin/jobs/audit-retention/run")
+printf '%s' "$RET" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["ok"] is True'
 JOB=$(curl -fsS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/admin/jobs/wallet-reconcile/run")
 printf '%s' "$JOB" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["ok"] is True' 
 for _ in 1 2 3 4 5; do
