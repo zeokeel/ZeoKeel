@@ -1,10 +1,17 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import type { Page } from "@playwright/test";
+
+async function newConversation(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "新建会话" }).last().click();
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByRole("textbox").first()).toBeVisible();
+}
 
 test.describe("personal rig agent (real serve + fake upstream)", () => {
   test("write approval, ask-user and final answer", async ({ page }) => {
     await page.goto("/", { waitUntil: "networkidle" });
-    await page.getByRole("button", { name: "新建会话" }).last().click();
+    await newConversation(page);
     const composer = page.getByRole("textbox").first();
     await composer.fill("write a file");
     await page.keyboard.press("Enter");
@@ -30,7 +37,7 @@ test.describe("personal rig agent (real serve + fake upstream)", () => {
 
   test("rejecting an approval is fail-closed", async ({ page }) => {
     await page.goto("/", { waitUntil: "networkidle" });
-    await page.getByRole("button", { name: "新建会话" }).last().click();
+    await newConversation(page);
     const composer = page.getByRole("textbox").first();
     await composer.fill("write a file");
     await page.keyboard.press("Enter");
@@ -42,7 +49,7 @@ test.describe("personal rig agent (real serve + fake upstream)", () => {
 
   test("stops a slow non-streaming turn", async ({ page }) => {
     await page.goto("/", { waitUntil: "networkidle" });
-    await page.getByRole("button", { name: "新建会话" }).last().click();
+    await newConversation(page);
     const composer = page.getByRole("textbox").first();
     await composer.fill("slow");
     await page.keyboard.press("Enter");
@@ -54,7 +61,7 @@ test.describe("personal rig agent (real serve + fake upstream)", () => {
 
   test("runs an approved bash command", async ({ page }) => {
     await page.goto("/", { waitUntil: "networkidle" });
-    await page.getByRole("button", { name: "新建会话" }).last().click();
+    await newConversation(page);
     const composer = page.getByRole("textbox").first();
     await composer.fill("bash");
     await page.keyboard.press("Enter");
@@ -65,9 +72,22 @@ test.describe("personal rig agent (real serve + fake upstream)", () => {
     await expect(page.getByText("已完成工具调用并通过审批。").last()).toBeVisible();
   });
 
+  test("presents a deliverable after approved write", async ({ page }) => {
+    await page.goto("/", { waitUntil: "networkidle" });
+    await newConversation(page);
+    const composer = page.getByRole("textbox").first();
+    await composer.fill("present");
+    await page.keyboard.press("Enter");
+    const approval = page.getByRole("group", { name: "需要审批" });
+    await expect(approval).toBeVisible();
+    await approval.getByRole("button", { name: "允许一次" }).click();
+    await expect(page.getByText("present", { exact: false }).last()).toBeVisible();
+    await expect(page.getByText("已完成工具调用并通过审批。").last()).toBeVisible();
+  });
+
   test("runs a multi-step read/write loop", async ({ page }) => {
     await page.goto("/", { waitUntil: "networkidle" });
-    await page.getByRole("button", { name: "新建会话" }).last().click();
+    await newConversation(page);
     const composer = page.getByRole("textbox").first();
     await composer.fill("multi");
     await page.keyboard.press("Enter");

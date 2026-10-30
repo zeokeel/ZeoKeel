@@ -8,7 +8,7 @@
 
 - `docs/generated/AGENT-TOOL-MATRIX.md`（`scripts/agent-tool-matrix.py --check`）
 - `docs/39-agent-prompts.md`
-- `scripts/agent-e2e.sh`：真实 personal + fake upstream，5 passed（审批/拒绝/取消/ask-user/bash/多步）
+- `scripts/agent-e2e.sh`：真实 personal + fake upstream，6 scenarios（审批/拒绝/取消/ask-user/bash/present/多步；retry=1 处理会话切换竞态）
 - `cargo test --workspace` / clippy 绿
 - SSRF/redirect/私网负向；worktree 注入/逃逸负向
 - 实时 ToolCallStarted/Finished；取消标志；审批 fail-closed；ask-user IPC/UI

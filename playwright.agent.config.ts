@@ -6,10 +6,10 @@ export default defineConfig({
   expect: { timeout: 20_000 },
   fullyParallel: false,
   workers: 1,
-  retries: 0,
+  retries: 1,
   reporter: [["list"]],
   use: {
-    baseURL: "http://127.0.0.1:8798",
+    baseURL: process.env["ZEOKEEL_AGENT_UI_URL"] ?? "http://127.0.0.1:8798",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "off",

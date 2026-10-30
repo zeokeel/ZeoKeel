@@ -2,7 +2,7 @@
 # Personal rig agent e2e: composed personal build + fake Chat Completions + Playwright.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-UI_PORT=8798; UPSTREAM_PORT=8802
+UI_PORT="${ZEOKEEL_AGENT_UI_PORT:-$((8860 + RANDOM % 100))}"; UPSTREAM_PORT="${ZEOKEEL_AGENT_UPSTREAM_PORT:-$((8960 + RANDOM % 100))}"
 cleanup() {
   [[ -n "${UI_PID:-}" ]] && kill "$UI_PID" >/dev/null 2>&1 || true
   [[ -n "${UPSTREAM_PID:-}" ]] && kill "$UPSTREAM_PID" >/dev/null 2>&1 || true
@@ -15,10 +15,24 @@ import json,sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 def respond(body):
     messages=body.get("messages",[])
-    open("/tmp/zk-agent-fake.log","a").write("REQ roles="+str([m.get("role") for m in messages])+"\n")
     user=" ".join(str(m.get("content") or "") for m in messages if m.get("role")=="user")
     tool_count=len([m for m in messages if m.get("role")=="tool"])
-    if "slow" in user:
+    if "present" in user:
+        if tool_count==0:
+            call={"id":"call_pwrite","type":"function","function":{"name":"fs.write","arguments":json.dumps({"path":"present.txt","content":"deliverable"})}}
+        elif tool_count==1:
+            call={"id":"call_present","type":"function","function":{"name":"present","arguments":json.dumps({"path":"present.txt","description":"result"})}}
+        else:
+            return {"id":"chatcmpl-final","object":"chat.completion","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"已完成工具调用并通过审批。"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
+    elif "todo" in user and tool_count==0:
+        call={"id":"call_todo","type":"function","function":{"name":"todo","arguments":json.dumps({"action":"add","text":"ship"})}}
+    elif "goal" in user and tool_count==0:
+        call={"id":"call_goal","type":"function","function":{"name":"goal","arguments":json.dumps({"action":"create","objective":"ship"})}}
+    elif "schedule" in user and tool_count==0:
+        call={"id":"call_schedule","type":"function","function":{"name":"schedule","arguments":json.dumps({"action":"create","cron":"0 9 * * *","prompt":"standup"})}}
+    elif "skill" in user and tool_count==0:
+        call={"id":"call_skill","type":"function","function":{"name":"skill","arguments":json.dumps({"action":"list"})}}
+    elif "slow" in user:
         import time; time.sleep(5)
         return {"id":"chatcmpl-slow","object":"chat.completion","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"slow done"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
     if tool_count>0 and "multi" not in user:
@@ -48,10 +62,10 @@ python3 /tmp/zk-agent-fake.py "$UPSTREAM_PORT" >/tmp/zk-agent-fake.log 2>&1 & UP
 cargo run -q -p zk -- compose --edition personal --profile dev-live --channel official >/dev/null
 cargo build -q -p zk-desktop
 pnpm --dir apps/desktop/web build >/dev/null
-rm -rf target/evidence/agent-rig/home && mkdir -p target/evidence/agent-rig/home
+rm -rf target/evidence/agent-rig/home && mkdir -p target/evidence/agent-rig/home/.agents/skills/demo && printf '# demo\n' > target/evidence/agent-rig/home/.agents/skills/demo/SKILL.md
 HOME="$PWD/target/evidence/agent-rig/home" ZEOKEEL_HOME="$PWD/target/evidence/agent-rig/home" ZEOKEEL_SERVE_ADDR="127.0.0.1:$UI_PORT" ZEOKEEL_AGENT_STREAMING=0 \
 ZEOKEEL_OPENAI_BASE_URL="http://127.0.0.1:$UPSTREAM_PORT/v1" ZEOKEEL_OPENAI_API_KEY=test ZEOKEEL_OPENAI_MODEL=test-model \
 ./target/debug/zk-desktop --serve >/tmp/zk-agent-ui.log 2>&1 & UI_PID=$!
 for _ in $(seq 1 80); do curl -fsS "http://127.0.0.1:$UI_PORT/healthz" >/dev/null 2>&1 && break; sleep 0.25; done
-pnpm exec playwright test e2e/agent-rig.spec.ts --config=playwright.agent.config.ts
+ZEOKEEL_AGENT_UI_URL="http://127.0.0.1:$UI_PORT" pnpm exec playwright test e2e/agent-rig.spec.ts --config=playwright.agent.config.ts
 echo "agent e2e ok"
