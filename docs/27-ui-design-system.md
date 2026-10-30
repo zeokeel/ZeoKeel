@@ -50,7 +50,7 @@
 | `@zeokeel/ui-chat` | `ui.slot.chat` | ChatView + assistant-ui Thread/Composer/ActionBar/工具卡/审批/空态 + ExternalStoreRuntime adapter | ui-kit + `@assistant-ui/*` |
 | `@zeokeel/ui-settings` | `ui.slot.settings` | SettingsDialog + 表单校验 | ui-kit + Radix dialog |
 | `@zeokeel/ui-shell` | `ui.shell` | 应用框架骨架 | ui-kit |
-| `@zeokeel/ui-inspector` | `ui.slot.inspector` | 右栏文件/变更/终端骨架 | ui-kit |
+| `@zeokeel/ui-inspector` | `ui.slot.inspector` | 右栏文件/终端；变更 tab 暂禁用（`后续`，待 `workspace.changes` IPC） | ui-kit |
 | `@zeokeel/ui-commands` | `ui.slot.commands` | ⌘K 命令面板骨架 | ui-kit |
 | `apps/desktop/web` | 薄壳 | transport/controller/reducer/i18n/theme/UiProvider/registry 槽位/boot/error/header/toast | registry 生成的包 |
 

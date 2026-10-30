@@ -283,20 +283,20 @@ protected = false
 SIGTERM
  → 停止 accept 新连接
  → 等待在途请求（deadline 30s）；SSE 发 error/end 并触发结算
+ → 停止 cron/jobs（等待当前 job tick 结束）
  → 结算所有 pending usage/hold
  → flush 审计（fail-closed）
- → 停止 cron/jobs（等待当前 job 完成或标记中断）
  → 关闭 PG 池
+ → Bootstrap::shutdown() 逆序回收内核 effects/任务
  → 退出 0
 超时 → 强制退出 1，残留 pending 由启动补偿处理
 ```
 
 - 启动取 PG advisory lock；拿不到=拒启（防多实例重复发放/退役）。
 - pending 结算表 + 启动扫描：超时未结算 → 按最后 usage 结算或 void，差异进对账。
-- **实现状态（M2）**：SIGTERM 按上述顺序执行（drain 30s → 停止 cron → pending 结算 → 审计链校验 → 关闭 PG → exit 0）；
-  启动先取 PG advisory lock，拿不到即拒启。关闭编排由 `crates/zk-bootstrap` 承载：apps 启动时
-  `boot()` 创建 cordis root，jobs loop 作为 kernel task 监督；drain/结算/审计校验完成后
-  `Bootstrap::shutdown()`（`Context::dispose_all()`）逆序回收插件 effects 与任务，再退出。
+- **实现状态（M2）**：与上面流程一致：drain 30s → `jobs.stop()/wait()` → pending 结算/审计链校验 →
+  `Bootstrap::shutdown()` 逆序回收插件 effects 与任务 → 退出 0；启动先取 PG advisory lock，拿不到即拒启。
+  关闭编排由 `crates/zk-bootstrap` 承载（apps 启动时 `boot()` 创建 cordis root）。
 
 ## 7. 客户端会话存储（冻结）
 

@@ -37,7 +37,7 @@
 | `ui.shell`（M1 已接入） | `ui.shell` | `@zeokeel/ui-shell` | `ShellFrame`（`shell.frame`） | `boot/bootError/workspaceCount/workspaceError/sidebarOpen/offline/streaming/mock/title/packageLine/workspacePath/toast/navigation/conversation/settings/onRetryBoot/onToggleSidebar/onDismissToast/onCreateWorkspace/t` |
 | `ui.sessions` | `ui.slot.sessions` | `@zeokeel/ui-sessions` | `Sidebar` | 现有 |
 | `ui.chat` | `ui.slot.chat` | `@zeokeel/ui-chat` | `ChatView` | 现有 |
-| `ui.inspector`（M1 已接入） | `ui.slot.inspector` | `@zeokeel/ui-inspector` | `InspectorPanel`（`inspector.panel`） | `open/tab/files/changes/onTab/onClose`；⌘B |
+| `ui.inspector`（M1 已接入） | `ui.slot.inspector` | `@zeokeel/ui-inspector` | `InspectorPanel`（`inspector.panel`） | `open/tab/files/onTab/onClose`；⌘B；变更 tab 暂禁用（待 `workspace.changes`） |
 | `ui.commands`（M1 已接入） | `ui.slot.commands` | `@zeokeel/ui-commands` | `CommandPalette`（`commands.palette`） | `open/commands/onRun/onClose`（内部搜索/方向键/Enter/Esc） |
 | `ui.settings` | `ui.slot.settings` | `@zeokeel/ui-settings` | `SettingsDialog` | 现有 |
 

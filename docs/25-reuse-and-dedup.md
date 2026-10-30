@@ -62,9 +62,9 @@ zk capability --check     # 索引与公共 API 一致；kit/contract 公共项�
 | --- | --- | --- |
 | 能力索引 | `zk capability --check` 漂移；kit/contract 公共项缺 `@capability` | `zk capability` |
 | 禁止目录 | 新增 `utils/helpers/common/misc/shared.ts/lib.ts`（kit 外） | `zk lint`（路径规则） |
-| import 边界 | 业务包 import 其它业务实现；kit 依赖业务包 | `zk lint`（依赖图） |
+| import 边界 | 业务包 import 其它业务实现；kit 依赖业务包 | `zk lint`（依赖图；**待实现**，当前仅 `zk validate`/contract 依赖约束） |
 | 重复代码（TS） | 新增克隆 ≥30 行且相似度 ≥70% | `jscpd --threshold` + baseline ratchet |
-| 重复代码（Rust） | 同上（token 规范化后比对） | `zk lint --duplicates`（已实现：30 行滑窗、token 规范化、60% shingle 候选 + 70% Jaccard；`duplication-baseline.json` ratchet；见 T20） |
+| 重复代码（Rust） | 同上（token 规范化后比对） | `zk lint --duplicates`（已实现：30 行滑窗、token 规范化、共享 shingle 候选 + Jaccard ≥70%；`duplication-baseline.json` 计数 ratchet，CI/check.sh 已接入；见 T20） |
 | 唯一性 | 路由/命令/tool/component/slot/权限点重复 | `zk validate` / `zk compose --check` |
 
 ### 4.2 T1/T2（PR 必跑）

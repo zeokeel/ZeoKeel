@@ -4,7 +4,6 @@
 - Owner：lead（auditor-rig / auditor-web / auditor-rust / fixer-media / fixer-contracts）
 - 日期：2026-10-31
 - 关联：ADR-064/066/067；docs/38；docs/25；上一轮 acceptance backlog
-- 评审：docs/reviews/2026-10-31-round3-verification.md
 - 评审：docs/reviews/2026-10-31-round3-verification.md（本轮 C19 复评）
 - 变更预算：配置完形（工具/审批超时）+ 向量持久化 + T22 剩余边界 DTO + 内核收尾 + UI 一致性；按域提交
 

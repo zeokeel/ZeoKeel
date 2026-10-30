@@ -2520,6 +2520,13 @@ fn lint(root: &Path, duplicates: bool, write_baseline: bool) -> Result<()> {
             baseline_path.display()
         );
     };
+    let schema = baseline
+        .get("schema")
+        .and_then(serde_json::Value::as_u64)
+        .context("duplication-baseline.json: schema must be a number")?;
+    if schema != 1 {
+        bail!("duplication-baseline.json: unsupported schema {schema} (expected 1)");
+    }
     let allowed = baseline
         .get("clone_windows")
         .and_then(serde_json::Value::as_u64)
