@@ -1,6 +1,6 @@
 /** App shell frame: layout, header, status bar, overlays. Business slots are injected. */
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { BrandLogo, Button, Chip, IconClose, IconFolder, IconMenu, IconRetry, IconWifiOff, StatusDot } from "@zeokeel/ui-kit";
 
 const tooltipClass = "z-50 rounded-surface bg-foreground px-2 py-1 text-[12px] text-background";
@@ -41,7 +41,7 @@ function FirstRun(props: { t: ShellFrameProps["t"]; error: string | null; onCrea
   const [path, setPath] = useState("");
   const [title, setTitle] = useState("");
   const [showPicker, setShowPicker] = useState(false);
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = (event: { preventDefault: () => void }): void => {
     event.preventDefault();
     props.onCreateWorkspace(path, title);
   };
@@ -56,7 +56,7 @@ function FirstRun(props: { t: ShellFrameProps["t"]; error: string | null; onCrea
         </p>
       ) : null}
       <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-        <Button variant="primary" onClick={() => { props.onCreateWorkspace("~", "主目录"); }} title={t("workspaceUseHome")}>
+        <Button variant="primary" onClick={() => { props.onCreateWorkspace("~", t("workspaceHomeTitle")); }} title={t("workspaceUseHome")}>
           <IconFolder /><span>{t("workspaceUseHome")}</span>
         </Button>
         <Button variant="default" aria-expanded={showPicker} onClick={() => { setShowPicker((value) => !value); }}>
@@ -66,7 +66,7 @@ function FirstRun(props: { t: ShellFrameProps["t"]; error: string | null; onCrea
       {showPicker ? (
         <form className="mt-4 flex w-full max-w-[460px] flex-col gap-2 rounded-document bg-muted p-3 text-start" onSubmit={submit}>
           <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">{t("workspacePathLabel")}
-            <input autoFocus value={path} onChange={(event) => { setPath(event.target.value); }} placeholder={t("workspaceAddHint")} className="w-full rounded-control border border-border bg-background px-2 py-1.5 text-[13px] text-foreground placeholder:text-muted-foreground" />
+            <input data-autofocus value={path} onChange={(event) => { setPath(event.target.value); }} placeholder={t("workspaceAddHint")} className="w-full rounded-control border border-border bg-background px-2 py-1.5 text-[13px] text-foreground placeholder:text-muted-foreground" />
           </label>
           <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">{t("workspaceTitleLabel")}
             <input value={title} onChange={(event) => { setTitle(event.target.value); }} className="w-full rounded-control border border-border bg-background px-2 py-1.5 text-[13px] text-foreground" />

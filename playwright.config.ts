@@ -4,6 +4,8 @@ const MOCK_URL = "http://127.0.0.1:4173";
 
 export default defineConfig({
   testDir: "e2e",
+  // Agent-rig suite owns its own compose/env lifecycle (scripts/agent-e2e.sh + playwright.agent.config.ts).
+  testIgnore: ["**/agent-rig.spec.ts"],
   timeout: 60_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
@@ -21,14 +23,15 @@ export default defineConfig({
     {
       command: "pnpm --dir apps/desktop/web build && pnpm --dir apps/desktop/web exec vite preview --host 127.0.0.1 --port 4173",
       url: `${MOCK_URL}/`,
-      reuseExistingServer: true,
+      // Never silently reuse a stale preview/build; CI must exercise the current tree.
+      reuseExistingServer: false,
       timeout: 180_000,
     },
     {
       command:
         "mkdir -p target/evidence/m1/home/demo-data && cp demo-data/hello.txt target/evidence/m1/home/demo-data/hello.txt && cargo build -q -p zk-desktop && ZEOKEEL_HOME=target/evidence/m1/home ZEOKEEL_SERVE_ADDR=127.0.0.1:8788 ./target/debug/zk-desktop --serve",
       url: "http://127.0.0.1:8788/healthz",
-      reuseExistingServer: true,
+      reuseExistingServer: false,
       timeout: 240_000,
     },
   ],
