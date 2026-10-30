@@ -44,7 +44,7 @@ fn unavailable_is_honest_and_explicit() {
 #[test]
 fn configured_capability_embeds_inserts_and_searches() {
     let _guard = guard();
-    zk_cap_vector::configure(fake_embedding_model()).unwrap();
+    zk_cap_vector::configure_with_dir(fake_embedding_model(), "").unwrap();
     zk_cap_vector::clear().unwrap();
     assert!(zk_cap_vector::available());
     assert_eq!(zk_cap_vector::unavailable_reason(), None);
@@ -79,7 +79,7 @@ fn configured_capability_embeds_inserts_and_searches() {
 #[test]
 fn empty_index_and_zero_limit_are_safe() {
     let _guard = guard();
-    zk_cap_vector::configure(fake_embedding_model()).unwrap();
+    zk_cap_vector::configure_with_dir(fake_embedding_model(), "").unwrap();
     zk_cap_vector::clear().unwrap();
     assert!(zk_cap_vector::search("alpha", 3).unwrap().is_empty());
     assert!(zk_cap_vector::search("alpha", 0).unwrap().is_empty());

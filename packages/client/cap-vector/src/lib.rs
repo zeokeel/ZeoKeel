@@ -5,10 +5,22 @@
 //! Backed by the shared [`zk_kit_media`] embedding adapter (rig-core
 //! OpenAI-compatible embeddings) and an in-process cosine index. The
 //! capability is **dynamically available**: [`available`] is true only after an
-//! embedding model is configured (explicitly via [`configure`], or through
-//! [`configure_from_env`] with an OpenAI-compatible embedding endpoint).
-//! [`unavailable_reason`] gives the honest reason otherwise, and
-//! [`UNAVAILABLE`] is the closed error code hosts surface.
+//! embedding model is configured (explicitly via [`configure`] /
+//! [`configure_with_dir`], or through [`configure_from_env`] with an
+//! OpenAI-compatible embedding endpoint). [`unavailable_reason`] gives the
+//! honest reason otherwise, and [`UNAVAILABLE`] is the closed error code hosts
+//! surface.
+//!
+//! **Optional persistence** (round 3): when a persistence directory is
+//! configured — `ZEOKEEL_VECTOR_DIR`, or explicitly through
+//! [`configure_with_dir`] — the index is stored in `vector-index.json` as
+//! `{version, documents:[{id,text,embedding}]}`. Inserts and clears save
+//! atomically (temp file `0600`, directory `0700`, then rename); the index
+//! loads on configure. A missing file starts empty, and an unreadable/corrupt/
+//! oversized file degrades to an empty in-memory index instead of failing:
+//! the reason is exposed through [`persistence_reason`] and logged to stderr,
+//! and the next successful save repairs the file. Size caps: [`MAX_DOCUMENTS`]
+//! documents and [`MAX_INDEX_BYTES`] bytes, both typed errors.
 //!
 //! The rig adaptation lives in `crates/zk-kit-media` (`kit.media`), so this
 //! package does not depend on `rig-core` or `zk-llm-rig` (C4/C17). Host wiring:
@@ -18,8 +30,13 @@
 //! (C7/ADR-031; the gateway has no embeddings route), so it stays unavailable.
 #![forbid(unsafe_code)]
 
+use std::fs::{self, DirBuilder, OpenOptions};
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{OnceLock, RwLock};
 
+use serde::{Deserialize, Serialize};
 use zk_kit_media::{
     embed_text, embedding_model_from_config, EmbeddingConfig, EmbeddingError, EmbeddingModel,
     MediaError, ModelSlot,
@@ -27,6 +44,21 @@ use zk_kit_media::{
 
 /// Closed unavailability code.
 pub const UNAVAILABLE: &str = "CAPABILITY_UNAVAILABLE";
+
+/// File name of the persisted index inside the persistence directory.
+pub const INDEX_FILE: &str = "vector-index.json";
+
+/// Version written to (and accepted from) the persisted index file.
+pub const INDEX_VERSION: u32 = 1;
+
+/// Maximum number of documents held in memory and persisted.
+pub const MAX_DOCUMENTS: usize = 10_000;
+
+/// Maximum serialized index size in bytes.
+pub const MAX_INDEX_BYTES: u64 = 16 * 1024 * 1024;
+
+/// Environment variable naming the optional persistence directory.
+const PERSIST_DIR_ENV: &str = "ZEOKEEL_VECTOR_DIR";
 
 /// Errors from the vector capability.
 #[derive(Debug, thiserror::Error)]
@@ -43,6 +75,9 @@ pub enum VectorError {
     /// The in-process store is unavailable (poisoned lock).
     #[error("vector store: {0}")]
     Store(String),
+    /// The index would exceed its document/byte cap.
+    #[error("vector capacity: {0}")]
+    Capacity(String),
 }
 
 /// One search hit.
@@ -63,11 +98,75 @@ struct StoredDocument {
     vector: Vec<f64>,
 }
 
-static MODEL: ModelSlot<EmbeddingModel> = ModelSlot::new();
-static DOCUMENTS: OnceLock<RwLock<Vec<StoredDocument>>> = OnceLock::new();
+/// On-disk document shape (`embedding` is the persisted name of the vector).
+#[derive(Debug, Serialize, Deserialize)]
+struct IndexDocument {
+    id: String,
+    text: String,
+    embedding: Vec<f64>,
+}
 
-fn documents() -> &'static RwLock<Vec<StoredDocument>> {
-    DOCUMENTS.get_or_init(|| RwLock::new(Vec::new()))
+impl From<&StoredDocument> for IndexDocument {
+    fn from(document: &StoredDocument) -> Self {
+        Self {
+            id: document.id.clone(),
+            text: document.text.clone(),
+            embedding: document.vector.clone(),
+        }
+    }
+}
+
+impl From<IndexDocument> for StoredDocument {
+    fn from(document: IndexDocument) -> Self {
+        Self {
+            id: document.id,
+            text: document.text,
+            vector: document.embedding,
+        }
+    }
+}
+
+/// Versioned on-disk index file.
+#[derive(Debug, Serialize, Deserialize)]
+struct IndexFile {
+    version: u32,
+    documents: Vec<IndexDocument>,
+}
+
+#[derive(Debug, Default)]
+struct StoreState {
+    documents: Vec<StoredDocument>,
+    dir: Option<PathBuf>,
+    /// Why the last load was degraded (corrupt/unreadable/oversized); cleared by
+    /// the next successful save.
+    persistence_reason: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct LoadedIndex {
+    documents: Vec<StoredDocument>,
+    reason: Option<String>,
+}
+
+impl LoadedIndex {
+    fn degraded(reason: String) -> Self {
+        Self {
+            documents: Vec::new(),
+            reason: Some(reason),
+        }
+    }
+}
+
+static MODEL: ModelSlot<EmbeddingModel> = ModelSlot::new();
+static STORE: OnceLock<RwLock<StoreState>> = OnceLock::new();
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+fn store() -> &'static RwLock<StoreState> {
+    STORE.get_or_init(|| RwLock::new(StoreState::default()))
+}
+
+fn store_poisoned() -> VectorError {
+    VectorError::Store("vector store lock poisoned".to_owned())
 }
 
 fn map_media_error(error: MediaError) -> VectorError {
@@ -108,19 +207,87 @@ pub fn unavailable_reason() -> Option<String> {
     )
 }
 
-/// Install the embedding model used for inserts and searches.
+/// The persistence directory in use, or `None` when the index is memory-only.
+#[must_use]
+pub fn persistence_dir() -> Option<PathBuf> {
+    store()
+        .read()
+        .map(|state| state.dir.clone())
+        .unwrap_or(None)
+}
+
+/// Why the last persisted-index load degraded to empty (corrupt/unreadable/
+/// oversized), or `None` when the load was clean (or there is no persistence).
+///
+/// Hosts should log this next to `available()`; the capability keeps working on
+/// an empty in-memory index and the next successful save repairs the file.
+#[must_use]
+pub fn persistence_reason() -> Option<String> {
+    store()
+        .read()
+        .map(|state| state.persistence_reason.clone())
+        .unwrap_or(None)
+}
+
+/// Install the embedding model and load the persisted index from
+/// `ZEOKEEL_VECTOR_DIR` when that environment variable is set.
+///
+/// When the variable is unset the index stays memory-only (and existing
+/// in-memory documents are replaced by the persisted state, i.e. empty).
 ///
 /// # Errors
 ///
-/// [`VectorError::Config`] when the model cannot be stored.
+/// [`VectorError::Config`] when the model cannot be stored;
+/// [`VectorError::Store`] when the store lock is poisoned. Persistence load
+/// problems degrade to empty instead of failing (see [`persistence_reason`]).
 pub fn configure(model: EmbeddingModel) -> Result<(), VectorError> {
-    MODEL.set(model).map_err(map_media_error)
+    match persistence_dir_from_env() {
+        Some(dir) => configure_with_dir(model, dir),
+        None => configure_with_dir(model, ""),
+    }
+}
+
+/// Install the embedding model with an explicit persistence directory.
+///
+/// An empty path keeps the index memory-only. A configured directory is
+/// created with mode `0700` when missing, and `vector-index.json` is loaded if
+/// present; a missing/corrupt/unreadable/oversized file degrades to an empty
+/// index (never a panic) and is reported through [`persistence_reason`].
+///
+/// # Errors
+///
+/// [`VectorError::Config`] when the model cannot be stored;
+/// [`VectorError::Store`] when the store lock is poisoned.
+pub fn configure_with_dir(model: EmbeddingModel, dir: impl AsRef<Path>) -> Result<(), VectorError> {
+    let requested = dir.as_ref();
+    let dir = if requested.as_os_str().is_empty() {
+        None
+    } else {
+        Some(requested.to_path_buf())
+    };
+    let loaded = match &dir {
+        Some(path) => load_index(path),
+        None => LoadedIndex::default(),
+    };
+    MODEL.set(model).map_err(map_media_error)?;
+    let mut state = store().write().map_err(|_| store_poisoned())?;
+    *state = StoreState {
+        documents: loaded.documents,
+        dir,
+        persistence_reason: loaded.reason.clone(),
+    };
+    drop(state);
+    if let Some(message) = loaded.reason {
+        eprintln!("zk-cap-vector: persistent vector index degraded: {message}");
+    }
+    Ok(())
 }
 
 /// Remove the embedding model and drop stored documents.
 ///
-/// Used when the provider changes or the user logs out, so [`available`]
-/// honestly returns false again.
+/// The persisted file is left in place, so a later [`configure`] can load it
+/// again. Used when the provider changes or the user logs out, so
+/// [`available`] honestly returns false again.
 ///
 /// # Errors
 ///
@@ -128,10 +295,8 @@ pub fn configure(model: EmbeddingModel) -> Result<(), VectorError> {
 /// [`VectorError::Store`] when the store lock is poisoned.
 pub fn unconfigure() -> Result<(), VectorError> {
     MODEL.clear().map_err(map_media_error)?;
-    documents()
-        .write()
-        .map_err(|_| VectorError::Store("vector index lock poisoned".to_owned()))?
-        .clear();
+    let mut state = store().write().map_err(|_| store_poisoned())?;
+    *state = StoreState::default();
     Ok(())
 }
 
@@ -139,9 +304,10 @@ pub fn unconfigure() -> Result<(), VectorError> {
 ///
 /// Reads `ZEOKEEL_EMBEDDING_BASE_URL`, `ZEOKEEL_EMBEDDING_API_KEY`,
 /// `ZEOKEEL_EMBEDDING_MODEL` (default `text-embedding-3-small`) and the
-/// optional `ZEOKEEL_EMBEDDING_DIMS`. Returns `Ok(false)` when the endpoint is
-/// not configured (the capability stays unavailable with
-/// [`unavailable_reason`]).
+/// optional `ZEOKEEL_EMBEDDING_DIMS`; when `ZEOKEEL_VECTOR_DIR` is set the
+/// persisted index in that directory is loaded (see [`configure_with_dir`]).
+/// Returns `Ok(false)` when the endpoint is not configured (the capability
+/// stays unavailable with [`unavailable_reason`]).
 ///
 /// This is the entry point the personal-edition boot uses through
 /// `zk_composed::configure_capabilities_from_env()`.
@@ -155,31 +321,38 @@ pub fn configure_from_env() -> Result<bool, VectorError> {
     if !config.is_configured() {
         return Ok(false);
     }
-    configure(embedding_model_from_config(&config).map_err(map_embedding_error)?)?;
+    let model = embedding_model_from_config(&config).map_err(map_embedding_error)?;
+    configure(model)?;
     Ok(true)
 }
 
 /// Insert (or replace) one document, embedding it with the configured model.
 ///
+/// When persistence is configured the index is saved atomically; the in-memory
+/// index only changes after the save succeeds.
+///
 /// # Errors
 ///
 /// [`VectorError::Unavailable`] when no embedding model is configured;
 /// [`VectorError::Embedding`] when the provider call fails;
-/// [`VectorError::Store`] when the store lock is poisoned.
+/// [`VectorError::Capacity`] when the index would exceed [`MAX_DOCUMENTS`] or
+/// [`MAX_INDEX_BYTES`]; [`VectorError::Store`] when locking or saving fails.
 pub fn insert(id: &str, text: &str) -> Result<(), VectorError> {
     if id.trim().is_empty() {
         return Err(VectorError::Config("document id is empty".to_owned()));
     }
     let vector = embed(text)?;
-    let mut guard = documents()
-        .write()
-        .map_err(|_| VectorError::Store("vector index lock poisoned".to_owned()))?;
-    guard.retain(|document| document.id != id);
-    guard.push(StoredDocument {
+    let mut state = store().write().map_err(|_| store_poisoned())?;
+    let mut next = state.documents.clone();
+    next.retain(|document| document.id != id);
+    next.push(StoredDocument {
         id: id.to_owned(),
         text: text.to_owned(),
         vector,
     });
+    save_documents(state.dir.as_deref(), &next)?;
+    state.documents = next;
+    state.persistence_reason = None;
     Ok(())
 }
 
@@ -208,10 +381,9 @@ pub fn search(query: &str, limit: usize) -> Result<Vec<SearchHit>, VectorError> 
         return Ok(Vec::new());
     }
     let query_vector = embed(query)?;
-    let guard = documents()
-        .read()
-        .map_err(|_| VectorError::Store("vector index lock poisoned".to_owned()))?;
-    let mut hits: Vec<SearchHit> = guard
+    let state = store().read().map_err(|_| store_poisoned())?;
+    let mut hits: Vec<SearchHit> = state
+        .documents
         .iter()
         .map(|document| SearchHit {
             id: document.id.clone(),
@@ -231,21 +403,26 @@ pub fn search(query: &str, limit: usize) -> Result<Vec<SearchHit>, VectorError> 
 
 /// Drop every stored document (the embedding model stays configured).
 ///
+/// When persistence is configured the empty index is saved atomically.
+///
 /// # Errors
 ///
-/// [`VectorError::Store`] when the store lock is poisoned.
+/// [`VectorError::Store`] when locking or saving fails.
 pub fn clear() -> Result<(), VectorError> {
-    documents()
-        .write()
-        .map_err(|_| VectorError::Store("vector index lock poisoned".to_owned()))?
-        .clear();
+    let mut state = store().write().map_err(|_| store_poisoned())?;
+    save_documents(state.dir.as_deref(), &[])?;
+    state.documents.clear();
+    state.persistence_reason = None;
     Ok(())
 }
 
 /// Number of stored documents.
 #[must_use]
 pub fn len() -> usize {
-    documents().read().map(|guard| guard.len()).unwrap_or(0)
+    store()
+        .read()
+        .map(|state| state.documents.len())
+        .unwrap_or(0)
 }
 
 fn embed(text: &str) -> Result<Vec<f64>, VectorError> {
@@ -257,7 +434,170 @@ fn embed(text: &str) -> Result<Vec<f64>, VectorError> {
     embed_text(&model, text).map_err(map_embedding_error)
 }
 
+fn persistence_dir_from_env() -> Option<PathBuf> {
+    let value = std::env::var(PERSIST_DIR_ENV)
+        .map(|value| value.trim().to_owned())
+        .unwrap_or_default();
+    if value.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(value))
+    }
+}
+
+fn load_index(dir: &Path) -> LoadedIndex {
+    if let Err(error) = ensure_dir(dir) {
+        return LoadedIndex::degraded(format!(
+            "persistence directory `{}` unavailable: {error}",
+            dir.display()
+        ));
+    }
+    let path = dir.join(INDEX_FILE);
+    let metadata = match fs::metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return LoadedIndex::default(),
+        Err(error) => {
+            return LoadedIndex::degraded(format!(
+                "persisted index `{}` unreadable: {error}",
+                path.display()
+            ))
+        }
+    };
+    if metadata.len() > MAX_INDEX_BYTES {
+        return LoadedIndex::degraded(format!(
+            "persisted index `{}` exceeds {MAX_INDEX_BYTES} bytes",
+            path.display()
+        ));
+    }
+    let bytes = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            return LoadedIndex::degraded(format!(
+                "persisted index `{}` unreadable: {error}",
+                path.display()
+            ))
+        }
+    };
+    match serde_json::from_slice::<IndexFile>(&bytes) {
+        Ok(file) => index_file_to_state(file),
+        Err(error) => LoadedIndex::degraded(format!(
+            "persisted index `{}` corrupt: {error}",
+            path.display()
+        )),
+    }
+}
+
+fn index_file_to_state(file: IndexFile) -> LoadedIndex {
+    if file.version != INDEX_VERSION {
+        return LoadedIndex::degraded(format!(
+            "persisted index version {} unsupported (expected {})",
+            file.version, INDEX_VERSION
+        ));
+    }
+    if file.documents.len() > MAX_DOCUMENTS {
+        return LoadedIndex::degraded(format!(
+            "persisted index holds more than {MAX_DOCUMENTS} documents"
+        ));
+    }
+    LoadedIndex {
+        documents: file
+            .documents
+            .into_iter()
+            .map(StoredDocument::from)
+            .collect(),
+        reason: None,
+    }
+}
+
+fn save_documents(dir: Option<&Path>, documents: &[StoredDocument]) -> Result<(), VectorError> {
+    if documents.len() > MAX_DOCUMENTS {
+        return Err(VectorError::Capacity(format!(
+            "vector index would hold more than {MAX_DOCUMENTS} documents"
+        )));
+    }
+    let Some(dir) = dir else {
+        return Ok(());
+    };
+    ensure_dir(dir).map_err(|error| {
+        VectorError::Store(format!(
+            "persistence directory `{}` unavailable: {error}",
+            dir.display()
+        ))
+    })?;
+    let file = IndexFile {
+        version: INDEX_VERSION,
+        documents: documents.iter().map(IndexDocument::from).collect(),
+    };
+    let bytes = serde_json::to_vec(&file)
+        .map_err(|error| VectorError::Store(format!("serialize vector index: {error}")))?;
+    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_INDEX_BYTES {
+        return Err(VectorError::Capacity(format!(
+            "vector index would exceed {MAX_INDEX_BYTES} bytes"
+        )));
+    }
+    let path = dir.join(INDEX_FILE);
+    let temp = dir.join(format!(
+        ".{INDEX_FILE}.tmp-{}-{}",
+        std::process::id(),
+        TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    if let Err(error) = write_private(&temp, &bytes) {
+        let _ = fs::remove_file(&temp);
+        return Err(error);
+    }
+    if let Err(error) = fs::rename(&temp, &path) {
+        let _ = fs::remove_file(&temp);
+        return Err(VectorError::Store(format!(
+            "rename vector index into `{}`: {error}",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+fn ensure_dir(dir: &Path) -> io::Result<()> {
+    if dir.is_dir() {
+        return Ok(());
+    }
+    let mut builder = DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(dir)
+}
+
+fn write_private(path: &Path, bytes: &[u8]) -> Result<(), VectorError> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(path)
+        .map_err(|error| VectorError::Store(format!("create temp vector index: {error}")))?;
+    file.write_all(bytes)
+        .map_err(|error| VectorError::Store(format!("write temp vector index: {error}")))?;
+    file.sync_all()
+        .map_err(|error| VectorError::Store(format!("sync temp vector index: {error}")))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600)).map_err(|error| {
+            VectorError::Store(format!("set temp vector index permissions: {error}"))
+        })?;
+    }
+    Ok(())
+}
+
 /// Cosine similarity; `0.0` when either vector is empty or not the same width.
+// Float similarity math is bounded to [-1, 1]; there is no integer overflow
+// surface here, so the workspace arithmetic lint is relaxed locally only.
+#[allow(clippy::arithmetic_side_effects)]
 fn cosine(left: &[f64], right: &[f64]) -> f64 {
     if left.is_empty() || left.len() != right.len() {
         return 0.0;
@@ -275,3 +615,6 @@ fn cosine(left: &[f64], right: &[f64]) -> f64 {
     }
     dot / (left_norm.sqrt() * right_norm.sqrt())
 }
+
+#[cfg(test)]
+mod store_tests;
