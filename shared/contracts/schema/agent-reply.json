@@ -18,9 +18,87 @@
       "items": {
         "$ref": "#/definitions/ToolCallRecord"
       }
+    },
+    "usage": {
+      "description": "Provider token usage for the turn, when reported.",
+      "default": null,
+      "anyOf": [
+        {
+          "$ref": "#/definitions/AgentUsage"
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "definitions": {
+    "AgentUsage": {
+      "description": "Token usage reported by the provider for one agent turn.",
+      "type": "object",
+      "properties": {
+        "cached_tokens": {
+          "description": "The part of `input_tokens` read from a provider-managed cache.",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "cost_micros": {
+          "description": "Provider-reported cost in micro-USD (1e-6 USD), when known.",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "input_tokens": {
+          "description": "Every input token (cached + uncached).",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "output_tokens": {
+          "description": "Every output token, reasoning included.",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "reasoning_tokens": {
+          "description": "The part of `output_tokens` spent on internal reasoning.",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "total_tokens": {
+          "description": "`input_tokens + output_tokens`, when both were reported.",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
     "ToolCallRecord": {
       "description": "One executed tool call, recorded for UI and diagnostics.",
       "type": "object",

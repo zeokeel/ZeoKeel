@@ -1,0 +1,253 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgentSettings",
+  "description": "Runtime-configurable local agent settings.",
+  "type": "object",
+  "properties": {
+    "completion": {
+      "description": "Sampling / generation parameters.",
+      "default": {
+        "temperature": null,
+        "max_tokens": null,
+        "top_p": null,
+        "seed": null,
+        "stop": [],
+        "tool_choice": {
+          "mode": "auto"
+        },
+        "parallel_tool_calls": null,
+        "reasoning_effort": null,
+        "prompt_cache": null
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/CompletionSettings"
+        }
+      ]
+    },
+    "hooks": {
+      "description": "Observable lifecycle hooks.",
+      "default": {
+        "enabled": true,
+        "log": ""
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/HookSettings"
+        }
+      ]
+    },
+    "max_steps": {
+      "description": "Maximum model/tool steps per turn (`1..=200`; default 50).",
+      "default": 50,
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0.0
+    },
+    "memory": {
+      "description": "Multi-turn conversation memory.",
+      "default": {
+        "enabled": true,
+        "dir": ""
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/MemorySettings"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "CompletionSettings": {
+      "description": "Sampling / generation parameters for the local agent.",
+      "type": "object",
+      "properties": {
+        "max_tokens": {
+          "description": "Output-token cap; omitted keeps the provider default.",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "parallel_tool_calls": {
+          "description": "Whether the provider may run tool calls in parallel.",
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "prompt_cache": {
+          "description": "Prompt-cache retention: `short|long`.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reasoning_effort": {
+          "description": "Portable reasoning effort: `minimal|low|medium|high|xhigh|max`.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "seed": {
+          "description": "Sampling seed for reproducible runs.",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "stop": {
+          "description": "Stop sequences.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "temperature": {
+          "description": "Sampling temperature (`0.0..=2.0`); omitted keeps the provider default.",
+          "default": null,
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "tool_choice": {
+          "description": "Tool-selection policy.",
+          "default": {
+            "mode": "auto"
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/ToolChoiceSetting"
+            }
+          ]
+        },
+        "top_p": {
+          "description": "Nucleus sampling (`0.0..=1.0`); omitted keeps the provider default.",
+          "default": null,
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
+    "HookSettings": {
+      "description": "Observable agent lifecycle hooks configuration.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Whether lifecycle hook events are emitted.",
+          "default": true,
+          "type": "boolean"
+        },
+        "log": {
+          "description": "Optional JSONL file that receives the hook events (append-only).",
+          "default": "",
+          "type": "string"
+        }
+      }
+    },
+    "MemorySettings": {
+      "description": "Multi-turn conversation memory for the local agent.",
+      "type": "object",
+      "properties": {
+        "dir": {
+          "description": "Memory directory; empty means `$ZEOKEEL_HOME/agent-memory`.",
+          "default": "",
+          "type": "string"
+        },
+        "enabled": {
+          "description": "Whether conversation memory is enabled.",
+          "default": true,
+          "type": "boolean"
+        }
+      }
+    },
+    "ToolChoiceSetting": {
+      "description": "How the model may choose tools for a turn.",
+      "oneOf": [
+        {
+          "description": "The model decides (default).",
+          "type": "object",
+          "required": [
+            "mode"
+          ],
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "auto"
+              ]
+            }
+          }
+        },
+        {
+          "description": "No tool may be called.",
+          "type": "object",
+          "required": [
+            "mode"
+          ],
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "none"
+              ]
+            }
+          }
+        },
+        {
+          "description": "At least one tool must be called.",
+          "type": "object",
+          "required": [
+            "mode"
+          ],
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "required"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Only the listed tools may be called.",
+          "type": "object",
+          "required": [
+            "mode",
+            "tools"
+          ],
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "specific"
+              ]
+            },
+            "tools": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

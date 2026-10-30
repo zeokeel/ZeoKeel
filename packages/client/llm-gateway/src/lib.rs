@@ -141,11 +141,15 @@ pub fn unconfigured_model() -> Result<DynModel<Completion>, LlmError> {
 ///
 /// # Errors
 ///
-/// [`LlmError::InvalidRequest`] for an unsupported provider, or when the
-/// resolved server URL/access token/model are missing or the URL is not
-/// `http(s)://`. This is the post-login factory path: unlike [`model`] it never
-/// degrades to the boot placeholder, so a broken login/bootstrap surfaces as an
-/// error instead of a chat-time transport failure.
+/// [`LlmError::InvalidRequest`] for an unsupported provider, a partially
+/// supplied config (one of server URL/access token missing while the other is
+/// set), an empty model when credentials are present, or a URL that is not
+/// `http(s)://`.
+///
+/// With no login credentials at all (pre-login boot and the desktop logout
+/// reset, `configure_llm("", "", "", "gateway")`) it returns
+/// [`unconfigured_model`], so the agent keeps a model whose calls fail at the
+/// transport layer until the next login replaces it.
 pub fn model_from_config(
     provider: &str,
     base_url: &str,
@@ -188,6 +192,13 @@ pub fn model_from_config(
     } else {
         model.to_owned()
     };
+    // Logout / pre-login: no login credentials at all -> boot placeholder so the
+    // agent keeps running (calls fail at the transport layer until the next
+    // login hot-swaps the real model). A partially supplied config is still an
+    // error so broken login/bootstrap surfaces instead of a placeholder.
+    if base.trim().is_empty() && token.trim().is_empty() {
+        return unconfigured_model();
+    }
     model_from_parts(&base, &token, &model)
 }
 

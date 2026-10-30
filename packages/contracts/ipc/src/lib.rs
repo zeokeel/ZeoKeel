@@ -225,7 +225,10 @@ pub mod payloads {
     }
 
     /// `settings.set` payload.
-    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    ///
+    /// `AppSettings` carries `f64` completion parameters, so this DTO is
+    /// `PartialEq` but not `Eq` (unchanged wire shape).
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
     pub struct SettingsSetPayload {
         /// Full settings document (same schema as `zk-contract-config::AppSettings`).
         pub settings: zk_contract_config::AppSettings,

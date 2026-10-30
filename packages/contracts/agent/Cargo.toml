@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 schemars = { workspace = true }
+zk-contract-config = { path = "../config" }
 zk-contract-tool = { path = "../tool" }
 serde = { workspace = true }
 serde_json = { workspace = true }

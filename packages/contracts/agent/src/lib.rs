@@ -3,10 +3,11 @@
 //! @capability contract.agent
 #![forbid(unsafe_code)]
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use zk_contract_config::AgentSettings;
 use zk_contract_tool::TurnContext;
 
 /// One executed tool call, recorded for UI and diagnostics.
@@ -20,6 +21,24 @@ pub struct ToolCallRecord {
     pub result: String,
 }
 
+/// Token usage reported by the provider for one agent turn.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(default)]
+pub struct AgentUsage {
+    /// Every input token (cached + uncached).
+    pub input_tokens: Option<u64>,
+    /// Every output token, reasoning included.
+    pub output_tokens: Option<u64>,
+    /// `input_tokens + output_tokens`, when both were reported.
+    pub total_tokens: Option<u64>,
+    /// The part of `input_tokens` read from a provider-managed cache.
+    pub cached_tokens: Option<u64>,
+    /// The part of `output_tokens` spent on internal reasoning.
+    pub reasoning_tokens: Option<u64>,
+    /// Provider-reported cost in micro-USD (1e-6 USD), when known.
+    pub cost_micros: Option<u64>,
+}
+
 /// Result of one agent turn.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct AgentReply {
@@ -27,6 +46,9 @@ pub struct AgentReply {
     pub text: String,
     /// Tool calls executed during the turn (empty when none).
     pub tool_calls: Vec<ToolCallRecord>,
+    /// Provider token usage for the turn, when reported.
+    #[serde(default)]
+    pub usage: Option<AgentUsage>,
 }
 
 /// Closed error set for the agent loop.
@@ -169,6 +191,15 @@ pub trait Agent: Send + Sync {
     /// Request cancellation of the currently running turn (best effort).
     fn cancel(&self) {}
 
+    /// Apply runtime-configurable agent settings (ADR-064 / T22).
+    ///
+    /// The default implementation accepts but ignores the settings so existing
+    /// implementations keep compiling; implementations that support them (e.g.
+    /// `zk-agent-rig`) validate and apply them on the next turn.
+    fn configure_agent(&self, _settings: &AgentSettings) -> Result<(), String> {
+        Ok(())
+    }
+
     /// Swap the underlying model/provider at runtime (settings hot-reload).
     fn configure_model(
         &self,
@@ -209,4 +240,66 @@ pub trait Agent: Send + Sync {
             }
         }
     }
+}
+
+/// Process-wide runtime settings registry seam.
+///
+/// The desktop owns the settings store and the agent implementation
+/// (`zk-agent-rig`) owns the turn loop; neither depends on the other, so the
+/// resolved `AppSettings.agent` is published here (contract seam, C4) and the
+/// runtime reads it on every turn. `None` means "never configured" so the
+/// runtime may fall back to its environment defaults.
+static AGENT_SETTINGS: OnceLock<Mutex<Option<AgentSettings>>> = OnceLock::new();
+static AGENT_HOOK_SINK: OnceLock<Mutex<Option<Arc<dyn AgentHookSink>>>> = OnceLock::new();
+
+fn agent_settings_slot() -> &'static Mutex<Option<AgentSettings>> {
+    AGENT_SETTINGS.get_or_init(|| Mutex::new(None))
+}
+
+fn agent_hook_slot() -> &'static Mutex<Option<Arc<dyn AgentHookSink>>> {
+    AGENT_HOOK_SINK.get_or_init(|| Mutex::new(None))
+}
+
+/// Publish the resolved agent settings for the local agent runtime.
+///
+/// # Errors
+///
+/// [`zk_contract_config::ConfigError::Invalid`] when the settings fail
+/// validation; the previous value is kept.
+pub fn set_default_agent_settings(settings: &AgentSettings) -> Result<(), String> {
+    settings.validate().map_err(|error| error.to_string())?;
+    let mut slot = agent_settings_slot()
+        .lock()
+        .map_err(|_| "agent settings registry poisoned".to_owned())?;
+    *slot = Some(settings.clone());
+    Ok(())
+}
+
+/// The published agent settings, or `None` when never configured.
+#[must_use]
+pub fn default_agent_settings() -> Option<AgentSettings> {
+    agent_settings_slot()
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+}
+
+/// One serialized lifecycle hook event (the JSON form of the runtime's
+/// `HookEvent`), so hosts observe hooks without depending on agent-rig types.
+pub trait AgentHookSink: Send + Sync {
+    /// Receive one serialized hook event; implementations must not block.
+    fn on_agent_hook(&self, event: &serde_json::Value);
+}
+
+/// Install the process-wide hook sink (desktop event bridge / JSONL logger).
+pub fn set_agent_hook_sink(sink: Option<Arc<dyn AgentHookSink>>) {
+    if let Ok(mut slot) = agent_hook_slot().lock() {
+        *slot = sink;
+    }
+}
+
+/// The process-wide hook sink, when installed.
+#[must_use]
+pub fn agent_hook_sink() -> Option<Arc<dyn AgentHookSink>> {
+    agent_hook_slot().lock().ok().and_then(|slot| slot.clone())
 }

@@ -25,8 +25,10 @@ use rig_core::operation::Completion;
 use rig_core::tool::{DynamicTool, ToolExecutionError, ToolOutput};
 use rig_core::DynModel;
 use zk_contract_agent::{
-    Agent, AgentError, AgentEvent, AgentReply, ApprovalDecision, EventSink, ToolCallRecord,
+    Agent, AgentError, AgentEvent, AgentReply, AgentUsage, ApprovalDecision, EventSink,
+    ToolCallRecord,
 };
+use zk_contract_config::AgentSettings;
 use zk_contract_tool::{ApprovalGate, Tool, TurnContext};
 
 /// Maximum model/tool steps per turn.
@@ -67,7 +69,7 @@ pub struct RigAgent {
     preamble: String,
     approval: Arc<dyn ApprovalGate>,
     streaming: bool,
-    config: Arc<Mutex<AgentRuntimeConfig>>,
+    config: Arc<Mutex<Option<AgentRuntimeConfig>>>,
     hook_sink: Option<Arc<dyn HookSink>>,
     last_usage: Arc<Mutex<Option<UsageSnapshot>>>,
     cancelled: Arc<AtomicBool>,
@@ -91,7 +93,7 @@ impl RigAgent {
             streaming: std::env::var("ZEOKEEL_AGENT_STREAMING")
                 .map(|value| value != "0")
                 .unwrap_or(true),
-            config: Arc::new(Mutex::new(default_agent_config())),
+            config: Arc::new(Mutex::new(None)),
             hook_sink: global_hook_sink(),
             last_usage: Arc::new(Mutex::new(None)),
             cancelled: Arc::new(AtomicBool::new(false)),
@@ -102,9 +104,9 @@ impl RigAgent {
     /// Override max model/tool steps.
     #[must_use]
     pub fn with_max_steps(self, max_steps: usize) -> Self {
-        if let Ok(mut config) = self.config.lock() {
-            config.max_steps = max_steps.clamp(1, 200);
-        }
+        let mut config = self.effective_config();
+        config.max_steps = max_steps.clamp(1, 200);
+        self.set_runtime_config(config);
         self
     }
 
@@ -114,8 +116,8 @@ impl RigAgent {
     /// [`Self::configure_agent`] or global [`set_default_agent_config`] applies
     /// to the next turn without rebuilding the agent.
     #[must_use]
-    pub fn with_agent_config(mut self, config: AgentRuntimeConfig) -> Self {
-        self.config = Arc::new(Mutex::new(config));
+    pub fn with_agent_config(self, config: AgentRuntimeConfig) -> Self {
+        self.set_runtime_config(config);
         self
     }
 
@@ -125,23 +127,36 @@ impl RigAgent {
     ///
     /// [`AgentRuntimeConfig::validate`] rejects out-of-range values before they
     /// are stored.
-    pub fn configure_agent(&self, config: AgentRuntimeConfig) -> Result<(), AgentError> {
+    pub fn configure_agent_runtime(&self, config: AgentRuntimeConfig) -> Result<(), AgentError> {
         config.validate().map_err(AgentError::Invalid)?;
-        let mut guard = self
-            .config
-            .lock()
-            .map_err(|_| AgentError::Invalid("agent config lock poisoned".to_owned()))?;
-        *guard = config;
+        self.set_runtime_config(config);
         Ok(())
+    }
+
+    fn set_runtime_config(&self, config: AgentRuntimeConfig) {
+        if let Ok(mut guard) = self.config.lock() {
+            *guard = Some(config);
+        }
+    }
+
+    /// The config used for the next turn: the instance override when set,
+    /// otherwise the process-wide default (re-read every turn so desktop
+    /// `set_default_agent_config` applies without rebuilding the agent).
+    fn effective_config(&self) -> AgentRuntimeConfig {
+        self.config
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
+            .unwrap_or_else(default_agent_config)
     }
 
     /// Enable rig-memory conversation persistence in `dir`.
     #[must_use]
     pub fn with_memory_dir(self, dir: PathBuf) -> Self {
-        if let Ok(mut config) = self.config.lock() {
-            config.memory.enabled = true;
-            config.memory.dir = dir.to_string_lossy().to_string();
-        }
+        let mut config = self.effective_config();
+        config.memory.enabled = true;
+        config.memory.dir = dir.to_string_lossy().to_string();
+        self.set_runtime_config(config);
         self
     }
 
@@ -162,10 +177,7 @@ impl RigAgent {
     /// The config snapshot used for the next turn (tests/diagnostics).
     #[must_use]
     pub fn config(&self) -> AgentRuntimeConfig {
-        self.config
-            .lock()
-            .map(|guard| guard.clone())
-            .unwrap_or_default()
+        self.effective_config()
     }
 
     /// Disable token streaming (tests/scripted providers).
@@ -415,11 +427,7 @@ impl RigAgent {
         input: &str,
         sink: &Arc<dyn EventSink>,
     ) -> Result<AgentReply, AgentError> {
-        let config = self
-            .config
-            .lock()
-            .map(|guard| guard.clone())
-            .unwrap_or_default();
+        let config = self.effective_config();
         let hooks_config = config.hooks.clone();
         let hook_sink = self.hook_sink.clone();
         if let Ok(mut usage) = self.last_usage.lock() {
@@ -545,8 +553,32 @@ impl RigAgent {
         Ok(AgentReply {
             text,
             tool_calls: calls,
+            usage: agent_usage(self.last_usage()),
         })
     }
+}
+
+/// Map the runtime usage snapshot into the contract `AgentUsage`.
+fn agent_usage(snapshot: Option<UsageSnapshot>) -> Option<AgentUsage> {
+    snapshot.map(|usage| AgentUsage {
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        total_tokens: usage.total_tokens,
+        cached_tokens: usage.cached_input_tokens,
+        reasoning_tokens: usage.reasoning_tokens,
+        cost_micros: usage.cost_usd.and_then(usd_to_micros),
+    })
+}
+
+/// Convert provider-reported USD cost to integer micro-USD.
+// Float -> integer conversion only for the optional cost field; finite,
+// non-negative values are rounded and reparsed so no `as` cast is needed.
+#[allow(clippy::arithmetic_side_effects)]
+fn usd_to_micros(usd: f64) -> Option<u64> {
+    if !usd.is_finite() || usd < 0.0 {
+        return None;
+    }
+    format!("{:.0}", (usd * 1_000_000.0).round()).parse().ok()
 }
 
 /// Apply configurable completion parameters to the rig agent builder.
@@ -644,6 +676,12 @@ impl Agent for RigAgent {
             .lock()
             .map_err(|_| "model lock poisoned".to_owned())?;
         *guard = next;
+        Ok(())
+    }
+
+    fn configure_agent(&self, settings: &AgentSettings) -> Result<(), String> {
+        let config = AgentRuntimeConfig::from_contract(settings)?;
+        self.set_runtime_config(config);
         Ok(())
     }
 
@@ -750,6 +788,7 @@ impl Agent for RigAgent {
                 Ok(AgentReply {
                     text: String::new(),
                     tool_calls: Vec::new(),
+                    usage: agent_usage(self.last_usage()),
                 })
             }
             Err(error) => {
@@ -1397,7 +1436,7 @@ mod tests {
         let agent = RigAgent::new(model.into(), Vec::new())
             .unwrap()
             .with_streaming(false);
-        assert!(agent.configure_agent(config).is_err());
+        assert!(agent.configure_agent_runtime(config).is_err());
         assert!(agent.config().completion.temperature.is_none());
     }
 
@@ -1410,11 +1449,15 @@ mod tests {
             .unwrap()
             .with_streaming(false)
             .with_hook_sink(hooks.clone());
-        agent.run_in(&context(), "hi").unwrap();
+        let reply = agent.run_in(&context(), "hi").unwrap();
         let usage = agent.last_usage().expect("usage captured");
         assert_eq!(usage.input_tokens, Some(11));
         assert_eq!(usage.output_tokens, Some(5));
         assert_eq!(usage.total_tokens, Some(16));
+        let contract_usage = reply.usage.expect("AgentReply carries usage");
+        assert_eq!(contract_usage.input_tokens, Some(11));
+        assert_eq!(contract_usage.output_tokens, Some(5));
+        assert_eq!(contract_usage.total_tokens, Some(16));
         let events = hooks.0.lock().unwrap();
         assert!(events.iter().any(|event| matches!(
             event,

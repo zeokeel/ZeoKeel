@@ -288,11 +288,10 @@ fn boots_without_credentials_using_placeholder_and_fails_at_call() {
 fn model_from_config_requires_login_and_rejects_local_providers() {
     let _guard = config_guard();
     set_credentials("", "");
-    let error = model_from_config("gateway", "", "", "").unwrap_err();
-    assert!(
-        error.to_string().contains("login required"),
-        "unauthenticated model_from_config() must fail clearly: {error}"
-    );
+    // No credentials at all is the logout/pre-login reset: a boot placeholder,
+    // not an error (its calls fail at the transport layer).
+    let placeholder = model_from_config("gateway", "", "", "").unwrap();
+    assert_eq!(placeholder.id(), Some("unconfigured"));
     let error = model_from_config("mock", "http://127.0.0.1:1", "token", "model").unwrap_err();
     assert!(
         error.to_string().contains("does not support provider"),
@@ -444,4 +443,42 @@ fn after_login_model_from_config_builds_real_model() {
         .clone()
         .expect("request body captured");
     assert_eq!(body["model"], "gateway-model");
+}
+
+#[test]
+fn logout_reset_swaps_the_real_model_for_the_placeholder() {
+    let _guard = config_guard();
+    let (addr, _seen_body, _seen_auth) = fake_gateway(
+        text_stream(),
+        response_object(
+            "completed",
+            json!([message_item("logged in")]),
+            Some(json!({ "input_tokens": 1, "output_tokens": 1, "total_tokens": 2 })),
+        ),
+    );
+    gateway_credentials(addr);
+    let real = model_from_config("gateway", "", "", "").unwrap();
+    assert_eq!(real.id(), Some("gateway-model"), "logged-in model is real");
+
+    // Desktop `auth.logout` -> `configure_llm("", "", "", "gateway")`.
+    set_credentials("", "");
+    let reset = model_from_config("gateway", "", "", "").unwrap();
+    assert_eq!(
+        reset.id(),
+        Some("unconfigured"),
+        "logout must reset the gateway model to the ADR-064 placeholder"
+    );
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let call = runtime.block_on(async {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            reset.call(CompletionRequest::new("hello")),
+        )
+        .await
+    });
+    match call {
+        Ok(Ok(_)) => panic!("placeholder after logout must not answer"),
+        Ok(Err(_)) => {}
+        Err(_) => panic!("placeholder call must fail fast, not hang"),
+    }
 }

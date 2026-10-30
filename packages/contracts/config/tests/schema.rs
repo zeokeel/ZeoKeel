@@ -23,4 +23,8 @@ fn export_schema() {
         "provider-kind.json",
         &schemars::schema_for!(zk_contract_config::ProviderKind),
     );
+    write(
+        "agent-settings.json",
+        &schemars::schema_for!(zk_contract_config::AgentSettings),
+    );
 }

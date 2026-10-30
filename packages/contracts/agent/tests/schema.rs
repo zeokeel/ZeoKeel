@@ -31,4 +31,8 @@ fn export_schema() {
         "agent-approval-decision.json",
         &schemars::schema_for!(zk_contract_agent::ApprovalDecision),
     );
+    write(
+        "agent-usage.json",
+        &schemars::schema_for!(zk_contract_agent::AgentUsage),
+    );
 }
