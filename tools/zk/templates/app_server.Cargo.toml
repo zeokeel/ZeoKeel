@@ -14,6 +14,7 @@ zk-srv-http = { path = "../../packages/server/http" }
 zk-srv-auth-local = { path = "../../packages/server/auth" }
 zk-srv-users = { path = "../../packages/server/users" }
 zk-srv-content = { path = "../../packages/server/content" }
+zk-srv-skills = { path = "../../packages/server/skills" }
 zk-srv-jobs = { path = "../../packages/server/jobs" }
 zk-srv-settings = { path = "../../packages/server/settings" }
 zk-srv-audit = { path = "../../packages/server/audit" }

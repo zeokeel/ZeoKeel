@@ -1,4 +1,5 @@
 [packages]
+"srv.skills" = "zeokeel/skills"
 "srv.content" = "zeokeel/content"
 "llm.provider.default" = "zeokeel/llm-gateway"
 "ui.slot.login" = "zeokeel/ui-login"

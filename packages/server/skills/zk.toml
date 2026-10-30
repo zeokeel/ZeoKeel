@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/skills"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Skill archive validation/catalog/download"
+
+[role]
+name = "srv.skills"
+contract = "zk-contract-skill"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-srv-skills" }

@@ -8,6 +8,11 @@
 
 ## 1. 自动验证（实现后填写真实结果）
 
+### task 4 evidence (2026-10-30)
+
+- `bash scripts/srv-store-test.sh`：上传 zip（SKILL.md）→ 归档 sha256；同版本 409；`../evil` zip 400；下载 archive 校验 `X-ZeoKeel-Skill-Sha256` 与内容；`store ok: content schema wired + skill upload/download`
+- 服务端只读 central directory，不解压（ADR-061）
+
 ### task 3 evidence (2026-10-30)
 
 - `bash scripts/srv-store-test.sh`：创建（pending）→ approve → grants(all,can_install) → client catalog 1 项 → DELETE 软删 → catalog 0 项；`store ok: content schema wired`

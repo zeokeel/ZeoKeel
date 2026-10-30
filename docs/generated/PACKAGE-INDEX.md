@@ -2,7 +2,7 @@
 
 # Package Index
 
-edition `enterprise` · channel `official` · 33 packages
+edition `enterprise` · channel `official` · 34 packages
 
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
@@ -26,6 +26,7 @@ edition `enterprise` · channel `official` · 33 packages
 | `srv.jobs` | `zeokeel/jobs` | `zk-srv-jobs` | `zk-contract-server` | singleton |
 | `srv.pricing` | `zeokeel/pricing` | `zk-srv-pricing` | `zk-contract-wallet` | singleton |
 | `srv.settings` | `zeokeel/settings` | `zk-srv-settings` | `zk-contract-server` | singleton |
+| `srv.skills` | `zeokeel/skills` | `zk-srv-skills` | `zk-contract-skill` | singleton |
 | `srv.users` | `zeokeel/users` | `zk-srv-users` | `zk-contract-user` | singleton |
 | `srv.wallet` | `zeokeel/wallet` | `zk-srv-wallet` | `zk-contract-wallet` | singleton |
 | `store.session` | `zeokeel/store-session-sqlite` | `zk-store-session-sqlite` | `zk-contract-session` | singleton |

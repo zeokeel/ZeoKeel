@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 pub const EDITION: &str = "enterprise";
-pub const PACKAGES: &[&str] = &["zeokeel/admin-ui-kit","zeokeel/admin-audit","zeokeel/admin-jobs","zeokeel/admin-pricing","zeokeel/admin-settings","zeokeel/admin-usage","zeokeel/admin-users","zeokeel/admin-wallet","zeokeel/admin-shell","zeokeel/agent-loop","zeokeel/client-auth","zeokeel/llm-gateway","zeokeel/audit","zeokeel/auth","zeokeel/content","zeokeel/gateway","zeokeel/srv-http","zeokeel/jobs","zeokeel/pricing","zeokeel/settings","zeokeel/users","zeokeel/wallet","zeokeel/store-session-sqlite","zeokeel/store-settings-json","zeokeel/tool-fs","zeokeel/ui-kit","zeokeel/ui-shell","zeokeel/ui-chat","zeokeel/ui-commands","zeokeel/ui-inspector","zeokeel/ui-login","zeokeel/ui-sessions","zeokeel/ui-settings",];
+pub const PACKAGES: &[&str] = &["zeokeel/admin-ui-kit","zeokeel/admin-audit","zeokeel/admin-jobs","zeokeel/admin-pricing","zeokeel/admin-settings","zeokeel/admin-usage","zeokeel/admin-users","zeokeel/admin-wallet","zeokeel/admin-shell","zeokeel/agent-loop","zeokeel/client-auth","zeokeel/llm-gateway","zeokeel/audit","zeokeel/auth","zeokeel/content","zeokeel/gateway","zeokeel/srv-http","zeokeel/jobs","zeokeel/pricing","zeokeel/settings","zeokeel/skills","zeokeel/users","zeokeel/wallet","zeokeel/store-session-sqlite","zeokeel/store-settings-json","zeokeel/tool-fs","zeokeel/ui-kit","zeokeel/ui-shell","zeokeel/ui-chat","zeokeel/ui-commands","zeokeel/ui-inspector","zeokeel/ui-login","zeokeel/ui-sessions","zeokeel/ui-settings",];
 
 pub struct Runtime {
     agent: Arc<dyn zk_contract_agent::Agent>,
