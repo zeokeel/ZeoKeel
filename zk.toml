@@ -57,6 +57,11 @@ contract = "zk-contract-admin-ui"
 cardinality = "singleton"
 editions = ["enterprise"]
 
+[roles."admin.page.apps"]
+contract = "zk-contract-admin-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
 [roles."admin.page.skills"]
 contract = "zk-contract-admin-ui"
 cardinality = "singleton"

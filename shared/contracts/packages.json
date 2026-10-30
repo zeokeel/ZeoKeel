@@ -8,6 +8,14 @@
     ]
   },
   {
+    "id": "zeokeel/admin-apps",
+    "version": "0.1.0",
+    "kind": "ui",
+    "roles": [
+      "admin.page.apps"
+    ]
+  },
+  {
     "id": "zeokeel/admin-audit",
     "version": "0.1.0",
     "kind": "ui",

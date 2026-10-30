@@ -5,6 +5,12 @@
     "contract": "zk-contract-admin-ui",
     "cardinality": "singleton"
   },
+  "admin.page.apps": {
+    "package": "zeokeel/admin-apps",
+    "crate_name": "zk-admin-admin-apps",
+    "contract": "zk-contract-admin-ui",
+    "cardinality": "singleton"
+  },
   "admin.page.audit": {
     "package": "zeokeel/admin-audit",
     "crate_name": "zk-admin-admin-audit",

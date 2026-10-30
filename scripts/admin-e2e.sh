@@ -28,8 +28,13 @@ import zipfile
 with zipfile.ZipFile('/tmp/zk-admin-skill.zip', 'w', zipfile.ZIP_DEFLATED) as z:
     z.writestr('SKILL.md', '# admin e2e skill\n')
 PYZIP
+# Seed one pending app for M4 admin page (dummy wasm; no execution in this test).
+ADMIN_JWT=$(curl -fsS -X POST "$BASE/api/client/v1/auth/login" -H 'content-type: application/json' -d '{"username":"admin","password":"admin-pass","device_id":"admin-e2e"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
+printf '\0asm\1\0\0\0' > /tmp/zk-admin-app.wasm
+printf '{"name":"admin-app","version":"1.0.0","description":"admin","icon":"","db_schema_version":0,"db_migrations":[],"ui":[]}' > /tmp/zk-admin-app.json
+curl -fsS -X POST "$BASE/api/client/v1/apps" -H "Authorization: Bearer $ADMIN_JWT" -F "manifest=</tmp/zk-admin-app.json" -F "wasm=@/tmp/zk-admin-app.wasm" >/dev/null
 mkdir -p target/evidence/m2/admin target/evidence/m3
 export ZEOKEEL_SKILL_ZIP=/tmp/zk-admin-skill.zip
 ZEOKEEL_ADMIN_URL="$BASE/admin" ZEOKEEL_ADMIN_PASSWORD="admin-pass" \
-  pnpm exec playwright test e2e/m2-admin.spec.ts e2e/m3-admin-skills.spec.ts e2e/m3-admin-connectors.spec.ts --reporter=line
+  pnpm exec playwright test e2e/m2-admin.spec.ts e2e/m3-admin-skills.spec.ts e2e/m3-admin-connectors.spec.ts e2e/m4-admin-apps.spec.ts --reporter=line
 echo "admin e2e ok"

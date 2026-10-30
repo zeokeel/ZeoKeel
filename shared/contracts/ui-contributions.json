@@ -1,5 +1,12 @@
 [
   {
+    "component": "page.apps",
+    "order": 10,
+    "package": "zeokeel/admin-apps",
+    "role": "admin.page.apps",
+    "slot": "admin.page.apps"
+  },
+  {
     "component": "page.audit",
     "order": 10,
     "package": "zeokeel/admin-audit",

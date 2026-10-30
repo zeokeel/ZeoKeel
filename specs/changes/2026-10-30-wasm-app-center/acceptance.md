@@ -16,6 +16,10 @@
 - task 4/5：员工上传（manifest+wasm+ui）、admin approve/grants、catalog/open/request/assets、host-managed schema、Go guest 执行、重启持久、下架 403/410
 - `bash scripts/apps-e2e.sh`：`apps e2e ok: upload/approve/open/request/restart/delist`
 
+## 进展（续）
+
+- task 6：`@zeokeel/admin-apps` 页面；`admin-e2e.sh` 9 passed（含 apps 审批/grants/下架 + axe），截图 `target/evidence/m4/admin-apps.png`
+
 ## 检查
 
 - [ ] `bash scripts/apps-e2e.sh`
