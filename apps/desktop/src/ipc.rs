@@ -175,7 +175,11 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 return CommandResponse::err(error);
             }
             match state.runtime.settings().save(&settings) {
-                Ok(()) => CommandResponse::ok(masked_settings(&settings)),
+                Ok(()) => {
+                    let provider = match settings.provider.kind { ProviderKind::Mock => "mock", ProviderKind::OpenAiCompatible => "openai", ProviderKind::Ollama => "ollama" };
+                    let _ = state.runtime.configure_llm(&settings.provider.base_url, &settings.provider.api_key, &settings.provider.model, provider);
+                    CommandResponse::ok(masked_settings(&settings))
+                }
                 Err(error) => CommandResponse::err(error.to_string()),
             }
         }

@@ -34,5 +34,6 @@
 - 已用：AgentBuilder、DynamicTool、preamble、max turns、streaming（text delta）、取消标志、审批阻塞、工具超时。
 - 已接：rig-memory（`ZEOKEEL_AGENT_MEMORY_DIR`）、rig extractor（`extract_json` 工具）。
 - 已接多 provider：openai/deepseek/anthropic/ollama（`ZEOKEEL_RIG_PROVIDER`）。
+- 设置保存后通过 `RigAgent::configure_model` 热切换 rig model（无需重启）。
 - 待接：hooks 全面观测、extractor、vector store、loaders、图像/音频/转写/rerank。
 - 每项独立能力包/角色；未配置时 `CAPABILITY_UNAVAILABLE`。

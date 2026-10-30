@@ -32,6 +32,8 @@ impl Runtime {
 
     pub fn cancel_agent(&self) { self.agent.cancel(); }
 
+    pub fn configure_llm(&self, base_url: &str, api_key: &str, model: &str, provider: &str) -> Result<(), String> { self.agent.configure_model(base_url, api_key, model, provider) }
+
     pub fn sessions(&self) -> Arc<dyn zk_contract_session::SessionStore> {
         Arc::clone(&self.sessions)
     }

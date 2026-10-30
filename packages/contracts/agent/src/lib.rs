@@ -147,6 +147,11 @@ pub trait Agent: Send + Sync {
     /// Request cancellation of the currently running turn (best effort).
     fn cancel(&self) {}
 
+    /// Swap the underlying model/provider at runtime (settings hot-reload).
+    fn configure_model(&self, _base_url: &str, _api_key: &str, _model: &str, _provider: &str) -> Result<(), String> {
+        Err("agent does not support runtime model configuration".to_owned())
+    }
+
     /// Run one turn with a workspace context and stream events.
     fn run_stream_in(
         &self,

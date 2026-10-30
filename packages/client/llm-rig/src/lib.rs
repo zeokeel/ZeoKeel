@@ -44,6 +44,11 @@ fn env_first(keys: &[&str]) -> String {
     keys.iter().find_map(|key| std::env::var(key).ok().filter(|value| !value.trim().is_empty())).unwrap_or_default()
 }
 
+/// Build a model from explicit fields (settings hot-swap).
+pub fn model_from_config(provider: &str, base_url: &str, api_key: &str, model: &str) -> Result<DynModel<Completion>, LlmError> {
+    model_from(&RigConfig { provider: provider.to_owned(), base_url: base_url.to_owned(), api_key: api_key.to_owned(), model: model.to_owned() })
+}
+
 /// Build the rig completion model.
 pub fn model_from(config: &RigConfig) -> Result<DynModel<Completion>, LlmError> {
     if config.base_url.trim().is_empty() && config.api_key.trim().is_empty() {

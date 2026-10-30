@@ -20,11 +20,15 @@ use zk_contract_tool::{ApprovalGate, Tool, TurnContext};
 /// Maximum model/tool steps per turn.
 pub const MAX_STEPS: usize = 50;
 
+/// Factory used to rebuild the rig model at runtime.
+pub type ModelFactory = Arc<dyn Fn(&str, &str, &str, &str) -> Result<DynModel<Completion>, String> + Send + Sync>;
+
 static APPROVAL_SEQ: AtomicU64 = AtomicU64::new(1);
 
 /// rig-backed agent.
 pub struct RigAgent {
-    model: DynModel<Completion>,
+    model: Arc<Mutex<DynModel<Completion>>>,
+    model_factory: Option<ModelFactory>,
     tools: Vec<Arc<dyn Tool>>,
     preamble: String,
     approval: Arc<dyn ApprovalGate>,
@@ -42,7 +46,7 @@ impl RigAgent {
             .enable_all()
             .build()
             .map_err(|error| AgentError::Invalid(format!("tokio runtime: {error}")))?;
-        Ok(Self { model, tools, preamble, approval: Arc::new(zk_kit_approval::GlobalGate), streaming: std::env::var("ZEOKEEL_AGENT_STREAMING").map(|value| value != "0").unwrap_or(true), memory_dir: std::env::var_os("ZEOKEEL_AGENT_MEMORY_DIR").map(PathBuf::from), cancelled: Arc::new(AtomicBool::new(false)), runtime })
+        Ok(Self { model: Arc::new(Mutex::new(model)), model_factory: None, tools, preamble, approval: Arc::new(zk_kit_approval::GlobalGate), streaming: std::env::var("ZEOKEEL_AGENT_STREAMING").map(|value| value != "0").unwrap_or(true), memory_dir: std::env::var_os("ZEOKEEL_AGENT_MEMORY_DIR").map(PathBuf::from), cancelled: Arc::new(AtomicBool::new(false)), runtime })
     }
 
     /// Enable rig-memory conversation persistence in `dir`.
@@ -56,6 +60,13 @@ impl RigAgent {
     #[must_use]
     pub fn with_streaming(mut self, streaming: bool) -> Self {
         self.streaming = streaming;
+        self
+    }
+
+    /// Install a factory used by `configure_model` (settings hot-reload).
+    #[must_use]
+    pub fn with_model_factory(mut self, factory: ModelFactory) -> Self {
+        self.model_factory = Some(factory);
         self
     }
 
@@ -149,7 +160,8 @@ impl RigAgent {
         let tools = self.dynamic_tools(context, &records, sink);
         self.cancelled.store(false, Ordering::SeqCst);
         let preamble = format!("{}\n\n{}\n\n{}", self.preamble, tool_guidance(&self.tools), workspace_instructions(context));
-        let mut builder = AgentBuilder::new(self.model.clone())
+        let model = self.model.lock().map(|guard| guard.clone()).map_err(|_| AgentError::Invalid("model lock poisoned".to_owned()))?;
+        let mut builder = AgentBuilder::new(model)
             .name("zeokeel")
             .preamble(preamble)
             .context(format!("Workspace: {}\nConversation: {}", context.workspace_root, context.conversation_id))
@@ -201,6 +213,14 @@ impl RigAgent {
 
 impl Agent for RigAgent {
     fn cancel(&self) { self.cancelled.store(true, Ordering::SeqCst); }
+
+    fn configure_model(&self, base_url: &str, api_key: &str, model: &str, provider: &str) -> Result<(), String> {
+        let factory = self.model_factory.as_ref().ok_or_else(|| "model factory is not installed".to_owned())?;
+        let next = factory(base_url, api_key, model, provider)?;
+        let mut guard = self.model.lock().map_err(|_| "model lock poisoned".to_owned())?;
+        *guard = next;
+        Ok(())
+    }
 
     fn run(&self, input: &str) -> Result<AgentReply, AgentError> {
         self.run_stream_in(&TurnContext { conversation_id: "default".to_owned(), workspace_id: "default".to_owned(), workspace_root: ".".to_owned() }, "turn", input, &NoopSink)
@@ -418,6 +438,20 @@ mod tests {
         let reply = agent.run_in(&TurnContext { conversation_id: "c".to_owned(), workspace_id: "w".to_owned(), workspace_root: ".".to_owned() }, "read").unwrap();
         assert_eq!(reply.tool_calls.len(), 1);
         assert!(reply.tool_calls.first().map(|call| call.result.contains("denied")).unwrap_or(false));
+    }
+
+    #[test]
+    fn configure_model_hot_swaps() {
+        let first = MockCompletionModel::text("first");
+        let second = MockCompletionModel::text("second");
+        let second_for_factory = second.clone();
+        let agent = RigAgent::new(first.into(), Vec::new()).unwrap().with_streaming(false)
+            .with_model_factory(Arc::new(move |_base, _key, _model, _provider| Ok(second_for_factory.clone().into())));
+        let reply = agent.run_in(&TurnContext { conversation_id: "c".to_owned(), workspace_id: "w".to_owned(), workspace_root: ".".to_owned() }, "hi").unwrap();
+        assert_eq!(reply.text, "first");
+        zk_contract_agent::Agent::configure_model(&agent, "", "", "", "openai").unwrap();
+        let reply = agent.run_in(&TurnContext { conversation_id: "c".to_owned(), workspace_id: "w".to_owned(), workspace_root: ".".to_owned() }, "hi").unwrap();
+        assert_eq!(reply.text, "second");
     }
 
     #[test]
