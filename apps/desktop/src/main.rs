@@ -10,6 +10,7 @@ mod automation;
 mod changes;
 mod events;
 mod ipc;
+mod native_client;
 mod serve;
 
 use std::sync::Arc;
@@ -332,7 +333,7 @@ document.title='SELFTEST|'+JSON.stringify({appRequest,ipc,open,core});
             };
             let url = format!("{}/api/client/v1/apps/{app_id}/assets/{asset}", base_url.trim_end_matches('/'));
             let client = reqwest::blocking::Client::new();
-            let Ok(response) = client.get(url).bearer_auth(token).send() else {
+            let Ok(response) = native_client::apply_headers(client.get(url).bearer_auth(token)).send() else {
                 return http::Response::builder().status(502).body(b"app unavailable".to_vec()).unwrap_or_default();
             };
             if !response.status().is_success() {

@@ -12,7 +12,7 @@
 ## 2. 426 envelope / 渠道 min version
 
 - 426 body：`{error:{code:"CLIENT_TOO_OLD",message,retryable:false,request_id,current?,minimum,portal_url}}`；其它业务错误逐步统一 envelope 由 docs/04 注明 426 特例，客户端兼容 flat/nested。
-- 服务端中间件支持按渠道：请求头 channel 或 server channel settings 的 `min_client_version` 优先，env 全局兜底；docs/04 更新为"渠道可配，env 兜底"。
+- 服务端中间件按**服务端构建渠道**读取 `ZEOKEEL_MIN_CLIENT_VERSION_<CHANNEL>`（客户端头 channel 不参与，防伪造），env 全局兜底；如实现 brand 编译值则一并使用，否则删除该不可达分支并同步 docs。
 - `X-Request-Id` 请求头若缺失生成 uuid，响应回显，client 会发送。
 
 ## 3. OEM pin

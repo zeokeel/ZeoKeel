@@ -80,7 +80,7 @@
 ## 6. 客户端与本地载体
 
 - Tauri capabilities：主窗口最小命令集；WASM 应用窗口**只允许** `app_request`；登录窗口只允许 auth 命令。
-- CSP：`default-src 'self'`；个人版 `connect-src` 仅配置的服务端/上游；企业版因 `server_url` 由客户部署且渠道运行期锁定，`connect-src` 允许 `https:` 与本地回环（`http://127.0.0.1:*`/`localhost`，供 serve 载体与本地 provider），不允许任意明文远程 HTTP；禁止 `eval`/内联脚本（除白名单）。外部链接必须经受控 `system.open_url`（仅 http/https）。
+- CSP：`default-src 'self'`；`connect-src` 允许 `https:` 与本地回环（`http://127.0.0.1:*`/`localhost`，供企业动态 `server_url`、serve 载体与本地 provider），不允许任意明文远程 HTTP；个人版共享同一静态 CSP（构建期不按 edition 分叉），但个人版代码只访问配置的 provider/更新端点；禁止 `eval`/内联脚本（除白名单）。外部链接必须经受控 `system.open_url`（仅 http/https）。
 - 深链：scheme 由渠道配置；仅白名单 action；解析失败静默忽略并记日志。
 - 本地 HTTP `serve`：绑 127.0.0.1；Host 白名单；Origin 精确匹配；一次性 token 绑 Host+会话；必需自定义头；防 DNS rebinding。
 - 本地数据：会话 SQLite WAL；密钥系统密钥库；导出脱敏；崩溃 dump 不含 token。

@@ -158,7 +158,7 @@
 | 稳定面 | `/api/meta/*`、`/api/channel`、`/api/updates/*` 跨 major 不变、只增不改；老客户端靠它发现服务端并自更新 |
 | 能力协商 | `GET /api/meta/capabilities` 返回 `api_version`、`server_version`、`min_client_version`、`features[]`、`event_topics[]`；客户端缓存并随登录刷新；未知 feature 一律忽略，不得假设存在 |
 | 客户端标识 | 所有请求带 `X-ZeoKeel-Client`（版本/渠道/平台/设备）；服务端记录用于灰度与排障，不用于授权 |
-| 最小版本 | 服务端按渠道配置 `min_client_version`（硬门槛；`ZEOKEEL_MIN_CLIENT_VERSION_<CHANNEL>` 或品牌编译值，全局 `ZEOKEEL_MIN_CLIENT_VERSION` 兜底）与 `recommended`；低于硬门槛：业务面返回 `426 CLIENT_TOO_OLD`（稳定面、登录/刷新除外），客户端展示强制升级页 |
+| 最小版本 | 服务端按渠道配置 `min_client_version`（硬门槛；按**服务端构建渠道**读取 `ZEOKEEL_MIN_CLIENT_VERSION_<CHANNEL>`，全局 `ZEOKEEL_MIN_CLIENT_VERSION` 兜底；客户端头里的 channel 仅作排障，不参与门槛选择）与 `recommended`；低于硬门槛：业务面返回 `426 CLIENT_TOO_OLD`（稳定面、登录/刷新除外），客户端展示强制升级页 |
 | 灰度/强制升级 | 客户端渠道（official/beta/oem）+ 服务端清单 `rollout`/`forced`/`deadline`；按渠道/用户比例灰度（D53，管理台配置），到期限后业务面 426；本地 agent 离线能力在升级前保持可用（宽限默认值：允许仅本地 agent，M3 spec 确认，15 §C）；同一用户不得在灰度中反复横跳 |
 
 ## 5. 权限模型与路由真源

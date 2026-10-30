@@ -1,11 +1,15 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { UpgradeGate } from "../src/UpgradeGate";
-import { portalHref, parseUpgradeInfo, upgradeInfoOf, UpgradeRequiredError } from "../src/upgrade";
+import { portalHref, parseUpgradeInfo, resolvePortalHref, upgradeInfoOf, UpgradeRequiredError } from "../src/upgrade";
 import type { Transport } from "../src/types";
 import { readyTransport } from "./fixtures";
+
+beforeEach(() => {
+  localStorage.removeItem("zk.enterprise.server");
+});
 
 describe("forced upgrade 426 parsing", () => {
   it("parses the flat server body shape", () => {
@@ -28,6 +32,20 @@ describe("forced upgrade 426 parsing", () => {
     expect(parseUpgradeInfo(426, "not json")).toEqual({ current: null, minimum: null, portalUrl: null });
     expect(parseUpgradeInfo(409, JSON.stringify({ error: "CLIENT_TOO_OLD" }))).toBeNull();
     expect(parseUpgradeInfo(500, "")).toBeNull();
+  });
+
+  it("locks portal URLs to http(s) same-origin; unsafe/offsite/protocol-relative fall back", () => {
+    const server = "https://srv.example";
+    expect(resolvePortalHref("https://srv.example/download", server)).toBe("https://srv.example/download");
+    expect(resolvePortalHref("/download", server)).toBe("https://srv.example/download");
+    expect(resolvePortalHref("portal", server)).toBe("https://srv.example/portal");
+    for (const unsafe of ["javascript:alert(1)", "data:text/html,x", "file:///etc/passwd", "//evil.example/portal", "https://evil.example/portal", "http://srv.example/portal"]) {
+      expect(resolvePortalHref(unsafe, server)).toBe("https://srv.example/portal");
+    }
+    expect(resolvePortalHref(null, server)).toBe("https://srv.example/portal");
+    expect(resolvePortalHref("https://srv.example/portal", "https://srv.example/app")).toBe("https://srv.example/portal");
+    expect(resolvePortalHref("https://srv.example/portal", "")).toBeNull();
+    expect(resolvePortalHref("javascript:alert(1)", "")).toBeNull();
   });
 
   it("extracts upgrade info from typed/string errors and builds /portal hrefs", () => {
@@ -54,6 +72,7 @@ describe("forced upgrade gate", () => {
   }
 
   it("shows a full-screen, non-dismissable upgrade page and stops business calls", async () => {
+    localStorage.setItem("zk.enterprise.server", "https://srv.example");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const calls: string[] = [];
     const transport = upgradeTransport(new UpgradeRequiredError({ current: "0.1.0", minimum: "0.3.0", portalUrl: "https://srv.example/portal" }), calls);
@@ -111,8 +130,10 @@ describe("forced upgrade gate", () => {
   });
 
   it("opens the portal through system.open_url in Tauri and window.open in the browser", async () => {
+    localStorage.setItem("zk.enterprise.server", "https://srv.example");
     const calls: string[] = [];
-    const transport = upgradeTransport(new UpgradeRequiredError({ current: "0.1.0", minimum: "9.9.9", portalUrl: "https://srv.example/portal" }), calls);
+    // Malicious 426 portal_url must be replaced by the validated server-origin fallback.
+    const transport = upgradeTransport(new UpgradeRequiredError({ current: "0.1.0", minimum: "9.9.9", portalUrl: "javascript:alert(1)" }), calls);
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     const first = render(<App transport={transport} />);
     expect(await screen.findByRole("alert")).toBeTruthy();
@@ -122,11 +143,25 @@ describe("forced upgrade gate", () => {
 
     Reflect.set(window, "__TAURI_INTERNALS__", {});
     const tauriCalls: string[] = [];
-    const tauriTransport = upgradeTransport(new UpgradeRequiredError({ current: "0.1.0", minimum: "9.9.9", portalUrl: "https://srv.example/portal" }), tauriCalls);
+    const openedUrls: unknown[] = [];
+    const base = readyTransport([]);
+    const tauriTransport: Transport = {
+      async call(name, payload) {
+        tauriCalls.push(name);
+        if (name === "meta.get") throw new UpgradeRequiredError({ current: "0.1.0", minimum: "9.9.9", portalUrl: "https://evil.example/portal" });
+        if (name === "system.open_url") {
+          openedUrls.push(payload["url"]);
+          return {};
+        }
+        return base.call(name, payload);
+      },
+      subscribe: (handler) => base.subscribe(handler),
+    };
     render(<App transport={tauriTransport} />);
     expect(await screen.findByRole("alert")).toBeTruthy();
     await userEvent.click(screen.getByRole("link", { name: "打开下载页" }));
     expect(tauriCalls).toContain("system.open_url");
+    expect(openedUrls).toEqual(["https://srv.example/portal"]);
     Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
     openSpy.mockRestore();
   });

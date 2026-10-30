@@ -15,9 +15,8 @@ use sqlx::PgPool;
 use zk_contract_server::ServerModule;
 pub use zk_kit_server::AppState;
 use zk_kit_server::{
-    brand_snapshot, client_channel, client_version, content_etag, if_none_match,
-    min_client_version, min_client_version_for_channel, parse_semver, permissions_for_role,
-    require_admin, ServerError,
+    brand_snapshot, client_version, content_etag, if_none_match, min_client_version,
+    min_client_version_for_server, parse_semver, permissions_for_role, require_admin, ServerError,
 };
 
 /// Stable API version for the cross-major `/api/meta/*` surface (`docs/04` §2).
@@ -100,8 +99,9 @@ pub async fn client_version_gate(request: Request, next: Next) -> Response {
         attach_request_id(&mut response, &request_id);
         return response;
     }
-    let channel = client_channel(request.headers());
-    let minimum = min_client_version_for_channel(channel.as_deref());
+    // Authoritative server channel (compiled brand): never trust the channel
+    // segment in the client-controlled header to choose a lower minimum.
+    let minimum = min_client_version_for_server();
     let current = client_version(request.headers());
     let Some(version) = current.as_deref().and_then(parse_semver) else {
         return upgrade_required(
@@ -373,7 +373,7 @@ mod tests {
             .layer(axum::middleware::from_fn(client_version_gate))
     }
 
-    async fn call_with_request_id(
+    async fn call_raw(
         app: Router,
         path: &str,
         header: Option<&str>,
@@ -394,6 +394,22 @@ mod tests {
             .await
             .expect("body");
         (status, headers, bytes.to_vec())
+    }
+
+    /// Serialize tests that mutate the process-wide minimum-version env.
+    fn gate_test_lock() -> &'static tokio::sync::Mutex<()> {
+        static LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+        LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+    }
+
+    async fn call_with_request_id(
+        app: Router,
+        path: &str,
+        header: Option<&str>,
+        request_id: Option<&str>,
+    ) -> (StatusCode, HeaderMap, Vec<u8>) {
+        let _guard = gate_test_lock().lock().await;
+        call_raw(app, path, header, request_id).await
     }
 
     async fn call(
@@ -494,32 +510,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn per_channel_min_version_overrides_global_fallback() {
-        let channel = "round6-http-channel";
-        let key = zk_kit_server::channel_min_version_env_key(channel);
-        std::env::set_var(&key, "9.9.9");
-        let channel_header = format!("0.2.0;{channel};linux-x64;test");
-        let result = call(
+    async fn spoofed_header_channel_cannot_lower_the_authoritative_minimum() {
+        let guard = gate_test_lock().lock().await;
+        let server_channel = zk_kit_server::server_channel();
+        let server_key = zk_kit_server::channel_min_version_env_key(&server_channel);
+        let spoof_key = zk_kit_server::channel_min_version_env_key("beta");
+        std::env::set_var(&server_key, "9.9.9");
+        std::env::set_var(&spoof_key, "0.0.1");
+        let spoofed = "0.1.0;beta;linux-x64;test";
+        let result = call_raw(
             gate_router(),
             "/api/client/v1/workspaces",
-            Some(&channel_header),
+            Some(spoofed),
+            None,
         )
         .await;
-        std::env::remove_var(&key);
+        std::env::remove_var(&server_key);
+        std::env::remove_var(&spoof_key);
+        drop(guard);
+
         let (status, _headers, body) = result;
         assert_eq!(status, StatusCode::UPGRADE_REQUIRED);
         let value: Value = serde_json::from_slice(&body).expect("json");
         assert_eq!(value["error"]["minimum"], "9.9.9");
-
-        let global = min_client_version();
-        let official_header = format!("{global};official;linux-x64;test");
-        let (status, _headers, _body) = call(
-            gate_router(),
-            "/api/client/v1/workspaces",
-            Some(&official_header),
-        )
-        .await;
-        assert_eq!(status, StatusCode::OK);
     }
 
     #[tokio::test]

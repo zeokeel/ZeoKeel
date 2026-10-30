@@ -36,6 +36,21 @@ describe("client identity headers (round-6 §1/§4)", () => {
     expect(newRequestId()).not.toBe(newRequestId());
   });
 
+  it("sends a distinct X-Request-Id on every request", async () => {
+    const ids: string[] = [];
+    vi.stubGlobal("fetch", (_url: unknown, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      ids.push(headers.get("X-Request-Id") ?? "");
+      return Promise.resolve(new Response("{}", { status: 200 }));
+    });
+    await serverFetch("http://server.example/a");
+    await serverFetch("http://server.example/b");
+    expect(ids).toHaveLength(2);
+    expect(ids[0] ?? "").not.toBe("");
+    expect(ids[1] ?? "").not.toBe("");
+    expect(ids[0]).not.toBe(ids[1]);
+  });
+
   it("maps any 426 to a typed UpgradeRequiredError", async () => {
     vi.stubGlobal("fetch", () => Promise.resolve(new Response(JSON.stringify({ error: { code: "CLIENT_TOO_OLD", current: "0.1.0", minimum: "9.9.9", portal_url: "/portal" } }), { status: 426 })));
     await expect(serverFetch("http://server.example/api/client/v1/skills")).rejects.toBeInstanceOf(UpgradeRequiredError);

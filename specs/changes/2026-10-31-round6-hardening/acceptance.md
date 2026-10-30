@@ -19,7 +19,7 @@
 ## 1.1 实现记录
 
 - web：`serverFetch` 统一所有 server 直连（client header + X-Request-Id + 426→UpgradeRequiredError），相对 portal 解析、版本说明、platform 归一、changes 文件级文案、Tauri 外部打开分支；真实 426 升级 e2e。
-- server：426 统一信封（含 request_id/retryable/x-request-id 回显）、渠道级 min_client_version（`<CHANNEL>` override → brand → global）、CORS request-id。
+- server：426 统一信封（含 request_id/retryable/x-request-id 回显）、渠道级 min_client_version（服务端构建渠道的 `<CHANNEL>` override → global；客户端 header channel 不参与）、CORS request-id；native Tauri app 请求带客户端标识。
 - OEM：git 索引强制 gitlink；仅非 git fixture 回退目录哈希；4 个 channel_validate 测试 + oem-e2e。
 - Tauri：CSP connect-src 允许企业 https + 本地回环；`system.open_url` 仅 http/https、固定 argv、无等待；能力不新增 ACL（自定义命令）。
 - changes：UI 标注文件级 +add/−del（无行级 diff），docs/27/21/19/09/04 同步。

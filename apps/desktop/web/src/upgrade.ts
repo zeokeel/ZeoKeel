@@ -117,31 +117,38 @@ export function portalHref(serverUrl: string): string | null {
   return base === "" ? null : `${base}/portal`;
 }
 
+/** http(s) origin of the active server, or null when unset/invalid (round-6 P2-1). */
+function serverOrigin(serverUrl: string): string | null {
+  const base = serverUrl.trim();
+  if (base === "") return null;
+  try {
+    const url = new URL(base);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Resolves the 426 `portal_url`:
- * - absolute http(s) URL → used as-is;
- * - `/portal` (absolute path) → resolved against the server origin;
- * - other relative paths → resolved against `<server_url>/`;
- * - missing portal_url → `<server_url>/portal` fallback.
+ * Resolves the 426 `portal_url` with scheme/origin hardening (round-6 review P2-1):
+ * - only http/https is accepted;
+ * - the resolved URL must be same-origin as the active server URL;
+ * - `javascript:`/`data:`/`file:`/offsite https/protocol-relative (`//evil`) all fall back to
+ *   `<server_origin>/portal`;
+ * - same-origin relative (`/portal`, `portal`) and absolute URLs are allowed;
+ * - no usable server origin → no portal link (`null`).
  */
 export function resolvePortalHref(portalUrl: string | null, serverUrl: string): string | null {
-  const base = serverUrl.trim().replace(/\/$/, "");
-  const fallback = portalHref(base);
+  const origin = serverOrigin(serverUrl);
+  if (origin === null) return null;
+  const fallback = `${origin}/portal`;
   if (portalUrl === null || portalUrl.trim() === "") return fallback;
-  if (/^https?:\/\//i.test(portalUrl)) return portalUrl;
-  const origin = (() => {
-    if (base === "") return null;
-    try {
-      return new URL(base).origin;
-    } catch {
-      return null;
-    }
-  })() ?? window.location.origin;
   try {
-    if (portalUrl.startsWith("/")) {
-      return new URL(portalUrl, origin).toString();
-    }
-    return new URL(portalUrl, `${base}/`).toString();
+    const candidate = new URL(portalUrl.trim(), `${origin}/`);
+    if (candidate.protocol !== "http:" && candidate.protocol !== "https:") return fallback;
+    if (candidate.origin !== origin) return fallback;
+    return candidate.toString();
   } catch {
     return fallback;
   }

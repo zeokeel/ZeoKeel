@@ -437,11 +437,33 @@ pub fn channel_min_version_env_key(channel: &str) -> String {
     format!("ZEOKEEL_MIN_CLIENT_VERSION_{suffix}")
 }
 
-/// Minimum client version for one channel.
+/// Authoritative server/build channel (compiled brand), never the client header.
+#[must_use]
+pub fn server_channel() -> String {
+    brand_snapshot()
+        .get("channel")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("official")
+        .to_owned()
+}
+
+/// Minimum client version for the authoritative server channel.
 ///
-/// Precedence: channel-specific env (`ZEOKEEL_MIN_CLIENT_VERSION_<CHANNEL>`)
-/// → channel brand field `min_client_version` (when the compiled brand matches)
-/// → global `ZEOKEEL_MIN_CLIENT_VERSION` → [`DEFAULT_MIN_CLIENT_VERSION`].
+/// Precedence: channel-specific env (`ZEOKEEL_MIN_CLIENT_VERSION_<CHANNEL>`,
+/// using [`server_channel`]) → global `ZEOKEEL_MIN_CLIENT_VERSION` →
+/// [`DEFAULT_MIN_CLIENT_VERSION`]. The client header channel is diagnostic only
+/// and must never choose a lower minimum.
+#[must_use]
+pub fn min_client_version_for_server() -> String {
+    min_client_version_for_channel(Some(&server_channel()))
+}
+
+/// Minimum client version for an explicit channel (env override → global).
+///
+/// Kept explicit for tests/ops tooling; the HTTP gate must call
+/// [`min_client_version_for_server`], not this function with client input.
 #[must_use]
 pub fn min_client_version_for_channel(channel: Option<&str>) -> String {
     if let Some(channel) = channel.map(str::trim).filter(|value| !value.is_empty()) {
@@ -449,16 +471,6 @@ pub fn min_client_version_for_channel(channel: Option<&str>) -> String {
             let value = value.trim().to_owned();
             if parse_semver(&value).is_some() {
                 return value;
-            }
-        }
-        let brand = brand_snapshot();
-        let brand_channel = brand.get("channel").and_then(Value::as_str);
-        if brand_channel == Some(channel) {
-            if let Some(value) = brand.get("min_client_version").and_then(Value::as_str) {
-                let value = value.trim().to_owned();
-                if parse_semver(&value).is_some() {
-                    return value;
-                }
             }
         }
     }
@@ -474,9 +486,7 @@ pub fn client_is_too_old(headers: &HeaderMap) -> bool {
     let Some(current) = client_version(headers).and_then(|value| parse_semver(&value)) else {
         return false;
     };
-    let channel = client_channel(headers);
-    let minimum =
-        parse_semver(&min_client_version_for_channel(channel.as_deref())).unwrap_or((0, 0, 0));
+    let minimum = parse_semver(&min_client_version_for_server()).unwrap_or((0, 0, 0));
     current < minimum
 }
 

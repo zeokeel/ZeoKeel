@@ -616,29 +616,40 @@ fn validate_open_url(raw: &str) -> Result<String, String> {
     Ok(url.to_string())
 }
 
-fn open_platform_browser(url: &str) -> Result<(), String> {
-    #[cfg(target_os = "linux")]
-    let mut command = {
-        let mut command = std::process::Command::new("xdg-open");
-        command.arg(url);
-        command
-    };
-    #[cfg(target_os = "macos")]
-    let mut command = {
-        let mut command = std::process::Command::new("open");
-        command.arg(url);
-        command
-    };
-    #[cfg(target_os = "windows")]
-    let mut command = {
-        let mut command = std::process::Command::new("cmd");
-        command.args(["/C", "start", "", url]);
-        command
-    };
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    return Err("open-url/unsupported-platform".to_owned());
+#[cfg(any(test, target_os = "windows"))]
+fn windows_open_url_invocation(url: &str) -> (&'static str, Vec<String>) {
+    // ShellExecute equivalent without a shell: URL stays a single argv element.
+    (
+        "rundll32",
+        vec!["url.dll,FileProtocolHandler".to_owned(), url.to_owned()],
+    )
+}
 
+#[cfg(target_os = "windows")]
+fn open_url_invocation(url: &str) -> Result<(&'static str, Vec<String>), String> {
+    Ok(windows_open_url_invocation(url))
+}
+
+#[cfg(target_os = "macos")]
+fn open_url_invocation(url: &str) -> Result<(&'static str, Vec<String>), String> {
+    Ok(("open", vec![url.to_owned()]))
+}
+
+#[cfg(target_os = "linux")]
+fn open_url_invocation(url: &str) -> Result<(&'static str, Vec<String>), String> {
+    Ok(("xdg-open", vec![url.to_owned()]))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+fn open_url_invocation(_url: &str) -> Result<(&'static str, Vec<String>), String> {
+    Err("open-url/unsupported-platform".to_owned())
+}
+
+fn open_platform_browser(url: &str) -> Result<(), String> {
+    let (program, args) = open_url_invocation(url)?;
+    let mut command = std::process::Command::new(program);
     command
+        .args(args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -692,7 +703,7 @@ fn app_request(payload: &Value) -> CommandResponse {
         base_url.trim_end_matches('/')
     );
     let client = reqwest::blocking::Client::new();
-    match client.post(url).bearer_auth(token).json(&request).send() {
+    match app_request_builder(&client, &url, &token, &request).send() {
         Ok(response) => match response.error_for_status() {
             Ok(ok) => match ok.json::<Value>() {
                 Ok(value) => CommandResponse::ok(value),
@@ -702,6 +713,16 @@ fn app_request(payload: &Value) -> CommandResponse {
         },
         Err(error) => CommandResponse::err(format!("APP_UNAVAILABLE: {error}")),
     }
+}
+
+/// Build the native app-request call with the shared client identity headers.
+fn app_request_builder(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    token: &str,
+    request: &Value,
+) -> reqwest::blocking::RequestBuilder {
+    crate::native_client::apply_headers(client.post(url).bearer_auth(token).json(request))
 }
 
 fn skill_root() -> Result<std::path::PathBuf, String> {
@@ -1545,6 +1566,24 @@ mod tests {
         std::fs::remove_dir_all(&root).unwrap();
     }
     #[test]
+    fn open_url_invocation_keeps_url_as_one_arg_without_a_shell() {
+        let url = "https://host.example/portal?a=1&calc";
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        {
+            let (program, args) = super::open_url_invocation(url).expect("unix opener");
+            assert!(program == "xdg-open" || program == "open", "{program}");
+            assert_eq!(args, vec![url.to_owned()]);
+        }
+        let (program, args) = super::windows_open_url_invocation(url);
+        assert_eq!(program, "rundll32");
+        assert_eq!(
+            args,
+            vec!["url.dll,FileProtocolHandler".to_owned(), url.to_owned()]
+        );
+        assert!(!args.iter().any(|arg| arg == "cmd" || arg == "/C"));
+    }
+
+    #[test]
     fn system_open_url_validates_scheme_length_and_credentials() {
         assert_eq!(
             super::validate_open_url("https://example.com/portal?x=1"),
@@ -1576,5 +1615,32 @@ mod tests {
         let missing = super::open_url(&serde_json::json!({}));
         assert!(!missing.ok);
         assert_eq!(missing.error.as_deref(), Some("missing url"));
+    }
+    #[test]
+    fn app_request_builder_attaches_native_identity_and_request_id() {
+        let client = reqwest::blocking::Client::new();
+        let request = serde_json::json!({
+            "abi": "zeokeel-app/1",
+            "app_id": "demo",
+            "method": "GET",
+        });
+        let built = super::app_request_builder(
+            &client,
+            "http://127.0.0.1:1/api/client/v1/apps/demo/request",
+            "token",
+            &request,
+        )
+        .build()
+        .unwrap();
+        let headers = built.headers();
+        let client_header = headers
+            .get("x-zeokeel-client")
+            .and_then(|value| value.to_str().ok())
+            .expect("client header");
+        assert_eq!(client_header.split(';').count(), 4);
+        assert!(
+            headers.get("x-request-id").is_some(),
+            "request id header missing"
+        );
     }
 }

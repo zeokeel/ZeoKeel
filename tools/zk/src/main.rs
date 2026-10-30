@@ -1435,6 +1435,10 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
         "pub const EDITION: &str = \"{}\";\n",
         resolved.edition
     ));
+    out.push_str(&format!(
+        "pub const CHANNEL: &str = \"{}\";\n",
+        resolved.channel
+    ));
     out.push_str("pub const PACKAGES: &[&str] = &[");
     for pkg in &resolved.packages {
         out.push_str(&format!("\"{}\",", pkg.package_id));
@@ -2308,6 +2312,10 @@ fn generated_packages_rs(resolved: &Resolved) -> String {
     out.push_str(&format!(
         "pub const EDITION: &str = \"{}\";\n",
         resolved.edition
+    ));
+    out.push_str(&format!(
+        "pub const CHANNEL: &str = \"{}\";\n",
+        resolved.channel
     ));
     out.push_str("pub const PACKAGES: &[&str] = &[");
     for pkg in &resolved.packages {
