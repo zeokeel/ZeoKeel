@@ -212,6 +212,46 @@ contract = "zk-contract-tool"
 cardinality = "singleton"
 editions = ["personal", "enterprise"]
 
+[roles."tool.jobs.output"]
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."tool.jobs.list"]
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."tool.jobs.kill"]
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."tool.bash_persistent"]
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."tool.glob"]
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."tool.grep"]
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."tool.workspace_dependencies"]
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."tool.worktree"]
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
 [roles."llm.provider.default"]
 contract = "zk-contract-llm"
 cardinality = "singleton"

@@ -203,6 +203,12 @@
     "contract": "zk-contract-tool",
     "cardinality": "singleton"
   },
+  "tool.bash_persistent": {
+    "package": "zeokeel/tool-bash-persistent",
+    "crate_name": "zk-tool-bash-persistent",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
   "tool.fs": {
     "package": "zeokeel/tool-fs",
     "crate_name": "zk-tool-fs",
@@ -224,6 +230,36 @@
   "tool.fs.write": {
     "package": "zeokeel/tool-fs-write",
     "crate_name": "zk-tool-fs-write",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.glob": {
+    "package": "zeokeel/tool-glob",
+    "crate_name": "zk-tool-glob",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.grep": {
+    "package": "zeokeel/tool-grep",
+    "crate_name": "zk-tool-grep",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.jobs.kill": {
+    "package": "zeokeel/tool-job-kill",
+    "crate_name": "zk-tool-job-kill",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.jobs.list": {
+    "package": "zeokeel/tool-job-list",
+    "crate_name": "zk-tool-job-list",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.jobs.output": {
+    "package": "zeokeel/tool-job-output",
+    "crate_name": "zk-tool-job-output",
     "contract": "zk-contract-tool",
     "cardinality": "singleton"
   },
@@ -254,6 +290,18 @@
   "tool.working_directory": {
     "package": "zeokeel/tool-working-directory",
     "crate_name": "zk-tool-working-directory",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.workspace_dependencies": {
+    "package": "zeokeel/tool-workspace-dependencies",
+    "crate_name": "zk-tool-workspace-dependencies",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.worktree": {
+    "package": "zeokeel/tool-worktree",
+    "crate_name": "zk-tool-worktree",
     "contract": "zk-contract-tool",
     "cardinality": "singleton"
   },
