@@ -73,7 +73,7 @@ export function AppSurface(props: AppSurfaceProps) {
               query: typeof request.query === "string" ? request.query : "",
               body_b64: typeof request.body_b64 === "string" ? request.body_b64 : "",
               request_id: typeof request.request_id === "string" ? request.request_id : requestId,
-            }).then((response) => { frame.contentWindow?.postMessage({ zkResponse: requestId, response }, "*"); });
+            }).then((response) => { frame.contentWindow?.postMessage({ zkResponse: requestId, response }, "*"); }).catch(() => { frame.contentWindow?.postMessage({ zkResponse: requestId, response: { status: 502, body_b64: "" } }, "*"); });
           };
           window.addEventListener("message", listener);
           frame.addEventListener("load", () => { window.removeEventListener("message", listener); }, { once: true });
