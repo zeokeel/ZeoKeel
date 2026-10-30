@@ -21,6 +21,7 @@
 | `@zeokeel/ui-sessions` | `ui.slot.sessions` | Sidebar（**平铺 Workspace 列表**/会话列表/新建/选中/设置入口/窄窗；规则见 `26` §6） | ui-kit |
 | `@zeokeel/ui-chat` | `ui.slot.chat` | ChatView + assistant-ui primitives + 工具卡/审批/空态 + ExternalStoreRuntime adapter | ui-kit + `@assistant-ui/*` |
 | `@zeokeel/ui-settings` | `ui.slot.settings` | SettingsDialog + 校验 | ui-kit + Radix dialog |
+| `@zeokeel/ui-settings-provider`（personal-only） | `ui.slot.settings-provider` | 本地 provider 字段（enterprise 构建期 exclude） | ui-kit + settings 注入 |
 | `@zeokeel/ui-shell` | `ui.shell` | AppShell + FirstRun（布局/header/status/overlay/首用页；app 已接入） | ui-kit + Radix tooltip |
 | `@zeokeel/ui-inspector` | `ui.slot.inspector` | 右栏文件树/变更/终端（`workspace.files`，⌘B） | ui-kit |
 | `@zeokeel/ui-commands` | `ui.slot.commands` | ⌘K 命令面板（搜索/键盘导航/动作由 app 注入） | ui-kit |

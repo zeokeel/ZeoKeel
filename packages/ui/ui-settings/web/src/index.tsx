@@ -1,5 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
   BrandLogo,
   Button,
@@ -9,6 +9,7 @@ import {
   type AppSettings,
   type Locale,
   type ProviderKind,
+  type ProviderSettingsProps,
   type Theme,
 } from "@zeokeel/ui-kit";
 import {
@@ -24,10 +25,6 @@ const labelClass = "text-[12px] font-medium text-muted-foreground";
 const inputClass =
   "w-full rounded-control border border-border bg-background px-2.5 py-2 text-[13px] text-foreground placeholder:text-muted-foreground disabled:opacity-55";
 
-function providerKindOf(value: string): ProviderKind {
-  return value === "open_ai_compatible" || value === "ollama" ? value : "mock";
-}
-
 function themeOf(value: string): Theme {
   return value === "light" || value === "dark" ? value : "auto";
 }
@@ -41,6 +38,7 @@ export interface SettingsDialogProps {
   gatewayModel?: string;
   onSelectGatewayModel?: (model: string) => void;
   onCheckUpdate?: (() => void) | undefined;
+  renderProvider?: ((props: ProviderSettingsProps) => ReactNode) | undefined;
   updateText?: string | null;
   updateBusy?: boolean;
 }
@@ -49,8 +47,7 @@ export interface SettingsDialogProps {
 export function SettingsDialog(props: SettingsDialogProps = {}) {
   const ui = useUi();
   const models = props.gatewayModels ?? [];
-  const { t, settings, settingsOpen, actions, meta } = ui;
-  const personal = meta.edition !== "enterprise";
+  const { t, settings, settingsOpen, actions } = ui;
   const [form, setForm] = useState<SettingsForm>(() => toForm(settings));
   const [errors, setErrors] = useState<SettingsErrors>(EMPTY_ERRORS);
   const [saving, setSaving] = useState(false);
@@ -126,98 +123,19 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
           </Dialog.Description>
 
           <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
-            {personal ? (
-            <fieldset className="rounded-document bg-muted p-4">
-              <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
-                {t("settingsSectionProvider")}
-              </legend>
-              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                <label className="flex flex-col gap-1" htmlFor="settings-provider">
-                  <span className={labelClass}>{t("settingsProvider")}</span>
-                  <select
-                    id="settings-provider"
-                    className={inputClass}
-                    value={form.providerKind}
-                    onChange={(event) => {
-                      update("providerKind", providerKindOf(event.target.value));
-                    }}
-                  >
-                    <option value="mock">{t("settingsProviderMock")}</option>
-                    <option value="open_ai_compatible">{t("settingsProviderOpenai")}</option>
-                    <option value="ollama">{t("settingsProviderOllama")}</option>
-                  </select>
-                </label>
-
-                <div className="flex flex-col gap-1">
-                  <label className={labelClass} htmlFor="settings-model">
-                    {t("settingsModel")}
-                  </label>
-                  <input
-                    id="settings-model"
-                    className={inputClass}
-                    type="text"
-                    value={form.model}
-                    aria-invalid={errors.model !== null}
-                    onChange={(event) => {
-                      update("model", event.target.value);
-                    }}
-                  />
-                  {errors.model !== null ? (
-                    <span className="text-[12px] text-destructive" role="alert">
-                      {t(errors.model)}
-                    </span>
-                  ) : null}
-                </div>
-
-                <div className="flex flex-col gap-1 sm:col-span-2">
-                  <label className={labelClass} htmlFor="settings-base-url">
-                    {t("settingsBaseUrl")}
-                  </label>
-                  <input
-                    id="settings-base-url"
-                    className={inputClass}
-                    type="url"
-                    inputMode="url"
-                    placeholder="https://api.example.com/v1"
-                    value={form.baseUrl}
-                    disabled={isMock}
-                    aria-invalid={errors.baseUrl !== null}
-                    onChange={(event) => {
-                      update("baseUrl", event.target.value);
-                    }}
-                  />
-                  {errors.baseUrl !== null ? (
-                    <span className="text-[12px] text-destructive" role="alert">
-                      {t(errors.baseUrl)}
-                    </span>
-                  ) : null}
-                </div>
-
-                <div className="flex flex-col gap-1 sm:col-span-2">
-                  <label className={labelClass} htmlFor="settings-api-key">
-                    {t("settingsApiKey")}
-                  </label>
-                  <input
-                    id="settings-api-key"
-                    className={inputClass}
-                    type="password"
-                    autoComplete="off"
-                    spellCheck={false}
-                    value={form.apiKey}
-                    disabled={isMock}
-                    onChange={(event) => {
-                      update("apiKey", event.target.value);
-                    }}
-                  />
-                  <span className="text-[12px] text-muted-foreground">
-                    {t("settingsApiKeyHint")}
-                  </span>
-                </div>
-              </div>
-            </fieldset>
-
-            ) : null}
-
+            {props.renderProvider?.({
+              t,
+              providerKind: form.providerKind,
+              baseUrl: form.baseUrl,
+              model: form.model,
+              apiKey: form.apiKey,
+              errors,
+              isMock,
+              onProviderKind: (kind) => { update("providerKind", kind); },
+              onBaseUrl: (value) => { update("baseUrl", value); },
+              onModel: (value) => { update("model", value); },
+              onApiKey: (value) => { update("apiKey", value); },
+            })}
             <fieldset className="rounded-document bg-muted p-4">
               <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
                 {t("settingsSectionAppearance")}

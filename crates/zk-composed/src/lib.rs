@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 pub const EDITION: &str = "personal";
-pub const PACKAGES: &[&str] = &["zeokeel/agent-loop","zeokeel/llm-mock","zeokeel/store-session-sqlite","zeokeel/store-settings-json","zeokeel/tool-fs","zeokeel/ui-kit","zeokeel/ui-shell","zeokeel/ui-chat","zeokeel/ui-commands","zeokeel/ui-inspector","zeokeel/ui-sessions","zeokeel/ui-settings","zeokeel/client-update-github",];
+pub const PACKAGES: &[&str] = &["zeokeel/agent-loop","zeokeel/llm-mock","zeokeel/store-session-sqlite","zeokeel/store-settings-json","zeokeel/tool-fs","zeokeel/ui-kit","zeokeel/ui-shell","zeokeel/ui-chat","zeokeel/ui-commands","zeokeel/ui-inspector","zeokeel/ui-sessions","zeokeel/ui-settings","zeokeel/ui-settings-provider","zeokeel/client-update-github",];
 
 pub struct Runtime {
     agent: Arc<dyn zk_contract_agent::Agent>,

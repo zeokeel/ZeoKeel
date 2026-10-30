@@ -3,6 +3,7 @@ name = "personal"
 targets = ["desktop"]
 
 [packages]
+"ui.slot.settings-provider" = "zeokeel/ui-settings-provider"
 "update.client" = "zeokeel/client-update-github"
 "ui.slot.commands" = "zeokeel/ui-commands"
 "ui.slot.inspector" = "zeokeel/ui-inspector"

@@ -154,3 +154,18 @@ export function defaultSettings(): AppSettings {
     server_url: "",
   };
 }
+
+/** Controlled props for the personal-only provider settings package. */
+export interface ProviderSettingsProps {
+  t: (key: string, vars?: Record<string, string | number>) => string;
+  providerKind: ProviderKind;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  errors: { baseUrl: string | null; model: string | null };
+  isMock: boolean;
+  onProviderKind: (kind: ProviderKind) => void;
+  onBaseUrl: (value: string) => void;
+  onModel: (value: string) => void;
+  onApiKey: (value: string) => void;
+}

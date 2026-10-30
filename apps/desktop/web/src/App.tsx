@@ -5,7 +5,7 @@ import {
   type UiValue,
 } from "@zeokeel/ui-kit";
 import { BRAND } from "./generated/brand";
-import { ChatSlot, CommandsSlot, InspectorSlot, LoginSlot, SessionsSlot, SettingsSlot, ShellSlot } from "./generated/registry";
+import { ChatSlot, CommandsSlot, InspectorSlot, LoginSlot, SessionsSlot, SettingsProviderSlot, SettingsSlot, ShellSlot } from "./generated/registry";
 import { translate } from "./i18n";
 import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
@@ -238,7 +238,7 @@ function AppShell(props: { controller: AppController; ui: UiValue; transport: Tr
       workspaceError={ui.workspaceError}
       navigation={<SessionsSlot />}
       conversation={<ChatSlot key={ui.activeWorkspaceId === null ? "none" : ui.activeWorkspaceId} />}
-      settings={<SettingsSlot gatewayModels={gatewayModels} gatewayModel={gatewayModel} onSelectGatewayModel={onSelectGatewayModel} onCheckUpdate={onCheckUpdate} updateText={updateText} updateBusy={updateBusy} />}
+      settings={<SettingsSlot gatewayModels={gatewayModels} gatewayModel={gatewayModel} onSelectGatewayModel={onSelectGatewayModel} onCheckUpdate={onCheckUpdate} updateText={updateText} updateBusy={updateBusy} renderProvider={SettingsProviderSlot} />}
       inspector={<InspectorSlot open={inspectorOpen} tab={inspectorTab} files={files} changes={[]} onTab={setInspectorTab} onClose={() => { setInspectorOpen(false); }} />}
       inspectorOpen={inspectorOpen}
       onToggleInspector={() => { setInspectorOpen((value) => !value); }}

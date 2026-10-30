@@ -35,6 +35,7 @@ zk-ui-inspector = { path = "../../packages/ui/ui-inspector" }
 zk-ui-kit = { path = "../../packages/ui/ui-kit" }
 zk-ui-sessions = { path = "../../packages/ui/ui-sessions" }
 zk-ui-settings = { path = "../../packages/ui/ui-settings" }
+zk-ui-settings-provider = { path = "../../packages/ui/ui-settings-provider" }
 zk-ui-shell = { path = "../../packages/ui/ui-shell" }
 serde_json = { workspace = true }
 

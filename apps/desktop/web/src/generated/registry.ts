@@ -6,6 +6,7 @@ import { components as c2 } from "@zeokeel/ui-commands";
 import { components as c3 } from "@zeokeel/ui-inspector";
 import { components as c4 } from "@zeokeel/ui-sessions";
 import { components as c5 } from "@zeokeel/ui-settings";
+import { components as c6 } from "@zeokeel/ui-settings-provider";
 
 export const COMPONENTS = {
   ...c0,
@@ -14,6 +15,7 @@ export const COMPONENTS = {
   ...c3,
   ...c4,
   ...c5,
+  ...c6,
 } as const;
 
 export const ShellSlot = c0["shell.frame"];
@@ -22,4 +24,5 @@ export const CommandsSlot = c2["commands.palette"];
 export const InspectorSlot = c3["inspector.panel"];
 export const SessionsSlot = c4["sessions.sidebar"];
 export const SettingsSlot = c5["settings.dialog"];
+export const SettingsProviderSlot = c6["settings.provider"];
 export function LoginSlot(_props: { serverUrl: string | null; channelLocked: boolean; loading: boolean; error: string | null; onSubmit: (input: { serverUrl?: string; username: string; password: string; deviceName: string }) => void }) { return null; }

@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { defaultSettings, UiProvider, type AppSettings } from "@zeokeel/ui-kit";
+import { ProviderSettings } from "@zeokeel/ui-settings-provider";
 import {
   SettingsDialog,
   toForm,
@@ -60,7 +61,7 @@ function Harness(props: { onSaved: (settings: AppSettings) => void }) {
   });
   return (
     <UiProvider value={ui}>
-      <SettingsDialog />
+      <SettingsDialog renderProvider={(props) => <ProviderSettings {...props} />} />
     </UiProvider>
   );
 }

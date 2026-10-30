@@ -1,0 +1,21 @@
+schema = 1
+id = "zeokeel/ui-settings-provider"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "Personal-only local provider settings"
+
+[role]
+name = "ui.slot.settings-provider"
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["personal"]
+
+[facets]
+rust = { crate = "zk-ui-settings-provider" }
+ui = { package = "@zeokeel/ui-settings-provider" }
+
+[[ui.contributions]]
+slot = "ui.settings.provider"
+component = "settings.provider"
+order = 10
