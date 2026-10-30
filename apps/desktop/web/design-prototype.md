@@ -100,9 +100,9 @@ pnpm --dir apps/desktop/web exec vite preview --host 127.0.0.1 --port 4173
 
 ## Workspace 规范更新（用户 2026-10-30 反馈）
 
-- **Workspace 平铺**：侧栏以一层平铺列表展示所有 Workspace（不嵌套、不分组；当前原型：`~` / `zeokeel` / `api-server`）。
+- **Workspace 平铺（DSH 式）**：侧栏以一层平铺列表展示所有 Workspace（不嵌套 Workspace、不做日期分组；当前原型：`~` / `zeokeel` / `api-server`）；每个 Workspace 行下缩进列出它自己的会话。
 - **默认 Workspace = 用户 home `~`**：不再使用 `Documents/ZeoKeel/default-workspace`；`workspace.create` 仍要求目录已存在。
-- 会话列表只显示当前 Workspace，行平铺（M1 不做日期分组）。
+- 选择会话时同步 active Workspace；每个 Workspace 的会话只在其行下显示，一层缩进。
 - 迁移/代码：`store-session-sqlite` 默认 root 已改为 `dirs::home_dir()`；docs/26/ADR-058/spec 已同步，等待评审 delta。
 
 ## 待确认

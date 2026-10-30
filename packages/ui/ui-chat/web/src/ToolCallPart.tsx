@@ -2,14 +2,15 @@ import { useState } from "react";
 import type { ToolCallMessagePartProps } from "@assistant-ui/react";
 import { IconChevron, useUi } from "@zeokeel/ui-kit";
 
-const PREVIEW_LIMIT = 240;
+const PREVIEW_LIMIT = 120;
 type ToolStatus = "running" | "done" | "error";
 
-function preview(text: string, expanded: boolean): string {
-  if (expanded || text.length <= PREVIEW_LIMIT) {
-    return text;
+function preview(text: string): string {
+  const singleLine = text.replace(/\s+/g, " ").trim();
+  if (singleLine.length <= PREVIEW_LIMIT) {
+    return singleLine;
   }
-  return `${text.slice(0, PREVIEW_LIMIT)}…`;
+  return `${singleLine.slice(0, PREVIEW_LIMIT)}…`;
 }
 
 function stringifyResult(value: unknown): string | null {
@@ -20,7 +21,7 @@ function stringifyResult(value: unknown): string | null {
     return value;
   }
   try {
-    return JSON.stringify(value, null, 2);
+    return JSON.stringify(value);
   } catch {
     return String(value);
   }
@@ -36,6 +37,7 @@ function statusOf(type: string): ToolStatus {
   return "running";
 }
 
+/** Dense single-line tool row; expand to inspect args/result. */
 export function ToolCallPart(props: ToolCallMessagePartProps) {
   const { t } = useUi();
   const [expanded, setExpanded] = useState(false);
@@ -43,8 +45,7 @@ export function ToolCallPart(props: ToolCallMessagePartProps) {
   const statusLabel =
     status === "running" ? t("toolRunning") : status === "error" ? t("toolFailed") : t("toolDone");
   const result = stringifyResult(props.result);
-  const expandable =
-    props.argsText.length > PREVIEW_LIMIT || (result?.length ?? 0) > PREVIEW_LIMIT;
+  const summary = result === null ? props.argsText : result;
   const dotClass =
     status === "error"
       ? "bg-destructive"
@@ -53,35 +54,41 @@ export function ToolCallPart(props: ToolCallMessagePartProps) {
         : "bg-muted-foreground";
 
   return (
-    <div className="zk-tool" data-status={status}>
-      <div className="flex items-center gap-2">
+    <div className="zk-tool px-2 py-1">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => {
+          setExpanded((value) => !value);
+        }}
+        className="flex w-full items-center gap-2 text-start"
+      >
         <span className={`h-1.5 w-1.5 shrink-0 rounded-capsule ${dotClass}`} aria-hidden="true" />
-        <span className="font-mono text-[13px] font-medium text-foreground">{props.toolName}</span>
-        <span className="text-[12px] text-muted-foreground">{statusLabel}</span>
-        {expandable ? (
-          <button
-            type="button"
-            aria-expanded={expanded}
-            onClick={() => {
-              setExpanded((value) => !value);
-            }}
-            className="ms-auto inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[12px] text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
-          >
-            <IconChevron
-              className={expanded ? "rotate-180 transition-transform" : "transition-transform"}
-            />
-            {expanded ? t("toolCollapse") : t("toolExpand")}
-          </button>
-        ) : null}
-      </div>
-      <div className="mt-2.5">
-        <div className="text-[12px] text-muted-foreground">{t("toolArgs")}</div>
-        <pre className="zk-tool-pre mt-1">{preview(props.argsText, expanded)}</pre>
-      </div>
-      {result !== null ? (
-        <div className="mt-2.5">
-          <div className="text-[12px] text-muted-foreground">{t("toolResult")}</div>
-          <pre className="zk-tool-pre mt-1">{preview(result, expanded)}</pre>
+        <span className="shrink-0 font-mono text-[11.5px] font-medium text-foreground">
+          {props.toolName}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[11.5px] text-muted-foreground">
+          {preview(summary)}
+        </span>
+        <span className="shrink-0 text-[11px] text-muted-foreground">{statusLabel}</span>
+        <IconChevron
+          className={`shrink-0 text-muted-foreground ${
+            expanded ? "rotate-180 transition-transform" : "transition-transform"
+          }`}
+        />
+      </button>
+      {expanded ? (
+        <div className="mt-1.5 flex flex-col gap-1.5 ps-[22px]">
+          <div>
+            <div className="text-[11px] text-muted-foreground">{t("toolArgs")}</div>
+            <pre className="zk-tool-pre mt-0.5">{props.argsText}</pre>
+          </div>
+          {result !== null ? (
+            <div>
+              <div className="text-[11px] text-muted-foreground">{t("toolResult")}</div>
+              <pre className="zk-tool-pre mt-0.5">{result}</pre>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

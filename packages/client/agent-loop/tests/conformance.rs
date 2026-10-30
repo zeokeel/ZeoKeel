@@ -155,18 +155,12 @@ fn streaming_emits_ordered_utf8_events() {
     use std::sync::Mutex;
     use zk_contract_agent::{AgentEvent, EventSink};
     use zk_contract_llm::{LlmError, LlmProvider};
-    use zk_contract_tool::{Tool, ToolError, ToolSpec};
 
     struct Llm;
     impl LlmProvider for Llm {
         fn complete(&self, _prompt: &str) -> Result<String, LlmError> {
             Ok("你好🙂这是一段用于测试分片的中文和 emoji 混合文本，长度足够产生多个 delta。".to_owned())
         }
-    }
-    struct NoTools;
-    impl Tool for NoTools {
-        fn spec(&self) -> ToolSpec { ToolSpec { name: "noop".to_owned(), description: String::new() } }
-        fn call(&self, _args: &str) -> Result<String, ToolError> { Ok(String::new()) }
     }
     struct Sink(Mutex<Vec<AgentEvent>>);
     impl EventSink for Sink {

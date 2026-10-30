@@ -14,8 +14,13 @@ fn defaults_round_trip_and_atomic_write() {
     let path = temp_path("settings");
     let store = open(path.clone());
     assert_eq!(store.load().unwrap(), AppSettings::default());
-    let mut settings = AppSettings::default();
-    settings.provider.kind = ProviderKind::OpenAiCompatible;
+    let mut settings = AppSettings {
+        provider: zk_contract_config::ProviderConfig {
+            kind: ProviderKind::OpenAiCompatible,
+            ..AppSettings::default().provider
+        },
+        ..AppSettings::default()
+    };
     settings.provider.base_url = "https://example.com/v1".to_owned();
     settings.provider.model = "m".to_owned();
     settings.theme = "dark".to_owned();
@@ -36,7 +41,6 @@ fn corrupt_file_is_preserved() {
 #[test]
 fn invalid_values_are_rejected() {
     let store = open(temp_path("invalid"));
-    let mut settings = AppSettings::default();
-    settings.theme = "neon".to_owned();
+    let settings = AppSettings { theme: "neon".to_owned(), ..AppSettings::default() };
     assert!(store.save(&settings).is_err());
 }

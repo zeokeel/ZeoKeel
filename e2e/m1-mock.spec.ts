@@ -4,6 +4,7 @@ import AxeBuilder from "@axe-core/playwright";
 test.describe("M1 mock UI (human flow)", () => {
   test("send a tool-backed message and render the tool card", async ({ page }) => {
     await page.goto("/?mock=1", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "新建会话" }).last().click();
     const composer = page.getByRole("textbox").first();
     await expect(composer).toBeVisible();
     await composer.click();
@@ -30,7 +31,8 @@ test.describe("M1 mock UI (human flow)", () => {
   test("empty state and composer keyboard hint", async ({ page }) => {
     await page.goto("/?mock=1", { waitUntil: "networkidle" });
     await expect(page.getByText(/今天想完成什么|What would you like/)).toBeVisible();
-    await expect(page.getByRole("textbox").first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "新建会话" }).last()).toBeVisible();
+    await expect(page.getByRole("textbox")).toHaveCount(0);
     await page.screenshot({ path: "target/evidence/m1/e2e-empty.png" });
   });
 });

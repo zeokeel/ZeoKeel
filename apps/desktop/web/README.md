@@ -20,7 +20,7 @@ React 19 + TypeScript + Vite + Tailwind 4 + **assistant-ui** 的桌面聊天界�
 | 包 | 内容 |
 | --- | --- |
 | `packages/ui/ui-kit`（`@zeokeel/ui-kit`） | 共享 DTO/类型、`UiProvider/useUi`、`BrandLogo`、icons、Button/Switch/StatusDot/Chip |
-| `packages/ui/ui-sessions`（`@zeokeel/ui-sessions`） | Sidebar：会话列表/新建/选中/设置入口/窄窗（`sessions.sidebar`） |
+| `packages/ui/ui-sessions`（`@zeokeel/ui-sessions`） | Sidebar：平铺 Workspace + 嵌套会话、workspace CRUD/首用/搜索、设置入口/窄窗（`sessions.sidebar`） |
 | `packages/ui/ui-chat`（`@zeokeel/ui-chat`） | ChatView + assistant-ui Thread/Composer/ActionBar/工具卡/审批/空态（`chat.thread`） |
 | `packages/ui/ui-settings`（`@zeokeel/ui-settings`） | SettingsDialog + 表单校验（`settings.dialog`） |
 | `apps/desktop/web`（本目录） | 薄壳：transport/controller/reducer/i18n/theme resolve + `UiProvider` + registry 组装 |

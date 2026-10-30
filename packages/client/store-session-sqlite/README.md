@@ -6,6 +6,5 @@
 home 不可用返回 `workspace/path-unavailable`，由 UI 选择目录，不静默回退。测试用 `open_with_root` 注入临时目录。
 
 - schema v2：`conversations.workspace_id` 必填；旧 v1 库启动时自动迁移（WAL checkpoint + 备份 + 重建表 + 回填默认 Workspace）。
-- 实现 `WorkspaceStore` + workspace-scoped `SessionStore`；旧 `create_conversation/list/messages`
-  是 T4 前的兼容层（T4 删除）。
+- 实现 `WorkspaceStore` + workspace-scoped `SessionStore`；旧无 workspace 的兼容方法已删除（C18 硬约束）。
 - 规范见 `docs/26` §3/§3.1；测试 `cargo test -p zk-store-session-sqlite`。

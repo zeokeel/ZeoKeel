@@ -7,6 +7,12 @@ import { readyTransport } from "./fixtures";
 async function boot() {
   const transport = readyTransport([]);
   render(<App transport={transport} />);
+  const buttons = await screen.findAllByRole("button", { name: "新建会话" });
+  const button = buttons[buttons.length - 1] ?? buttons[0];
+  if (button === undefined) {
+    throw new Error("new conversation button missing");
+  }
+  await userEvent.click(button);
   const input = await screen.findByRole("textbox", { name: "消息输入框" });
   return { transport, input };
 }

@@ -22,9 +22,9 @@
 仓库已从 Plan 阶段进入 **M0 骨架 + M1 个人版客户端**：
 
 - 已有：`Cargo.toml` 单 workspace、`zk` 组合器（validate/compose/plan/capability/find）、契约（package/kernel/tool/llm/agent/ipc/session/config/ui）、
-  client 包（tool-fs/llm-mock/agent-loop/store-session-sqlite/store-settings-json/llm-openai-compatible）、
+  client 包（tool-fs/llm-mock/agent-loop/store-session-sqlite/store-settings-json/llm-openai-compatible）、workspace 契约/v2 迁移、
   `crates/zk-composed`（生成 glue）、Tauri 桌面 app + axum 服务端骨架、serve 载体、assistant-ui React 前端（UI 包化）、官方渠道 logo 构建期注入。
-- 尚未完成：M1 工作区/会话归属（`docs/26`，C18/ADR-058）、provider 运行时按设置选择/系统密钥库（M1b）、审批/工具扩展、
+- 尚未完成：provider 运行时按设置选择/系统密钥库（M1b）、审批/工具扩展、右栏/命令面板完整版、
   M2 企业版服务端（认证/JWT/钱包/网关/商店/管理台）、M3–M6。
 - 文档仍是规范真源；代码与文档冲突时先改文档/ADR 再改实现。
 

@@ -50,7 +50,7 @@ async fn healthz(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         "status": "ok",
         "edition": zk_composed::EDITION,
         "packages": zk_composed::PACKAGES,
-        "runtime_ready": state.runtime().packages().len() > 0,
+        "runtime_ready": !state.runtime().packages().is_empty(),
     }))
 }
 

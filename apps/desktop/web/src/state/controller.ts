@@ -1,6 +1,9 @@
 /**
  * I/O controller: owns the transport, dispatches pure reducer actions, and
  * applies persisted settings to the document (theme/locale).
+ *
+ * Workspace model (docs/26): no workspace = no conversation; every session
+ * command carries workspace_id; `chat.send` never auto-creates a conversation.
  */
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { translate } from "../i18n";
@@ -12,8 +15,10 @@ import {
   parseMeta,
   parseSettings,
   parseStreamId,
+  parseWorkspace,
+  parseWorkspaces,
 } from "../protocol";
-import type { AppSettings, Transport } from "../types";
+import type { AppSettings, Conversation, Transport, Workspace } from "../types";
 import { appReducer, createInitialState, type AppState } from "./reducer";
 
 let localIdCounter = 0;
@@ -33,15 +38,6 @@ function errorMessage(error: unknown): string {
   return "unknown error";
 }
 
-function titleFromText(text: string, fallback: string): string {
-  const characters = Array.from(text.trim());
-  if (characters.length === 0) {
-    return fallback;
-  }
-  const truncated = characters.length > 24 ? `${characters.slice(0, 24).join("")}…` : text.trim();
-  return truncated;
-}
-
 export interface AppController {
   state: AppState;
   createConversation: () => void;
@@ -51,11 +47,20 @@ export interface AppController {
   cancel: () => void;
   retryBoot: () => void;
   retryMessages: () => void;
+  createWorkspace: (path: string, title: string) => void;
+  selectWorkspace: (workspaceId: string) => void;
+  renameWorkspace: (workspaceId: string, title: string) => void;
+  setDefaultWorkspace: (workspaceId: string) => void;
+  removeWorkspace: (workspaceId: string, reassignTo?: string) => void;
   saveSettings: (settings: AppSettings) => Promise<void>;
   decideApproval: (approvalId: string, decision: "approved" | "rejected") => void;
   setSettingsOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   dismissToast: () => void;
+}
+
+function defaultWorkspace(workspaces: Workspace[]): Workspace | null {
+  return workspaces.find((workspace) => workspace.is_default) ?? workspaces[0] ?? null;
 }
 
 export function useAppController(transport: Transport): AppController {
@@ -64,23 +69,93 @@ export function useAppController(transport: Transport): AppController {
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  const showToast = useCallback((message: string) => {
+    dispatch({ type: "toast", message });
+  }, []);
+
+  const listWorkspaceConversations = useCallback(
+    async (workspaceId: string): Promise<Conversation[]> => {
+      const data = await transport.call("session.list", { workspace_id: workspaceId });
+      return parseConversations(data) ?? [];
+    },
+    [transport],
+  );
+
+  const refreshConversations = useCallback(
+    async (workspaceId: string): Promise<void> => {
+      try {
+        const conversations = await listWorkspaceConversations(workspaceId);
+        const first = conversations[0];
+        dispatch({
+          type: "conversations_loaded",
+          workspaceId,
+          conversations,
+          activeId: first === undefined ? null : first.id,
+        });
+      } catch (error: unknown) {
+        const message = errorMessage(error);
+        dispatch({ type: "workspace_error", message });
+        showToast(message);
+      }
+    },
+    [listWorkspaceConversations, showToast],
+  );
+
+  const reloadAllConversations = useCallback(async (): Promise<Workspace[]> => {
+    const workspacesRaw = await transport.call("workspace.list", {});
+    const workspaces = parseWorkspaces(workspacesRaw) ?? [];
+    const entries = await Promise.all(
+      workspaces.map(async (workspace): Promise<[string, Conversation[]]> => {
+        try {
+          return [workspace.id, await listWorkspaceConversations(workspace.id)];
+        } catch {
+          return [workspace.id, []];
+        }
+      }),
+    );
+    const conversationsByWorkspace: Record<string, Conversation[]> = {};
+    for (const [workspaceId, conversations] of entries) {
+      conversationsByWorkspace[workspaceId] = conversations;
+    }
+    dispatch({ type: "workspaces_loaded", workspaces });
+    dispatch({ type: "conversations_map_loaded", conversationsByWorkspace });
+    return workspaces;
+  }, [transport, listWorkspaceConversations]);
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const [metaRaw, conversationsRaw, settingsRaw] = await Promise.all([
+        const [metaRaw, workspacesRaw, settingsRaw] = await Promise.all([
           transport.call("meta.get", {}),
-          transport.call("session.list", {}),
+          transport.call("workspace.list", {}),
           transport.call("settings.get", {}),
         ]);
         if (cancelled) {
           return;
         }
-        const conversations = parseConversations(conversationsRaw) ?? [];
+        const workspaces = parseWorkspaces(workspacesRaw) ?? [];
+        const entries = await Promise.all(
+          workspaces.map(async (workspace): Promise<[string, Conversation[]]> => {
+            return [workspace.id, await listWorkspaceConversations(workspace.id)];
+          }),
+        );
+        if (cancelled) {
+          return;
+        }
+        const conversationsByWorkspace: Record<string, Conversation[]> = {};
+        for (const [workspaceId, conversations] of entries) {
+          conversationsByWorkspace[workspaceId] = conversations;
+        }
+        const workspace = defaultWorkspace(workspaces);
+        const conversations = workspace === null ? [] : (conversationsByWorkspace[workspace.id] ?? []);
         const first = conversations[0];
         dispatch({
           type: "boot_loaded",
           meta: parseMeta(metaRaw),
+          workspaces,
+          activeWorkspaceId: workspace === null ? null : workspace.id,
+          conversationsByWorkspace,
           conversations,
           settings: parseSettings(settingsRaw),
           activeId: first === undefined ? null : first.id,
@@ -94,7 +169,7 @@ export function useAppController(transport: Transport): AppController {
     return () => {
       cancelled = true;
     };
-  }, [transport, bootAttempt]);
+  }, [transport, bootAttempt, listWorkspaceConversations]);
 
   useEffect(() => {
     return transport.subscribe((uiEvent) => {
@@ -128,14 +203,20 @@ export function useAppController(transport: Transport): AppController {
   }, []);
 
   useEffect(() => {
-    if (state.messagesState !== "loading" || state.activeConversationId === null) {
+    if (
+      state.messagesState !== "loading" ||
+      state.activeConversationId === null ||
+      state.activeWorkspaceId === null
+    ) {
       return;
     }
     const conversationId = state.activeConversationId;
+    const workspaceId = state.activeWorkspaceId;
     let cancelled = false;
     void (async () => {
       try {
         const data = await transport.call("session.messages", {
+          workspace_id: workspaceId,
           conversation_id: conversationId,
         });
         if (cancelled) {
@@ -159,7 +240,7 @@ export function useAppController(transport: Transport): AppController {
     return () => {
       cancelled = true;
     };
-  }, [state.messagesState, state.activeConversationId, transport]);
+  }, [state.messagesState, state.activeConversationId, state.activeWorkspaceId, transport]);
 
   useEffect(() => {
     document.documentElement.lang = state.settings.locale;
@@ -179,27 +260,203 @@ export function useAppController(transport: Transport): AppController {
   }, [state.toast]);
 
   const createConversation = useCallback(() => {
-    const title = translate(stateRef.current.settings.locale, "conversationNewTitle");
+    const current = stateRef.current;
+    if (current.activeWorkspaceId === null) {
+      showToast(translate(current.settings.locale, "workspaceRequired"));
+      return;
+    }
+    const title = translate(current.settings.locale, "conversationNewTitle");
     void (async () => {
       try {
-        const data = await transport.call("session.create", { title });
+        const data = await transport.call("session.create", {
+          workspace_id: current.activeWorkspaceId,
+          title,
+        });
         const conversation = parseConversation(data);
         if (conversation === null) {
           throw new Error("session.create: invalid response");
         }
         dispatch({ type: "conversation_created", conversation });
       } catch (error: unknown) {
-        dispatch({ type: "toast", message: errorMessage(error) });
+        showToast(errorMessage(error));
       }
     })();
-  }, [transport]);
+  }, [transport, showToast]);
 
-  const selectConversation = useCallback((conversationId: string) => {
-    if (stateRef.current.streaming) {
-      return;
-    }
-    dispatch({ type: "conversation_selected", conversationId });
-  }, []);
+  const selectConversation = useCallback(
+    (conversationId: string) => {
+      const current = stateRef.current;
+      if (conversationId === current.activeConversationId) {
+        dispatch({ type: "sidebar_toggled", open: false });
+        return;
+      }
+      let workspaceId: string | null = null;
+      for (const [id, conversations] of Object.entries(current.conversationsByWorkspace)) {
+        if (conversations.some((conversation) => conversation.id === conversationId)) {
+          workspaceId = id;
+          break;
+        }
+      }
+      if (workspaceId === null) {
+        return;
+      }
+      if (current.streaming && current.streamId !== null) {
+        void transport.call("chat.cancel", {
+          workspace_id: current.activeWorkspaceId,
+          stream_id: current.streamId,
+        });
+      }
+      if (workspaceId === current.activeWorkspaceId) {
+        dispatch({ type: "conversation_selected", conversationId });
+      } else {
+        dispatch({ type: "conversation_activated", workspaceId, conversationId });
+      }
+    },
+    [transport],
+  );
+
+  const selectWorkspace = useCallback(
+    (workspaceId: string) => {
+      const current = stateRef.current;
+      if (workspaceId === current.activeWorkspaceId) {
+        dispatch({ type: "sidebar_toggled", open: false });
+        return;
+      }
+      if (current.streaming && current.streamId !== null) {
+        void transport.call("chat.cancel", {
+          workspace_id: current.activeWorkspaceId,
+          stream_id: current.streamId,
+        });
+      }
+      dispatch({ type: "workspace_selected", workspaceId });
+      void refreshConversations(workspaceId);
+    },
+    [refreshConversations, transport],
+  );
+
+  const createWorkspace = useCallback(
+    (path: string, title: string) => {
+      const trimmedPath = path.trim();
+      if (trimmedPath === "") {
+        dispatch({ type: "workspace_error", message: "workspace/path-required" });
+        return;
+      }
+      void (async () => {
+        try {
+          const data = await transport.call("workspace.create", {
+            path: trimmedPath,
+            title: title.trim(),
+          });
+          const workspace = parseWorkspace(data);
+          if (workspace === null) {
+            throw new Error("workspace.create: invalid response");
+          }
+          const wasEmpty = stateRef.current.workspaces.length === 0;
+          dispatch({ type: "workspace_created", workspace });
+          dispatch({
+            type: "conversations_loaded",
+            workspaceId: workspace.id,
+            conversations: [],
+            activeId: null,
+          });
+          if (wasEmpty) {
+            const defaulted = await transport.call("workspace.set_default", {
+              workspace_id: workspace.id,
+            });
+            const list = parseWorkspaces(defaulted);
+            if (list !== null) {
+              dispatch({ type: "workspaces_loaded", workspaces: list });
+            }
+          }
+          dispatch({ type: "workspace_selected", workspaceId: workspace.id });
+        } catch (error: unknown) {
+          const message = errorMessage(error);
+          dispatch({ type: "workspace_error", message });
+          showToast(message);
+        }
+      })();
+    },
+    [transport, showToast],
+  );
+
+  const renameWorkspace = useCallback(
+    (workspaceId: string, title: string) => {
+      void (async () => {
+        try {
+          const data = await transport.call("workspace.rename", {
+            workspace_id: workspaceId,
+            title,
+          });
+          const workspace = parseWorkspace(data);
+          if (workspace === null) {
+            throw new Error("workspace.rename: invalid response");
+          }
+          const list = stateRef.current.workspaces.map((item) =>
+            item.id === workspace.id ? workspace : item,
+          );
+          dispatch({ type: "workspaces_loaded", workspaces: list });
+        } catch (error: unknown) {
+          const message = errorMessage(error);
+          dispatch({ type: "workspace_error", message });
+          showToast(message);
+        }
+      })();
+    },
+    [transport, showToast],
+  );
+
+  const setDefaultWorkspace = useCallback(
+    (workspaceId: string) => {
+      void (async () => {
+        try {
+          const data = await transport.call("workspace.set_default", {
+            workspace_id: workspaceId,
+          });
+          const list = parseWorkspaces(data);
+          if (list !== null) {
+            dispatch({ type: "workspaces_loaded", workspaces: list });
+          }
+        } catch (error: unknown) {
+          const message = errorMessage(error);
+          dispatch({ type: "workspace_error", message });
+          showToast(message);
+        }
+      })();
+    },
+    [transport, showToast],
+  );
+
+  const removeWorkspace = useCallback(
+    (workspaceId: string, reassignTo?: string) => {
+      void (async () => {
+        try {
+          const payload: Record<string, unknown> = {
+            workspace_id: workspaceId,
+            confirm: true,
+          };
+          if (reassignTo !== undefined && reassignTo !== "") {
+            payload["reassign_to"] = reassignTo;
+          }
+          await transport.call("workspace.remove", payload);
+          const activeWorkspace = stateRef.current.activeWorkspaceId;
+          const workspaces = await reloadAllConversations();
+          if (activeWorkspace === workspaceId) {
+            const next = defaultWorkspace(workspaces);
+            if (next === null) {
+              dispatch({ type: "workspace_selected", workspaceId: "" });
+            } else {
+              dispatch({ type: "workspace_selected", workspaceId: next.id });
+            }
+          }
+        } catch (error: unknown) {
+          const message = errorMessage(error);
+          dispatch({ type: "workspace_error", message });
+          showToast(message);
+        }
+      })();
+    },
+    [transport, reloadAllConversations, showToast],
+  );
 
   const runSend = useCallback(
     (text: string, retry: boolean) => {
@@ -211,35 +468,30 @@ export function useAppController(transport: Transport): AppController {
       if (trimmed === "") {
         return;
       }
+      if (current.activeWorkspaceId === null) {
+        showToast(translate(current.settings.locale, "workspaceRequired"));
+        return;
+      }
+      if (current.activeConversationId === null) {
+        showToast(translate(current.settings.locale, "conversationRequired"));
+        return;
+      }
+      const workspaceId = current.activeWorkspaceId;
+      const conversationId = current.activeConversationId;
       void (async () => {
         try {
           if (retry) {
-            if (current.activeConversationId === null || current.lastSendText === null) {
+            if (current.lastSendText === null) {
               return;
             }
             dispatch({ type: "retry_started", now: Date.now() });
             const data = await transport.call("chat.send", {
-              conversation_id: current.activeConversationId,
+              workspace_id: workspaceId,
+              conversation_id: conversationId,
               text: current.lastSendText,
             });
             dispatch({ type: "send_accepted", streamId: parseStreamId(data) ?? "" });
             return;
-          }
-          let conversationId = current.activeConversationId;
-          if (conversationId === null) {
-            const created = parseConversation(
-              await transport.call("session.create", {
-                title: titleFromText(
-                  trimmed,
-                  translate(current.settings.locale, "conversationNewTitle"),
-                ),
-              }),
-            );
-            if (created === null) {
-              throw new Error("session.create: invalid response");
-            }
-            dispatch({ type: "conversation_created", conversation: created });
-            conversationId = created.id;
           }
           dispatch({
             type: "send_started",
@@ -250,6 +502,7 @@ export function useAppController(transport: Transport): AppController {
             now: Date.now(),
           });
           const data = await transport.call("chat.send", {
+            workspace_id: workspaceId,
             conversation_id: conversationId,
             text: trimmed,
           });
@@ -259,7 +512,7 @@ export function useAppController(transport: Transport): AppController {
         }
       })();
     },
-    [transport],
+    [transport, showToast],
   );
 
   const send = useCallback(
@@ -270,26 +523,28 @@ export function useAppController(transport: Transport): AppController {
   );
 
   const retrySend = useCallback(() => {
-    const current = stateRef.current;
-    if (current.lastSendText === null) {
+    if (stateRef.current.lastSendText === null) {
       return;
     }
-    runSend(current.lastSendText, true);
+    runSend(stateRef.current.lastSendText ?? "", true);
   }, [runSend]);
 
   const cancel = useCallback(() => {
-    const streamId = stateRef.current.streamId;
-    if (streamId === null || streamId === "") {
+    const current = stateRef.current;
+    if (current.streamId === null || current.streamId === "") {
       return;
     }
     void (async () => {
       try {
-        await transport.call("chat.cancel", { stream_id: streamId });
+        await transport.call("chat.cancel", {
+          workspace_id: current.activeWorkspaceId,
+          stream_id: current.streamId,
+        });
       } catch (error: unknown) {
-        dispatch({ type: "toast", message: errorMessage(error) });
+        showToast(errorMessage(error));
       }
     })();
-  }, [transport]);
+  }, [transport, showToast]);
 
   const retryBoot = useCallback(() => {
     dispatch({ type: "boot_loading" });
@@ -297,11 +552,13 @@ export function useAppController(transport: Transport): AppController {
   }, []);
 
   const retryMessages = useCallback(() => {
-    const conversationId = stateRef.current.activeConversationId;
-    if (conversationId === null) {
+    if (stateRef.current.activeConversationId === null) {
       return;
     }
-    dispatch({ type: "messages_loading", conversationId });
+    dispatch({
+      type: "messages_loading",
+      conversationId: stateRef.current.activeConversationId,
+    });
   }, []);
 
   const saveSettings = useCallback(
@@ -309,9 +566,9 @@ export function useAppController(transport: Transport): AppController {
       const data = await transport.call("settings.set", { settings: next });
       const saved = parseSettings(data);
       dispatch({ type: "settings_saved", settings: saved });
-      dispatch({ type: "toast", message: translate(saved.locale, "settingsSaved") });
+      showToast(translate(saved.locale, "settingsSaved"));
     },
-    [transport],
+    [transport, showToast],
   );
 
   const decideApproval = useCallback(
@@ -324,11 +581,11 @@ export function useAppController(transport: Transport): AppController {
           });
           dispatch({ type: "approval_decided", approvalId, decision });
         } catch (error: unknown) {
-          dispatch({ type: "toast", message: errorMessage(error) });
+          showToast(errorMessage(error));
         }
       })();
     },
-    [transport],
+    [transport, showToast],
   );
 
   const setSettingsOpen = useCallback((open: boolean) => {
@@ -352,6 +609,11 @@ export function useAppController(transport: Transport): AppController {
     cancel,
     retryBoot,
     retryMessages,
+    createWorkspace,
+    selectWorkspace,
+    renameWorkspace,
+    setDefaultWorkspace,
+    removeWorkspace,
     saveSettings,
     decideApproval,
     setSettingsOpen,

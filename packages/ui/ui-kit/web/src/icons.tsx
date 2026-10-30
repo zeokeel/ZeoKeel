@@ -141,3 +141,45 @@ export function IconCopy(props: IconProps) {
     </svg>
   );
 }
+
+export function IconSearch(props: IconProps) {
+  return (
+    <svg {...BASE_PROPS} className={iconClass(props.className)}>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M16 16l4 4" />
+    </svg>
+  );
+}
+
+export function IconFolder(props: IconProps) {
+  return (
+    <svg {...BASE_PROPS} className={iconClass(props.className)}>
+      <path d="M3.5 7.5a1.5 1.5 0 0 1 1.5-1.5h5l2 2h7a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 17.5v-10Z" />
+    </svg>
+  );
+}
+
+export function IconMore(props: IconProps) {
+  return (
+    <svg {...BASE_PROPS} className={iconClass(props.className)}>
+      <path d="M6 12h.01M12 12h.01M18 12h.01" />
+    </svg>
+  );
+}
+
+export function IconCommand(props: IconProps) {
+  return (
+    <svg {...BASE_PROPS} className={iconClass(props.className)}>
+      <path d="M9 6a2.5 2.5 0 1 0-2.5 2.5H9V6Zm0 0v10a2.5 2.5 0 1 1-2.5-2.5H18a2.5 2.5 0 1 1-2.5 2.5V6a2.5 2.5 0 1 1 2.5 2.5H9Z" />
+    </svg>
+  );
+}
+
+export function IconTask(props: IconProps) {
+  return (
+    <svg {...BASE_PROPS} className={iconClass(props.className)}>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+      <path d="M7 9l2 2 3-3M7 15h10" />
+    </svg>
+  );
+}

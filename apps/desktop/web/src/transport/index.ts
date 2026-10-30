@@ -18,7 +18,10 @@ export function isTauriAvailable(): boolean {
 export function createTransport(): Transport {
   const params = new URLSearchParams(window.location.search);
   if (params.get("mock") === "1") {
-    return createMockTransport();
+    return createMockTransport({
+      startEmptyWorkspaces: params.get("no-workspace") === "1",
+      seed: params.get("seed") === "1",
+    });
   }
   if (isTauriAvailable()) {
     return createTauriTransport();

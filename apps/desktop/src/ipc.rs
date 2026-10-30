@@ -63,7 +63,15 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             ) else {
                 return CommandResponse::err("missing path");
             };
-            match state.runtime.sessions().create_workspace(path, title) {
+            let expanded = if path == "~" {
+                match dirs::home_dir() {
+                    Some(home) => home.to_string_lossy().to_string(),
+                    None => return CommandResponse::err("workspace/path-unavailable: home directory unavailable"),
+                }
+            } else {
+                path.to_owned()
+            };
+            match state.runtime.sessions().create_workspace(&expanded, title) {
                 Ok(workspace) => CommandResponse::ok(json!(workspace)),
                 Err(error) => CommandResponse::err(error.to_string()),
             }
@@ -102,40 +110,31 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
         }
         commands::SESSION_CREATE => {
             let title = payload.get("title").and_then(Value::as_str).unwrap_or("新会话");
-            let workspace_id = payload.get("workspace_id").and_then(Value::as_str);
-            let result = match workspace_id {
-                Some(id) => state.runtime.sessions().create_conversation_in(id, title.trim()),
-                #[allow(deprecated)]
-                None => state.runtime.sessions().create_conversation(title.trim()),
+            let Some(workspace_id) = payload.get("workspace_id").and_then(Value::as_str) else {
+                return CommandResponse::err("session/workspace-required: missing workspace_id");
             };
-            match result {
+            match state.runtime.sessions().create_conversation_in(workspace_id, title.trim()) {
                 Ok(conversation) => CommandResponse::ok(json!(conversation)),
                 Err(error) => CommandResponse::err(error.to_string()),
             }
         }
         commands::SESSION_LIST => {
-            let workspace_id = payload.get("workspace_id").and_then(Value::as_str);
-            let result = match workspace_id {
-                Some(id) => state.runtime.sessions().list_conversations_in(id),
-                #[allow(deprecated)]
-                None => state.runtime.sessions().list_conversations(),
+            let Some(workspace_id) = payload.get("workspace_id").and_then(Value::as_str) else {
+                return CommandResponse::err("session/workspace-required: missing workspace_id");
             };
-            match result {
+            match state.runtime.sessions().list_conversations_in(workspace_id) {
                 Ok(list) => CommandResponse::ok(json!(list)),
                 Err(error) => CommandResponse::err(error.to_string()),
             }
         }
         commands::SESSION_MESSAGES => {
-            let Some(conversation_id) = payload.get("conversation_id").and_then(Value::as_str) else {
-                return CommandResponse::err("missing conversation_id");
+            let (Some(conversation_id), Some(workspace_id)) = (
+                payload.get("conversation_id").and_then(Value::as_str),
+                payload.get("workspace_id").and_then(Value::as_str),
+            ) else {
+                return CommandResponse::err("missing workspace_id/conversation_id");
             };
-            let workspace_id = payload.get("workspace_id").and_then(Value::as_str);
-            let result = match workspace_id {
-                Some(id) => state.runtime.sessions().messages_in(id, conversation_id),
-                #[allow(deprecated)]
-                None => state.runtime.sessions().messages(conversation_id),
-            };
-            match result {
+            match state.runtime.sessions().messages_in(workspace_id, conversation_id) {
                 Ok(messages) => CommandResponse::ok(json!(messages)),
                 Err(error) => CommandResponse::err(error.to_string()),
             }
@@ -199,41 +198,29 @@ fn chat_send(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
         return CommandResponse::err("missing text");
     }
     let sessions = state.runtime.sessions();
-    let workspace_id = payload.get("workspace_id").and_then(Value::as_str).map(str::to_owned);
-    let conversation_id = match payload.get("conversation_id").and_then(Value::as_str) {
-        Some(id) if !id.is_empty() => id.to_owned(),
-        _ => {
-            if let Some(workspace_id) = workspace_id.as_deref() {
-                return CommandResponse::err(format!("missing conversation_id in workspace {workspace_id}"));
-            }
-            let title: String = text.chars().take(20).collect();
-            #[allow(deprecated)]
-            match sessions.create_conversation(&title) {
-                Ok(conversation) => conversation.id,
-                Err(error) => return CommandResponse::err(error.to_string()),
-            }
-        }
+    let Some(workspace_id) = payload.get("workspace_id").and_then(Value::as_str) else {
+        return CommandResponse::err("session/workspace-required: missing workspace_id");
     };
-    let workspace_root = match workspace_id.as_deref() {
-        Some(workspace_id) => {
-            let list = match sessions.list_conversations_in(workspace_id) {
-                Ok(list) => list,
-                Err(error) => return CommandResponse::err(error.to_string()),
-            };
-            if !list.iter().any(|conversation| conversation.id == conversation_id) {
-                return CommandResponse::err(format!("session/workspace-mismatch: {conversation_id}"));
-            }
-            let workspaces = match sessions.list_workspaces() {
-                Ok(list) => list,
-                Err(error) => return CommandResponse::err(error.to_string()),
-            };
-            match workspaces.into_iter().find(|workspace| workspace.id == workspace_id) {
-                Some(workspace) => Some((workspace_id.to_owned(), workspace.path)),
-                None => return CommandResponse::err(format!("workspace/not-found: {workspace_id}")),
-            }
-        }
-        None => None,
+    let Some(conversation_id) = payload.get("conversation_id").and_then(Value::as_str) else {
+        return CommandResponse::err(format!("missing conversation_id in workspace {workspace_id}"));
     };
+    let workspace_id = workspace_id.to_owned();
+    let conversation_id = conversation_id.to_owned();
+    let list = match sessions.list_conversations_in(&workspace_id) {
+        Ok(list) => list,
+        Err(error) => return CommandResponse::err(error.to_string()),
+    };
+    if !list.iter().any(|conversation| conversation.id == conversation_id) {
+        return CommandResponse::err(format!("session/workspace-mismatch: {conversation_id}"));
+    }
+    let workspaces = match sessions.list_workspaces() {
+        Ok(list) => list,
+        Err(error) => return CommandResponse::err(error.to_string()),
+    };
+    let Some(workspace) = workspaces.into_iter().find(|workspace| workspace.id == workspace_id) else {
+        return CommandResponse::err(format!("workspace/not-found: {workspace_id}"));
+    };
+    let workspace_root = (workspace_id.clone(), workspace.path);
     let user_message = Message {
         id: uuid::Uuid::new_v4().to_string(),
         conversation_id: conversation_id.clone(),
@@ -264,13 +251,8 @@ fn chat_send(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
             sessions: state.runtime.sessions(),
             conversation_id: conversation_id_for_thread.clone(),
         };
-        let result = match workspace_root {
-            Some((workspace_id, workspace_root)) => {
-                let context = TurnContext { conversation_id: conversation_id_for_thread.clone(), workspace_id, workspace_root };
-                state.runtime.run_stream_in(&context, &turn_id, &text, &sink)
-            }
-            None => state.runtime.run_stream(&turn_id, &text, &sink),
-        };
+        let context = TurnContext { conversation_id: conversation_id_for_thread.clone(), workspace_id: workspace_root.0.clone(), workspace_root: workspace_root.1 };
+        let result = state.runtime.run_stream_in(&context, &turn_id, &text, &sink);
         match result {
             Ok(reply) => {
                 let message = Message {
@@ -298,11 +280,10 @@ fn chat_send(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
         }
     });
 
-    let active_workspace = workspace_id;
     CommandResponse::ok(json!({
         "stream_id": stream_id,
         "conversation_id": conversation_id,
-        "workspace_id": active_workspace,
+        "workspace_id": workspace_id,
     }))
 }
 

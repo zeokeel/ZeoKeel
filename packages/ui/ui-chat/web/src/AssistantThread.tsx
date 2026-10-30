@@ -20,7 +20,7 @@ function UserText(props: TextMessagePartProps) {
   return (
     <p
       data-testid="user-text"
-      className="max-w-[78%] rounded-thread bg-muted px-4 py-2.5 text-[14px] leading-[1.6] whitespace-pre-wrap text-foreground"
+      className="max-w-[78%] rounded-thread bg-muted px-3 py-2 text-[13px] leading-[1.55] whitespace-pre-wrap text-foreground"
     >
       {props.text}
     </p>
@@ -30,7 +30,7 @@ function UserText(props: TextMessagePartProps) {
 function UserMessage() {
   const { t } = useUi();
   return (
-    <MessagePrimitive.Root className="mx-auto w-full max-w-[760px] py-5">
+    <MessagePrimitive.Root className="mx-auto w-full max-w-[760px] py-3">
       <div className="flex flex-col items-end gap-1.5">
         <span className="text-[12px] text-muted-foreground">{t("you")}</span>
         <MessagePrimitive.Content components={{ Text: UserText }} />
@@ -120,7 +120,7 @@ function AssistantMessage() {
   );
   return (
     <MessagePrimitive.Root
-      className="zk-assistant group mx-auto w-full max-w-[760px] py-5"
+      className="zk-assistant group mx-auto w-full max-w-[760px] py-3"
       data-running={running ? "true" : "false"}
     >
       <div className="flex min-h-6 items-center gap-2">

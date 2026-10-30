@@ -314,9 +314,6 @@ impl SqliteSessionStore {
         f(conn)
     }
 
-    fn default_workspace_id(conn: &Connection) -> Result<String, SessionError> {
-        existing_default_id(conn)?.ok_or_else(|| SessionError::InvalidWorkspace("no default workspace".to_owned()))
-    }
 
     fn get_workspace(conn: &Connection, id: &str) -> Result<Workspace, SessionError> {
         conn.query_row(
@@ -539,21 +536,4 @@ impl SessionStore for SqliteSessionStore {
         })
     }
 
-    #[allow(deprecated)]
-    fn create_conversation(&self, title: &str) -> Result<Conversation, SessionError> {
-        let workspace = self.with_conn(SqliteSessionStore::default_workspace_id)?;
-        self.create_conversation_in(&workspace, title)
-    }
-
-    #[allow(deprecated)]
-    fn list_conversations(&self) -> Result<Vec<Conversation>, SessionError> {
-        let workspace = self.with_conn(SqliteSessionStore::default_workspace_id)?;
-        self.list_conversations_in(&workspace)
-    }
-
-    #[allow(deprecated)]
-    fn messages(&self, conversation_id: &str) -> Result<Vec<Message>, SessionError> {
-        let workspace = self.with_conn(SqliteSessionStore::default_workspace_id)?;
-        self.messages_in(&workspace, conversation_id)
-    }
 }

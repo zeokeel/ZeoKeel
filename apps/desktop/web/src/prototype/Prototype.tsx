@@ -13,6 +13,7 @@ import {
   type ChatMessage,
   type Conversation,
   type UiValue,
+  type Workspace,
 } from "@zeokeel/ui-kit";
 import { ChatSlot, SessionsSlot, SettingsSlot } from "../generated/registry";
 import { BRAND } from "../generated/brand";
@@ -21,10 +22,18 @@ import { translate } from "../i18n";
 type Screen = "workspace" | "empty" | "chat" | "settings" | "error" | "loading" | "offline" | "narrow" | "cancelled" | "approval";
 
 const NOW = 1_793_350_000_000;
+const PROTOTYPE_WORKSPACE: Workspace = {
+  id: "ws-home",
+  path: "~",
+  title: "主目录",
+  is_default: true,
+  created_at_ms: NOW,
+  updated_at_ms: NOW,
+};
 const CONVERSATIONS: Conversation[] = [
-  { id: "c1", title: "读取 demo-data/hello.txt", created_at_ms: NOW - 600_000, updated_at_ms: NOW - 60_000 },
-  { id: "c2", title: "解释 Rust 所有权", created_at_ms: NOW - 3_600_000, updated_at_ms: NOW - 3_000_000 },
-  { id: "c3", title: "起草项目进展说明", created_at_ms: NOW - 86_400_000, updated_at_ms: NOW - 86_000_000 },
+  { id: "c1", workspace_id: PROTOTYPE_WORKSPACE.id, title: "读取 demo-data/hello.txt", created_at_ms: NOW - 600_000, updated_at_ms: NOW - 60_000 },
+  { id: "c2", workspace_id: PROTOTYPE_WORKSPACE.id, title: "解释 Rust 所有权", created_at_ms: NOW - 3_600_000, updated_at_ms: NOW - 3_000_000 },
+  { id: "c3", workspace_id: PROTOTYPE_WORKSPACE.id, title: "起草项目进展说明", created_at_ms: NOW - 86_400_000, updated_at_ms: NOW - 86_000_000 },
 ];
 
 function msg(partial: Partial<ChatMessage> & Pick<ChatMessage, "id" | "role" | "content">): ChatMessage {
@@ -110,6 +119,10 @@ function mockUi(screen: Screen, theme: "light" | "dark"): UiValue {
     boot: "ready",
     bootError: null,
     meta: { edition: "personal", version: "0.1.0", packages: ["tool-fs", "llm-mock", "agent-loop", "store-session-sqlite", "store-settings-json", "ui-kit", "ui-chat", "ui-sessions", "ui-settings"] },
+    workspaces: isWorkspace ? [] : [PROTOTYPE_WORKSPACE],
+    activeWorkspaceId: isWorkspace ? null : PROTOTYPE_WORKSPACE.id,
+    workspaceError: null,
+    conversationsByWorkspace: isWorkspace ? {} : { [PROTOTYPE_WORKSPACE.id]: CONVERSATIONS },
     conversations: isWorkspace ? [] : CONVERSATIONS,
     activeConversationId: isWorkspace || screen === "empty" ? null : baseConversation.id,
     messages,
@@ -134,6 +147,11 @@ function mockUi(screen: Screen, theme: "light" | "dark"): UiValue {
       retryBoot: noop,
       retryMessages: noop,
       decideApproval: noop,
+      createWorkspace: noop,
+      selectWorkspace: noop,
+      renameWorkspace: noop,
+      setDefaultWorkspace: noop,
+      removeWorkspace: noop,
     },
   };
 }

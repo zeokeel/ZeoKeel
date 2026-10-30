@@ -40,8 +40,9 @@ impl Runtime {
 }
 
 pub fn build() -> Result<Runtime, String> {
-    let mut tools: Vec<Arc<dyn zk_contract_tool::Tool>> = Vec::new();
-    tools.push(Arc::new(zk_tool_fs::tool()));
+    let tools: Vec<Arc<dyn zk_contract_tool::Tool>> = vec![
+        Arc::new(zk_tool_fs::tool()),
+    ];
     let llm: Arc<dyn zk_contract_llm::LlmProvider> = Arc::new(zk_llm_mock::provider());
     let agent: Arc<dyn zk_contract_agent::Agent> = Arc::new(zk_agent_loop::agent(tools, llm));
     let sessions: Arc<dyn zk_contract_session::SessionStore> = Arc::new(zk_store_session_sqlite::store());

@@ -12,6 +12,7 @@ import {
   type Message,
   type Meta,
   type ToolCallView,
+  type Workspace,
 } from "../types";
 
 export type BootState = "loading" | "ready" | "error";
@@ -24,6 +25,10 @@ export interface AppState {
   meta: Meta;
   settings: AppSettings;
   settingsOpen: boolean;
+  workspaces: Workspace[];
+  activeWorkspaceId: string | null;
+  workspaceError: string | null;
+  conversationsByWorkspace: Record<string, Conversation[]>;
   conversations: Conversation[];
   activeConversationId: string | null;
   messages: ChatMessage[];
@@ -44,12 +49,26 @@ export type AppAction =
   | {
       type: "boot_loaded";
       meta: Meta;
+      workspaces: Workspace[];
+      activeWorkspaceId: string | null;
+      conversationsByWorkspace: Record<string, Conversation[]>;
       conversations: Conversation[];
       settings: AppSettings;
       activeId: string | null;
     }
   | { type: "boot_failed"; message: string }
-  | { type: "conversations_loaded"; conversations: Conversation[] }
+  | { type: "workspaces_loaded"; workspaces: Workspace[] }
+  | { type: "workspace_created"; workspace: Workspace }
+  | { type: "workspace_selected"; workspaceId: string }
+  | { type: "workspace_error"; message: string | null }
+  | { type: "conversations_map_loaded"; conversationsByWorkspace: Record<string, Conversation[]> }
+  | {
+      type: "conversations_loaded";
+      workspaceId: string;
+      conversations: Conversation[];
+      activeId: string | null;
+    }
+  | { type: "conversation_activated"; workspaceId: string; conversationId: string }
   | { type: "conversation_created"; conversation: Conversation }
   | { type: "conversation_selected"; conversationId: string }
   | { type: "messages_loading"; conversationId: string }
@@ -81,6 +100,10 @@ export function createInitialState(): AppState {
     meta: { edition: "personal", version: "0.0.0", packages: [] },
     settings: defaultSettings(),
     settingsOpen: false,
+    workspaces: [],
+    activeWorkspaceId: null,
+    workspaceError: null,
+    conversationsByWorkspace: {},
     conversations: [],
     activeConversationId: null,
     messages: [],
@@ -125,6 +148,20 @@ function bumpConversation(
     return updated;
   }
   return [current, ...updated.filter((conversation) => conversation.id !== conversationId)];
+}
+
+function bumpConversationMap(
+  map: Record<string, Conversation[]>,
+  conversationId: string,
+  now: number,
+): Record<string, Conversation[]> {
+  const next: Record<string, Conversation[]> = {};
+  for (const [workspaceId, list] of Object.entries(map)) {
+    next[workspaceId] = list.some((conversation) => conversation.id === conversationId)
+      ? bumpConversation(list, conversationId, now)
+      : list;
+  }
+  return next;
 }
 
 function streamingIndex(messages: ChatMessage[]): number {
@@ -274,6 +311,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         boot: "ready",
         bootError: null,
         meta: action.meta,
+        workspaces: action.workspaces,
+        activeWorkspaceId: action.activeWorkspaceId,
+        workspaceError: null,
+        conversationsByWorkspace: action.conversationsByWorkspace,
         conversations: action.conversations,
         settings: action.settings,
         activeConversationId: activeId,
@@ -282,6 +323,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         messagesError: null,
         retryAction: null,
         sendError: null,
+        streaming: false,
+        streamId: null,
       };
     }
     case "boot_failed":
@@ -291,15 +334,111 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         bootError: action.message,
         retryAction: "boot",
       };
-    case "conversations_loaded":
-      return { ...state, conversations: action.conversations };
-    case "conversation_created":
+    case "workspaces_loaded":
+      return { ...state, workspaces: action.workspaces, workspaceError: null };
+    case "workspace_created":
       return {
         ...state,
-        conversations: [
+        workspaces: [...state.workspaces, action.workspace].sort((left, right) => {
+          if (left.is_default !== right.is_default) {
+            return left.is_default ? -1 : 1;
+          }
+          return left.created_at_ms - right.created_at_ms;
+        }),
+        workspaceError: null,
+        sidebarOpen: false,
+      };
+    case "workspace_selected": {
+      const conversations = state.conversationsByWorkspace[action.workspaceId] ?? [];
+      const first = conversations[0];
+      return {
+        ...state,
+        activeWorkspaceId: action.workspaceId,
+        workspaceError: null,
+        conversations,
+        activeConversationId: first === undefined ? null : first.id,
+        messages: [],
+        messagesState: first === undefined ? "idle" : "loading",
+        messagesError: null,
+        sendError: null,
+        retryAction: null,
+        streaming: false,
+        streamId: null,
+        sidebarOpen: false,
+      };
+    }
+    case "workspace_error":
+      return { ...state, workspaceError: action.message };
+    case "conversations_map_loaded":
+      return {
+        ...state,
+        conversationsByWorkspace: action.conversationsByWorkspace,
+        conversations:
+          state.activeWorkspaceId === null
+            ? state.conversations
+            : (action.conversationsByWorkspace[state.activeWorkspaceId] ?? []),
+      };
+    case "conversations_loaded": {
+      const conversationsByWorkspace = {
+        ...state.conversationsByWorkspace,
+        [action.workspaceId]: action.conversations,
+      };
+      if (action.workspaceId !== state.activeWorkspaceId) {
+        return { ...state, conversationsByWorkspace };
+      }
+      const activeId =
+        action.activeId !== null &&
+        action.conversations.some((conversation) => conversation.id === action.activeId)
+          ? action.activeId
+          : (action.conversations[0]?.id ?? null);
+      const keepLoaded = activeId !== null && activeId === state.activeConversationId;
+      return {
+        ...state,
+        conversationsByWorkspace,
+        conversations: action.conversations,
+        activeConversationId: activeId,
+        messages: keepLoaded ? state.messages : [],
+        messagesState: keepLoaded ? state.messagesState : activeId === null ? "idle" : "loading",
+        messagesError: keepLoaded ? state.messagesError : null,
+        sendError: keepLoaded ? state.sendError : null,
+        retryAction: keepLoaded ? state.retryAction : null,
+      };
+    }
+    case "conversation_activated": {
+      const conversations = state.conversationsByWorkspace[action.workspaceId] ?? [];
+      return {
+        ...state,
+        activeWorkspaceId: action.workspaceId,
+        workspaceError: null,
+        conversations,
+        activeConversationId: action.conversationId,
+        messages: [],
+        messagesState: "loading",
+        messagesError: null,
+        sendError: null,
+        retryAction: null,
+        streaming: false,
+        streamId: null,
+        sidebarOpen: false,
+      };
+    }
+    case "conversation_created": {
+      const workspaceId = action.conversation.workspace_id || state.activeWorkspaceId || "";
+      const existing = state.conversationsByWorkspace[workspaceId] ?? [];
+      const conversationsByWorkspace = {
+        ...state.conversationsByWorkspace,
+        [workspaceId]: [
           action.conversation,
-          ...state.conversations.filter((item) => item.id !== action.conversation.id),
+          ...existing.filter((item) => item.id !== action.conversation.id),
         ],
+      };
+      return {
+        ...state,
+        conversationsByWorkspace,
+        conversations:
+          workspaceId === state.activeWorkspaceId
+            ? (conversationsByWorkspace[workspaceId] ?? [])
+            : state.conversations,
         activeConversationId: action.conversation.id,
         messages: [],
         messagesState: "idle",
@@ -308,6 +447,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         retryAction: null,
         sidebarOpen: false,
       };
+    }
     case "conversation_selected": {
       if (action.conversationId === state.activeConversationId && state.messagesState !== "error") {
         return { ...state, sidebarOpen: false };
@@ -377,6 +517,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         messages: [...state.messages, user, assistant],
         conversations: bumpConversation(state.conversations, action.conversationId, action.now),
+        conversationsByWorkspace: bumpConversationMap(
+          state.conversationsByWorkspace,
+          action.conversationId,
+          action.now,
+        ),
         streaming: true,
         streamId: null,
         lastSendText: action.text,
@@ -423,6 +568,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           state.activeConversationId === null
             ? state.conversations
             : bumpConversation(state.conversations, state.activeConversationId, action.now),
+        conversationsByWorkspace:
+          state.activeConversationId === null
+            ? state.conversationsByWorkspace
+            : bumpConversationMap(
+                state.conversationsByWorkspace,
+                state.activeConversationId,
+                action.now,
+              ),
       };
     }
     case "agent_event": {

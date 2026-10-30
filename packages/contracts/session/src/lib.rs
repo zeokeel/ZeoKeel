@@ -140,13 +140,4 @@ pub trait SessionStore: WorkspaceStore + Send + Sync {
         conversation_id: &str,
     ) -> Result<Vec<Message>, SessionError>;
 
-    /// Compatibility: create in the default workspace. **Deprecated; T4 removes it.**
-    #[deprecated = "use create_conversation_in(workspace_id, title)"]
-    fn create_conversation(&self, title: &str) -> Result<Conversation, SessionError>;
-    /// Compatibility: list default workspace conversations. **Deprecated; T4 removes it.**
-    #[deprecated = "use list_conversations_in(workspace_id)"]
-    fn list_conversations(&self) -> Result<Vec<Conversation>, SessionError>;
-    /// Compatibility: read messages without explicit workspace. **Deprecated; T4 removes it.**
-    #[deprecated = "use messages_in(workspace_id, conversation_id)"]
-    fn messages(&self, conversation_id: &str) -> Result<Vec<Message>, SessionError>;
 }

@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { appReducer, createInitialState, type AppState } from "../src/state/reducer";
 import { defaultSettings } from "../src/types";
-import { CONVERSATION, META } from "./fixtures";
+import { CONVERSATION, META, WORKSPACE, WORKSPACES } from "./fixtures";
 
 function loadedState(): AppState {
   let state = appReducer(createInitialState(), {
     type: "boot_loaded",
     meta: META,
+    workspaces: WORKSPACES,
+    activeWorkspaceId: WORKSPACE.id,
+    conversationsByWorkspace: { [WORKSPACE.id]: [CONVERSATION] },
     conversations: [CONVERSATION],
     settings: defaultSettings(),
     activeId: CONVERSATION.id,
@@ -156,6 +159,9 @@ describe("chat reducer", () => {
     const state = appReducer(createInitialState(), {
       type: "boot_loaded",
       meta: META,
+      workspaces: WORKSPACES,
+      activeWorkspaceId: WORKSPACE.id,
+      conversationsByWorkspace: { [WORKSPACE.id]: [CONVERSATION] },
       conversations: [CONVERSATION],
       settings: defaultSettings(),
       activeId: CONVERSATION.id,

@@ -1,6 +1,7 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { IconRetry, useUi } from "@zeokeel/ui-kit";
 import { AssistantThread } from "./AssistantThread";
+import { EmptyThread } from "./EmptyThread";
 import { useChatRuntime } from "./runtime";
 
 /** `chat.thread` slot: assistant-ui thread + composer for the app's message state. */
@@ -43,6 +44,14 @@ export function ChatView() {
           <IconRetry />
           <span>{ui.t("loadMessagesRetry")}</span>
         </button>
+      </section>
+    );
+  }
+
+  if (ui.activeConversationId === null) {
+    return (
+      <section className="flex min-h-0 flex-1 flex-col" aria-label={ui.t("messageListAria")}>
+        <EmptyThread />
       </section>
     );
   }

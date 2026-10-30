@@ -5293,6 +5293,7 @@ name = "zk-desktop"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "dirs 6.0.0",
  "futures",
  "serde",
  "serde_json",

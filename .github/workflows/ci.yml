@@ -17,6 +17,8 @@ jobs:
           cargo run -q -p zk -- validate
           cargo run -q -p zk -- compose --edition personal --profile default --channel official --check
           cargo run -q -p zk -- capability --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace
   web:

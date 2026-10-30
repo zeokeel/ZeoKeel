@@ -26,7 +26,7 @@ export default defineConfig({
     },
     {
       command:
-        "cargo build -q -p zk-desktop && ZEOKEEL_HOME=target/evidence/m1/home ZEOKEEL_SERVE_ADDR=127.0.0.1:8788 ./target/debug/zk-desktop --serve",
+        "mkdir -p target/evidence/m1/home/demo-data && cp demo-data/hello.txt target/evidence/m1/home/demo-data/hello.txt && cargo build -q -p zk-desktop && ZEOKEEL_HOME=target/evidence/m1/home ZEOKEEL_SERVE_ADDR=127.0.0.1:8788 ./target/debug/zk-desktop --serve",
       url: "http://127.0.0.1:8788/healthz",
       reuseExistingServer: true,
       timeout: 240_000,

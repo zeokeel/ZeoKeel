@@ -32,9 +32,20 @@ export interface AppSettings {
   auto_approve_read_only: boolean;
 }
 
+/** Mirrors `zk_contract_session::Workspace`. */
+export interface Workspace {
+  id: string;
+  path: string;
+  title: string;
+  is_default: boolean;
+  created_at_ms: number;
+  updated_at_ms: number;
+}
+
 /** Mirrors `zk_contract_session::Conversation`. */
 export interface Conversation {
   id: string;
+  workspace_id: string;
   title: string;
   created_at_ms: number;
   updated_at_ms: number;

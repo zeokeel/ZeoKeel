@@ -91,6 +91,21 @@ apps/desktop/web (shell/infra)
 - **边界**：包间不互相 import（仅允许 `@zeokeel/ui-kit`）；`@assistant-ui/*` 只出现在 ui-chat；`react`/`react-dom` 为
   peerDependency；品牌 logo 只在 ui-kit `BrandLogo` 里读 `UiValue.brand`。
 
+### 5.1 Workspace 侧栏与高密度（M1）
+
+- **结构（DSH 版）**：brand + 搜索/新建 → 全宽“新会话” → 命令面板/自动化/插件入口 → “工作区” section（搜索/筛选/添加）
+  → **平铺 Workspace 行**（文件夹、默认标记、可折叠）+ **缩进会话行**（状态点/标题/时间，当前会话 live 蓝条）
+  → 底部设置。没有独立“会话”section，也没有日期分组；Workspace 不嵌套。
+- **数据**：boot 对每个 workspace 调用 `session.list`，`UiValue.conversationsByWorkspace` 保存所有工作区的会话；
+  `conversations` 仍保留为当前工作区列表（兼容）。点击某会话会自动把 `activeWorkspace` 切到它所属 workspace。
+- **命令**：`workspace.list/create/rename/set_default/remove`；`session.create/list/messages` 与 `chat.send` 全部携带
+  `workspace_id`；`chat.send` 不再自动建会话（空工作区显示“新建会话”入口，发送前必须有 conversation_id）。
+- **首用**：无 workspace 时整页首用（默认 `~` 或选择已存在目录）；创建后进入空工作区，不自动建会话。
+- **密度 v2**：基础 13px/1.55；侧栏 248px；顶栏 44px；状态栏 24px（workspace 路径/连接/包数/版本）；消息列 760px；
+  composer 2 行；工具调用默认单行折叠（展开看 args/result）；审批保持紧凑卡。
+- **证据**：vitest 34 tests（含 workspace protocol/reducer/首用）；Playwright 9 tests（默认 `~`、workspace 隔离/切换、
+  无 workspace 不建会话、移除二次确认+reassign、serve 真实 IPC）；axe 0 serious/critical；截图 01–09。
+
 ## 6. Design tokens（`src/app.css`）
 
 ### 5.1 中性色 / live / destructive

@@ -4,6 +4,7 @@ import {
   parseConversation,
   parseMessages,
   parseStreamId,
+  parseWorkspaces,
 } from "../src/protocol";
 import { createMockTransport } from "../src/transport/mock";
 import type { AgentEvent, UiEvent } from "../src/types";
@@ -37,8 +38,16 @@ describe("mock transport (?mock=1)", () => {
     const events: UiEvent[] = [];
     transport.subscribe((event) => events.push(event));
 
+    const workspaces = await transport.call("workspace.list", {});
+    const defaultWorkspace = parseWorkspaces(workspaces)?.[0];
+    if (defaultWorkspace === undefined) {
+      throw new Error("mock workspace.list returned no default workspace");
+    }
     const conversation = parseConversation(
-      await transport.call("session.create", { title: "演示" }),
+      await transport.call("session.create", {
+        workspace_id: defaultWorkspace.id,
+        title: "演示",
+      }),
     );
     expect(conversation).not.toBeNull();
     if (conversation === null) {
@@ -46,6 +55,7 @@ describe("mock transport (?mock=1)", () => {
     }
 
     const sent = await transport.call("chat.send", {
+      workspace_id: defaultWorkspace.id,
       conversation_id: conversation.id,
       text: "读取 demo-data/hello.txt",
     });
@@ -71,7 +81,10 @@ describe("mock transport (?mock=1)", () => {
     expect(finalText).toContain("已读取");
 
     const messages = parseMessages(
-      await transport.call("session.messages", { conversation_id: conversation.id }),
+      await transport.call("session.messages", {
+        workspace_id: defaultWorkspace.id,
+        conversation_id: conversation.id,
+      }),
     );
     expect(messages?.map((message) => message.role)).toEqual(["user", "assistant"]);
   });
@@ -81,14 +94,23 @@ describe("mock transport (?mock=1)", () => {
     const events: UiEvent[] = [];
     transport.subscribe((event) => events.push(event));
 
+    const workspaces = await transport.call("workspace.list", {});
+    const defaultWorkspace = parseWorkspaces(workspaces)?.[0];
+    if (defaultWorkspace === undefined) {
+      throw new Error("mock workspace.list returned no default workspace");
+    }
     const conversation = parseConversation(
-      await transport.call("session.create", { title: "取消演示" }),
+      await transport.call("session.create", {
+        workspace_id: defaultWorkspace.id,
+        title: "取消演示",
+      }),
     );
     if (conversation === null) {
       throw new Error("mock session.create returned an invalid conversation");
     }
     const streamId = parseStreamId(
       await transport.call("chat.send", {
+        workspace_id: defaultWorkspace.id,
         conversation_id: conversation.id,
         text: "写一段长文字",
       }),
@@ -102,7 +124,10 @@ describe("mock transport (?mock=1)", () => {
 
     expect(agentEvents(events).some((event) => event.type === "turn_cancelled")).toBe(true);
     const messages = parseMessages(
-      await transport.call("session.messages", { conversation_id: conversation.id }),
+      await transport.call("session.messages", {
+        workspace_id: defaultWorkspace.id,
+        conversation_id: conversation.id,
+      }),
     );
     expect(messages).toHaveLength(2);
     expect(messages?.[1]?.role).toBe("assistant");

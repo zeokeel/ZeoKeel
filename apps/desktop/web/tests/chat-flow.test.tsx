@@ -5,9 +5,19 @@ import { App } from "../src/App";
 import type { FakeTransport } from "./fake-transport";
 import { readyTransport } from "./fixtures";
 
+async function createConversation() {
+  const buttons = await screen.findAllByRole("button", { name: "新建会话" });
+  const button = buttons[buttons.length - 1] ?? buttons[0];
+  if (button === undefined) {
+    throw new Error("new conversation button missing");
+  }
+  await userEvent.click(button);
+  return screen.findByRole("textbox", { name: "消息输入框" });
+}
+
 async function bootAndSend(transport: FakeTransport, text: string) {
   render(<App transport={transport} />);
-  const input = await screen.findByRole("textbox", { name: "消息输入框" });
+  const input = await createConversation();
   await userEvent.type(input, text);
   await userEvent.keyboard("{Enter}");
   await waitFor(() => {
@@ -32,7 +42,14 @@ describe("chat flow", () => {
     await bootAndSend(transport, "读取 demo-data/hello.txt");
     expect(screen.getByTestId("user-text").textContent).toContain("读取 demo-data/hello.txt");
     expect(screen.getByRole("button", { name: "停止生成" })).toBeTruthy();
-    expect(transport.callsFor("session.create")[0]?.["title"]).toBe("读取 demo-data/hello.txt");
+    expect(transport.callsFor("session.create")[0]).toMatchObject({
+      workspace_id: "ws-home",
+      title: "新会话",
+    });
+    expect(transport.callsFor("chat.send")[0]).toMatchObject({
+      workspace_id: "ws-home",
+      conversation_id: "conv-created-1",
+    });
 
     await emitAgent(transport, 2, {
       type: "tool_call_started",
@@ -76,7 +93,7 @@ describe("chat flow", () => {
     expect(screen.getByText(/已经生成的一部分/)).toBeTruthy();
 
     await userEvent.click(screen.getByRole("button", { name: "停止生成" }));
-    expect(transport.callsFor("chat.cancel")[0]).toEqual({ stream_id: "stream-1" });
+    expect(transport.callsFor("chat.cancel")[0]).toMatchObject({ stream_id: "stream-1" });
 
     await emitAgent(transport, 3, { type: "turn_cancelled" });
     expect(screen.getByText("已取消")).toBeTruthy();

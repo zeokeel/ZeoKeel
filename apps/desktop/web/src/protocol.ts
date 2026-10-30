@@ -19,6 +19,7 @@ import {
   type ReplyToolCall,
   type Theme,
   type UiEvent,
+  type Workspace,
 } from "./types";
 
 import { isRecord, readBoolean, readNumber, readString } from "@zeokeel/ui-kit";
@@ -44,6 +45,7 @@ function parseConversationRecord(value: Record<string, unknown>): Conversation |
   const updatedAt = readNumber(value, "updated_at_ms");
   return {
     id,
+    workspace_id: readString(value, "workspace_id") ?? "",
     title,
     created_at_ms: createdAt,
     updated_at_ms: updatedAt === null ? createdAt : updatedAt,
@@ -60,6 +62,56 @@ export function parseConversation(value: unknown): Conversation | null {
   }
   const nested = value["conversation"];
   return isRecord(nested) ? parseConversationRecord(nested) : null;
+}
+
+function parseWorkspaceRecord(value: Record<string, unknown>): Workspace | null {
+  const id = readString(value, "id");
+  const path = readString(value, "path");
+  const title = readString(value, "title");
+  const isDefault = readBoolean(value, "is_default");
+  const createdAt = readNumber(value, "created_at_ms");
+  if (id === null || path === null || title === null || isDefault === null || createdAt === null) {
+    return null;
+  }
+  const updatedAt = readNumber(value, "updated_at_ms");
+  return {
+    id,
+    path,
+    title,
+    is_default: isDefault,
+    created_at_ms: createdAt,
+    updated_at_ms: updatedAt === null ? createdAt : updatedAt,
+  };
+}
+
+export function parseWorkspace(value: unknown): Workspace | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const direct = parseWorkspaceRecord(value);
+  if (direct !== null) {
+    return direct;
+  }
+  const nested = value["workspace"];
+  return isRecord(nested) ? parseWorkspaceRecord(nested) : null;
+}
+
+export function parseWorkspaces(value: unknown): Workspace[] | null {
+  const items =
+    readArrayOrNull(value) ??
+    (isRecord(value) ? (readArray(value, "workspaces") ?? readArray(value, "items")) : null);
+  if (items === null) {
+    return null;
+  }
+  const workspaces: Workspace[] = [];
+  for (const item of items) {
+    const workspace = parseWorkspace(item);
+    if (workspace === null) {
+      return null;
+    }
+    workspaces.push(workspace);
+  }
+  return workspaces;
 }
 
 export function parseConversations(value: unknown): Conversation[] | null {

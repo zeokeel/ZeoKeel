@@ -8,6 +8,7 @@ import type {
   Meta,
   ResolvedTheme,
   ThreadLoadState,
+  Workspace,
 } from "./types";
 
 /** i18n is app infrastructure; packages only receive a translator. */
@@ -25,6 +26,11 @@ export interface BrandConfig {
 /** App actions exposed to UI packages (no package imports the controller). */
 export interface UiActions {
   send: (text: string) => void;
+  createWorkspace: (path: string, title: string) => void;
+  selectWorkspace: (workspaceId: string) => void;
+  renameWorkspace: (workspaceId: string, title: string) => void;
+  setDefaultWorkspace: (workspaceId: string) => void;
+  removeWorkspace: (workspaceId: string, reassignTo?: string) => void;
   cancel: () => void;
   retry: () => void;
   createConversation: () => void;
@@ -47,6 +53,11 @@ export interface UiValue {
   boot: BootState;
   bootError: string | null;
   meta: Meta;
+  workspaces: Workspace[];
+  activeWorkspaceId: string | null;
+  workspaceError: string | null;
+  conversationsByWorkspace: Record<string, Conversation[]>;
+  /** Conversations of the active workspace (kept for compatibility). */
   conversations: Conversation[];
   activeConversationId: string | null;
   messages: ChatMessage[];

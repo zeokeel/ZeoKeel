@@ -17,17 +17,19 @@ describe("app six states", () => {
   it("shows the loading state while bootstrapping", () => {
     const transport = new FakeTransport();
     transport.handle("meta.get", () => new Promise(() => {}));
+    transport.handle("workspace.list", () => new Promise(() => {}));
     transport.handle("session.list", () => new Promise(() => {}));
     transport.handle("settings.get", () => new Promise(() => {}));
     renderApp(transport);
     expect(screen.getByText("正在启动 ZeoKeel…")).toBeTruthy();
   });
 
-  it("shows empty conversation + empty chat states", async () => {
+  it("shows empty workspace + new-conversation prompt", async () => {
     renderApp(readyTransport([]));
     expect(await screen.findByRole("heading", { name: "今天想完成什么？" })).toBeTruthy();
-    expect(screen.getByText("还没有会话，点击“新建会话”开始。")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "发送" })).toHaveProperty("disabled", true);
+    expect(screen.getAllByText("暂无会话").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("textbox", { name: "消息输入框" })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "新建会话" }).length).toBeGreaterThan(0);
   });
 
   it("shows a boot error and recovers through retry", async () => {
@@ -44,11 +46,12 @@ describe("app six states", () => {
 
   it("shows the offline banner and pauses sending", async () => {
     Object.defineProperty(navigator, "onLine", { configurable: true, value: false });
-    renderApp(readyTransport([]));
+    renderApp(readyTransport([CONVERSATION]));
     expect(
-      await screen.findByText("当前处于离线状态：已有会话可查看，发送已暂停。"),
-    ).toBeTruthy();
-    expect(screen.getByRole("textbox", { name: "消息输入框" })).toHaveProperty("disabled", true);
+      (await screen.findAllByText("当前处于离线状态：已有会话可查看，发送已暂停。")).length,
+    ).toBeGreaterThan(0);
+    const input = await screen.findByRole("textbox", { name: "消息输入框" });
+    expect(input).toHaveProperty("disabled", true);
     expect(screen.getByRole("button", { name: "发送" })).toHaveProperty("disabled", true);
   });
 
@@ -65,7 +68,7 @@ describe("app six states", () => {
     ]);
     renderApp(transport);
     expect(await screen.findByText("历史消息")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "演示会话" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /演示会话/ })).toBeTruthy();
   });
 
   it("shows a message-load error with retry", async () => {

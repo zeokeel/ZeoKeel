@@ -37,30 +37,30 @@ function Icon({ name, size = 14 }: { name: IconName; size?: number }) {
   );
 }
 
-const SESSIONS = [
-  { title: "重构工作区导航", time: "刚刚", group: "今天", live: true, dot: true },
-  { title: "解释 Rust 所有权", time: "12:04", group: "今天" },
-  { title: "把发布说明写短一点", time: "11:20", group: "今天" },
-  { title: "排查 CI 缓存失效", time: "昨天", group: "昨天" },
-  { title: "设计审批卡交互", time: "昨天", group: "昨天" },
-  { title: "整理 MCP 连接器清单", time: "周一", group: "更早" },
-];
-const TOOLS = [
-  { name: "fs.read", detail: "src/components/Sidebar.tsx", time: "0.4s", status: "done" },
-  { name: "grep", detail: "workspace switcher", time: "0.2s", status: "done" },
-  { name: "fs.read", detail: "packages/ui/ui-sessions/src/index.tsx", time: "0.3s", status: "done" },
-  { name: "fs.write", detail: "prototype/Dense.tsx", time: "1.1s", status: "running" },
-];
-const FILES = [
-  { name: "src/", kind: "dir", depth: 0 },
-  { name: "components/", kind: "dir", depth: 1 },
-  { name: "App.tsx", kind: "file", depth: 2, mod: true },
-  { name: "Sidebar.tsx", kind: "file", depth: 2, mod: true },
-  { name: "prototype/", kind: "dir", depth: 1 },
-  { name: "Dense.tsx", kind: "file", depth: 2, add: true },
-  { name: "workspace.ts", kind: "file", depth: 1, mod: true },
-  { name: "docs/", kind: "dir", depth: 0 },
-  { name: "27-ui-design-system.md", kind: "file", depth: 1 },
+const WORKSPACES = [
+  {
+    name: "~",
+    detail: "主目录 · 默认",
+    default: true,
+    sessions: [
+      { title: "重构工作区导航", time: "刚刚", live: true, active: true },
+      { title: "解释 Rust 所有权", time: "12:04", active: false, live: false },
+      { title: "把发布说明写短一点", time: "11:20", active: false, live: false },
+    ],
+  },
+  {
+    name: "zeokeel",
+    detail: "~/code/zeokeel",
+    sessions: [
+      { title: "排查 CI 缓存失效", time: "昨天", active: false, live: false },
+      { title: "设计审批卡交互", time: "昨天", active: false, live: false },
+    ],
+  },
+  {
+    name: "api-server",
+    detail: "~/work/api-server",
+    sessions: [{ title: "整理 MCP 连接器清单", time: "周一", active: false, live: false }],
+  },
 ];
 const COMMANDS = [
   { title: "新建会话", hint: "⌘N", key: "new" },
@@ -69,39 +69,36 @@ const COMMANDS = [
   { title: "打开设置", hint: "⌘,", key: "settings" },
   { title: "查看键盘快捷键", hint: "?", key: "keys" },
 ];
+const TOOLS = [
+  { name: "fs.read", detail: "demo-data/hello.txt", status: "done", time: "0.4s" },
+  { name: "fs.write", detail: "src/App.tsx", status: "done", time: "0.6s" },
+  { name: "fs.list", detail: "packages/ui", status: "running", time: "0.2s" },
+];
+
+const FILES = [
+  { name: "packages", kind: "dir", depth: 0 },
+  { name: "ui", kind: "dir", depth: 1 },
+  { name: "ui-sessions", kind: "dir", depth: 2 },
+  { name: "index.tsx", kind: "file", depth: 3, mod: true },
+  { name: "apps", kind: "dir", depth: 0 },
+  { name: "desktop", kind: "dir", depth: 1 },
+  { name: "web", kind: "dir", depth: 2 },
+  { name: "App.tsx", kind: "file", depth: 3, mod: true },
+  { name: "workspace.ts", kind: "file", depth: 3, add: true },
+];
+
 
 function Logo() {
   return <img src={BRAND.logoLight} alt="" className="h-6 w-6 rounded-document object-contain" />;
 }
 
-const WORKSPACES = [
-  { name: "~", detail: "主目录 · 默认", active: true },
-  { name: "zeokeel", detail: "~/code/zeokeel", active: false },
-  { name: "api-server", detail: "~/work/api-server", active: false },
-];
-
-function WorkspaceList() {
-  return (
-    <div>
-      <p className="mb-1 px-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/80">工作区</p>
-      {WORKSPACES.map((w) => (
-        <button
-          key={w.name}
-          type="button"
-          className={`flex w-full items-center gap-2 rounded-sm px-1.5 py-[5px] text-start text-[12px] ${w.active ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-foreground/[0.035] hover:text-foreground"}`}
-        >
-          <span className={`h-1.5 w-1.5 shrink-0 rounded-capsule ${w.active ? "bg-live" : "bg-border"}`} aria-hidden="true" />
-          <span className="min-w-0 flex-1 truncate">{w.name}</span>
-          <span className="max-w-[90px] shrink-0 truncate text-[10px] font-normal text-muted-foreground/70">{w.detail}</span>
-        </button>
-      ))}
-    </div>
-  );
+function Chevron({ open }: { open: boolean }) {
+  return <span className={`text-muted-foreground/70 transition-transform ${open ? "" : "-rotate-90"}`}><Icon name="chevron" size={11} /></span>;
 }
 
 function LeftRail() {
   return (
-    <aside className="flex w-[248px] shrink-0 flex-col border-e border-border bg-sidebar" aria-label="会话列表">
+    <aside className="flex w-[248px] shrink-0 flex-col border-e border-border bg-sidebar" aria-label="工作区与会话">
       <div className="flex items-center justify-between px-3 pt-3 pb-2">
         <div className="flex items-center gap-2"><Logo /><span className="text-[12px] font-semibold">ZeoKeel</span></div>
         <div className="flex items-center gap-0.5 text-muted-foreground">
@@ -109,20 +106,44 @@ function LeftRail() {
           <button className="flex h-6 w-6 items-center justify-center rounded-sm hover:bg-foreground/[0.05]" aria-label="新建会话"><Icon name="plus" size={13} /></button>
         </div>
       </div>
-      <div className="px-2"><WorkspaceList />
-        <div className="mt-2 flex items-center gap-1.5 rounded-control border border-border bg-background/60 px-2 py-1 text-muted-foreground">
-          <Icon name="search" size={12} /><span className="text-[11px]">搜索会话或 @文件</span><span className="ms-auto font-mono text-[10px]">⌘K</span>
+      <div className="px-2">
+        <button type="button" className="flex h-8 w-full items-center justify-center gap-1.5 rounded-control border border-border bg-background text-[12px] font-medium hover:bg-muted">
+          <Icon name="plus" size={12} />新会话
+        </button>
+        <div className="mt-2 flex flex-col gap-0.5 text-[12px] text-muted-foreground">
+          <button className="flex items-center gap-2 rounded-sm px-1.5 py-[5px] text-start hover:bg-foreground/[0.035] hover:text-foreground"><Icon name="command" size={13} />命令面板<span className="ms-auto font-mono text-[10px]">⌘K</span></button>
+          <button className="flex items-center gap-2 rounded-sm px-1.5 py-[5px] text-start hover:bg-foreground/[0.035] hover:text-foreground"><Icon name="spark" size={13} />自动化任务</button>
         </div>
       </div>
-      <nav className="mt-1 min-h-0 flex-1 overflow-y-auto px-2 pb-2" aria-label="会话">
-        <p className="mb-1 px-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/80">会话</p>
-        {SESSIONS.map((s) => (
-          <button key={s.title} type="button" className={`group flex w-full items-center gap-1.5 rounded-sm px-1.5 py-[5px] text-start text-[12px] ${s.title === "重构工作区导航" ? "bg-muted font-medium text-foreground shadow-[inset_2px_0_0_var(--zk-blue-500)]" : "text-muted-foreground hover:bg-foreground/[0.035] hover:text-foreground"}`}>
-            <span className={`h-1.5 w-1.5 shrink-0 rounded-capsule ${s.live ? "bg-live" : "bg-border"}`} aria-hidden="true" />
-            <span className="min-w-0 flex-1 truncate">{s.title}</span>
-            <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">{s.time}</span>
-          </button>
+      <div className="mt-3 flex items-center gap-1.5 px-3 pb-1 text-muted-foreground">
+        <span className="text-[10px] font-medium uppercase tracking-[0.08em]">工作区</span>
+        <span className="ms-auto flex items-center gap-0.5">
+          <button className="flex h-5 w-5 items-center justify-center rounded-sm hover:bg-foreground/[0.05]" aria-label="搜索工作区"><Icon name="search" size={11} /></button>
+          <button className="flex h-5 w-5 items-center justify-center rounded-sm hover:bg-foreground/[0.05]" aria-label="工作区选项"><Icon name="sliders" size={11} /></button>
+          <button className="flex h-5 w-5 items-center justify-center rounded-sm hover:bg-foreground/[0.05]" aria-label="添加工作区"><Icon name="folder" size={11} /></button>
+        </span>
+      </div>
+      <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-2" aria-label="工作区">
+        {WORKSPACES.map((w) => (
+          <div key={w.name} className="mb-0.5">
+            <button type="button" className={`flex w-full items-center gap-1.5 rounded-sm px-1.5 py-[5px] text-start text-[12px] ${w.default ? "font-medium text-foreground" : "text-muted-foreground hover:bg-foreground/[0.035] hover:text-foreground"}`}>
+              <span className="text-muted-foreground/80"><Icon name="folder" size={12} /></span>
+              <span className="min-w-0 flex-1 truncate">{w.name}</span>
+              {w.default ? <span className="rounded-capsule bg-muted px-1 text-[9px] font-normal text-muted-foreground">默认</span> : null}
+              <Chevron open />
+            </button>
+            <div className="ms-3 border-s border-border/60 ps-1">
+              {w.sessions.map((session) => (
+                <button key={session.title} type="button" className={`flex w-full items-center gap-1.5 rounded-sm px-1.5 py-[4px] text-start text-[12px] ${session.active ? "bg-muted font-medium text-foreground shadow-[inset_2px_0_0_var(--zk-blue-500)]" : "text-muted-foreground hover:bg-foreground/[0.035] hover:text-foreground"}`}>
+                  <span className={`h-1.5 w-1.5 shrink-0 rounded-capsule ${session.live ? "bg-live" : "bg-border"}`} aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate">{session.title}</span>
+                  <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">{session.time}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         ))}
+        <button type="button" className="mt-1 flex w-full items-center gap-1.5 rounded-sm px-1.5 py-[5px] text-start text-[11px] text-muted-foreground hover:bg-foreground/[0.035] hover:text-foreground"><Icon name="plus" size={11} />添加工作区</button>
       </nav>
       <div className="flex items-center gap-1 border-t border-border px-2 py-1.5 text-muted-foreground">
         <button className="flex h-6 flex-1 items-center gap-1.5 rounded-sm px-1.5 text-[11px] hover:bg-foreground/[0.04]"><Icon name="sliders" size={12} />设置</button>
