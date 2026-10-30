@@ -18,6 +18,9 @@ def respond(body):
     open("/tmp/zk-agent-fake.log","a").write("REQ roles="+str([m.get("role") for m in messages])+"\n")
     user=" ".join(str(m.get("content") or "") for m in messages if m.get("role")=="user")
     tool_count=len([m for m in messages if m.get("role")=="tool"])
+    if "slow" in user:
+        import time; time.sleep(5)
+        return {"id":"chatcmpl-slow","object":"chat.completion","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"slow done"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
     if tool_count>0 and "multi" not in user:
         return {"id":"chatcmpl-final","object":"chat.completion","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"已完成工具调用并通过审批。"}}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}
     if "multi" in user and tool_count>=2:

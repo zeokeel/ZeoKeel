@@ -19,7 +19,7 @@
 
 - `EventSink` 通过 `run_stream_in_shared(Arc<dyn EventSink>)` 传入，工具与审批可在执行中发事件；旧 `&dyn` 路径用缓冲 sink 兼容。
 - 每轮事件：TurnStarted → ApprovalRequested/Resolved → ToolCallStarted/Finished → TextDelta → TurnCompleted/Cancelled/Error。
-- 取消：rig 流式循环每项检查 `RigAgent.cancel()`；工具执行前检查取消；桌面 `chat.cancel` 调用 `Runtime::cancel_agent()`。工具超时可由 `ZEOKEEL_TOOL_TIMEOUT_MS` 配置（默认 120s）。非流式 provider await 仍无法中断，这是已知边界。
+- 取消：rig 流式循环每项检查 `RigAgent.cancel()`；工具执行前检查取消；桌面 `chat.cancel` 调用 `Runtime::cancel_agent()`。工具超时可由 `ZEOKEEL_TOOL_TIMEOUT_MS` 配置（默认 120s）。非流式 provider 通过 50ms 轮询取消标志也可中断；审批超时由 `ZEOKEEL_APPROVAL_TIMEOUT_MS` 配置（默认 300s）。
 - 委派：subagent/workflow/ralph 复用同一 model/tools，但子会话 id 隔离为 `<conversation>-sub-<depth>`；最大深度 3。
 
 ## 4. 工具矩阵

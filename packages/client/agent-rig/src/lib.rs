@@ -179,7 +179,19 @@ impl RigAgent {
                 if self.cancelled.load(Ordering::SeqCst) { Ok(final_text.unwrap_or_default()) } else { final_text.ok_or_else(|| "agent stream ended without a final response".to_owned()) }
             }).map_err(map_provider_error)?
         } else {
-            self.runtime.block_on(async { agent.prompt(input).await }).map(|response| response.to_string()).map_err(|error| map_provider_error(error.to_string()))?
+            let cancelled = Arc::clone(&self.cancelled);
+            self.runtime.block_on(async move {
+                let future = async move { agent.prompt(input).await.map(|response| response.to_string()) };
+                let mut future = Box::pin(future);
+                loop {
+                    tokio::select! {
+                        result = &mut future => return result.map_err(|error| map_provider_error(error.to_string())),
+                        () = tokio::time::sleep(std::time::Duration::from_millis(50)) => {
+                            if cancelled.load(Ordering::SeqCst) { return Err(AgentError::Invalid("AGENT_CANCELLED".to_owned())); }
+                        }
+                    }
+                }
+            })?
         };
         let text = response;
         let calls = records.lock().map(|guard| guard.clone()).unwrap_or_default();
@@ -213,6 +225,7 @@ impl Agent for RigAgent {
         match result {
             Ok(reply) if self.cancelled.load(Ordering::SeqCst) => { sink.emit(AgentEvent::TurnCancelled); Ok(reply) }
             Ok(reply) => { sink.emit(AgentEvent::TurnCompleted { reply: reply.clone() }); Ok(reply) }
+            Err(_) if self.cancelled.load(Ordering::SeqCst) => { sink.emit(AgentEvent::TurnCancelled); Ok(AgentReply { text: String::new(), tool_calls: Vec::new() }) }
             Err(error) => { sink.emit(AgentEvent::Error { message: error.to_string() }); Err(error) }
         }
     }

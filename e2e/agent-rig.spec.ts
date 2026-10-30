@@ -40,6 +40,18 @@ test.describe("personal rig agent (real serve + fake upstream)", () => {
     await expect(page.getByText(/denied by approval policy/).first()).toBeVisible();
   });
 
+  test("stops a slow non-streaming turn", async ({ page }) => {
+    await page.goto("/", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "新建会话" }).last().click();
+    const composer = page.getByRole("textbox").first();
+    await composer.fill("slow");
+    await page.keyboard.press("Enter");
+    const stop = page.getByRole("button", { name: "停止生成" });
+    await expect(stop).toBeVisible();
+    await stop.click();
+    await expect(page.getByText("已取消").first()).toBeVisible();
+  });
+
   test("runs a multi-step read/write loop", async ({ page }) => {
     await page.goto("/", { waitUntil: "networkidle" });
     await page.getByRole("button", { name: "新建会话" }).last().click();
