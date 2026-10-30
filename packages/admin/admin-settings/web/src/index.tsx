@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, messageOf, type SettingItem } from "@zeokeel/admin-ui-kit";
+import { adminT, api, messageOf, type SettingItem } from "@zeokeel/admin-ui-kit";
 
 export function Settings({ onError }: { onError: (message: string) => void }) {
   const [items, setItems] = useState<SettingItem[]>([]);
@@ -19,17 +19,17 @@ export function Settings({ onError }: { onError: (message: string) => void }) {
   };
   return (
     <section>
-      <h2>系统设置</h2>
-      <p className="hint">hot=true 立即生效；其余提示重启。值必须是 JSON。</p>
+      <h2>{adminT("settings.title")}</h2>
+      <p className="hint">{adminT("settings.hint")}</p>
       <form className="row" onSubmit={save}>
-        <input aria-label="设置 Key" value={key} onChange={(event) => { setKey(event.target.value); }} />
-        <input aria-label="设置 Value" value={value} onChange={(event) => { setValue(event.target.value); }} />
-        <label><input type="checkbox" checked={hot} onChange={(event) => { setHot(event.target.checked); }} /> hot</label>
-        <button type="submit">保存</button>
+        <input aria-label={adminT("settings.ariaKey")} value={key} onChange={(event) => { setKey(event.target.value); }} />
+        <input aria-label={adminT("settings.ariaValue")} value={value} onChange={(event) => { setValue(event.target.value); }} />
+        <label><input type="checkbox" checked={hot} onChange={(event) => { setHot(event.target.checked); }} /> {adminT("settings.hot")}</label>
+        <button type="submit">{adminT("common.save")}</button>
       </form>
       <table>
-        <thead><tr><th>Key</th><th>Value</th><th>Hot</th></tr></thead>
-        <tbody>{items.map((item) => <tr key={item.key}><td>{item.key}</td><td className="mono">{JSON.stringify(item.value)}</td><td>{item.hot ? "是" : "否"}</td></tr>)}</tbody>
+        <thead><tr><th>{adminT("common.key")}</th><th>{adminT("common.value")}</th><th>{adminT("common.hot")}</th></tr></thead>
+        <tbody>{items.map((item) => <tr key={item.key}><td>{item.key}</td><td className="mono">{JSON.stringify(item.value)}</td><td>{item.hot ? adminT("common.yes") : adminT("common.no")}</td></tr>)}</tbody>
       </table>
     </section>
   );

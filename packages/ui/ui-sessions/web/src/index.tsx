@@ -150,7 +150,6 @@ export function Sidebar() {
   const [menuId, setMenuId] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<Workspace | null>(null);
   const [reassignTo, setReassignTo] = useState("");
-  const [paletteOpen, setPaletteOpen] = useState(false);
 
   // docs/27 §2: the narrow-window drawer closes with Escape (modal surfaces handle their own Esc).
   useEffect(() => {
@@ -307,7 +306,7 @@ export function Sidebar() {
           type="button"
           className="flex w-full items-center gap-2 rounded-sm px-2 py-[5px] text-start text-[12px] text-muted-foreground hover:bg-foreground/[0.03] hover:text-foreground"
           onClick={() => {
-            setPaletteOpen(true);
+            actions.openCommands();
           }}
         >
           <IconCommand />
@@ -706,50 +705,6 @@ export function Sidebar() {
         </Modal>
       ) : null}
 
-      {paletteOpen ? (
-        <Modal
-          labelId="command-palette"
-          title={t("commandPaletteTitle")}
-          onClose={() => { setPaletteOpen(false); }}
-        >
-          <div className="flex flex-col gap-1">
-            <button
-              type="button"
-              data-autofocus
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-start text-[13px] text-foreground hover:bg-muted"
-              onClick={() => {
-                setPaletteOpen(false);
-                actions.createConversation();
-              }}
-            >
-              <IconPlus />
-              <span>{t("newConversation")}</span>
-            </button>
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-start text-[13px] text-foreground hover:bg-muted"
-              onClick={() => {
-                setPaletteOpen(false);
-                setAddOpen(true);
-              }}
-            >
-              <IconFolder />
-              <span>{t("workspaceAdd")}</span>
-            </button>
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-start text-[13px] text-foreground hover:bg-muted"
-              onClick={() => {
-                setPaletteOpen(false);
-                actions.openSettings();
-              }}
-            >
-              <IconSliders />
-              <span>{t("settings")}</span>
-            </button>
-          </div>
-        </Modal>
-      ) : null}
     </aside>
   );
 }

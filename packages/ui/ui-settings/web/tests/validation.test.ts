@@ -26,6 +26,11 @@ describe("settings validation", () => {
     expect(validateSettings({ ...base, seed: "-1" }).seed).toBe("settingsInvalidRange");
     expect(validateSettings({ ...base, toolChoiceMode: "specific" as const, toolChoiceTools: "  " }).toolChoiceTools).toBe("settingsInvalidToolChoiceTools");
     expect(validateSettings({ ...base, toolChoiceMode: "specific" as const, toolChoiceTools: "fs.read, fs.write" }).toolChoiceTools).toBeNull();
+    expect(validateSettings({ ...base, toolTimeoutMs: "999" }).toolTimeoutMs).toBe("settingsInvalidRange");
+    expect(validateSettings({ ...base, toolTimeoutMs: "600001" }).toolTimeoutMs).toBe("settingsInvalidRange");
+    expect(validateSettings({ ...base, approvalTimeoutMs: "999" }).approvalTimeoutMs).toBe("settingsInvalidRange");
+    expect(validateSettings({ ...base, approvalTimeoutMs: "1800001" }).approvalTimeoutMs).toBe("settingsInvalidRange");
+    expect(validateSettings({ ...base, toolTimeoutMs: "60000", approvalTimeoutMs: "450000" }).toolTimeoutMs).toBeNull();
   });
 
   it("round-trips all agent settings into the AppSettings contract shape", () => {
@@ -46,6 +51,8 @@ describe("settings validation", () => {
       memoryDir: "/tmp/zk-memory",
       hooksEnabled: false,
       hooksLog: "/tmp/zk-hooks.jsonl",
+      toolTimeoutMs: "60000",
+      approvalTimeoutMs: "450000",
     };
     expect(validateSettings(form)).toEqual(EMPTY_SETTINGS_ERRORS);
     const settings = formToSettings(form, 1);
@@ -65,6 +72,7 @@ describe("settings validation", () => {
       memory: { enabled: false, dir: "/tmp/zk-memory" },
       hooks: { enabled: false, log: "/tmp/zk-hooks.jsonl" },
     });
+    expect(settings.tools).toEqual({ tool_timeout_ms: 60000, approval_timeout_ms: 450000 });
     expect(toForm(settings).maxSteps).toBe("12");
     expect(toForm(settings).toolChoiceMode).toBe("specific");
   });
@@ -79,6 +87,7 @@ describe("settings validation", () => {
     expect(settings.agent.completion.tool_choice).toEqual({ mode: "auto" });
     expect(settings.agent.completion.stop).toEqual([]);
     expect(settings.agent.max_steps).toBe(50);
+    expect(settings.tools).toEqual({ tool_timeout_ms: 120000, approval_timeout_ms: 300000 });
   });
 
   it("keeps a saved server URL (docs/19 §3.3)", () => {

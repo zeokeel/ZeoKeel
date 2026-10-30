@@ -353,6 +353,16 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
                 </label>
               </div>
             </fieldset>
+            <fieldset className="rounded-document bg-muted p-4">
+              <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
+                {t("settingsSectionTools")}
+              </legend>
+              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                {numeric("settings-tool-timeout", t("settingsToolTimeout"), form.toolTimeoutMs, (value) => { update("toolTimeoutMs", value); }, errors.toolTimeoutMs, { min: 1000, max: 600000 })}
+                {numeric("settings-approval-timeout", t("settingsApprovalTimeout"), form.approvalTimeoutMs, (value) => { update("approvalTimeoutMs", value); }, errors.approvalTimeoutMs, { min: 1000, max: 1800000 })}
+              </div>
+              <p className="mt-2 text-[12px] text-muted-foreground">{t("settingsToolsHint")}</p>
+            </fieldset>
 
             {saveError !== null ? (
               <p

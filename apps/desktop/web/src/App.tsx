@@ -256,6 +256,7 @@ export function App(props: { transport: Transport }) {
         });
       },
       toggleSidebar: controller.toggleSidebar,
+      openCommands: () => { controller.setCommandsOpen(true); },
       retryBoot: controller.retryBoot,
       retryMessages: controller.retryMessages,
       decideApproval: controller.decideApproval,
@@ -450,7 +451,6 @@ function AppShell(props: AppShellProps) {
   const t = ui.t;
   const state = controller.state;
   const enterprise = state.meta.edition === "enterprise";
-  const [commandsOpen, setCommandsOpen] = useState(false);
   const [panel, setPanel] = useState<"skills" | "connectors" | "apps" | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<"files" | "changes" | "terminal">("files");
@@ -478,12 +478,12 @@ function AppShell(props: AppShellProps) {
     const onKey = (event: KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setCommandsOpen((value) => !value);
+        controller.setCommandsOpen(!controller.state.commandsOpen);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("keydown", onKey); };
-  }, []);
+  }, [controller]);
   const commands = [
     { id: "new-conversation", title: t("newConversation"), group: t("workspaceActions") },
     { id: "toggle-sidebar", title: t("sidebarToggle"), group: t("workspaceActions") },
@@ -578,16 +578,16 @@ function AppShell(props: AppShellProps) {
           <SlotErrorBoundary name="ui.apps"><AppsSlot open={panel === "apps"} items={apps} error={appError} opened={appOpened} onOpenApp={onOpenApp} onClose={() => { setPanel(null); }} /></SlotErrorBoundary>
         </>
       ) : null}
-      inspector={<SlotErrorBoundary name="ui.inspector"><InspectorSlot open={inspectorOpen} tab={inspectorTab} files={visibleFiles} changes={[]} onTab={setInspectorTab} onClose={() => { setInspectorOpen(false); }} /></SlotErrorBoundary>}
+      inspector={<SlotErrorBoundary name="ui.inspector"><InspectorSlot open={inspectorOpen} tab={inspectorTab} files={visibleFiles} onTab={setInspectorTab} onClose={() => { setInspectorOpen(false); }} /></SlotErrorBoundary>}
       inspectorOpen={inspectorOpen}
       onToggleInspector={() => { setInspectorOpen((value) => !value); }}
       onRetryBoot={ui.actions.retryBoot}
       onToggleSidebar={ui.actions.toggleSidebar}
       onDismissToast={controller.dismissToast}
-      onOpenCommands={() => { setCommandsOpen(true); }}
+      onOpenCommands={() => { controller.setCommandsOpen(true); }}
       onCreateWorkspace={(path, title) => { ui.actions.createWorkspace(path, title); }}
     />
-    <SlotErrorBoundary name="ui.commands"><CommandsSlot key={commandsOpen ? "open" : "closed"} open={commandsOpen} commands={commands} onRun={runCommand} onClose={() => { setCommandsOpen(false); }} /></SlotErrorBoundary>
+    <SlotErrorBoundary name="ui.commands"><CommandsSlot key={state.commandsOpen ? "open" : "closed"} open={state.commandsOpen} commands={commands} onRun={runCommand} onClose={() => { controller.setCommandsOpen(false); }} /></SlotErrorBoundary>
     </>
   );
 }

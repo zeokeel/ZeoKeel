@@ -48,6 +48,8 @@ export interface JobItem { job: string; idempotency_key: string; status: string;
 export interface SettingItem { key: string; value: unknown; hot: boolean }
 
 export { validateLogin, validateAdminLogin, validateCreateUser, validateAdjust, assertValid } from "./validation";
+export { adminT, adminTranslate, getAdminLocale, setAdminLocale } from "./i18n";
+export type { AdminLocale, AdminMessageKey } from "./i18n";
 
 export interface SkillContent {
   id: string;

@@ -47,6 +47,8 @@ export interface UiActions {
   closeSettings: () => void;
   saveSettings: (settings: AppSettings) => Promise<void>;
   toggleSidebar: () => void;
+  /** Open the shell command palette (ui-commands); the palette owns close/Esc. */
+  openCommands: () => void;
   retryBoot: () => void;
   retryMessages: () => void;
   decideApproval: (approvalId: string, decision: "approved" | "rejected") => void;

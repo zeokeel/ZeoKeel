@@ -74,6 +74,12 @@ export interface AgentUsage {
   cost_micros?: number | null;
 }
 
+/** Mirrors `zk_contract_config::ToolSettings` (timeouts in ms). */
+export interface ToolSettings {
+  tool_timeout_ms: number;
+  approval_timeout_ms: number;
+}
+
 /** Mirrors `zk_contract_config::AppSettings`. */
 export interface AppSettings {
   schema: number;
@@ -85,6 +91,8 @@ export interface AppSettings {
   server_url: string;
   /** Runtime-configurable local agent settings (serde default for old stores). */
   agent: AgentSettings;
+  /** Tool/approval timeout settings (serde default for old stores). */
+  tools: ToolSettings;
 }
 
 /** Mirrors `zk_contract_session::Workspace`. */
@@ -243,6 +251,10 @@ export function defaultAgentSettings(): AgentSettings {
   };
 }
 
+export function defaultToolSettings(): ToolSettings {
+  return { tool_timeout_ms: 120000, approval_timeout_ms: 300000 };
+}
+
 export function defaultSettings(): AppSettings {
   return {
     schema: 1,
@@ -252,6 +264,7 @@ export function defaultSettings(): AppSettings {
     auto_approve_read_only: true,
     server_url: "",
     agent: defaultAgentSettings(),
+    tools: defaultToolSettings(),
   };
 }
 

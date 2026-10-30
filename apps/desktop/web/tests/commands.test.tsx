@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/App";
@@ -24,5 +24,24 @@ describe("command palette", () => {
     expect(await screen.findByRole("dialog", { name: "命令面板" })).toBeTruthy();
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "命令面板" })).toBeNull();
+  });
+});
+
+
+describe("sidebar command entry", () => {
+  it("opens the shell command palette instead of a local copy (C17)", async () => {
+    const transport = readyTransport([]);
+    render(<App transport={transport} />);
+    const buttons = await screen.findAllByRole("button", { name: "命令面板" });
+    expect(buttons.length).toBeGreaterThan(0);
+    const [firstButton] = buttons;
+    if (firstButton === undefined) {
+      throw new Error("command palette button missing");
+    }
+    await userEvent.click(firstButton);
+    expect(await screen.findByRole("dialog", { name: "命令面板" })).toBeTruthy();
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => { expect(screen.queryByRole("dialog")).toBeNull(); });
   });
 });

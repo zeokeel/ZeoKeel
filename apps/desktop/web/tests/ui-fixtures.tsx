@@ -78,6 +78,7 @@ export function testUi(overrides: TestUiOverrides = {}): UiValue {
       closeSettings: noop,
       saveSettings: (): Promise<void> => Promise.resolve(),
       toggleSidebar: noop,
+      openCommands: noop,
       retryBoot: noop,
       retryMessages: noop,
       decideApproval: noop,

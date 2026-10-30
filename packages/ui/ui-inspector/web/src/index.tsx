@@ -10,7 +10,6 @@ export interface InspectorPanelProps {
   open: boolean;
   tab: InspectorTab;
   files: FileNode[];
-  changes: ChangeView[];
   onTab: (tab: InspectorTab) => void;
   onClose: () => void;
 }
@@ -32,10 +31,14 @@ export function InspectorPanel(props: InspectorPanelProps) {
               type="button"
               role="tab"
               aria-selected={props.tab === tab}
-              onClick={() => { props.onTab(tab); }}
-              className={`rounded-sm px-2 py-1 ${props.tab === tab ? "bg-muted" : ""}`}
+              aria-disabled={tab === "changes"}
+              disabled={tab === "changes"}
+              title={tab === "changes" ? t("inspectorChangesUnavailable") : undefined}
+              onClick={() => { if (tab !== "changes") props.onTab(tab); }}
+              className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 disabled:opacity-50 ${props.tab === tab ? "bg-muted" : ""}`}
             >
               {labelOf(tab)}
+              {tab === "changes" ? <span className="text-[10px] text-muted-foreground">{t("comingLater")}</span> : null}
             </button>
           ))}
         </div>
@@ -47,7 +50,7 @@ export function InspectorPanel(props: InspectorPanelProps) {
             ? <p>{t("inspectorFilesEmpty")}</p>
             : props.files.map((file) => <p key={file.path} style={{ paddingInlineStart: `${String(file.depth * 8)}px` }}>{file.path}</p>)
         ) : null}
-        {props.tab === "changes" ? props.changes.map((change) => <p key={change.path}>{change.path} +{String(change.add)} −{String(change.del)}</p>) : null}
+        {props.tab === "changes" ? <p>{t("inspectorChangesUnavailable")}</p> : null}
         {props.tab === "terminal" ? <p className="font-mono">{t("inspectorTerminalSkeleton")}</p> : null}
       </div>
     </aside>

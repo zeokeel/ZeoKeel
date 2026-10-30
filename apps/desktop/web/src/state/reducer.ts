@@ -43,6 +43,7 @@ export interface AppState {
   offline: boolean;
   toast: string | null;
   sidebarOpen: boolean;
+  commandsOpen: boolean;
 }
 
 export type AppAction =
@@ -92,6 +93,7 @@ export type AppAction =
   | { type: "settings_saved"; settings: AppSettings }
   | { type: "toast"; message: string | null }
   | { type: "sidebar_toggled"; open: boolean }
+  | { type: "commands_open"; open: boolean }
   | { type: "approval_decided"; approvalId: string; decision: "approved" | "rejected" }
   | { type: "question_answered"; questionId: string; answers: unknown };
 
@@ -119,6 +121,7 @@ export function createInitialState(): AppState {
     offline: false,
     toast: null,
     sidebarOpen: false,
+    commandsOpen: false,
   };
 }
 
@@ -637,6 +640,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, toast: action.message };
     case "sidebar_toggled":
       return { ...state, sidebarOpen: action.open };
+    case "commands_open":
+      return { ...state, commandsOpen: action.open };
     case "question_answered": {
       const messages = state.messages.map((message) => {
         const questions = message.questions.map((question) =>

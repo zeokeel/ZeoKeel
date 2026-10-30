@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { translate } from "../i18n";
+import { validateChatSendResult } from "../validate";
 import {
   parseAgentEvent,
   parseConversation,
@@ -95,6 +96,7 @@ export interface AppController {
   answerQuestion: (questionId: string, answers: unknown) => void;
   setSettingsOpen: (open: boolean) => void;
   toggleSidebar: () => void;
+  setCommandsOpen: (open: boolean) => void;
   dismissToast: () => void;
 }
 
@@ -533,6 +535,10 @@ export function useAppController(transport: Transport): AppController {
               conversation_id: conversationId,
               text: current.lastSendText,
             });
+            if (!validateChatSendResult(data)) {
+              dispatch({ type: "send_failed", message: "invalid chat.send response" });
+              return;
+            }
             dispatch({ type: "send_accepted", streamId: parseStreamId(data) ?? "" });
             return;
           }
@@ -549,6 +555,10 @@ export function useAppController(transport: Transport): AppController {
             conversation_id: conversationId,
             text: trimmed,
           });
+          if (!validateChatSendResult(data)) {
+            dispatch({ type: "send_failed", message: "invalid chat.send response" });
+            return;
+          }
           dispatch({ type: "send_accepted", streamId: parseStreamId(data) ?? "" });
         } catch (error: unknown) {
           dispatch({ type: "send_failed", message: friendlyError(error, stateRef.current.settings.locale) });
@@ -671,6 +681,10 @@ export function useAppController(transport: Transport): AppController {
     dispatch({ type: "sidebar_toggled", open: !stateRef.current.sidebarOpen });
   }, []);
 
+  const setCommandsOpen = useCallback((open: boolean) => {
+    dispatch({ type: "commands_open", open });
+  }, []);
+
   const dismissToast = useCallback(() => {
     dispatch({ type: "toast", message: null });
   }, []);
@@ -695,6 +709,7 @@ export function useAppController(transport: Transport): AppController {
     answerQuestion,
     setSettingsOpen,
     toggleSidebar,
+    setCommandsOpen,
     dismissToast,
   };
 }

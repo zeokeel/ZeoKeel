@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, assertValid, messageOf, validateAdjust, type Wallet } from "@zeokeel/admin-ui-kit";
+import { adminT, api, assertValid, messageOf, validateAdjust, type Wallet } from "@zeokeel/admin-ui-kit";
 
 export function Wallets({ onError }: { onError: (message: string) => void }) {
   const [items, setItems] = useState<Wallet[]>([]);
@@ -19,12 +19,12 @@ export function Wallets({ onError }: { onError: (message: string) => void }) {
   };
   return (
     <section>
-      <h2>钱包</h2>
-      <p className="hint">调账会写 ledger；余额由账本派生。</p>
-      <label>调账金额（micros）<input value={delta} onChange={(event) => { setDelta(event.target.value); }} /></label>
+      <h2>{adminT("wallet.title")}</h2>
+      <p className="hint">{adminT("wallet.hint")}</p>
+      <label>{adminT("wallet.amount")}<input value={delta} onChange={(event) => { setDelta(event.target.value); }} /></label>
       <table>
-        <thead><tr><th>用户</th><th>余额</th><th>操作</th></tr></thead>
-        <tbody>{items.map((item) => <tr key={item.user_id}><td>{item.username}</td><td>{String(item.balance_micros)}</td><td><button type="button" onClick={() => { adjust(item.user_id); }}>调账</button></td></tr>)}</tbody>
+        <thead><tr><th>{adminT("common.user")}</th><th>{adminT("wallet.colBalance")}</th><th>{adminT("common.actions")}</th></tr></thead>
+        <tbody>{items.map((item) => <tr key={item.user_id}><td>{item.username}</td><td>{String(item.balance_micros)}</td><td><button type="button" onClick={() => { adjust(item.user_id); }}>{adminT("common.adjust")}</button></td></tr>)}</tbody>
       </table>
     </section>
   );

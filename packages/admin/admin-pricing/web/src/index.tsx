@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, messageOf, type Price } from "@zeokeel/admin-ui-kit";
+import { adminT, api, messageOf, type Price } from "@zeokeel/admin-ui-kit";
 
 export function Pricing({ onError }: { onError: (message: string) => void }) {
   const [items, setItems] = useState<Price[]>([]);
@@ -21,16 +21,16 @@ export function Pricing({ onError }: { onError: (message: string) => void }) {
   };
   return (
     <section>
-      <h2>模型价格</h2>
+      <h2>{adminT("pricing.title")}</h2>
       <form className="row" onSubmit={save}>
-        <input aria-label="模型" value={model} onChange={(event) => { setModel(event.target.value); }} />
-        <input aria-label="输入价格" value={input} onChange={(event) => { setInput(event.target.value); }} />
-        <input aria-label="输出价格" value={output} onChange={(event) => { setOutput(event.target.value); }} />
-        <button type="submit">保存</button>
+        <input aria-label={adminT("pricing.ariaModel")} value={model} onChange={(event) => { setModel(event.target.value); }} />
+        <input aria-label={adminT("pricing.ariaInput")} value={input} onChange={(event) => { setInput(event.target.value); }} />
+        <input aria-label={adminT("pricing.ariaOutput")} value={output} onChange={(event) => { setOutput(event.target.value); }} />
+        <button type="submit">{adminT("common.save")}</button>
       </form>
       <table>
-        <thead><tr><th>模型</th><th>输入/1k</th><th>输出/1k</th><th>启用</th></tr></thead>
-        <tbody>{items.map((item) => <tr key={item.model}><td>{item.model}</td><td>{String(item.input_per_1k_micros)}</td><td>{String(item.output_per_1k_micros)}</td><td>{item.enabled ? "是" : "否"}</td></tr>)}</tbody>
+        <thead><tr><th>{adminT("pricing.colModel")}</th><th>{adminT("pricing.colInput")}</th><th>{adminT("pricing.colOutput")}</th><th>{adminT("pricing.colEnabled")}</th></tr></thead>
+        <tbody>{items.map((item) => <tr key={item.model}><td>{item.model}</td><td>{String(item.input_per_1k_micros)}</td><td>{String(item.output_per_1k_micros)}</td><td>{item.enabled ? adminT("common.yes") : adminT("common.no")}</td></tr>)}</tbody>
       </table>
     </section>
   );

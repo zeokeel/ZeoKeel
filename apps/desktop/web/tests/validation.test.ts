@@ -4,6 +4,7 @@ import {
   parseAgentEvent,
   parseCommandResponse,
   parseConversation,
+  parseFileEntries,
   parseMessages,
   parseSettings,
   parseUiEvent,
@@ -15,11 +16,15 @@ import {
   createBoundaryAjv,
   validateAgentEvent,
   validateAppSettings,
+  validateChatSendResult,
   validateCommandResponse,
   validateConversation,
   validateMessage,
+  validateMetaInfo,
+  validateQuestionAsked,
   validateUiEvent,
   validateWorkspace,
+  validateWorkspaceFilesResult,
 } from "../src/validate";
 
 const UI_EVENT = { stream_id: "stream-1", seq: 1, kind: "agent", payload: { type: "turn_started", turn_id: "t1" } };
@@ -168,6 +173,18 @@ describe("protocol boundary rejects invalid data after schema validation", () =>
     })).toBe(true);
   });
 
+  it("validates tools timeouts via the generated app_settings schema", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(validateAppSettings({ ...defaultSettings(), tools: { tool_timeout_ms: 60000, approval_timeout_ms: 450000 } })).toBe(true);
+    expect(validateAppSettings({ ...defaultSettings(), tools: { tool_timeout_ms: "60000", approval_timeout_ms: 450000 } })).toBe(false);
+    expect(validateAppSettings({ ...defaultSettings(), tools: { tool_timeout_ms: -1, approval_timeout_ms: 450000 } })).toBe(false);
+  });
+
+  it("parses tools timeouts with serde defaults for old settings", () => {
+    expect(parseSettings({ ...defaultSettings(), tools: undefined }).tools).toEqual({ tool_timeout_ms: 120000, approval_timeout_ms: 300000 });
+    expect(parseSettings({ ...defaultSettings(), tools: { tool_timeout_ms: 60000 } }).tools).toEqual({ tool_timeout_ms: 60000, approval_timeout_ms: 300000 });
+  });
+
   it("parses meta.get.agent_config_error for the boot warning", () => {
     expect(parseMeta({ edition: "personal", version: "1", packages: [], agent_config_error: "agent.max_steps must be within 1..=200" }).agentConfigError).toBe("agent.max_steps must be within 1..=200");
     expect(parseMeta({ edition: "personal", version: "1", packages: [] }).agentConfigError).toBeNull();
@@ -213,5 +230,44 @@ describe("Ajv strictness (C19 P2 regression)", () => {
     expect(validateAppSettings(future)).toBe(true);
     expect(parseSettings(future)).toEqual(defaultSettings());
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("round-3 T22 boundary DTOs", () => {
+  const FILE = { path: "demo-data/hello.txt", depth: 1, kind: "file" };
+
+  it("validates workspace.files results and rejects the wrong container/shape", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(validateWorkspaceFilesResult({ items: [FILE] })).toBe(true);
+    expect(validateWorkspaceFilesResult({ items: [] })).toBe(true);
+    expect(parseFileEntries({ items: [FILE] })).toEqual([FILE]);
+    expect(validateWorkspaceFilesResult({ entries: [FILE] })).toBe(false);
+    expect(validateWorkspaceFilesResult({ items: [{ path: "x", kind: "file" }] })).toBe(false);
+    expect(validateWorkspaceFilesResult({ items: [{ path: "x", depth: 0, kind: "link" }] })).toBe(false);
+    expect(parseFileEntries({ entries: [FILE] })).toBeNull();
+  });
+
+  it("validates meta.get and falls back to safe defaults on bad payloads", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(validateMetaInfo({ edition: "personal", version: "1.0.0", packages: ["a"] })).toBe(true);
+    expect(validateMetaInfo({ edition: 1, version: "1.0.0", packages: [] })).toBe(false);
+    expect(parseMeta({ edition: 1, version: "1.0.0", packages: [] })).toEqual({ edition: "personal", version: "0.0.0", packages: [], agentConfigError: null });
+  });
+
+  it("validates chat.send results", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(validateChatSendResult({ stream_id: "s1", conversation_id: "c1", workspace_id: "w1" })).toBe(true);
+    expect(validateChatSendResult({ stream_id: "s1", workspace_id: "w1" })).toBe(false);
+  });
+
+  it("validates ask-user question payloads (and via agent_event question_asked)", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const valid = { question_id: "q1", questions: [{ id: "name", question: "Name?" }] };
+    expect(validateQuestionAsked(valid)).toBe(true);
+    expect(validateQuestionAsked({ question_id: "q1", questions: [{ question: "Name?" }] })).toBe(false);
+    expect(validateQuestionAsked({ question_id: "q1", questions: [{ id: "n", question: "Name?", options: [{ label: "A" }] }] })).toBe(true);
+    expect(validateAgentEvent({ type: "question_asked", ...valid })).toBe(true);
+    expect(validateAgentEvent({ type: "question_asked", question_id: "q1", questions: [{ question: "Name?" }] })).toBe(false);
   });
 });

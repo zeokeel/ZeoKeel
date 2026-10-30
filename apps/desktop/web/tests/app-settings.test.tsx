@@ -22,6 +22,12 @@ describe("settings integration", () => {
     await userEvent.clear(temperature);
     await userEvent.type(temperature, "0.7");
     await userEvent.click(screen.getByLabelText("启用会话记忆"));
+    const toolTimeout = screen.getByLabelText("工具超时（ms，1000-600000）");
+    await userEvent.clear(toolTimeout);
+    await userEvent.type(toolTimeout, "60000");
+    const approvalTimeout = screen.getByLabelText("审批超时（ms，1000-1800000）");
+    await userEvent.clear(approvalTimeout);
+    await userEvent.type(approvalTimeout, "450000");
     await userEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => {
@@ -35,6 +41,7 @@ describe("settings integration", () => {
     expect(sentSettings.agent.max_steps).toBe(12);
     expect(sentSettings.agent.completion.temperature).toBe(0.7);
     expect(sentSettings.agent.memory.enabled).toBe(false);
+    expect(sentSettings.tools).toEqual({ tool_timeout_ms: 60000, approval_timeout_ms: 450000 });
 
     expect(document.documentElement.lang).toBe("en-US");
     expect(document.documentElement.dataset["theme"]).toBe("dark");

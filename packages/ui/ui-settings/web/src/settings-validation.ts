@@ -34,6 +34,9 @@ export interface SettingsForm {
   memoryDir: string;
   hooksEnabled: boolean;
   hooksLog: string;
+  // Tool/approval timeouts (ms, strings for empty/invalid UI states).
+  toolTimeoutMs: string;
+  approvalTimeoutMs: string;
 }
 
 export type SettingsFieldError = string | null;
@@ -47,6 +50,8 @@ export interface SettingsErrors {
   topP: SettingsFieldError;
   seed: SettingsFieldError;
   toolChoiceTools: SettingsFieldError;
+  toolTimeoutMs: SettingsFieldError;
+  approvalTimeoutMs: SettingsFieldError;
 }
 
 export const EMPTY_SETTINGS_ERRORS: SettingsErrors = {
@@ -58,6 +63,8 @@ export const EMPTY_SETTINGS_ERRORS: SettingsErrors = {
   topP: null,
   seed: null,
   toolChoiceTools: null,
+  toolTimeoutMs: null,
+  approvalTimeoutMs: null,
 };
 
 function isHttpUrl(value: string): boolean {
@@ -158,6 +165,8 @@ export function toForm(settings: AppSettings): SettingsForm {
     memoryDir: agent.memory.dir,
     hooksEnabled: agent.hooks.enabled,
     hooksLog: agent.hooks.log,
+    toolTimeoutMs: String(settings.tools.tool_timeout_ms),
+    approvalTimeoutMs: String(settings.tools.approval_timeout_ms),
   };
 }
 
@@ -171,6 +180,8 @@ export function validateSettings(form: SettingsForm): SettingsErrors {
     form.toolChoiceMode === "specific" && form.toolChoiceTools.trim() === ""
       ? "settingsInvalidToolChoiceTools"
       : null;
+  const toolTimeout = numberField(form.toolTimeoutMs, { min: 1000, max: 600000, integer: true });
+  const approvalTimeout = numberField(form.approvalTimeoutMs, { min: 1000, max: 1800000, integer: true });
   return {
     baseUrl:
       form.providerKind === "mock" || isHttpUrl(form.baseUrl.trim()) ? null : "settingsInvalidUrl",
@@ -181,6 +192,8 @@ export function validateSettings(form: SettingsForm): SettingsErrors {
     topP: topP.error,
     seed: seed.error,
     toolChoiceTools,
+    toolTimeoutMs: toolTimeout.error ?? (toolTimeout.value === null ? "settingsInvalidInteger" : null),
+    approvalTimeoutMs: approvalTimeout.error ?? (approvalTimeout.value === null ? "settingsInvalidInteger" : null),
   };
 }
 
@@ -222,5 +235,9 @@ export function formToSettings(form: SettingsForm, schema: number): AppSettings 
     auto_approve_read_only: form.autoApproveReadOnly,
     server_url: form.serverUrl.trim(),
     agent: agentOf(form),
+    tools: {
+      tool_timeout_ms: numberField(form.toolTimeoutMs, { min: 1000, max: 600000, integer: true }).value ?? 120000,
+      approval_timeout_ms: numberField(form.approvalTimeoutMs, { min: 1000, max: 1800000, integer: true }).value ?? 300000,
+    },
   };
 }

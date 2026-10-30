@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, messageOf, type AppAdmin } from "@zeokeel/admin-ui-kit";
+import { adminT, api, messageOf, type AppAdmin } from "@zeokeel/admin-ui-kit";
 
 export function Apps({ onError }: { onError: (message: string) => void }) {
   const [items, setItems] = useState<AppAdmin[]>([]);
@@ -12,20 +12,20 @@ export function Apps({ onError }: { onError: (message: string) => void }) {
   };
   return (
     <section>
-      <h2>应用</h2>
-      <p className="hint">WASM 服务端执行，客户端不执行应用；下架后新打开被拒绝。</p>
+      <h2>{adminT("apps.title")}</h2>
+      <p className="hint">{adminT("apps.hint")}</p>
       <table>
-        <thead><tr><th>名称</th><th>版本</th><th>状态</th><th>wasm sha</th><th>操作</th></tr></thead>
+        <thead><tr><th>{adminT("common.name")}</th><th>{adminT("common.version")}</th><th>{adminT("common.status")}</th><th>{adminT("apps.colWasm")}</th><th>{adminT("common.actions")}</th></tr></thead>
         <tbody>
-          {items.length === 0 ? <tr><td colSpan={5}>暂无应用</td></tr> : null}
+          {items.length === 0 ? <tr><td colSpan={5}>{adminT("apps.empty")}</td></tr> : null}
           {items.map((item) => (
             <tr key={item.id}>
-              <td>{item.name}</td><td>{item.version === "" ? "—" : item.version}</td><td>{item.status}</td><td className="mono">{item.wasm_sha256.slice(0, 12)}</td>
+              <td>{item.name}</td><td>{item.version === "" ? adminT("common.none") : item.version}</td><td>{item.status}</td><td className="mono">{item.wasm_sha256.slice(0, 12)}</td>
               <td>
-                {item.status === "pending" ? <button type="button" onClick={() => { act(item.id, "approve"); }}>审批</button> : null}
-                {item.status === "pending" ? <button type="button" onClick={() => { act(item.id, "reject"); }}>拒绝</button> : null}
-                {item.status === "approved" ? <button type="button" onClick={() => { act(item.id, "delist"); }}>下架</button> : null}
-                <button type="button" onClick={() => { grantAll(item.id); }}>全员可用</button>
+                {item.status === "pending" ? <button type="button" onClick={() => { act(item.id, "approve"); }}>{adminT("common.approve")}</button> : null}
+                {item.status === "pending" ? <button type="button" onClick={() => { act(item.id, "reject"); }}>{adminT("common.reject")}</button> : null}
+                {item.status === "approved" ? <button type="button" onClick={() => { act(item.id, "delist"); }}>{adminT("common.delist")}</button> : null}
+                <button type="button" onClick={() => { grantAll(item.id); }}>{adminT("common.grantAll")}</button>
               </td>
             </tr>
           ))}

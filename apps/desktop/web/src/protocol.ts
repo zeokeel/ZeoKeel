@@ -8,6 +8,7 @@
 import {
   defaultAgentSettings,
   defaultSettings,
+  defaultToolSettings,
   type AgentEvent,
   type AgentSettings,
   type AgentUsage,
@@ -23,6 +24,7 @@ import {
   type ReplyToolCall,
   type Theme,
   type ToolChoiceSetting,
+  type ToolSettings,
   type UiEvent,
   type Workspace,
 } from "./types";
@@ -34,8 +36,10 @@ import {
   validateCommandResponse,
   validateConversation,
   validateMessage,
+  validateMetaInfo,
   validateUiEvent,
   validateWorkspace,
+  validateWorkspaceFilesResult,
 } from "./validate";
 
 export { isRecord, readBoolean, readNumber, readString };
@@ -117,7 +121,7 @@ export function parseWorkspace(value: unknown): Workspace | null {
 }
 
 export function parseFileEntries(value: unknown): FileEntry[] | null {
-  if (!isRecord(value)) return null;
+  if (!isRecord(value) || !validateWorkspaceFilesResult(value)) return null;
   const items = readArray(value, "items");
   if (items === null) return null;
   const out: FileEntry[] = [];
@@ -340,12 +344,24 @@ export function parseSettings(value: unknown): AppSettings {
       readBoolean(value, "auto_approve_read_only") ?? base.auto_approve_read_only,
     server_url: readString(value, "server_url") ?? base.server_url,
     agent: parseAgentSettings(value["agent"]),
+    tools: parseToolSettings(value["tools"]),
+  };
+}
+
+function parseToolSettings(value: unknown): ToolSettings {
+  const base = defaultToolSettings();
+  if (!isRecord(value)) {
+    return base;
+  }
+  return {
+    tool_timeout_ms: readNumber(value, "tool_timeout_ms") ?? base.tool_timeout_ms,
+    approval_timeout_ms: readNumber(value, "approval_timeout_ms") ?? base.approval_timeout_ms,
   };
 }
 
 export function parseMeta(value: unknown): Meta {
-  if (!isRecord(value)) {
-    return { edition: "personal", version: "0.0.0", packages: [] };
+  if (!isRecord(value) || !validateMetaInfo(value)) {
+    return { edition: "personal", version: "0.0.0", packages: [], agentConfigError: null };
   }
   const packagesRaw = readArray(value, "packages") ?? [];
   const packages = packagesRaw.filter((item): item is string => typeof item === "string");

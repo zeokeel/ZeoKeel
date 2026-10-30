@@ -1,10 +1,19 @@
 /** Admin shell: login + nav + page slot. Pages are supplied by admin-page packages. */
 import { useState } from "react";
-import { api, setCsrf, clearCsrf, validateAdminLogin, assertValid, messageOf } from "@zeokeel/admin-ui-kit";
+import { adminT, api, setCsrf, clearCsrf, validateAdminLogin, assertValid, messageOf, type AdminMessageKey } from "@zeokeel/admin-ui-kit";
 
 export type AdminPage = "users" | "wallet" | "pricing" | "audit" | "usage" | "jobs" | "skills" | "connectors" | "apps" | "settings";
-const LABELS: Record<AdminPage, string> = {
-  users: "用户/角色", wallet: "钱包", pricing: "价格", audit: "审计", usage: "用量", jobs: "作业", skills: "技能", connectors: "连接器", apps: "应用", settings: "系统设置",
+const NAV_KEYS: Record<AdminPage, AdminMessageKey> = {
+  users: "nav.users",
+  wallet: "nav.wallet",
+  pricing: "nav.pricing",
+  audit: "nav.audit",
+  usage: "nav.usage",
+  jobs: "nav.jobs",
+  skills: "nav.skills",
+  connectors: "nav.connectors",
+  apps: "nav.apps",
+  settings: "nav.settings",
 };
 const PAGES: AdminPage[] = ["users", "wallet", "pricing", "audit", "usage", "jobs", "skills", "connectors", "apps", "settings"];
 
@@ -17,9 +26,9 @@ export function AdminShell(props: { renderPage: (page: AdminPage) => React.React
       <aside>
         <h1>ZeoKeel <span>Admin</span></h1>
         {PAGES.map((item) => (
-          <button key={item} className={page === item ? "active" : ""} onClick={() => { setPage(item); }}>{LABELS[item]}</button>
+          <button key={item} className={page === item ? "active" : ""} onClick={() => { setPage(item); }}>{adminT(NAV_KEYS[item])}</button>
         ))}
-        <button className="logout" onClick={() => { void api("/api/admin/auth/logout", { method: "POST" }).finally(() => { clearCsrf(); setLoggedIn(false); }); }}>退出</button>
+        <button className="logout" onClick={() => { void api("/api/admin/auth/logout", { method: "POST" }).finally(() => { clearCsrf(); setLoggedIn(false); }); }}>{adminT("auth.logout")}</button>
       </aside>
       <main>{props.renderPage(page)}</main>
     </div>
@@ -40,7 +49,7 @@ function Login({ onDone }: { onDone: () => void }) {
       onDone();
     })().catch((cause: unknown) => { setError(messageOf(cause)); });
   };
-  return <form className="login" onSubmit={submit}><h1>ZeoKeel Admin</h1><label>账号<input value={username} onChange={(event) => { setUsername(event.target.value); }} /></label><label>密码<input type="password" value={password} onChange={(event) => { setPassword(event.target.value); }} /></label>{error !== "" ? <p className="error">{error}</p> : null}<button type="submit">登录</button></form>;
+  return <form className="login" onSubmit={submit}><h1>ZeoKeel Admin</h1><label>{adminT("auth.account")}<input value={username} onChange={(event) => { setUsername(event.target.value); }} /></label><label>{adminT("auth.password")}<input type="password" value={password} onChange={(event) => { setPassword(event.target.value); }} /></label>{error !== "" ? <p className="error">{error}</p> : null}<button type="submit">{adminT("auth.login")}</button></form>;
 }
 
 export const components = { "shell.admin": AdminShell } as const;

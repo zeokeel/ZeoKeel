@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, messageOf, type UsageItem } from "@zeokeel/admin-ui-kit";
+import { adminT, api, messageOf, type UsageItem } from "@zeokeel/admin-ui-kit";
 
 export function Usage({ onError }: { onError: (message: string) => void }) {
   const [items, setItems] = useState<UsageItem[]>([]);
@@ -8,9 +8,9 @@ export function Usage({ onError }: { onError: (message: string) => void }) {
   useEffect(() => { load(); }, [load]);
   return (
     <section>
-      <h2>用量</h2>
+      <h2>{adminT("usage.title")}</h2>
       <table>
-        <thead><tr><th>用户</th><th>请求数</th><th>输入 tokens</th><th>输出 tokens</th><th>成本 micros</th></tr></thead>
+        <thead><tr><th>{adminT("common.user")}</th><th>{adminT("usage.colRequests")}</th><th>{adminT("usage.colInputTokens")}</th><th>{adminT("usage.colOutputTokens")}</th><th>{adminT("usage.colCost")}</th></tr></thead>
         <tbody>{items.map((item) => <tr key={item.username}><td>{item.username}</td><td>{String(item.requests)}</td><td>{String(item.input_tokens)}</td><td>{String(item.output_tokens)}</td><td>{String(item.cost_micros)}</td></tr>)}</tbody>
       </table>
     </section>

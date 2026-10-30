@@ -20,11 +20,15 @@
 import Ajv, { type ValidateFunction } from "ajv";
 import {
   agent_eventSchema,
+  agent_question_askedSchema,
   app_settingsSchema,
   conversationSchema,
+  ipc_chat_send_resultSchema,
   ipc_command_responseSchema,
   ipc_eventSchema,
+  ipc_meta_infoSchema,
   session_messageSchema,
+  workspace_files_resultSchema,
   workspaceSchema,
 } from "../../../../shared/contracts/ts/contracts";
 
@@ -65,7 +69,11 @@ export type BoundaryName =
   | "appSettings"
   | "workspace"
   | "conversation"
-  | "message";
+  | "message"
+  | "metaInfo"
+  | "chatSendResult"
+  | "workspaceFilesResult"
+  | "questionAsked";
 
 const checks: Record<BoundaryName, ValidateFunction> = {
   commandResponse: ajv.compile(ipc_command_responseSchema),
@@ -75,6 +83,10 @@ const checks: Record<BoundaryName, ValidateFunction> = {
   workspace: ajv.compile(workspaceSchema),
   conversation: ajv.compile(conversationSchema),
   message: ajv.compile(session_messageSchema),
+  metaInfo: ajv.compile(ipc_meta_infoSchema),
+  chatSendResult: ajv.compile(ipc_chat_send_resultSchema),
+  workspaceFilesResult: ajv.compile(workspace_files_resultSchema),
+  questionAsked: ajv.compile(agent_question_askedSchema),
 };
 
 function describe(errors: ValidateFunction["errors"]): string {
@@ -123,4 +135,20 @@ export function validateConversation(value: unknown): boolean {
 
 export function validateMessage(value: unknown): boolean {
   return validateBoundary("message", value);
+}
+
+export function validateMetaInfo(value: unknown): boolean {
+  return validateBoundary("metaInfo", value);
+}
+
+export function validateChatSendResult(value: unknown): boolean {
+  return validateBoundary("chatSendResult", value);
+}
+
+export function validateWorkspaceFilesResult(value: unknown): boolean {
+  return validateBoundary("workspaceFilesResult", value);
+}
+
+export function validateQuestionAsked(value: unknown): boolean {
+  return validateBoundary("questionAsked", value);
 }
