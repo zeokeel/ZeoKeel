@@ -67,4 +67,10 @@ BAL=$(curl -fsS "$BASE/api/client/v1/wallet" -H "Authorization: Bearer $ALICE_JW
 [[ "$BAL" == "1000000" ]]
 LEDGER=$(curl -fsS "$BASE/api/client/v1/wallet/ledger" -H "Authorization: Bearer $ALICE_JWT")
 [[ "$(printf '%s' "$LEDGER" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["items"]))')" == "1" ]]
-echo "auth ok: login/me/refresh/reuse/admin-csrf/users-auditor/wallet-ledger"
+CODE=$(curl -sS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -o /dev/null -w '%{http_code}' -X PUT "$BASE/api/admin/pricing/deepseek-chat" -H 'content-type: application/json' -d '{"input_per_1k_micros":1000,"output_per_1k_micros":2000}')
+[[ "$CODE" == "200" ]]
+MODELS=$(curl -fsS "$BASE/v1/models" -H "Authorization: Bearer $ALICE_JWT")
+[[ "$(printf '%s' "$MODELS" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"][0]["id"])')" == "deepseek-chat" ]]
+CODE=$(curl -sS -b /tmp/zk-auth-auditor.cookies -H "X-CSRF-Token: $AUDCSRF" -o /dev/null -w '%{http_code}' -X PUT "$BASE/api/admin/pricing/x" -H 'content-type: application/json' -d '{"input_per_1k_micros":1,"output_per_1k_micros":1}')
+[[ "$CODE" == "403" ]]
+echo "auth ok: login/me/refresh/reuse/admin-csrf/users-auditor/wallet-ledger/pricing"

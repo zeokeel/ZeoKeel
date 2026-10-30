@@ -39,7 +39,7 @@ fn validate_role(role: &str) -> Result<(), AuthError> {
     }
 }
 
-async fn audit(
+pub(crate) async fn audit(
     state: &AppState,
     actor: Uuid,
     action: &str,

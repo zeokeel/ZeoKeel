@@ -14,6 +14,7 @@ use zk_contract_server::ServerModule;
 pub mod auth;
 pub mod users;
 pub mod wallet;
+pub mod pricing;
 
 /// Stable module descriptor.
 #[must_use]
@@ -30,16 +31,21 @@ pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
 ///
 /// The SQL file is embedded; history edits are forbidden (add a new file instead).
 pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
-    let sql = include_str!("../migrations/0001_init.sql");
-    let mut hash = Sha256::new();
-    hash.update(sql.as_bytes());
-    let checksum = format!("{:x}", hash.finalize());
-    sqlx::raw_sql(sql).execute(pool).await?;
-    sqlx::query("INSERT INTO schema_migrations (id, checksum) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING")
-        .bind("0001_init")
-        .bind(checksum)
-        .execute(pool)
-        .await?;
+    let migrations: [(&str, &str); 2] = [
+        ("0001_init", include_str!("../migrations/0001_init.sql")),
+        ("0002_gateway", include_str!("../migrations/0002_gateway.sql")),
+    ];
+    for (id, sql) in migrations {
+        let mut hash = Sha256::new();
+        hash.update(sql.as_bytes());
+        let checksum = format!("{:x}", hash.finalize());
+        sqlx::raw_sql(sql).execute(pool).await?;
+        sqlx::query("INSERT INTO schema_migrations (id, checksum) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING")
+            .bind(id)
+            .bind(checksum)
+            .execute(pool)
+            .await?;
+    }
     Ok(())
 }
 
@@ -82,6 +88,7 @@ pub fn router_from(state: AppState) -> Router {
         .merge(auth::routes())
         .merge(users::routes())
         .merge(wallet::routes())
+        .merge(pricing::routes())
         .with_state(state)
 }
 
