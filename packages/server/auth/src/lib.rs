@@ -22,6 +22,50 @@ const ACCESS_TTL_SECS: u64 = 15 * 60;
 
 use zk_contract_auth::{AdminLoginRequest, LoginRequest, RefreshRequest};
 
+async fn locked(state: &AppState, scope: &str, subject: &str) -> Result<bool, ServerError> {
+    let locked: Option<Option<bool>> = sqlx::query_scalar(
+        "SELECT locked_until > now() FROM login_attempts WHERE scope = $1 AND subject = $2",
+    )
+    .bind(scope)
+    .bind(subject)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    Ok(locked.flatten().unwrap_or(false))
+}
+
+async fn record_failure(state: &AppState, scope: &str, subject: &str) -> Result<(), ServerError> {
+    sqlx::query(
+        "INSERT INTO login_attempts (scope, subject, failures) VALUES ($1, $2, 1)
+         ON CONFLICT (scope, subject) DO UPDATE SET failures = login_attempts.failures + 1, updated_at = now()",
+    )
+    .bind(scope)
+    .bind(subject)
+    .execute(&state.pool)
+    .await
+    .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    sqlx::query(
+        "UPDATE login_attempts SET locked_until = now() + interval '15 minutes'
+         WHERE scope = $1 AND subject = $2 AND failures >= 5",
+    )
+    .bind(scope)
+    .bind(subject)
+    .execute(&state.pool)
+    .await
+    .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    Ok(())
+}
+
+async fn clear_failures(state: &AppState, scope: &str, subject: &str) -> Result<(), ServerError> {
+    sqlx::query("DELETE FROM login_attempts WHERE scope = $1 AND subject = $2")
+        .bind(scope)
+        .bind(subject)
+        .execute(&state.pool)
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    Ok(())
+}
+
 async fn methods() -> Json<serde_json::Value> {
     Json(json!({ "mode": "local", "providers": [], "min_client_version": "0.1.0" }))
 }
@@ -29,6 +73,9 @@ async fn methods() -> Json<serde_json::Value> {
 async fn login(State(state): State<AppState>, Json(request): Json<LoginRequest>) -> Result<Json<serde_json::Value>, ServerError> {
     if request.device_id.trim().is_empty() {
         return Err(error(StatusCode::BAD_REQUEST, "DEVICE_REQUIRED"));
+    }
+    if locked(&state, "client", &request.username).await? {
+        return Err(error(StatusCode::TOO_MANY_REQUESTS, "ACCOUNT_LOCKED"));
     }
     let row = sqlx::query("SELECT id, role, token_epoch, password_hash, status FROM users WHERE username = $1 AND deleted_at IS NULL")
         .bind(&request.username)
@@ -45,8 +92,10 @@ async fn login(State(state): State<AppState>, Json(request): Json<LoginRequest>)
         return Err(error(StatusCode::UNAUTHORIZED, "AUTH_FAILED"));
     };
     if !verify_password(&request.password, &stored) {
+        record_failure(&state, "client", &request.username).await?;
         return Err(error(StatusCode::UNAUTHORIZED, "AUTH_FAILED"));
     }
+    clear_failures(&state, "client", &request.username).await?;
     let user_id: uuid::Uuid = row.try_get("id").map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let role: String = row.try_get("role").map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let epoch: i32 = row.try_get("token_epoch").map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
@@ -137,6 +186,9 @@ async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Result<Jso
 }
 
 async fn admin_login(State(state): State<AppState>, Json(request): Json<AdminLoginRequest>) -> Result<Response, ServerError> {
+    if locked(&state, "admin", &request.username).await? {
+        return Err(error(StatusCode::TOO_MANY_REQUESTS, "ACCOUNT_LOCKED"));
+    }
     let row = sqlx::query("SELECT id, password_hash FROM users WHERE username = $1 AND role IN ('super_admin', 'auditor') AND status = 'active' AND deleted_at IS NULL")
         .bind(&request.username)
         .fetch_optional(&state.pool)
@@ -148,8 +200,10 @@ async fn admin_login(State(state): State<AppState>, Json(request): Json<AdminLog
         return Err(error(StatusCode::UNAUTHORIZED, "AUTH_FAILED"));
     };
     if !verify_password(&request.password, &stored) {
+        record_failure(&state, "admin", &request.username).await?;
         return Err(error(StatusCode::UNAUTHORIZED, "AUTH_FAILED"));
     }
+    clear_failures(&state, "admin", &request.username).await?;
     let user_id: uuid::Uuid = row.try_get("id").map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let session = random_token();
     let csrf = random_token();
@@ -200,4 +254,7 @@ pub fn routes() -> Router<AppState> {
 pub use zk_kit_server::ensure_bootstrap_admin;
 
 /// Immutable migrations owned by this domain.
-pub const MIGRATIONS: &[(&str, &str)] = &[("0002_auth", include_str!("../migrations/0002_auth.sql"))];
+pub const MIGRATIONS: &[(&str, &str)] = &[
+    ("0002_auth", include_str!("../migrations/0002_auth.sql")),
+    ("0009_lockout", include_str!("../migrations/0009_lockout.sql")),
+];

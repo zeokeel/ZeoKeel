@@ -9,3 +9,7 @@
 
 ## 状态
 - 目录/清单/conformance 已建立；业务代码正从 `packages/server/http` 迁入。
+
+## Lockout
+- 连续 5 次密码失败后锁定 15 分钟（client/admin 分 scope）。
+- 成功登录清零；锁定返回 `ACCOUNT_LOCKED`（429）。

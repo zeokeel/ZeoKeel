@@ -128,4 +128,9 @@ BOOT=$(curl -fsS "$BASE/api/client/v1/config/bootstrap" -H "Authorization: Beare
 [[ "$(printf '%s' "$BOOT" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["gateway"]["models"]))')" == "1" ]]
 JOB=$(curl -fsS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/admin/jobs/wallet-reconcile/run")
 printf '%s' "$JOB" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["ok"] is True' 
-echo "auth ok: login/me/refresh/reuse/admin-csrf/users-auditor/wallet-ledger/pricing/gateway"
+for _ in 1 2 3 4 5; do
+  curl -sS -o /dev/null -X POST "$BASE/api/admin/auth/login" -H 'content-type: application/json' -d '{"username":"admin","password":"wrong"}'
+done
+CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/admin/auth/login" -H 'content-type: application/json' -d '{"username":"admin","password":"admin-pass"}')
+[[ "$CODE" == "429" ]]
+echo "auth ok: login/me/refresh/reuse/admin-csrf/users-auditor/wallet-ledger/pricing/gateway/lockout"
