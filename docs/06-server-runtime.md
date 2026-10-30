@@ -9,7 +9,7 @@
 ## 1. 进程模型
 
 ```text
-zeokeel-server（单二进制）
+zeokeel-server（单二进制；crate 名 `zk-server`）
 ├─ bootstrap（唯一非包代码）
 │   读 .env/系统配置 → 初始化 tracing → 连接池 → 跑迁移 → 创建 cordis root
 │   → 注册服务端包（拓扑序）→ 构建 axum Router → 启动后台调度器 → listen
@@ -63,7 +63,7 @@ pub trait ServerPackage {
 - **PostgreSQL only**（应用内 SQLite 除外，见 WASM 域）。
 - 迁移文件随包发布，**全局版本号由 `zk db lock` 分配**（不再每包 `0001`）；目录规则见 `24` §5。
 - 迁移不可变 + 全局版本/顺序/复合键规则见 [`24` §5](24-composition-and-runtime-spec.md#5-迁移命名与执行)；本节只保留包内目录与启动校验入口。
-- 数据库结构变更必须同时更新 `docs/generated/schema.md`（生成物，`--check`）。
+- 数据库结构变更只由生成器重新生成 `docs/generated/schema.md`：唯一 writer 是 `zk docs`（数据来自 `zk db lock`，见 `24` §3）；`zk db lock` 只写/校验 `migrations.lock`，`zk db lock --check` 只校验不写。
 - 开发期允许 `zk db reset`；生产只允许迁移。
 - 分区：`usage` 按月、`audit_log` 按月；账本永久保留。
 - 连接池：单进程 `sqlx::PgPool`；禁止"持事务再要连接"的嵌套获取（参考实现死锁事故）。
@@ -82,7 +82,7 @@ pub trait ServerPackage {
 
 ## 5. 配置
 
-- `.env` 只放 6 个键（与 `09` §5 一致）：`DOMAIN`、`TLS_MODE`、`ADMIN_PASSWORD`、`PG_PASSWORD`、`SERVER_IMAGE`、`MASTER_KEY`。
+- `.env` 只放 6 个必填键（与 `09` §5 一致）：`DOMAIN`、`TLS_MODE`、`ADMIN_PASSWORD`、`PG_PASSWORD`、`SERVER_IMAGE`、`MASTER_KEY`；反代场景可选覆盖 `ZEOKEEL_PUBLIC_BASE_URL`（第 7 个，非必填）。
 - 其余运行期配置进 `system_settings` 表，管理台可改；每项标注 `hot`（立即生效）或 `restart`（提示重启）。
 - 配置读取经 `zk-contract-config` 的 `ConfigService`；包不得直接读环境变量（除 bootstrap 注入的少数）。
 - 敏感配置（上游 key、MCP secret）加密存储，密钥来自 `master.key`；接口只返回掩码。
@@ -91,7 +91,11 @@ pub trait ServerPackage {
 
 | 作业 | 频率 | 幂等键 | 说明 |
 | --- | --- | --- | --- |
-| 月度发放 | 每月 1 日 00:05（时区可配） | `grant:<user>:<yyyy-mm>` | 按用户钱包发放配置额度 |
+| 月度发放 | 每月 1 日 00:05（时区可配） | `grant:<user>:<yyyy-mm>` | 按用户钱包发放配置额度；失败重试，启动补跑 |
+| 钱包 hold 过期 | 每小时 | `hold-expire:<hour>` | 释放过期 `wallet_holds`；失败重试、启动补扫（`22` §4） |
+| pending usage 清扫 | 每小时 | `usage-pending:<hour>` | 结算/void 超时 pending usage；失败重试、启动补扫（`22` §5.2） |
+| 钱包对账 | 每小时 | `wallet-reconcile:<hour>` | 校验 `balance = Σ账本`、hold ↔ pending；不一致告警/冻结，不自动改账（`22` §6） |
+| 月用量快照 | 每月 1 日 02:00（时区可配） | `usage-snapshot:<yyyy-mm>` | 固化不可变月用量快照；失败重试，错过启动补跑（`22` §7） |
 | 应用退役 | 每小时 | `app-retire:<app>:<version>` | 软删 → 保留期 → 真删（含 DB 文件） |
 | 令牌清理 | 每日 | `token-clean:<date>` | 过期 refresh/黑名单 |
 | 用量聚合 | 每小时 | `usage-agg:<hour>` | 生成日报/月报 |

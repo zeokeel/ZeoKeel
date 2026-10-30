@@ -11,10 +11,10 @@
 | T1 单包 | `cargo check -p` + 该包单测 + conformance | < 3 min | PR 受影响包 |
 | T2 组合构建 | edition/profile 构建（client/server/admin）+ 启动自检 | 5–15 min/profile | PR（enterprise + personal） |
 | T3 集成 | 真 PG + 服务端全包；真客户端 + 真服务端 | 10–20 min | PR / 合并前 |
-| T4 矩阵 | 8 个 swap 角色 × 替代实现；OEM 渠道；WASM 应用样例 | < 90 min（分片） | nightly |
+| T4 矩阵 | `swap_required` 角色（清单由 `zk validate` 生成）× 替代实现；OEM 渠道；WASM 应用样例 | < 90 min（分片） | nightly |
 | T5 交付物 | 三平台安装包 + docker 镜像 + 门户 + 升级/回滚 | 30–60 min | nightly / 发布前 |
 
-预算在 S0 用真实工程标定一次，之后作为门禁；超预算先优化再接受。
+预算在 **M0 骨架**（真实 workspace）标定一次，之后作为门禁；S0 只做机制 spike，不测 T0–T5 基线；超预算先优化再接受。
 
 ## 2. 客户端测试
 

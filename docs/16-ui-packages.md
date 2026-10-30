@@ -24,9 +24,10 @@
 
 ```text
 packages/
-  contracts/shell-kit/    # **契约包**（kind=contract）：Slot/Registry/Transport/Theme token
-    web/package.json      # @zeokeel/shell-kit（只声明不实现；不是可替换角色）
-  ui/shell/               # 组装壳：只 import shell-kit + virtual:@zeokeel/registry
+  ui/shell-kit/           # UI 包 zeokeel/ui-shell-kit：壳原语 + SLOT_DEFS/props 常量（角色 ui.shell-kit，singleton；契约 crate 仍是 zk-contract-ui）
+    web/package.json      # @zeokeel/ui-shell-kit（SLOT_DEFS/props 类型；角色 ui.shell-kit）
+  ui/shell/               # 组装壳：只 import @zeokeel/ui-shell-kit + virtual:@zeokeel/registry
+  server/admin-shell/     # 管理台壳（角色 admin.shell；web/ 为 @zeokeel/admin-shell）
   ui/chat/                # 业务 UI 包
   ui/settings/ ...
   client/transport-tauri/ # invoke() 实现（角色 ui.transport）
@@ -39,8 +40,7 @@ packages/
 ```yaml
 packages:
   - "packages/*/*/web"
-  - "apps/*/web"
-  - "apps/admin/web"
+  - "apps/*/web"            # desktop/web、admin/web
 ```
 
 每个 UI facet 的 `package.json` 必须带清单：
@@ -53,12 +53,12 @@ packages:
     ".":            { "types": "./src/index.ts", "default": "./src/index.ts" },
     "./contribute": { "types": "./src/contribute.ts", "default": "./src/contribute.ts" }
   },
-  "peerDependencies": { "react": "^19", "@zeokeel/shell-kit": "workspace:^" },
+  "peerDependencies": { "react": "^19", "@zeokeel/ui-shell-kit": "workspace:^" },
   "zeokeel": {
     "client": {
       "platform": "web",
       "role": "chat",                                  // 与 zk.toml 的角色一致，composer 校验
-      "baseline": ["react", "react-dom", "@zeokeel/shell-kit"],  // 允许的外部 import（包边界）
+      "baseline": ["react", "react-dom", "@zeokeel/ui-shell-kit"],  // 允许的外部 import（包边界）
       "components": ["chat.main", "chat.composer"],    // 本包提供的 component id
       "inject": ["session", "workspace"]               // 需要宿主提供的上下文服务
     }
@@ -87,7 +87,9 @@ order        = 10
 props_schema = "schema/chat-main.props.json"
 ```
 
-**`SLOT_DEFS`（冻结；`ui-shell-kit` 唯一声明，其它文档只引用）**
+**槽位 id 规则**：客户端 slotId 带 `ui.` 前缀（管理台见下方 admin 注册表）；贡献角色名 = `ui.slot.<slotId 去掉 ui. 前缀>`（例 slotId `ui.chat` → 角色 `ui.slot.chat`；`ui.settings.section` → 角色 `ui.slot.settings.section`），与 `02` §4/`03` 示例一致。
+
+**`SLOT_DEFS`（冻结；`zeokeel/ui-shell-kit` 包唯一声明，其它文档只引用）**
 
 | slotId | 用途 | props（必需） |
 | --- | --- | --- |
@@ -104,18 +106,29 @@ props_schema = "schema/chat-main.props.json"
 | `ui.toolcall` | 工具调用卡 | `call` |
 | `ui.approval` | 审批卡 | `request` |
 | `ui.settings` | 设置页 | `section?` |
+| `ui.settings.section` | 设置页分节（multi，多包贡献） | `section` |
 | `ui.skills` | 技能页 | `items` |
 | `ui.connectors` | 连接器页 | `items` |
 | `ui.apps` | 应用页（企业版） | `items` |
 | `ui.update` | 更新页 | `state` |
 | `ui.diagnostics` | 诊断页 | `report` |
 
+**管理台 slot 注册表（`admin.*`；唯一真源在本表，`08` 只引用）**
+
+| slotId | 用途 | props（必需） |
+| --- | --- | --- |
+| `admin.nav` | 管理台导航项（multi） | `permission` |
+| `admin.page.<page>` | 页面主体槽（multi；贡献角色 `admin.slot.page.<page>`；页面实现角色 `admin.page.<page>` 为 singleton） | `permission` |
+
+管理台贡献角色名 = `admin.slot.<slotId 去掉 admin. 前缀>`（如 `admin.nav` → `admin.slot.nav`；`admin.page.users` → `admin.slot.page.users`）；
+页面实现角色 = `admin.page.<page>`（singleton，选页面包），两者分工见 `08` §3。
+
 composer 在构建期做四件事：
 
 1. 把 `[[ui.contributions]]` 生成到 `shared/contracts/ui-contributions.json`，并生成 Rust `const
-   CONTRIBUTIONS: &[UiContribution]`（`zk-ui-chat` 的 `install()` 直接使用）；
+   CONTRIBUTIONS: &[UiContribution]`（声明 crate 只含该静态常量、无运行逻辑；`zk-ui-chat` 的 `install()` 只注册它）；
 2. 校验 `component` ⊆ 所有被选中 UI 包的 `components`（闭包校验，缺一个就构建失败）；
-3. 校验 `slot` 在 `ui-shell-kit` 的 `SLOT_DEFS` 里存在，且 `props_schema` 与 slot 的 props 类型兼容；
+3. 校验 `slot` 在客户端 `SLOT_DEFS` 或管理台 slot 注册表（本文件 §3，`admin.*`）里存在，且 `props_schema` 与 slot 的 props 类型兼容；
 4. 生成 `registry.gen.ts`（**只有组件表**，不含 order/props——那些来自契约 JSON）。
 
 TS 侧只声明"我提供哪些组件"：
@@ -133,7 +146,7 @@ shell 不 import 业务组件：
 ```ts
 // packages/ui-shell/web/src/App.tsx
 import { registry, SLOT_DEFS } from "virtual:@zeokeel/registry";
-import { contributions, subscribeContributions } from "@zeokeel/shell-kit";
+import { contributions, subscribeContributions } from "@zeokeel/ui-shell-kit";
 
 export function App() {
   const enabled = useContributions();          // 启动后由后端下发"哪些包激活了"
@@ -148,14 +161,14 @@ export function App() {
 - **组件缺失或抛错时必须是显式 fallback**：渲染错误卡片（componentId + 包 id），错误进诊断面板；
   不允许静默空白。
 
-### 3.1 三样东西的真源（全部静态，运行期只过滤）
+### 3.1 四件事的真源：槽位 / 组件 / 贡献 / 运行期注册表
 
 | | 真源 | 何时确定 | 用途 |
 | --- | --- | --- | --- |
-| **槽位定义** `SLOT_DEFS` | `ui-shell-kit`（契约包，枚举 + props 类型） | 编译期 | shell 知道有哪些位置、每个位置接受什么 props |
+| **槽位定义** `SLOT_DEFS` | 包 `zeokeel/ui-shell-kit`（枚举 + props 类型；契约 crate 是 `zk-contract-ui`） | 编译期 | shell 知道有哪些位置、每个位置接受什么 props |
 | **组件提供** `components` | 各 UI 包 `contribute.ts` | 构建期（生成 registry） | component id → 组件实现 |
 | **贡献实例** `contributions` | 各包 `zk.toml` 的 `[[ui.contributions]]` | **构建期**（生成 const + JSON） | 谁放在哪个槽、顺序、props schema |
-| 运行期 | 已激活包集合（后端下发） | 启动后 | **只做过滤**：未激活包的贡献不渲染 |
+| **运行期注册表** | `registry.gen.ts`（构建期生成）+ 已激活包集合（后端下发） | 编译期 / 启动后 | **只做过滤**：未激活包的贡献不渲染 |
 
 这样构建期才能做闭包校验；"随包启停"由运行期过滤实现，不需要动态产生贡献。
 
@@ -173,18 +186,20 @@ export function App() {
 
 | 机制 | 定位 | 说明 |
 | --- | --- | --- |
-| **profile 的 `[packages]` 角色映射** | **唯一换包通道** | 改一行包 id → `zk compose` → 重新 build |
+| **edition 基线 + profile/channel 覆盖** | **唯一换包通道** | 改 edition 基线或 profile 覆盖一行包 id → `zk compose` → 重新 build |
 | ~~`pnpm.overrides` / `npm:` 别名~~ | **不使用** | 绕过 `zk.lock` 与生成物 diff 校验；OEM 需要定制就出源码包（D61） |
 | ~~`vite resolve.alias`~~ | **不使用** | 同上；只在临时排障时手工改，不纳入 CI 流程 |
 
-profile 片段（全部走同一张表，注意 UI 与 Rust facet 一起换）：
+edition 基线片段（profile/channel 只覆盖 singleton；multi 增删用 `[packages.add]`/`[packages.remove]`，`24` §1.1）：
 
 ```toml
-[packages]
+# editions/personal.toml [packages]
 "ui.shell"                 = "zeokeel/ui-shell"
 "ui.transport"             = "zeokeel/transport-tauri"
-"brand.mark"               = "zeokeel/brand-default"      # OEM: 改成 acme/brand
-"theme.tokens"             = "zeokeel/theme-default"
+"brand.mark"              = "zeokeel/brand-official"     # OEM: 换品牌包
+"theme.tokens"             = "zeokeel/ui-theme-default"
+
+# multi 角色：数组顺序即渲染顺序；增删在 profile 用 add/remove
 "ui.slot.settings.section" = ["zeokeel/ui-settings-general", "zeokeel/ui-settings-models"]
 ```
 
@@ -194,8 +209,8 @@ profile 片段（全部走同一张表，注意 UI 与 Rust facet 一起换）�
 
 ## 5. Rust ↔ TS 类型契约
 
-**槽位 props 必须有类型**（评审盲点 6）：`ui-shell-kit` 为每个槽位定义 props 类型（TS + 对应
-serde DTO 经 ts-rs 导出）。贡献声明里的 `props_schema` 必须兼容该类型；运行期用 JSON Schema 校验
+**槽位 props 必须有类型**（评审盲点 6）：`zeokeel/ui-shell-kit` 为每个槽位定义 props 类型（TS）；对应
+serde DTO 与 `SlotId` 在契约 crate `zk-contract-ui`，经 ts-rs 导出。贡献声明里的 `props_schema` 必须兼容该类型；运行期用 JSON Schema 校验
 后仍要经 `ComponentProps` 类型检查。**禁止 `ComponentType<any>`**——这是先例"UI 声明/注册/测试三份漂移"
 的直接成因。
 
@@ -203,9 +218,9 @@ serde DTO 经 ts-rs 导出）。贡献声明里的 `props_schema` 必须兼容�
 
 | 面 | 方案 | 产物 |
 | --- | --- | --- |
-| DTO / 事件 / 贡献描述符（serde 结构） | **ts-rs**（`#[derive(TS)]` + `cargo test export_bindings`） | `web/src/generated/*.ts`，CI `git diff --exit-code` |
+| DTO / 事件 / 贡献描述符（serde 结构） | **ts-rs**（`#[derive(TS)]` + `cargo test export_bindings`） | `shared/ts/*.ts`（`24` §3），CI `git diff --exit-code` |
 | 工具参数 / 配置 schema（本来就要 JSON Schema） | **schemars** | `schema/*.json`，前端用 `json-schema-to-ts` 取类型，或运行时校验 |
-| IPC 命令表 | 生成器 | `shared/contracts/ipc-commands.json` + 前端 `ipc.gen.ts`（name→args/result 类型） |
+| IPC 命令表 | 生成器 | `shared/contracts/ipc-commands.json` + 前端 `commands.gen.ts`（name→args/result 类型） |
 
 不推荐 typeshare（类型映射覆盖面窄）、quicktype（多一层生成与调试成本）。
 ts-rs 的坑：枚举 tagging 必须与 serde 一致（`#[serde(tag=..., content=...)]` 要同步 `#[ts(...)]`），
@@ -237,7 +252,7 @@ ts-rs 的坑：枚举 tagging 必须与 serde 一致（`#[serde(tag=..., content
 前端通过 **Transport 抽象**切换：
 
 ```ts
-// @zeokeel/shell-kit
+// @zeokeel/ui-shell-kit
 export interface Transport {
   call<T>(name: string, args: unknown): Promise<T>;
   subscribe(stream: string, cb: (ev: IpcEvent) => void): () => void;
@@ -271,12 +286,12 @@ node scripts/verify-dist.mjs            # 产物校验（见下）
 Playwright：按 profile 分 project，跑的是**构建产物 + `serve` 载体**，不是 dev server：
 
 ```ts
-projects: ["default", "mock", "oem-demo"].map(p => ({
+projects: ["default", "mock"].map(p => ({
   name: p, use: { baseURL: `http://127.0.0.1:${portFor(p)}` },
 }))
 ```
 
-CI 矩阵（与 03 §6 合并）：`default | mock | minimal | hardened | oem-demo` ×
+CI 矩阵（与 03 §6 合并）：profile `default | mock | minimal | hardened` × channel `official | oem-demo`
 （compose → typecheck → build（变体用 `--offline`）→ verify-dist → vitest → Playwright 冒烟）。
 `default` 用 `--frozen-lockfile`，变体在 CI 内重新解析（见 03 §5.5 / ADR-015）。
 

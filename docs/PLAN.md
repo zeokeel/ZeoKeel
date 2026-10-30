@@ -17,7 +17,7 @@
 
 | 需求 | 落点 | 状态 |
 | --- | --- | --- |
-| 企业版弱管控（服务端只管认证/钱包/商店/审计） | `00-design-principles.md`（v3.1）、ADR-030；工具全开、网络不限、无企业审批 | 已拍板 |
+| 企业版弱管控（服务端只管认证/钱包/商店/审计） | `00-design-principles.md`（v3.2）、ADR-030；工具全开、网络不限、无企业审批 | 已拍板 |
 | Rust 客户端 | Tauri 2 主壳 + 同源 HTTP 副载体（`05-client-runtime.md`） | 方案定 |
 | Rust 服务端 | axum + PostgreSQL + cordis 内核，单二进制（`06-server-runtime.md`） | 方案定 |
 | 两端都用 zeokeel-cordis | 同一套包模型/组合器/契约；客户端与服务端各一个 bootstrap（`02`、`03`） | 方案定 |
@@ -87,12 +87,12 @@
 
 | 类别 | 规划数量（不手写，以 `zk plan`/`02` §5 为准） | 说明 |
 | --- | --- | --- |
-| 契约 | 由生成器统计 | package/kernel/tool/llm/agent/session/api/auth/wallet/gateway/skill/connector/app/ui/config/ipc（无 org） |
+| 契约 | 由生成器统计 | 见 `02` §5（由 `zk plan` 生成，本文不手抄清单） |
 | 运行时 | 由生成器统计 | cordis 宿主、配置、IPC、HTTP、DB、迁移、调度、观测、任务、密钥 |
 | 客户端 | 由生成器统计 | agent、工具、provider（gateway/本地）、审批、存储、登录、技能客户端、连接器客户端、WASM 宿主、UI 包 |
-| 服务端 | 由生成器统计 | auth、users、wallet、gateway、skills、connectors、apps、audit、admin-api、portal、client-release |
+| 服务端 | 由生成器统计 | auth、users、wallet、gateway、skills、connectors、apps、audit、admin（API 路由由 zk-srv-* 提供）、portal、client-release |
 | 管理台 UI | 由生成器统计 | 用户/角色/网关/用量/技能/连接器/应用/审计/系统配置/品牌 |
-| 落地节奏 | M1 约 14 包；M2 约 20–30 包 | 具体清单由 `02`/`zk plan` 派生 |
+| 落地节奏 | 清单由 `02`/`zk plan` 派生（不手写数量） | M1 先做个人版核心，M2 追加企业管控包 |
 
 ## 4.5 优先级顺序（客户端优先）
 
@@ -146,8 +146,9 @@ WASM 应用曾内置 AI 能力（已删除，我们不提供）；Windows 安装
 
 ## 8. 下一步
 
-1. 已定结论以 `15`（D1–D65）与 `13`（ADR-001…056）为准；`17` 仅为历史存档。
-2. S0 六个 spike，各 ≤2 天，结论落 ADR；**P2（WASM）已完成**，其余待做。
+1. 已定结论以 `15`（D1–D65 + §C 待定索引）与 `13`（ADR-001…056；ADR-013 为显式 open 的非本期扩展点）为准；`17` 仅为历史存档。
+2. S0 六个 spike，各 ≤2 天，结论落 ADR；**P2（WASM）原型完成但证据未归档**，其余待做（S0 阻塞 M0，见 `12`）。
+   实现细节待定统一索引 `15` §C（T1–T19）；开工前先建 change spec（C16）。
 3. demo 已创建（私有）：`zeokeel/demo-oem-index`、`zeokeel/demo-oem-acme`、`zeokeel/demo-wasm-app`。
 
 ## 9. 文档导航

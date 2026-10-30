@@ -41,7 +41,7 @@
 
 | kind | 职责 | 允许提供 | 典型例子 | 可替换性要求 |
 | --- | --- | --- | --- | --- |
-| `contract` | 稳定缝：trait + DTO + 符合性套件 | 无（被依赖） | `zk-contract-tool`、`zk-contract-llm` | 同 major 内可换 mock/替代实现；跨 major = 新 crate。**必须发布并以 `[patch]` 锁到单实例**（ADR-016） |
+| `contract` | 稳定缝：trait + DTO + 符合性套件 | 无（被依赖） | `zk-contract-tool`、`zk-contract-llm` | 同 major 内可换 mock/替代实现；跨 major = 新 crate。**发布 + `[patch]` 单实例**由 S0-P1 spike 验证（ADR-016；M0 先 vendor，`03` §6.5） |
 | `runtime` | 宿主运行时：cordis 宿主、事件、配置、存储抽象、IPC | `host.*` | `zk-runtime`、`zk-ipc` | 可选替换（自研/精简宿主） |
 | `platform` | 桌面/Web 平台适配 | `platform.*` | `zk-platform-tauri`、`zk-host-webserver` | 可替换（Tauri ↔ 纯 Web ↔ 未来 wry） |
 | `capability` | 业务能力：工具、LLM provider、存储、技能、MCP | `tool.*`、`llm.*`、`store.*` | `tool-fs`、`llm-deepseek` | **核心替换对象** |
@@ -82,22 +82,23 @@ v3 追加两类实现包：`server`（服务端域）与 `admin-ui`（管理台�
 | `llm.*` | `llm.provider.default`（singleton）/ `llm.provider.<vendor>`（multi） | 见左 | M1 用一个兼容 OpenAI 的 provider 实现覆盖多家供应商（base_url + 模型目录）；需要多供应商并存时用 multi 角色，M3 起 |
 | `agent.*` | `agent.loop`、`agent.prompt.section` | singleton / multi | 循环唯一，提示词片段可多 |
 | `store.*` | `store.session`、`store.settings` | singleton | 持久化实现 |
-| `host.*` | `host.fs-access`、`host.process`、`host.net`、`host.secrets` | singleton | 宿主能力，被 capability 依赖 |
-| `platform.*` | `platform.shell`、`platform.ipc`、`platform.http` | singleton | 桌面壳 / IPC 传输 / serve 载体；换壳只改 profile |
-| `ui.shell` / `ui.transport` | — | singleton | 外壳唯一；传输实现（tauri/http/mock）由 profile 选 |
-| `ui.slot.<位置>` | `ui.slot.settings.section`、`ui.slot.composer.action` | multi | 槽位贡献 |
+| `host.*` | `host.fs-access`、`host.process`、`host.net`、`host.secrets`、`host.tasks`、`host.clock`、`host.config` | singleton | 宿主能力，被 capability 依赖；后三者由 runtime 按 `zk-contract-kernel` 提供 |
+| `platform.*` | `platform.shell`、`platform.ipc`、`platform.http` | singleton | 桌面壳 / IPC 通道 / serve 载体；与前端 `ui.transport` 成对（同一包 facet 提供） |
+| `ui.shell` / `ui.shell-kit` / `ui.transport` | — | singleton | 外壳/壳原语+SLOT_DEFS/传输实现（tauri/http/mock）由 profile 选 |
+| `ui.slot.<位置>` | `ui.slot.chat`、`ui.slot.settings.section` | multi | 槽位贡献；角色后缀 = slotId 去掉 `ui.` 前缀（slotId 清单见 `16` §3） |
 | `theme.*` / `brand.*` / `i18n.*` | `theme.tokens`、`brand.mark` | singleton | 换肤/白标的最小替换面 |
 | ★`srv.auth` / `srv.users` / `srv.wallet` | 例：`srv.auth.source`、`srv.users`、`srv.wallet` | singleton | 服务端域，一域一实现；OEM 可整域替换（无部门/用户组） |
 | ★`srv.gateway` / `srv.skills` / `srv.connectors` / `srv.apps` | — | singleton | 服务端内容/网关/应用域 |
-| ★`admin.page.*` / `admin.slot.*` | `admin.page.users`、`admin.slot.nav` | singleton / multi | 管理台页面与槽位 |
+| ★`admin.shell` / `admin.page.*` / `admin.slot.*` | `admin.shell`、`admin.page.users`、`admin.slot.nav` | singleton / singleton / multi | 管理台壳、页面与槽位 |
 
 基数语义：
 
-- `singleton`：组合期必须**恰好一个**提供者；0 个 → 组合错误（除 `optional` 角色）；≥2 → 组合错误。
+- `singleton`：组合期必须**恰好一个**提供者；0 个 → 组合错误（除 `optional` 角色，名单由 M0 spec 冻结，见 `24` §1.5）；≥2 → 组合错误。
 - `multi`：0..N，按 `order` 排序后注入同一注册表。
 
-**只允许 singleton 在 profile 里被覆盖**；multi 角色靠"选哪些包"来增删，不做单点覆盖。
-这条规则让 profile 的语义保持简单：`[packages]` 表是"角色 → 包 id"，重复即错误。
+**singleton 可在 profile/channel 覆盖；multi 不做单点覆盖**，用 `[packages.add]`/`[packages.remove]` 显式增删
+（`24` §1.1），不允许隐式并集。`[packages]` 表仍是"角色 → 包 id"，同层重复即错误。
+全量角色注册表见 `24` §1.5（root `zk.toml` 的 `[roles]`；未登记角色=error）。
 
 ## 5. 契约（contract）：唯一的稳定缝
 
@@ -113,8 +114,8 @@ v3 追加两类实现包：`server`（服务端域）与 `admin-ui`（管理台�
    `zk validate` 用完整 `cargo metadata` 校验，且 **fail closed**：拿不到 metadata 就报错，不降级。
    原因：trait 身份由 crate 实例决定。评审实测三种骗过"按版本去重"的形态——同名不同 path、
    同名不同 git+rev、改名私有副本——都必须被拦下。
-5. **契约 id ↔ crate 名显式登记**：根 `zk.toml` 的 `[contracts]` 表是唯一映射，profile 里出现的每个
-   `zk.contract.*` 都必须在这里有同名 crate（`zk validate` 双向校验），避免"契约 id 写了但没有 crate"。
+5. **契约 id ↔ crate 名显式登记**：根 `zk.toml` 的 `[contracts]` 表是唯一映射，组合输入（edition/profile/channel）
+   解析出的每个 `zk.contract.*` 都必须在这里有同名 crate（`zk validate` 双向校验），避免"契约 id 写了但没有 crate"。
 6. 契约变更流程：`cargo public-api` 差异检查 + 符合性套件跑全实现 + semver 决定是否升 major。
 7. **服务端契约额外要求**：路由权限点、错误码、分页/幂等语义写进契约；迁移不属于契约（属于包），
    但迁移的**内容哈希**必须与包版本对应（见 06 §3）。
@@ -136,6 +137,10 @@ v3 追加两类实现包：`server`（服务端域）与 `admin-ui`（管理台�
 | `zk-contract-config` | `ConfigSchema`、`ConfigStore` | runtime、capability |
 | `zk-contract-server` | `ServerPackage`：`migrations()`/`jobs()`/`config_schema()`（路由由 manifest `[[routes]]` 静态声明） | srv-* |
 | `zk-contract-api` | 客户端↔服务端 API DTO、错误模型、分页、版本 | 客户端/服务端 |
+| `zk-contract-auth-client` | 客户端登录/刷新/登出 DTO、`AuthClient` | client-auth、ui-login |
+| `zk-contract-update` | 更新清单/下载/签名校验（`UpdateSource`） | client-update-* |
+| `zk-contract-events` | 事件信封与 topic 注册（`24` §4 事件协议） | 双端 |
+| `zk-contract-content` | 服务端内容发布内核（contents/releases/grants/deployments） | srv-content、srv-skills、srv-apps |
 | `zk-contract-auth` | `AuthProvider`（local/OIDC/LDAP/…）、身份与角色映射 | srv-auth-* |
 | `zk-contract-user` | 用户/角色仓储与查询（**无部门**） | srv-users、admin-ui |
 | `zk-contract-wallet` | 余额、账本、价格表、扣费/充值 | srv-wallet、srv-gateway |
@@ -146,8 +151,13 @@ v3 追加两类实现包：`server`（服务端域）与 `admin-ui`（管理台�
 | `zk-contract-admin-ui` | 管理台页面注册、权限点、表单/表格约束 | admin-ui-* |
 | `zk-contract-testkit` | 符合性套件宿主（非运行时依赖） | 测试 |
 
-M0 只实现最小集：`contract-package`（含 `Registrar` 入口）+ `contract-kernel`（Registrar/Clock/Tasks/Config）
-+ `contract-tool`。其余契约在 M1 按需增加；**每个 `requires` 里出现的契约 id 必须有 crate**。
+M0 只实现最小集：`contract-package`（`Package`/`Installed`；`Registrar` 在 kernel）+ `contract-kernel`（Registrar/Clock/Tasks/Config）
++ `contract-tool`。`contract-api` 与其余契约在 M1 按需加入；M0 的 api-catalog 由 manifest `[[routes]]`
+生成（`24` §4），不依赖该契约。**每个 `requires` 里出现的契约 id 必须有 crate**（根 `zk.toml [contracts]`，
+见 `24` §2.1）。
+
+`ui-shell-kit` 是包 id（`zeokeel/ui-shell-kit`，声明 `SLOT_DEFS`），不是契约 crate；UI 契约仍是 `zk-contract-ui`
+（`16` §3）。
 
 `zk-contract-testkit` 不属于 `contract` kind，它是 `dev` 工具包；但同样"一个版本"。
 

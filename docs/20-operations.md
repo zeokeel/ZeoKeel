@@ -28,7 +28,7 @@
 | 7 首个员工用户 | 可选 | 至少 1 个，用于验收 | 用户名冲突 |
 | 8 连通性自检 | 是 | 网关 → 上游、门户、客户端清单、审计写入 | 任一项失败不完成 |
 
-验收脚本：`scripts/day0-check.sh`（登录→bootstrap→一次非流式/流式对话→扣费→审计可查）；结果写 `evidence/day0-*.log`。
+验收脚本：`scripts/day0-check.sh`【scaffold 后】（登录→bootstrap→一次非流式/流式对话→扣费→审计可查）；结果写 `evidence/day0-*.log`。
 
 ## 2. 拓扑与资源
 

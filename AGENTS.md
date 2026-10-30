@@ -11,7 +11,7 @@
 - **客户端是主体**：Tauri 2 + React 19 + TypeScript 桌面客户端；本地 agent（`rig-core` 0.45）、工具、审批、会话、技能/连接器/应用客户端。
 - **服务端是弱管控配套**：Rust（axum + PostgreSQL + cordis）只做认证、用户、钱包/网关计费、商店分发（技能/连接器/应用）、审计、管理台；**不执行 agent、不执行技能**。
 - **内核**：`zeokeel-cordis` 0.6.x（纯 Rust、静态链接、无动态加载）。
-- **组合方式**：构建期组合（profile → `zk` → 生成 glue → 编译）；**运行期不加载任何插件/代码**。
+- **组合方式**：构建期组合（edition/profile/channel → `zk` → 生成 glue → 编译）；**运行期不加载任何插件/代码**。
 - **双版本**：`personal`（纯客户端、自配 provider、无应用中心）是基线；`enterprise` = (个人版 − 个人专属包) + 企业管控包（服务端、登录、网关、商店客户端、管理台），通过 `base_edition = "personal"` + `exclude` 追加/覆盖，不复制客户端基线。
 - **OEM**：私有索引仓 + 每客户 submodule，构建期注入渠道/品牌/文案；OEM 定制代码由我方开发并入库（D61）。
 - **许可**：MIT（企业版/个人版核心）；OEM 产物按交付说明。
@@ -100,6 +100,7 @@ ZeoKeel/
 ├─ pnpm-workspace.yaml
 ├─ zk.toml / zk.lock
 ├─ editions/  profiles/  brands/
+├─ crates/               # 非包 crate：zk-composed（生成 glue）、zk-bootstrap（ADR-009）
 ├─ packages/{contracts,runtime,client,server,ui}/
 ├─ apps/{desktop,server,admin}/
 ├─ deploy/{docker,portal}/
@@ -107,7 +108,7 @@ ZeoKeel/
 ├─ specs/               # 变更规格（changes/templates/archive）
 ├─ .agents/skills/      # 项目 Agent Skills
 ├─ tools/zk/
-├─ shared/               # 生成的 contracts/ts
+├─ shared/               # 生成的 contracts/ts/schema
 ├─ scripts/
 └─ docs/  research/  experiments/  configs/
 ```
@@ -139,7 +140,7 @@ gh auth status
 ```bash
 bash scripts/bootstrap.sh          # 系统库 + pnpm + cargo check + 生成
 pnpm install --frozen-lockfile
-zk compose --edition personal      # 生成前端/后端 glue
+zk compose --edition personal --profile default --channel official   # 生成两端 glue（--channel 必填；--profile 默认 default）
 ```
 
 ## 6. Build and test commands
@@ -184,10 +185,13 @@ cargo machete
 
 # 组合与生成物
 zk validate
-zk compose --edition personal --check
-zk compose --edition enterprise --check
-zk api --check
-ts-rs bindings --check && schemars --check
+zk compose --edition personal --profile default --channel official --check
+zk compose --edition enterprise --profile default --channel official --check
+zk api --edition personal --profile default --channel official --check
+zk docs --check
+zk db lock --check
+cargo test --workspace export_bindings && git diff --exit-code
+cargo test --workspace export_schema && git diff --exit-code
 ```
 
 **完成判据**：对应命令在 CI 绿 + 证据文件存在 + 可复现；模型自述不算。
@@ -216,7 +220,8 @@ ts-rs bindings --check && schemars --check
 
 ### 包与命名
 
-- 包 id：`zeokeel/<name>`；Rust crate：`zk-<name>`；服务端 crate：`zk-srv-<name>`；UI npm：`@zeokeel/ui-*`/`@zeokeel/admin-*`。
+- 包 id：`zeokeel/<name>`；Rust crate：`zk-<name>`；服务端 crate：`zk-srv-<name>`；管理台页面 crate：`zk-admin-<page>`；UI npm：`@zeokeel/ui-*`/`@zeokeel/admin-*`。
+- apps 入口 crate：`zk-desktop`/`zk-server`；引导 crate `zk-bootstrap`、生成 glue `zk-composed`（`crates/`，ADR-009）。
 - 目录：`packages/<group>/<name>/`，UI facet 在包内 `web/`。
 - 错误码封闭集合（`shared/contracts/errors.json` 生成）；文案走 i18n，不硬编码中文/英文。
 - 数据兼容：新增字段 `#[serde(default)]`；前端类型可选；禁止破坏已有字段。
@@ -244,13 +249,13 @@ ts-rs bindings --check && schemars --check
 ## 10. Documentation rules
 
 - 唯一入口：[`docs/README.md`](docs/README.md)（SSOT/术语/任务路径）；根 `README.md` 只做简介与 10 秒入口。
-- 权威顺序：**用户当前指令 > 本文件 > `docs/00`/`docs/15` > `docs/19–24`（域内补充规范）> `docs/PLAN` > 其他 docs > research（只作事实参考）**。
+- 权威顺序：**用户当前指令 > 本文件 > `docs/00`/`docs/15` > `docs/19–24`（域内补充规范）> `docs/PLAN` > 其他 docs > research（只作事实参考）**；域内 SSOT 以 `docs/README.md` §2 为准。
 - 冲突时停下来问用户，不要自行选一个。
 - 文档里的数字/索引/契约表必须由生成器产出（scaffold 后 `docs/generated/`），禁止手写计数。
 - 改行为必须同步改文档；新增 ADR 放 `docs/13`，决策变更先改 ADR 再改实现。
 - 生成物头部 `@generated`，禁止手改；`--check` 失败时改生成器或输入，不改产物。
 - **ADR 状态机**：决策被取代时，旧 ADR 必须标 `superseded-by-ADR-0xx` 并回写所有引用/重复表述；禁止两篇 `accepted` ADR 互相矛盾。
-- **唯一已定清单**：`docs/15`（D1–D65）+ `docs/13`（ADR-001…056）+ `docs/19–24`（域内规范）是已定事项真源；PLAN/其它文档只引用编号，不手抄结论。
+- **唯一已定清单**：`docs/15`（D1–D65；实现细节待定索引见 §C）+ `docs/13`（ADR-001…056，其中 ADR-013 为显式 `open` 的非本期扩展点）+ `docs/19–24`（域内规范）是已定事项真源；PLAN/其它文档只引用编号，不手抄结论。
 - **变更规格**：`specs/changes/<id>/` 五件套；`spec-check` 门禁；耐久结论回写 `docs/`，spec 归档。
 - **Skills**：`.agents/skills/` 只写步骤/命令/判据，不复制规范；冲突时以本文件与 `docs/README.md` 为准。
 
@@ -275,8 +280,8 @@ ts-rs bindings --check && schemars --check
 ## 12. 当前 TODO / 已知未决
 
 - macOS 公证：**本地先测**，证书后配，CI 先就绪（ADR-037）。
-- S0：P2（WASM）原型已完成；P1 双 app 组合、P3 认证+JWT、P4 OEM submodule CI、P5 迁移不可变、P6 管理台包化待做。
-- 剩余细节（不阻塞）：峰谷时段具体值、技能/应用"指定用户"的选取交互；MCP 客户端 OAuth 令牌已定客户端本地（D53）。
+- S0：P2（WASM）原型完成但**证据未归档**（M0 前补跑 `build.sh` + `golden/run.py` 并存 `target/evidence/`）；P1 双 app 组合、P3 认证+JWT、P4 OEM submodule CI、P5 迁移不可变、P6 管理台包化待做（S0 阻塞 M0，见 `docs/12`）。
+- 实现细节待定：统一索引 `docs/15` §C（T1–T19），不阻塞 spec 编写与机制 spike；实现前在对应 milestone spec 冻结。
 - 已拍板（v3.2）：余额=企业配额、不做开票/收款、OEM 代码自研、Powered by OEM 默认隐藏、不做 DPA、暂不定义 RPO/RTO、安全内部评审（D60–D65）。
 - 已定清单：`docs/15-open-questions.md`（D1–D65）；决策理由：`docs/13-risks-and-adr.md`；`docs/17-v3.1-decisions.md` 是历史存档，不作依据。
 

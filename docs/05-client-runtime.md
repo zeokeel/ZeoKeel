@@ -54,6 +54,7 @@
 | H5 | 关闭编排 | bootstrap/runtime | 固定顺序：`when_idle` → `dispose_all`（重试 `LifecycleBusy`）→ `drain_orphan_async_cleanups` → 关 tokio → 关窗口 |
 | H6 | 权限/审计/能力策略 | `approval` + `audit` 包 | 审批保护**用户**不受 agent 越界，不是包隔离；审计事件落 store |
 | H7 | 资源计量/处置 | `supervisor` 包（`supervision` feature） | 配额、heartbeat、stalled fiber 观测 + cancel；不做"强杀线程" |
+| H8 | 不可信包隔离 | 无（不承诺插件隔离） | 信任边界是构建输入（ADR-012）；未来 L3 进程 / L4 WASM 由宿主自建（§7） |
 | H9 | 可观测性 | `telemetry` 包 | 装 `LogExporter`（**不装就看不到插件日志**）；lifecycle → 结构化事件；指标命名在宿主 |
 | H10 | 时间与确定性 | `host.clock` 包 | `set_clock` 只能 root 一次；测试用假 clock 重放 |
 | H11 | 包静态检查 | `tools/zk lint` + CI | 依赖白名单（只许契约）、禁止 IO/线程/全局状态、公共 API 上限——照抄内核自身护栏思路 |
@@ -102,8 +103,9 @@ bootstrap `dispose_all()` 重建/退出，而不是指望"撤销已成功的包"
 ### 3.2 同名插件共享 runtime
 
 内核 `Registry` 按 `Plugin::name()` 归并 runtime；两个包 `name()` 相同会被一起替换/卸载。
-因此**契约强制命名空间**：`Plugin::name()` 必须是 `<role>/<package-id>`，例如 `tool.fs/zeokeel`。
-`zk lint` 检查每个包的 `name()` 与清单一致。
+因此**契约强制命名空间**：`Plugin::name()` 必须是 `<role>/<package-id>`；包 id 是 `zk.toml` 的
+`<vendor>/<name>`（如 `zeokeel/tool-fs`），所以完整示例是 `tool.fs/zeokeel/tool-fs`。`zk lint` 检查每个包的
+`name()` 与清单一致。
 
 ### 3.3 包身份在宿主，不在内核
 
@@ -170,9 +172,10 @@ ui-chat ──ipc──► agent-loop（agent.loop，singleton）
 | 同一会话并行多个 turn | **不允许**。每个会话一个 turn 串行执行；新输入进入队列（UI 显示"排队"），可升级为"打断并重开" |
 | 不同会话并行 | 允许；每会话一个 `task-service` 任务，独立取消 token |
 | 审批挂起时 | turn 保持 `AwaitingApproval` 状态，**不占用执行线程**（等待 channel/notify）；超时（可配置，默认 10 min）→ 拒绝；**退出应用** → 全部拒绝；窗口隐藏不拒绝（通知+超时） |
-| 取消 | 取消 token → 停止流式读取 → 已产生的部分输出落库并标记 `interrupted` → 工具批按"未开始的不再开始、已开始的上报已执行"处理 |
+| 取消（用户主动） | 取消 token → 停止流式读取 → 已产生的部分输出落库，turn 置 `Cancelled`；工具批按"未开始的不再开始、已开始的上报已执行"处理 |
+| 中断（进程退出/断流/崩溃） | 已生成部分落库，turn 置 `interrupted`；重启后扫描未完成 turn，可继续/重试（见 `24` §7） |
 | 关进程 | 先取消所有 turn（等 ≤2s）→ `when_idle` → `dispose_all` → drain orphan → 关 tokio |
-| turn 状态 | `Pending / Streaming / AwaitingApproval / RunningTools / Done / Cancelled / Failed`，是 `zk-contract-agent` 的 DTO，UI 与 store 共用 |
+| turn 状态 | `Pending / Streaming / AwaitingApproval / RunningTools / Done / Cancelled / Interrupted / Failed`，是 `zk-contract-agent` 的 DTO（持久化字段 `turn.status` 为 `interrupted`，见 `24` §7），UI 与 store 共用 |
 
 这些规则要写成契约测试：审批挂起时取消、退出应用时拒绝（窗口隐藏不拒绝）、双 turn 排队、断流后重订阅。
 
@@ -253,18 +256,24 @@ zk-tool-*            只依赖 zk-contract-tool；工具调度由 agent-loop 自
 
 企业版/个人版能力差异见 `01` §2；弱管控原则、服务端不做清单与责任声明见 [`00` §2–§3](00-design-principles.md)。本节不重复。
 
+provider 配置/模型目录/keychain 键名的 schema 在 M1 spec 冻结（索引见 [15 §C](15-open-questions.md#c-待定清单)）；本节不展开设计。
+
 ## 6. IPC：单一分发入口（本地）+ 服务端 API（远程）
 
 > 客户端有两个边界：**本地 IPC**（WebView ↔ Rust 宿主，见本节）与**远程 API**（Rust 宿主 ↔ 服务端，
 > 见 `04-contracts-and-api.md`）。不要把两者混成一个协议。
 
-```rust
-// 每个包在 register 里注册命令处理函数
-ctx.command("chat.send", |payload: ChatSendArgs| async { ... })?;
-ctx.command("settings.update", ...)?;
+```toml
+# 包的 zk.toml：命令静态声明（唯一真源，24 §4）
+[[commands]]
+name = "chat.send"
+args_schema = "contracts/chat/send.schema.json"
+permission = "chat:write"
 ```
 
-- manifest `[[commands]]` 只声明命令身份/权限；参数/返回 schema 由契约 crate 的 schemars 生成，`ipc-commands.json` 由生成器合并。
+- **命令不在源码手写第二份**：`zk compose` 从 `[[commands]]` + 契约 schema 生成 `commands.gen.ts` 与主进程
+  handler 表；运行期/构建期只做一致性比对（缺/多/签名不一致 → 拒启或构建失败，见 `24` §4）。
+- 参数/返回 schema 由契约 crate 的 schemars 生成，`ipc-commands.json` 由生成器合并。
 - Tauri 侧只有**一个** `#[tauri::command] async fn ipc_call(name: String, payload: Value)`，
   内部查表分发；未知命令 → `IpcError::UnknownCommand`（不是 panic）。
 - 流式事件：`ipc://event` 通道，统一信封 `{ stream, seq, kind, payload }`，前端按 stream 订阅。
@@ -272,7 +281,7 @@ ctx.command("settings.update", ...)?;
   这是 e2e 与远程访问的前提（ADR-006）。
 - 参数校验用生成的 JSON Schema（`jsonschema` crate），拒绝时返回结构化错误，便于 UI 提示。
 - **Schema 单源**：命令参数/返回类型定义在契约 crate，用 `schemars` 生成 schema/TS；不再手写参数类型与 handler 类型两套。
-- **固定平台命令白名单**：`ipc_call`（业务总入口）、`app_request`（WASM 窗口）、`auth_*`（登录窗口）；包不得新增 `#[tauri::command]`。
+- **固定平台命令白名单（按窗口 capability）**：主窗口 = `ipc_call`（业务总入口）+ `updater`/`window`/`dialog`/`store`/`open_url` 最小集；WASM 窗口 = 仅 `app_request`；登录/门禁窗口 = `auth_*` + `open_url`。包不得新增 `#[tauri::command]`；详见 `19` §7.1。
 - **事件协议**（`zk-contract-ipc` 定义，M1 必须有）：
   ```
   Event { stream_id, seq: u64, kind, payload, ts }
@@ -284,10 +293,12 @@ ctx.command("settings.update", ...)?;
 - **serve 载体（M1 就上线）**：只绑定 `127.0.0.1`，启动时生成一次性 token 注入页面并通过
   `Authorization`/cookie 校验；拒绝无 Origin 或跨源写入（防 CSRF）。远程访问（0.0.0.0 + TLS）
   留到 M5，且必须显式开启。
-- **丢失的 Tauri 编译期类型安全，用三件事补回来**：① 生成的 `ipc.gen.ts` 让前端调用有类型；
+- **丢失的 Tauri 编译期类型安全，用三件事补回来**：① 生成的 `commands.gen.ts` 让前端调用有类型；
   ② 每个命令在 CI 里有一条"契约驱动"的集成测试（从 `ipc-commands.json` 生成用例，正向 + 参数缺失）；
   ③ Rust 侧命令处理函数签名统一为 `(Json) -> Result<Json, IpcError>`，序列化失败在边界处转结构化错误，
   不允许 panic。
+- 命令全集（name/args/result/permission）、事件 kind 枚举、IPC 错误码在 M1 spec 冻结（索引见
+  [15 §C](15-open-questions.md#c-待定清单)）；本节只冻结协议形状。
 
 ## 7. 安全与信任模型（写死）
 

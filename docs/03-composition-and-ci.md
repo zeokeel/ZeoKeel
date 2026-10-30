@@ -12,7 +12,7 @@
 | A. 构建期组合 | profile + 代码生成 + 原生静态链接 | **是** | ✅ | 无 | **采用** |
 | B. Cargo features | `impl-fs-sandbox` 之类 feature 开关 | 是 | ✅ | 无 | 否，见 §2 |
 | C. 动态库 | `dylib` / `abi_stable` / 插件 `.so` | 否 | ❌（要带若干 .so） | 与"无 ABI、无 unsafe、静态链接"直接冲突 | 否 |
-| D. WASM 运行时 | 包编译成 wasm，host 用 wasmtime 加载 | 否 | ✅（宿主持 wasm） | 内核说隔离属于 embedder，可行但要自建 ABI + 沙箱 + 权限 | 留作 M5 扩展点（仅叶子能力） |
+| D. WASM 运行时 | 包编译成 wasm，host 用 wasmtime 加载 | 否 | ✅（宿主持 wasm） | 内核说隔离属于 embedder，可行但要自建 ABI + 沙箱 + 权限 | 留作后续扩展点（ADR-013，非本期；仅叶子能力） |
 
 选 A 的核心理由：它把"可替换"变成**编译期可证明的属性**，而不是运行时约定。具体到三条收益：
 
@@ -42,14 +42,16 @@ feature 仍有一个合法用途：**单个包内部**的可选依赖裁剪（�
 
 ## 3. 组合输入：edition × profile × channel 叠层
 
-`editions/*.toml` 定义包集合（含 `exclude`），`profiles/*.toml` 只做环境覆盖，`channel` 定品牌/默认值；业务源码里不出现包名。
+`editions/*.toml` 定义 targets 与**基线角色映射**（`[packages]`，含 `exclude`），`profiles/*.toml` 只做环境覆盖
+（覆盖 singleton / `[packages.add]`/`[packages.remove]` 增删 multi / `[settings]`），`channel` 定品牌/默认值，
+深度 OEM 可追加/覆盖包；业务源码里不出现包名。
 
 v3 的组合输入是**三层叠加**，不是单一文件：
 
 ```text
-edition（企业版/个人版：包含哪些包、产物形态、许可；enterprise 继承 personal + exclude）
-  └─ profile（环境：default/mock/minimal/ci-matrix；覆盖角色/设置）
-       └─ channel（official / beta / oem-<customer>：品牌/文案/默认值/服务器地址；可带额外包）
+edition（企业版/个人版：targets + 基线包集合 + exclude；enterprise 继承 personal + exclude）
+  └─ profile（环境：default/mock/minimal/ci-matrix；覆盖 singleton/增删 multi/设置）
+       └─ channel（official / beta / oem-<customer>：品牌/文案/默认值/服务器地址；深度 OEM 可追加/覆盖包）
 ```
 
 ```toml
@@ -58,79 +60,115 @@ edition（企业版/个人版：包含哪些包、产物形态、许可；enterp
 name    = "personal"
 targets = ["desktop"]
 
+[packages]
+# 基线角色映射（角色 → 包 id）；profile 只做环境覆盖，不重抄整表。
+# 本示例只列主要角色；完整 personal 基线 = 24 §1.5 中 editions 含 personal 的全部角色（T2 冻结）。
+"platform.shell"        = "zeokeel/platform-tauri"
+"platform.ipc"          = "zeokeel/platform-tauri"        # 同一平台包用 [[roles]] 提供两个角色
+"platform.http"         = "zeokeel/host-webserver"        # 指定了才有 serve 载体
+"ui.shell"              = "zeokeel/ui-shell"
+"ui.shell-kit"          = "zeokeel/ui-shell-kit"
+"ui.transport"          = "zeokeel/transport-tauri"
+"agent.loop"            = "zeokeel/agent-loop"
+"store.session"         = "zeokeel/store-session-sqlite"
+"store.settings"        = "zeokeel/store-settings"
+"tool.fs"               = "zeokeel/tool-fs"
+"tool.shell"            = "zeokeel/tool-shell"
+"tool.web"              = "zeokeel/tool-web"
+"llm.provider.default"  = "zeokeel/llm-openai-compat"     # 个人版：本地自配 provider
+"client.update"         = "zeokeel/client-update-github"  # 个人版：GitHub Releases
+"host.fs-access"        = "zeokeel/host-fs"
+"host.process"          = "zeokeel/host-process"
+"host.net"              = "zeokeel/host-net"
+"host.secrets"          = "zeokeel/host-secrets"
+"host.tasks"            = "zeokeel/runtime-cordis"        # runtime 包以 [[roles]] 同时提供
+"host.clock"            = "zeokeel/runtime-cordis"
+"host.config"           = "zeokeel/runtime-cordis"
+"theme.tokens"          = "zeokeel/ui-theme-default"
+"brand.mark"            = "zeokeel/brand-official"
+"i18n.default"          = "zeokeel/ui-i18n-zh"            # 多语言包由 M1 清单按 multi 角色补充
+
+# multi 角色：数组顺序即渲染/激活顺序；示例含 personal-only 包，便于 enterprise exclude 命中
+"ui.slot.settings.section" = ["zeokeel/ui-settings-general", "zeokeel/ui-settings-models", "zeokeel/client-provider-settings"]
+"ui.slot.onboarding"       = ["zeokeel/client-onboarding-personal"]
+
 # editions/enterprise.toml —— 个人版 + 企业管控包
 [edition]
 name         = "enterprise"
 base_edition = "personal"                    # 继承个人版包集合
 targets      = ["server", "desktop", "admin"] # 追加服务端/管理台
-exclude      = ["zeokeel/client-provider-settings", "zeokeel/client-update-github", "zeokeel/client-onboarding-personal"]  # 排除个人版专属包
+exclude      = ["zeokeel/client-provider-settings", "zeokeel/client-update-github", "zeokeel/client-onboarding-personal"]  # 排除个人版专属包（都必须命中 base 闭包）
 
 [packages]
-# 追加企业管控包（示例）：登录、网关、商店客户端、服务端域
+# 追加企业管控包（示例）：登录、网关、商店客户端、服务端域；覆盖两个角色。
 "auth.client"           = "zeokeel/client-auth"
 "llm.provider.default"  = "zeokeel/llm-gateway"            # 覆盖个人版本地 provider
 "client.update"         = "zeokeel/client-update-server"   # 覆盖 GitHub Releases
 "srv.auth.source"       = "zeokeel/srv-auth-local"
+"srv.users"             = "zeokeel/srv-users"
 "srv.wallet"            = "zeokeel/srv-wallet"
 "srv.gateway"           = "zeokeel/srv-gateway"
 "srv.skills"            = "zeokeel/srv-skills"
 
 # 约束：企业版不得复制客户端基线；必须能表示为 (personal − exclude) + 追加/覆盖。
-# CI 用 `zk plan --edition enterprise` 断言：
+# CI 用 `zk plan --edition enterprise --profile default --channel official` 断言：
 #   ① 除被覆盖角色外，个人版包集合 ⊆ 企业版闭包；
 #   ② 企业版闭包不包含任何 personal-only 包（provider 设置 UI、GitHub 更新器等）。
 
-# profiles/default.toml
+# profiles/default.toml —— 只做环境覆盖（不重抄角色映射）
 [profile]
 name  = "default"
 base  = "base"
 
-[packages]
-# 角色 = 包 id（角色映射唯一表；channel 追加/覆盖仍走同一套校验）。singleton 角色恰好一项；multi 角色写数组。
-"platform.shell"       = "zeokeel/platform-tauri"
-"platform.http"        = "zeokeel/host-webserver"      # 指定了才有 serve 载体
-"ui.shell"             = "zeokeel/ui-shell"
-"ui.transport"         = "zeokeel/transport-tauri"
-"agent.loop"           = "zeokeel/agent-loop"
-"store.session"        = "zeokeel/store-session-sqlite"
-"tool.fs"              = "zeokeel/tool-fs"
-"tool.shell"           = "zeokeel/tool-shell"
-"tool.web"             = "zeokeel/tool-web"
-
-# multi 角色用数组；顺序即渲染/激活顺序
-"ui.slot.settings.section" = [
-  "zeokeel/ui-settings-general",
-  "zeokeel/ui-settings-models",
-]
-
 [settings]
 # 与包无关的产品级设置；包内设置由包的 [config].schema 约束
 theme = "auto"
+
+# profiles/mock.toml —— 覆盖 singleton / 替换测试实现（示例）
+[profile]
+name = "mock"
+base = "default"
+
+[packages]
+"llm.provider.default" = "zeokeel/llm-mock"
+"host.fs-access"       = "zeokeel/host-fs-memory"
+
+# multi 角色增删（示例）：用 add/remove，不做隐式并集
+[packages.add]
+"ui.slot.settings.section" = ["zeokeel/ui-settings-about"]
+
+[packages.remove]
+"ui.slot.settings.section" = ["zeokeel/ui-settings-models"]
 ```
 
 规则：
 
-1. **`edition`/`profile` 的 `[packages]` 是唯一角色映射表**：角色→包 id，singleton 一项、multi 数组；同一 singleton 出现两次 = 错误。
-   UI 角色、平台角色、transport 角色都在同一张表里（facet 原子替换，见 ADR-011）。
-   `channel` 只能注入品牌/默认值，或按 deep-OEM 声明**追加/覆盖**包；channel 的包仍走同一角色/契约校验，不得绕过。
+1. **edition 的 `[packages]` 是基线角色映射**（继承链上的合并结果）；profile 只做环境覆盖：
+   覆盖 singleton、`[packages.add]`/`[packages.remove]` 增删 multi、`[settings]`；channel 只注入品牌/默认值，
+   深度 OEM 可按同一机制追加/覆盖包。所有 `[packages]` 角色→包 id 仍走同一套校验。
 2. **profile 里不写版本、不写路径**：版本/源/哈希一律由 `zk.lock` 解析（§5）。
-3. **没有 `[overrides]` 之类的第二组合通道**：换包就是改 `[packages]`；CI 的换包矩阵也是生成一份
-   完整 profile（或同一 profile 的临时副本），不引入旁路语义。
-4. `base` 继承只允许**单链**（`default → base`），不做多继承。
+3. **没有 `[overrides]` 之类的第二组合通道**：换包就是改对应层的 `[packages]`；multi 增删必须显式
+   （`[packages.add]`/`[packages.remove]`），不允许隐式并集（`24` §1.1）。
+4. `base` 继承只允许**单链**（edition 的 `base_edition`、profile 的 `base`），不做多继承。
 5. profile 不允许写"启用/禁用某段业务代码"——那说明该能力还没包化。
+6. 同一层重复声明同一 singleton 角色 = 错误；`exclude` 只作用于继承的 base，值必须是**包 id** 且必须命中
+   被继承的闭包，否则报错（`24` §1.1）。
+7. **multi 角色**：不在 `[packages]` 内单点覆盖；增删用 `[packages.add]`/`[packages.remove]`，
+   remove 未命中 / add 已存在 / 同键同时 add+remove = 错误；顺序规则见 `24` §1.4。
 
 典型 profile 集合：
 
 | profile | 用途 | 差异 |
 | --- | --- | --- |
-| `base` | 公共底座 | 契约、runtime、host 能力 |
+| `base` | 公共默认设置层 | 不定义包集合（包集合在 edition）；只放默认设置 |
 | `default` | 生产桌面 | 真实 provider、真实存储、真实 fs |
 | `mock` | e2e / 离线 | 确定性 LLM、内存存储、假 fs、假时钟 |
 | `minimal` | 最小可启动 | 只有 chat + fs，用于证明"裁剪不崩" |
 | `hardened` | 安全模式 | `tool-fs-sandboxed`、`tool-shell-restricted`、审批强制 |
 | `ci-matrix` | CI 矩阵 | 各 edition × channel × 关键变体组合 |
-| `oem-<vendor>` | 白标 | 换 brand/theme/default provider（channel 层） |
 | `nightly` | 实验 | 包含 `stability = "experimental"` 的包 |
+
+> **OEM 是 channel 层，不是 profile**（`24` §1）；不要新增 `oem-<vendor>` profile。
 
 ## 4. `zk` CLI：解析器 + 生成器 + 校验器
 
@@ -142,15 +180,23 @@ theme = "auto"
 | `zk compose --edition E --profile X --channel C` | 生成所有粘合产物（§5） | 构建前置 |
 | `zk compose ... --check` | 不写文件，断言生成物无漂移 | PR 必跑（防手改生成物） |
 | `zk verify-lock` | 断言 CI 内重解析结果与 `zk.lock` 一致 | 变体构建 |
-| `zk db lock` | 重新计算迁移内容哈希（只允许新增） | 迁移变更 |
-| `zk api` | 生成 api-catalog/openapi/权限矩阵 | 契约变更 |
+| `zk db lock` / `zk db lock --check` | 分配/更新迁移哈希（只允许新增）/ 只校验不写 | 迁移变更 / PR 漂移 |
+| `zk api` / `zk api --check` | 生成 api-catalog/openapi/权限矩阵 / 只校验 | 契约变更 |
+| `zk docs` / `zk docs --check` | 生成 `docs/generated/*.md` / 只校验 | PR 漂移 |
+| `zk lint` | 包静态检查（依赖白名单/IO/线程/全局状态/公共 API） | PR |
+| `zk init [--edition E]` | 初始化/补全 workspace 骨架（一次性） | scaffold / 新人 |
+| `zk vendor [--all-profiles]` | 生成全 profile 并集 vendor + source replace | 离线构建 |
+| `zk db reset` | 开发期重置本地库（生产禁用） | 本地 |
+| `zk channel validate --index <dir> --all` / `zk channel verify --channel C --dist` | 渠道形状/素材/白标校验 | OEM CI |
+| `zk brand <check\|diff> --channel C` | 品牌资产/残留检查 | OEM CI |
+| `zk version check` | tag / 清单 / 产物 VERSION 一致性 | 发布 |
 | `zk oem add <customer>` | 在索引仓登记客户并挂 submodule（需私有仓权限） | OEM 接入 |
 | `zk plan --edition E --profile X --channel C` | 输出将编译的包、角色、预计产物 | 评审/诊断 |
 | `zk explain <role>` | 该角色所有候选实现、契约、被谁 require | 替换时查 |
-| `zk diff --edition A --profile X --edition B --profile Y` | 两个组合的差异（包集合、生成物 diff 摘要） | 矩阵报告 |
+| `zk diff --from <E:P:C> --to <E:P:C>` | 两个组合的差异（包集合、生成物 diff 摘要） | 矩阵报告 |
 | `zk why <package>` | 哪个角色/依赖把它拉进来 | 依赖排查 |
-| `zk lock --profile X` | 更新 `zk.lock`（解析版本/源/哈希） | 发布 |
-| `zk sbom --profile X` | 输出 SBOM（cargo + npm 汇总） | 发布合规 |
+| `zk lock --edition E --profile X --channel C` | 更新 `zk.lock`（解析版本/源/哈希） | 发布 |
+| `zk sbom --edition E --profile X --channel C` | 输出 SBOM（cargo + npm 汇总） | 发布合规 |
 | `zk doctor` | 环境/工具链/网络/锁文件自检 | 新人与 CI |
 
 解析算法（`compose`）：
@@ -163,8 +209,9 @@ theme = "auto"
 5 契约唯一性（fail closed）：cargo metadata 断言每个契约 crate 只有**一个 package id**
   （name+version+source 三元组），且等于根 [patch] 指定的那一份；
   拿不到 cargo metadata 直接报错，不降级（降级会漏掉同名副本，见 research/review-plan.md §6）
-6 生成：apps/desktop/src/generated + apps/server/src/generated + apps/admin/web/src/generated
-        + shared/contracts/*（zk api 生成）+ shared/ts/*（ts-rs 生成）+ deploy 生成段 + docs 索引
+6 生成：crates/zk-composed + apps/desktop/web/src/generated + apps/server/src/generated
+        + apps/admin/web/src/generated + shared/contracts/*（zk api/zk compose 按 24 §3 分工）
+        + shared/ts/*（ts-rs 生成）+ deploy 生成段 + docs/generated（zk docs）
 7 写/校验 zk.lock（含 edition/profile/oem 三层输入哈希）
 ```
 
@@ -221,7 +268,7 @@ pub async fn register_all(reg: &mut dyn Registrar) -> Result<StartupReport, Star
 - **没有"整体回滚"**：内核只保证**单 fiber** 激活事务自回滚，多 key 原子替换做不到。启动失败策略是：
   `required=true` 的包失败 → 由 bootstrap `dispose_all()` 后进入诊断页并退出；`required=false` 的包失败
   → 记录 degraded，依赖它的角色在运行期显示为不可用（`inject` 门控会让依赖方不激活）。
-- 产品二进制只链接被选中的包（`cargo build -p desktop`）；`cargo test --workspace` 仍编译所有包，
+- 产品二进制只链接被选中的包（`cargo build -p zk-desktop`）；`cargo test --workspace` 仍编译所有包，
   这正是 T1/T2 分级存在的原因。
 - `PACKAGES` 是运行期自省的唯一权威（诊断面板、`zk explain`、崩溃报告）；**包 id 由宿主维护**，
   cordis 的 `PluginKey`（Named/TypeId）不能当包身份（TypeId 跨构建不稳定）。
@@ -273,6 +320,9 @@ export const registry: Record<string, ComponentType> = { ...c0, ...c1 };
 - `roles.json`：角色 → 包 → 契约 → 基数。
 - `packages.json`：包清单（版本、kind、facet、稳定级别）。
 
+writer 分工（唯一清单见 `24` §3）：`api-catalog/http-routes/openapi/permissions/errors` 由 `zk api`；
+`ipc-commands/ui-contributions/ui-slots/roles/packages/i18n-catalog` 与 `i18n.gen.ts` 由 `zk compose`。
+
 ### 5.4 TS 类型
 
 `ts-rs` 从契约 DTO 导出 `.ts`（`cargo test -p zk-contract-* export_bindings`），CI 里
@@ -293,9 +343,9 @@ $ python3 resolve.py hardened && cargo build --offline  # ok，但 Cargo.lock �
 
 | 项 | 策略 |
 | --- | --- |
-| 生成物入库 | **只有 `default` profile**；头部带 `@profile` 标记，CI 断言提交的是 default |
+| 生成物入库 | **只有基线 `personal × default × official`**；头部 `@edition/@profile/@channel`（`24` §1.2/§3），CI 断言提交的是该基线 |
 | Cargo.lock | 入库的是 **default** 的解析结果；`default` job 用 `--locked` |
-| 其他 profile 的构建 | CI 里 `zk compose --profile X` → `cargo build --offline`（锁文件在 CI 工作区重写，不提交）→ `zk verify-lock --profile X` 断言解析出的包集合/版本与 `zk.lock` 一致 |
+| 其他组合的构建 | CI 里 `zk compose --edition E --profile X --channel C` → `cargo build --offline`（锁文件在 CI 工作区重写，不提交）→ `zk verify-lock --edition E --profile X --channel C` 断言解析出的包集合/版本与 `zk.lock` 一致 |
 | 离线来源 | `zk vendor` 生成**全 profile 并集**的 vendor 目录 + `[source] replace-with`，保证 `--offline` 可解析 |
 | `pnpm-lock.yaml` | `apps/desktop/web/package.json` 的依赖生成成**候选包并集**（不是仅当前 profile），锁文件因此稳定；profile 只改变 registry 的 import |
 | UI 生成物位置 | `apps/desktop/web/src/generated/`（**不是**独立 pnpm workspace 成员，避免 importer 列表随 profile 变化） |
@@ -305,8 +355,8 @@ $ python3 resolve.py hardened && cargo build --offline  # ok，但 Cargo.lock �
 
 ### 5.6 文档索引
 
-`docs/generated/PACKAGE-INDEX.md`（所有包）、`PROFILE-MATRIX.md`（profile × 角色 × 包）、
-`CONTRACT-INDEX.md`。数字一律生成，禁止手写——先例最大的返工来源就是手写计数漂移。
+`docs/generated/PACKAGE-INDEX.md`（所有包）、`PROFILE-MATRIX.md`（edition × profile × channel 闭包）、
+`CONTRACT-INDEX.md`。writer 为 `zk docs`（`24` §3）；数字一律生成，禁止手写——先例最大的返工来源就是手写计数漂移。
 
 ## 6. CI：把"可替换"变成可执行断言
 
@@ -317,14 +367,19 @@ stages: validate → compose → build → test → matrix → package
 
 jobs:
   manifests:        zk validate                       # 含契约唯一性（按 package id/source，fail closed）
-  drift:            zk compose --profile default --check
-                    gen docs --check / ts-rs bindings --check
+  drift:            zk compose --edition personal --profile default --channel official --check
+                    zk api --edition personal --profile default --channel official --check
+                    zk docs --check
+                    zk db lock --check
+                    cargo test --workspace export_bindings && git diff --exit-code
+                    cargo test --workspace export_schema && git diff --exit-code
   rust:             cargo nextest run --workspace --locked   # default 锁
   frontend:         pnpm -r typecheck && pnpm -r test:unit && pnpm build
   contracts:        cargo test -p zk-contract-testkit    # 每个实现的符合性套件
   matrix-os:        strategy: matrix.os = [ubuntu, macos, windows]   # M0 起就跑 cargo check
-  matrix:           strategy: matrix.profile = [default, mock, minimal, hardened, oem-demo]
-                    per profile: compose → cargo build --offline → zk verify-lock
+  matrix:           strategy: matrix.profile = [default, mock, minimal, hardened]
+                    strategy: matrix.channel = [official, beta, oem-demo]
+                    per profile/channel: compose → cargo build --offline → zk verify-lock
                                  → verify-dist → Playwright(e2e) → 真应用冒烟
   swap:             strategy: matrix.swap = 生成的换包列表（见 6.2）
   external:         vendor/git 源 fixture 构建 + 负向测试（M0 只做 vendor 形态，见 6.5）
@@ -338,7 +393,7 @@ jobs:
 
 ```
 index = zk validate 产出的角色→实现集合
-for role in index.roles where role.swap_required:      # zk.toml 声明；本期 8 个角色
+for role in index.roles where role.swap_required:      # zk.toml 声明；清单由 zk validate 生成，不手写数量
   for impl in index.providers(role) - profile[role]:
      profile' = profile.default with [packages][role] = impl
      jobs += build(profile') + smoke(profile')         # smoke = e2e 最小集 + 启动自检
@@ -351,7 +406,7 @@ for role in index.roles where role.swap_required:      # zk.toml 声明；本期
 
 - PR 只跑受影响子集：改了包 P → 跑"P 参与的每个角色"的换包用例（`zk diff` 可算）。
 - 变体构建用**增量编译**：先构建 default，再仅重编 `zk-composed` + 受影响包（T3 的时间主要花在重链接）。
-- 第一个 sprint 必须实测一次 T0–T3 基线，数字进看板；预算不是愿望，是门禁。
+- M0 第一个 sprint 必须实测一次 T0–T3 基线，数字进看板；预算不是愿望，是门禁。
 - 每个 profile 的冒烟集固定：启动自检（所有 required 服务就位）+ 一轮 mock LLM 对话
   （流式 + 工具调用）+ 设置打开 + 会话落库/重开。
 - 超预算等价于机制失败，要优化（缓存/并行/子集），而不是接受。
@@ -367,7 +422,7 @@ unexpected: 其他包出现在 diff 中 → 说明有包越界依赖了具体实
 
 这条比"能编译"更严格：它能发现"换 A 却意外把 B 也换进来了"这类组合泄漏。
 
-### 6.4 负向测试（必须失败才算通过）
+### 6.4 负向测试（必须失败才算通过；M0 验收的唯一清单，`12` 引用本节）
 
 | 用例 | 期望 |
 | --- | --- |
@@ -394,9 +449,8 @@ unexpected: 其他包出现在 diff 中 → 说明有包越界依赖了具体实
    registry（需公开契约版本）。
 3. **接入门禁**（全部自动化）：`zk validate` → 契约身份唯一 → conformance 套件 → 换包矩阵 T2/T3 →
    许可证/供应链审计 → 生成物 diff 最小性。
-4. **M0 只承诺 vendor 形态**：真正的"仓库外 git 源"需要第 1 步落地。M0 安排 **2 天 spike** 验证
-   "发布 + patch 单实例"；若不可行，退回"契约以 git rev 提供，外部包必须用同一 rev"，并把结论写入
-   ADR-016。
+4. **契约发布 + `[patch]` 单实例由 S0-P1 spike 验证**（ADR-016 明写 M0 前需该结论）；M0 只承诺 vendor 形态。
+   若不可行，退回"契约以 git rev 提供，外部包必须用同一 rev"，并把结论写入 ADR-016。
 
 **信任边界是构建输入**（源码 + 锁定依赖 + 评审），不是运行时 manifest 标记；也不承诺插件沙箱。
 
@@ -409,7 +463,7 @@ profile 的 `cordis.patch.yml` → `$DSH_HOME/cordis.patch.yml` → `--patch` ov
 
 | 机制 | DSH（运行时组合） | ZeoKeel（构建期组合） | 说明 |
 | --- | --- | --- | --- |
-| 组合单位 | npm 包（本机 305 个） | Cargo crate + 可选 npm facet | 数量级预期 45–70 |
+| 组合单位 | npm 包（本机 305 个） | Cargo crate + 可选 npm facet | 数量级估算 45–70（正式数字由 `zk plan` 生成） |
 | 组合描述 | bundle 列表 + 多层 patch YAML | `profiles/*.toml`（单链 base 继承） | 语义相近，时机不同 |
 | 装配 | Node ESM resolver 按包名 `import` | `zk compose` 生成 `register_all` | **最不可移植的一层** |
 | 换实现 | `disabled: true` 旧行 + `insert` 新行（或换 bundle） | 改 profile 的角色映射 + 重建 | ADR-001 |

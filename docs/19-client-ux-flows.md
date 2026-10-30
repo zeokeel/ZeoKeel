@@ -24,15 +24,15 @@ Boot
 | --- | --- | --- |
 | `CLIENT_TOO_OLD` / 426 | `ui.gate.update` | 下载更新、重试、查看版本说明；不进入聊天 |
 | 账号禁用/令牌撤销 | `ui.gate.account` | 重新登录、联系管理员、导出本地数据 |
-| 服务端维护中 | `ui.gate.maintenance` | 重试、查看公告；本地 agent 是否可用由服务端标志决定 |
+| 服务端维护中 | `ui.gate.maintenance` | 重试、查看公告；维护页只拦截服务端依赖功能，本地 agent 可用性待定（见 [15 §C](15-open-questions.md#c-待定清单)） |
 | 渠道/版本不匹配 | `ui.gate.channel` | 仅显示错误与支持信息，不提供"手动下载"（防串渠道） |
 | 包启动失败 | `ui.diagnostics` | 查看包 id/错误链/日志导出/重启 |
 
-## 2. 页面 / 槽位 / 包归属（必须冻结）
+## 2. 页面 / 槽位 / 状态（冻结）；归属包 id 示意（T2 冻结）
 
-| 页面 | 页面/包 id（非 slotId） | 归属包（建议） | 必测状态 |
+| 页面 | slotId | 归属包（示意） | 必测状态 |
 | --- | --- | --- | --- |
-| 启动/加载 | `app.boot` | `client-shell` | loading、包失败、超时 |
+| 启动/加载 | `app.boot`（页面 id，非 slotId） | T2 冻结（shell 提供） | loading、包失败、超时 |
 | 个人版引导 | `ui.onboarding` | `client-onboarding-personal` | 首次、已配置、key 无效、网络不通 |
 | 登录 | `ui.login` | `client-auth` | 空、加载、错误、锁定、强制改密、OEM 地址锁定 |
 | 首配服务端地址（官方企业版） | `ui.first-run` | `client-auth` | 地址非法、不可达、证书错误、保存成功 |
@@ -44,12 +44,17 @@ Boot
 | 设置 | `ui.settings` | `ui-settings` | 保存中、失败、需重启、需重登 |
 | 更新 | `ui.update` | `client-update` | 检查中/有新版/下载/校验/安装/重启/失败/回滚 |
 | 诊断 | `ui.diagnostics` | `client-diagnostics` | 包清单、错误链、日志导出、重启 |
-| 技能/连接器 | `ui.skills`/`ui.connectors` | 对应 client 包 | 空/加载/错误/无权限/离线/已禁用 |
-| 应用（仅企业版） | `ui.apps` | `client-apps` | 空/加载/错误/无权限/离线/已禁用 |
+| 技能/连接器 | `ui.skills`/`ui.connectors` | `client-skill`/`client-connector` | 空/加载/错误/无权限/离线/已禁用 |
+| 应用（仅企业版） | `ui.apps` | `client-wasm-host` | 空/加载/错误/无权限/离线/已禁用 |
+| 更新门禁 | `ui.gate.update` | `client-update` | 426/强制更新、下载、回滚 |
+| 账号门禁 | `ui.gate.account` | `client-auth` | 禁用/撤销、重登、导出 |
+| 维护门禁 | `ui.gate.maintenance` | `ui-shell` | 维护、重试、离线、公告 |
+| 渠道门禁 | `ui.gate.channel` | `ui-shell` | 渠道/版本不匹配、无手动下载 |
 
 规则：
 
-- `slotId` 由 `16` §3 的 `SLOT_DEFS` 冻结，本节不重复枚举；下表第二列是页面/包 id，不是 slot。
+- `slotId` 由 `16` §3 的 `SLOT_DEFS` 冻结，本节不重复枚举；第二列是 slotId（`16` §3），`app.boot` 是页面 id 例外。
+- 归属包 id 为示意（T2 冻结）；本表冻结页面、slotId 与必测状态。
 - 页面只能通过 `slotId` 注册；shell 不 import 具体页面组件。
 - `client-auth` 在企业版必选、个人版排除；`client-onboarding-personal` 反之。
 - 每个 `ui.gate.*` 必须有 fallback 文案与"下一步"动作；不允许白屏。
@@ -103,9 +108,8 @@ Boot
 
 ## 5. 更新 UX 状态机（按 edition 分）
 
-- 企业版：- 企业版：`idle → checking → up-to-date | available → downloading → verifying → ready → installing → restart-required → done | failed → rolled-back`
+- 企业版：`idle → checking → up-to-date | available → downloading → verifying → ready → installing → restart-required → done | failed → rolled-back`
 - 个人版：`idle → checking → up-to-date | available → 提示 + 打开 GitHub Releases 下载页`（不内置静默安装）
-- 个人版：`idle → checking → up-to-date | available → 提示 + 打开 GitHub Releases 下载页`（不内置静默安装）。
 
 - 检查失败：静默重试一次，再显示"稍后重试"，不阻塞使用（强制更新除外）。
 - 下载支持断点续传；校验失败自动重下（最多一次）→ 报错。
@@ -127,7 +131,7 @@ Boot
 
 | 窗口类 | capability | 允许命令 |
 | --- | --- | --- |
-| 主窗口 | `main` | `ipc_call`（总入口）、updater、window、dialog、store 的最小集 |
+| 主窗口 | `main` | `ipc_call`（总入口）、updater、window、dialog、store、open_url 的最小集 |
 | WASM 应用窗口（可多实例） | `app` | **只允许** `app_request`；禁止 `ipc_call`/shell/fs/http |
 | 登录/门禁 | `auth` | `auth_*`、`open_url`；禁止 agent 命令 |
 
@@ -160,6 +164,8 @@ Boot
 - 错误上报默认关（企业可配），不含 prompt/completion/文件内容。
 
 ## 10. 验收清单（M1/M2 退出条件）
+
+可执行命令与证据路径见 `11` §2/§4/§5/§8.4；本清单是业务断言。
 
 - [ ] 个人版：首装→配 key→首轮对话→工具→审批→重启恢复→更新回滚，全流程 e2e。
 - [ ] 企业版 OEM：免填地址登录→bootstrap→对话→强制更新→回滚，全流程 e2e。

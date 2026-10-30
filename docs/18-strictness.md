@@ -134,8 +134,8 @@ as_conversions = "deny"
 - FFI/WASM 导入的例外只能来自：① **自动生成绑定**（`@generated` 文件，生成器负责，单独审计）；
   ② 独立 `*_sys` crate（**不属于 workspace 产品 crate**，放 `vendor/` 或独立仓；必须最小、锁定、审计并在 ADR 登记）。业务/UI/服务端代码不允许出现 unsafe。
 - 第三方依赖内的 unsafe 通过锁定版本 + `cargo-geiger` + `cargo-deny` 管理；**不接受为了性能/方便的例外**。
-- 若要求"连生成绑定/依赖也零 unsafe"，则 Rust WASM guest 无法调用宿主函数（Rust FFI 语义要求 unsafe），
-  只能改用纯 WASI（文件/管道）通信或放弃 Rust guest——需要产品决策。
+- 生成绑定/依赖的 unsafe 边界已决（ADR-040 / `AGENTS.md` C9b）：只允许**自动生成绑定**与独立 `*_sys` crate，
+  禁止手写 unsafe；**不要求**"依赖树零 unsafe"（否则等于放弃 WASM 运行时/桌面壳）。
 - release 保持 `panic = "unwind"`（cordis 要求）+ `overflow-checks = true`（已定）。
 - 数值：金额/计数用 `checked_*`/`saturating_*`；禁止裸 `+ - *`（`arithmetic_side_effects`）；
   索引用 `.get()`（`indexing_slicing`）；整数转换用 `TryFrom`（`as_conversions`）。
@@ -185,8 +185,12 @@ cargo machete              # 未使用依赖
 cargo public-api diff      # 契约包
 
 # 生成物
-zk compose --check && zk db lock && git diff --exit-code && zk api --check
-ts-rs bindings --check && schemars --check
+zk compose --edition personal --profile default --channel official --check
+zk api --edition personal --profile default --channel official --check
+zk docs --check
+zk db lock --check
+cargo test --workspace export_bindings && git diff --exit-code
+cargo test --workspace export_schema && git diff --exit-code
 ```
 
 ## 8. 例外政策

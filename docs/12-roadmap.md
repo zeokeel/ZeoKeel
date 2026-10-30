@@ -1,14 +1,14 @@
 # 12 · 路线图（S0 + M0–M6）
 
 > 排期按 1 名熟悉 Rust + 前端的工程师全职估算；2–3 人并行可压缩约 30–40%。
-> 每个退出条件都是**可执行断言**，不是"感觉做完了"。
+> M0–M6 的退出条件是**可执行断言**，不是"感觉做完了"；S0 是 spike，退出物 = ADR 结论 + 可重跑命令 + 证据路径。
 > 范围：个人版 → 企业版核心 → 内容平台 → 应用中心 → OEM/交付 → 加固。
 
 ## 总览
 
 | 阶段 | 主题 | 人周 | 关键产物 | 阻塞 |
 | --- | --- | --- | --- | --- |
-| **S0** | 6 个前置 spike | 2 | 6 条 ADR + T0–T5 基线 | — |
+| **S0** | 6 个前置 spike | 2 | 6 条 ADR + 命令/证据；基线在 M0 实测 | — |
 | **M0** | 骨架与机制 | 3 | `zk` 双端组合、两端可启动、CI 骨架 | S0 |
 | **M1** | 个人版 MVP | 6 | 纯客户端：对话/工具/审批/本地存储/自配 provider/三平台安装包 | M0 |
 | **M2** | 企业版 = 个人版 + 企业管控包 | 6 | 在 M1 客户端上追加：登录/JWT、网关 provider、商店客户端、服务端（认证/钱包/网关/商店/审计）、管理台核心、docker | M1 |
@@ -20,7 +20,7 @@
 合计约 35 人周；**关键路径** S0 → M0 → M1（个人版客户端）→ M2。**客户端优先**：M1 是第一个可交付产品，
 服务端只做认证/网关/钱包配套；WASM 应用中心（M4）后置，不阻塞客户端。
 
-**S0 进度**：P2（WASM 运行时/帧 ABI/宿主 DB/限额）原型已完成，见 `experiments/wasm-poc`；
+**S0 进度**：P2（WASM 运行时/帧 ABI/宿主 DB/限额）原型已完成（证据未归档，M0 前补跑并存 `target/evidence/`），见 `experiments/wasm-poc`；
 P1（双 app 组合）、P3（认证+JWT）、P4（OEM submodule CI）、P5（迁移不可变）、P6（管理台包化）待做。
 
 ---
@@ -32,13 +32,13 @@ P1（双 app 组合）、P3（认证+JWT）、P4（OEM submodule CI）、P5（�
 | # | spike | 验什么 | 退路 |
 | --- | --- | --- | --- |
 | P1 | 双 app 组合 | 同一 workspace 下 client/server 两个 app 各自组合、共享契约、单实例 | 退回两个 workspace + 契约发布 |
-| P2 | WASM 运行时 + 语言集 + 每应用 DB | **✅ 原型已完成**（`experiments/wasm-poc`）：wasmtime 50 + Go/Rust wasip1、`RS<len>\n<JSON>` 帧、`db.exec/db.query` 宿主函数、SQLite 持久、fuel 限额、golden conformance；剩余：墙钟超时/内存上限/SQL 闸门/并发配额（M4 补） | 已通过；M4 先 Go 打通，GA 前加 Rust |
+| P2 | WASM 运行时 + 语言集 + 每应用 DB | **✅ 原型完成（证据待归档）**（`experiments/wasm-poc`）：wasmtime 50 + Go/Rust wasip1、`RS<len>\n<JSON>` 帧、`db.exec/db.query` 宿主函数、SQLite 持久、fuel 限额、golden conformance；剩余：墙钟超时/内存上限/SQL 闸门/并发配额（M4 补） | 已通过；M4 先 Go 打通，GA 前加 Rust |
 | P3 | 认证 + JWT | 本地/OIDC/LDAP 三实现同一契约；JWT access/refresh/吊销 | 退回不透明 token（参考实现） |
 | P4 | OEM submodule CI | 私有索引仓 + submodule pin + deploy key + 渠道构建 | 退回纯引用列表（zk 拉取） |
 | P5 | 迁移不可变 | 内容哈希 + 启动校验 + 前向修复流程 | 退回只读校验（无自动） |
 | P6 | 管理台包化 | admin UI 包 + 内嵌二进制 + 权限矩阵生成 | 退回单一 SPA（先不分包） |
 
-同时标定 T0–T5 基线耗时。
+每个 spike 的退出物 = **ADR 结论 + 可重跑命令 + 证据路径**（`11` §5）；S0 只做机制验证，T0–T5 基线在 M0 骨架实测（`11` §1）。
 
 ---
 
@@ -46,18 +46,20 @@ P1（双 app 组合）、P3（认证+JWT）、P4（OEM submodule CI）、P5（�
 
 **交付物**
 
-1. 单一 workspace + 工具链（1.97.1+、clippy、nextest、pnpm）、`.gitattributes`、`zk.toml`。
-2. `zk` v0：`validate` / `compose` / `compose --check` / `plan` / `db lock`；支持 edition/profile/OEM 叠加。
-3. 契约最小集：package / kernel（Registrar/Config/Tasks/Clock）/ tool / api（错误/分页/版本）。
+1. 单一 workspace + 工具链（1.99.1、clippy、nextest、pnpm）、`.gitattributes`、根 `zk.toml`（`24` §2.1）。
+2. `zk` v0：`validate` / `compose` / `compose --check` / `plan` / `api` / `docs` / `db lock`（含 `--check`）；支持 edition/profile/channel 叠加。
+3. 契约最小集：package / kernel（Registrar/Config/Tasks/Clock）/ tool（`02` §5；`api` 契约在 M1 加入，M0 的 api-catalog 由 manifest `[[routes]]` 生成）。
 4. 两端骨架：`apps/desktop`（Tauri 空壳 + UI registry）+ `apps/server`（axum + /healthz + 管理台空壳）。
 5. 生成物：两端 glue、api-catalog、迁移清单；负向测试 7 条。
 6. CI 骨架：三平台 `cargo check`、validate/drift、单包测试。
 
 **退出条件**
 
-- [ ] `zk compose --edition personal` 与 `--edition enterprise` 都能产出可编译的两端 glue。
+- [ ] `zk compose --edition personal --profile default --channel official` 产出可编译的 desktop glue；`--edition enterprise`（同参数）产出 desktop+server+admin glue。
 - [ ] 客户端可启动并渲染一个来自包注册表的组件；服务端可启动并返回 `/healthz`。
-- [ ] 7 条负向测试全红（缺角色/重复 singleton/契约两个 id/第三方私有契约副本/手改生成物/UI 闭包缺失/权限未声明）。
+- [ ] 7 条负向测试全红（唯一清单见 `03` §6.4）。
+- [ ] 路由/命令静态表与运行期注册不一致时拒启；迁移重复/改历史/顺序漂移均红（`24` §9 M0 清单）。
+- [ ] 完整 M0 验收另见 `24` §9（M0 部分）。
 - [ ] CI 热缓存下 T0+T1 < 10 min（实测记录）。
 
 ---
@@ -66,13 +68,13 @@ P1（双 app 组合）、P3（认证+JWT）、P4（OEM submodule CI）、P5（�
 
 **目标**：个人用户下载安装包，自配 key，能完成真实任务。
 
-**交付物（约 14 包）**
+**交付物（包清单由 `zk plan` 派生，不在文档手写数量）**
 
 - 客户端壳（Tauri）、UI shell/chat/composer/settings、本地化与主题；
-- 本地 agent-loop（自研状态机，rig-core 只做模型调用）、工具 fs/shell/todo、审批、会话存储（SQLite/JSONL）；
+- 本地 agent-loop（自研状态机，rig-core 只做模型调用）、工具 fs/shell/todo、审批、会话存储（SQLite WAL 唯一真源；JSONL 仅导入导出，`24` §7）；
 - provider：DeepSeek / OpenAI 兼容 / Ollama（自配 key，系统密钥库）；
 - 本地技能目录、本地 MCP（可选，若时间允许）；
-- 三平台安装包（**Windows 不签名**，v3.1 决策）、**GitHub Releases** 更新源。
+- 三平台安装包（**Windows 不签名**，ADR-033）、**GitHub Releases** 更新源。
 
 **退出条件**
 
@@ -88,14 +90,14 @@ P1（双 app 组合）、P3（认证+JWT）、P4（OEM submodule CI）、P5（�
 **目标**：在 M1 个人版客户端之上叠加企业管控包：一套 docker 部署起来，员工登录即用，AI 走网关并扣费。
 **不重做客户端基线**：`(personal − 个人专属包) + 企业包 + 覆盖 provider/更新源角色`（`exclude` 本地 provider 设置 UI、GitHub 更新器）。
 
-**交付物（约 20–30 包，按 `zk plan` 派生）**
+**交付物（包清单由 `zk plan` 派生）**
 
 - 服务端：认证（local/OIDC/LDAP 单一主源 + 应急超管）、JWT+refresh、用户（无部门）、钱包（余额/月发放/充值）、
   网关（**仅 `/v1/responses`** + 流式 + 工具调用；上游 OpenAI 兼容）、计量结算、审计基础、系统配置；
   **目录下发**（模型目录、商店目录、更新通道）——只下发内容，不下发工具/网络/审批策略；
 - 客户端：登录/刷新、bootstrap 配置下发、网关 provider（不可自配）、未登录态处理；
 - 管理台：登录、用户/角色、provider 与峰谷价、用量、系统配置；
-- 部署：多阶段 Dockerfile + compose + Caddy + 门户 + 客户端安装包内嵌；`.env` 四项；备份/恢复脚本。
+- 部署：多阶段 Dockerfile + compose + Caddy + 门户 + 客户端安装包内嵌；`.env`（键见 `06` §5）；备份/恢复脚本。
 
 **退出条件**
 
@@ -113,7 +115,7 @@ P1（双 app 组合）、P3（认证+JWT）、P4（OEM submodule CI）、P5（�
 
 **目标**：技能与连接器可管理、可分发、可强制更新。
 
-**交付物（约 12 包）**
+**交付物（包清单由 `zk plan` 派生）**
 
 - 技能中心：zip + SKILL.md 校验（16MB、允许资源、暂不扫描）、上传、审批、归属、转交、可见范围（全员/指定用户）、版本、
   强制更新（sha256 整树）、回滚、配额；
@@ -135,7 +137,7 @@ P1（双 app 组合）、P3（认证+JWT）、P4（OEM submodule CI）、P5（�
 
 **目标**：员工可上传 WASM 小应用（管理员审核/上架），客户端内独立窗口使用。**M4 先用 Go(wasip1) 打通，GA 前加 Rust**（TinyGo 预览）。
 
-**交付物（约 10 包）**
+**交付物（包清单由 `zk plan` 派生）**
 
 - 服务端：Wasmtime LTS embedding + wasip1、`RS<len>\n<JSON>` 帧 ABI、golden frame conformance、每应用 SQLite（限额）、
   App/Release/Deployment 生命周期、
@@ -157,7 +159,7 @@ P1（双 app 组合）、P3（认证+JWT）、P4（OEM submodule CI）、P5（�
 
 **目标**：新增一个白标客户只需建目录/仓 + 跑流水线。
 
-**交付物（约 8 包）**
+**交付物（包清单由 `zk plan` 派生）**
 
 - 渠道/品牌体系：channel id、brand 资源与文案、构建期注入、跨渠道唯一性校验、品牌残留门禁；
   **官方企业版也是渠道**（`official`，server_url 默认空由客户配置），OEM 渠道可预置地址；demo 渠道验证 OEM；
@@ -181,7 +183,7 @@ P1（双 app 组合）、P3（认证+JWT）、P4（OEM submodule CI）、P5（�
 
 - **内部安全评审**（认证/网关/WASM/文件/供应链）+ 自查清单修复；**弱管控风险声明**（工具/网络不限制）写入文档；
 - 备份/恢复演练、故障注入、限流与超时、日志脱敏；
-- i18n（中英，中文优先）、无障碍、键盘导航；
+- i18n/无障碍/键盘导航的**全面审计**（中英，中文优先；页面级从 M1 起持续，见 `19` §6）；
 - 性能预算（启动、首 token、网关延迟、镜像体积、管理台 bundle）；
 - 可复现构建（同版本两次产物哈希）、SBOM、许可证清单；
 - 文档：部署/运维/API/贡献/故障排查；发布 1.0。
@@ -212,5 +214,4 @@ P1（双 app 组合）、P3（认证+JWT）、P4（OEM submodule CI）、P5（�
 **无阻塞性决策**：关键项已全部落定（见 `15-open-questions.md`、`13`）：
 Responses-only、月发放全员/累加或覆盖、峰谷默认 9–18、WASM 语言集 Go+Rust、可见性全员/指定用户。
 
-剩余是**细节配置**而非架构选择（不阻塞 S0/M0）：峰谷时段的具体时段值、技能/应用"指定用户"的选取交互、
-MCP 客户端 OAuth 令牌存放（默认客户端本地）。
+剩余实现细节统一索引 `15` §C（峰谷时段已定默认 9–18 点可按模型覆盖，见 D53；MCP 令牌已定客户端本地）。

@@ -6,40 +6,44 @@
 
 ```text
 ZeoKeel/
-├─ Cargo.toml                 # 单一 workspace：members = ["packages/*/*","apps/*","tools/*"]
+├─ Cargo.toml                 # 单一 workspace：members = ["packages/*/*","apps/*","crates/*","tools/*"]
 │                             #   exclude = ["oem/*","vendor/*","fixtures/*","experiments/*"]
 ├─ Cargo.lock
-├─ rust-toolchain.toml         # ≥1.97.1（rig 0.45 MSRV；edition 2024）
-├─ pnpm-workspace.yaml         # packages: ["apps/*/web","apps/admin/web","packages/*/*/web"]
-├─ package.json                # 根脚本
-├─ zk.toml                     # zk 配置：包扫描根、契约登记、生成路径、OEM 来源
-├─ zk.lock                     # 组合锁（edition/profile × 角色→包/版本/源/哈希）
-├─ editions/                   # enterprise.toml / personal.toml（版本包含哪些包）
+├─ rust-toolchain.toml         # 1.99.1（≥1.97.1 rig MSRV；本机/CI 同版本）
+├─ pnpm-workspace.yaml         # packages: ["apps/*/web","packages/*/*/web"]
+├─ package.json                # 根脚本 + packageManager 固定 pnpm
+├─ zk.toml                     # 组合根清单：scan/roles/contracts/paths（见 24 §2.1）
+├─ zk.lock                     # 组合锁（edition/profile/channel × 角色→包/版本/源/哈希）
+├─ editions/                   # enterprise.toml / personal.toml / personal-only.toml
 ├─ brands/                     # official 渠道品牌资产（logo/文案/安装器文案；OEM 子仓同构）
 ├─ profiles/                   # base/default/mock/minimal/hardened/ci-matrix/...
+├─ crates/                     # 非包 crate：zk-composed（生成 glue）、zk-bootstrap（引导，ADR-009）
 ├─ packages/
 │  ├─ contracts/               # zk-contract-*（trait/DTO/API 契约 + conformance kit）
 │  ├─ runtime/                 # zk-runtime-*（cordis 宿主、config、ipc、http、db、migrate、jobs、obs）
 │  ├─ client/                  # zk-agent-*、zk-tool-*、zk-llm-*、zk-client-*、UI 声明 crate
-│  ├─ server/                  # zk-srv-* 域包 + admin-* 管理台页面包（Rust 声明 crate + web/ facet）
-│  └─ ui/                      # @zeokeel/ui-*/@zeokeel/admin-*：Rust 声明 crate + web/ facet
+│  ├─ server/                  # zk-srv-* 域包 + admin-* 管理台页面/壳包（Rust 声明 crate + web/ facet）
+│  └─ ui/                      # @zeokeel/ui-*：Rust 声明 crate + web/ facet（不含 admin）
 ├─ apps/
-│  ├─ desktop/                 # Tauri 客户端（Cargo.toml 由 zk 生成）
+│  ├─ desktop/                 # Tauri 客户端：web/（前端）+ src/（Rust 入口；Cargo.toml 由 zk 生成）
 │  ├─ server/                  # axum 服务端（Cargo.toml 由 zk 生成）
-│  └─ admin/                   # 管理台 SPA（vite 根；产物内嵌服务端）
+│  └─ admin/web/               # 管理台 SPA（vite 根；产物内嵌服务端）
 ├─ oem/                        # 我们自建 OEM 索引仓的 submodule 挂载（私有；CI 用 deploy key；参考仓不直接使用）
 ├─ deploy/
 │  ├─ docker/                  # Dockerfile（多阶段）、compose、Caddyfile、入口脚本
 │  └─ portal/                  # 员工下载门户（服务端静态资源，随渠道品牌）
-├─ shared/                     # 生成：api-catalog.json、openapi.json、ts 类型、permissions、schema.md
+├─ shared/                     # 生成：contracts/（api-catalog 等）、ts/、schema/（JSON Schema）
 ├─ scripts/                    # bootstrap/dev/test/ci/release/evidence
 ├─ configs/                   # 严格检查参考配置（scaffold 时复制；见 docs/18）
 ├─ tools/zk/                   # 组合器 CLI（workspace 成员）
+├─ specs/                      # 变更规格（changes/templates/archive）
+├─ .agents/skills/             # 项目 Agent Skills
 ├─ fixtures/                   # 负向测试、第三方包 fixture（不进 workspace）
 ├─ vendor/                     # 外部包实体（path 依赖）
 ├─ experiments/composition-poc/
+├─ experiments/wasm-poc/
 ├─ research/
-└─ docs/
+└─ docs/                       # 规划文档 + generated/（zk docs 生成）
 ```
 
 **为什么客户端与服务端共用一个 Cargo workspace**：
@@ -47,7 +51,7 @@ ZeoKeel/
 - 契约 crate 必须**单实例**（trait 身份）；跨 workspace 的 path 依赖会破坏 `workspace = true` 继承。
 - 一份 `Cargo.lock` 覆盖两端，CI 只维护一个锁。
 - 共享 `zk-contract-*` / `zk-runtime-*` / `zk-ui-*` 无需发布。
-- 代价：Tauri 与 axum 依赖树合并、锁更大（预计 400–600 包），靠 `cargo check -p`、sccache 与分层 CI 控制。
+- 代价：Tauri 与 axum 依赖树合并、锁更大（量级估算 400–600 包；正式数字由 `zk plan` 生成），靠 `cargo check -p`、sccache 与分层 CI 控制。
 
 ## 2. 一个包的目录形态
 
@@ -62,37 +66,36 @@ packages/server/wallet/
 └─ README.md                    # 角色、依赖、替换注意
 ```
 
-有 UI facet 的包加 `web/`（package.json + src）；有后台作业的包在 `zk.toml` 声明 `[jobs]`。
+有 UI facet 的包加 `web/`（package.json + src）；有后台作业的包在 `zk.toml` 声明 `[[jobs]]`（`24` §2）。
 
 ## 3. editions 与 profiles
 
 > edition 包集合、`base_edition`、`exclude`、profile/channel 叠加的权威示例见 [`03` §3](03-composition-and-ci.md#3-组合输入edition--profile--channel-叠层) 与 [`24` §1](24-composition-and-runtime-spec.md#1-组合层与优先级冻结)。本节只讲目录与 ownership。
 
 
-profile 继承 edition，再按环境覆盖（`profiles/base.toml` → `default.toml` → `mock.toml`）。
-OEM 在 edition 之上再叠一层 `oem/<customer>/oem.toml`（见 09）。
+profile 在 edition 解析结果之上做环境覆盖（`profiles/base.toml` → `default.toml` → `mock.toml`）；channel（含 OEM）在 profile 之上叠加（`24` §1.1）。
 
 ## 4. 生成物（只有 `zk` 能写）
 
-| 路径 | 生成者 | 说明 |
-| --- | --- | --- |
-| `apps/desktop/src/generated/`、`apps/server/src/generated/` | `zk compose` | 两端 glue：注册包、路由表、UI registry、迁移清单 |
-| `shared/contracts/{api-catalog,http-routes,openapi,permissions}.json` | `zk api`（见 `24` §3–§4） | 全量端点 + 权限点 + 请求体上限 |
-| `shared/ts/*.ts` | ts-rs（唯一） | DTO/事件/API 类型 |
-| `deploy/docker/Dockerfile` 生成段 | `zk compose` | 渠道/版本/客户端安装包清单 |
-| `docs/generated/*.md` | `zk docs` | 包索引、端点矩阵、权限矩阵、schema |
-| `migrations.lock` | `zk db lock` | 所有迁移内容哈希 |
+**唯一“产物 → writer → 路径 → `--check`”表见 [`24` §3](24-composition-and-runtime-spec.md#3-生成物所有权一路径一-writer)。**
+本节只强调与本仓库布局相关的事实：
 
-规则：**default 产物入库**；其他 profile/渠道在 CI 内生成不提交；头部带 `@generated`/`@profile`；
-`--check` 防手改；生成顺序确定（按包 id 排序、无时间戳）。
+- Rust glue 在 `crates/zk-composed/`；UI registry 在 `apps/desktop/web/src/generated/`；服务端 glue 在
+  `apps/server/src/generated/`；管理台在 `apps/admin/web/src/generated/`。
+- 契约产物在 `shared/contracts/`（`zk api` 与 `zk compose` 分工见 `24` §3）；TS/Schema 由 ts-rs/schemars 导出。
+- 文档索引在 `docs/generated/`，writer 是 `zk docs`。
+
+规则：**基线 `personal × default × official` 的产物入库**；其它组合在 CI 内生成不提交；头部
+`@generated` + `@edition/@profile/@channel`（`24` §1.2/§3）；`--check` 防手改；生成顺序确定（按包 id 排序、无时间戳）。
 
 ## 5. 工具链与依赖钉死
 
-- Rust `1.97.1+`（rig 0.45 MSRV / edition 2024）；`zeokeel-cordis = "=0.6.x"`。
+- Rust `1.99.1`（`rust-toolchain.toml` 固定；≥1.97.1 是 rig 0.45 MSRV / edition 2024；本机与 CI 同版本）。
+- `zeokeel-cordis` 锁到具体 patch（`=0.6.z`，z 在 scaffold 时按发布版本写入 `Cargo.lock`，不用 `0.6.x` 这类范围；具体版本在 T2 确认）。
 - `rig-core = "=0.45.0"` 只出现在 `zk-llm-rig`；`rig-agent`/`rig-memory` 不进 M1。
-- 服务端：`axum`、`tokio`、`sqlx`（Postgres + migrate）、`wasmtime`（WASM 应用）、`tower`、`tracing`。
-- 前端：React 19 + Vite + Tailwind 4；`pnpm-lock.yaml` 入库；依赖用候选包并集（ADR-015）。
-- `serde_json` 的 `preserve_order`/`float_roundtrip` 全局 feature 需统一决策（rig 0.45 副作用）。
+- 服务端：`axum`、`tokio`、`sqlx`（Postgres + migrate）、`wasmtime`（WASM 应用；M4 定版，候选 LTS 48/50，原型用 50，`15` §C T11）、`tower`、`tracing`。
+- 前端：React 19 + Vite + Tailwind 4；Node 22 LTS、pnpm 10+（`packageManager` 固定）；`pnpm-lock.yaml` 入库；依赖用候选包并集（ADR-015）。
+- `serde_json` 的 `preserve_order`/`float_roundtrip` 全局 feature 在 M0 spec 定（`15` §C T15）。
 - 依赖门禁：`cargo-deny` + `cargo-audit` + `pnpm audit`；第三方许可清单随产物。
 
 ## 6. 锁文件
@@ -106,7 +109,7 @@ OEM 在 edition 之上再叠一层 `oem/<customer>/oem.toml`（见 09）。
 
 变体/OEM 渠道在 CI 内 `--offline` 重解析 + `zk verify-lock`（ADR-015），产物不提交。
 
-## 7. 开发循环
+## 7. 开发循环（scaffold 后）
 
 ```bash
 bash scripts/bootstrap.sh                 # 系统库 + pnpm + cargo check + 生成

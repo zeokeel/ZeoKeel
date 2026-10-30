@@ -2,7 +2,7 @@
 
 > 一句话：**客户端是本地 agent，服务端是认证/用户/钱包/网关/内容分发/WASM/审计/管理的唯一权威。**
 > 双端都是 cordis 包化、构建期组合；进程间载体 = HTTP JSON + SSE（网关流式）+ WS（服务端事件）+ WASM 信封。
-> 本文只定契约面与规则，不写实现。管理端 API、服务端领域模型与部署见 `06/07/08`；未定项集中 §11，未定处标「建议」。个人版纯客户端、无服务端（15 §A D9），不适用本文 API 面。
+> 本文只定契约面与规则，不写实现。管理端 API、服务端领域模型与部署见 `06/07/08`；未定项集中 §11（索引 [`15` §C](15-open-questions.md#c-待定清单)），未定处标「默认值」并给收敛点。个人版纯客户端、无服务端（15 §A D9），不适用本文 API 面。
 
 ## 1. 契约分层
 
@@ -15,16 +15,16 @@
 | Rust trait 契约（同进程、包间） | `zk-contract-*` crate，一 major 一 crate | trait + DTO + conformance 套件；双端每个域包只依赖契约 | 跨 major = 新 crate；不匹配在编译期失败（ADR-002/016） |
 | HTTP API 契约（客户端↔服务端） | 服务端 manifest `[[routes]]` 静态声明 + `zk-contract-api` DTO；运行期 `Register()` 校验 | `shared/contracts/http-routes.json`、`openapi.json`；客户端 `server-connector` 包 | v1 内只增不改；破坏性变更开 v2（§4） |
 | 事件契约（WS） | `zk-contract-events` DTO + topic 注册表 | `events.json`；客户端按 topic 订阅 | 只增字段/只增 type；未知 type 忽略并记日志 |
-| UI 契约 | `ui-shell-kit` 的 SlotDefs/props 类型 + 各包 `[[ui.contributions]]` | `ui-contributions.json`；shell 只认 componentId/slotId | 构建期闭包校验失败即构建失败（ADR-017） |
+| UI 契约 | `zeokeel/ui-shell-kit` 包（UI 包，非契约 crate）的 SlotDefs/props 类型 + 各包 `[[ui.contributions]]` | `ui-contributions.json`；shell 只认 componentId/slotId | 构建期闭包校验失败即构建失败（ADR-017） |
 | 数据契约（DTO/serde） | `zk-contract-api` 与领域契约 crate 里的 serde 类型 | ts-rs → TS；schemars → JSON Schema；serde 版本字段 | 只增字段 + `#[serde(default)]`；枚举增值客户端降级 Unknown |
 
 三条硬规则：
 
-1. UI **不得直连**服务端：UI → 客户端 `ui.transport` → 客户端包；服务端 HTTP 只允许 `server-connector`（建议名，随包清单评审）一个包发出（便于 mock/录制回放、离线队列与统一 401 处理）。唯一例外是 WASM 应用窗口，经协议 handler（§9）。
+1. UI **不得直连**服务端：UI → 客户端 `ui.transport` → 客户端包；服务端 HTTP 只允许 `server-connector` 一个包发出（包名以 M1 包清单为准，见 [`15` §C](15-open-questions.md#c-待定清单)；便于 mock/录制回放、离线队列与统一 401 处理）。唯一例外是 WASM 应用窗口，经协议 handler（§9）。
 2. 双端都是包：服务端 auth/users/wallet/gateway/skills/connectors/apps/audit/admin 各为包，只经契约与路由表耦合；承载 HTTP 的包可替换（对应 `platform.*` 角色）。
 3. 一份 DTO 双侧单实例：客户端与服务端在同一 workspace 依赖**同一个**契约 crate 实例；若将来拆仓，契约必须发布并按版本锁定（与 ADR-016 同一理由）。`zk-contract-api`/`zk-contract-events` 属 M1 新增契约，须在根 `zk.toml` 的 `[contracts]` 登记（[包模型](02-package-model.md) §5）。
 
-## 1.5 弱管控边界（v3.1 第一原则）
+## 1.5 弱管控边界（v3.2 第一原则）
 
 企业版**不是强管控终端**：服务端只管身份、钱、商店内容、审计、版本；客户端能力完整，工具默认全开、
 网络不限制、不做企业审批。契约层只保留三类硬限制与通用工程约束：
@@ -133,8 +133,8 @@
 | 项 | 规则 |
 | --- | --- |
 | 认证主源 | 服务端只启用**一种主源**：local / OIDC / LDAP（三选一）＋一个本地应急超管账号；应急账号仅 break-glass，不参与日常登录，登录必审计并告警 |
-| access JWT | 短效 15 min；签名 EdDSA，`kid` 轮换、算法白名单；claims: iss/aud/sub/uid/role/epoch/device_id/channel/jti/iat/exp；服务端用 `users.token_epoch` 实现全局失效（缓存窗口建议 5 s，管理面写操作强制查库） |
-| refresh token | 不透明随机串（非 JWT），服务端只存哈希；建议 30 天绝对寿命；每次刷新轮换；重放检测：旧 token 被用 ⇒ 吊销该设备整个会话族。refresh 绑定 `device_id` + `channel`，access 携带两者，跨设备使用一律拒绝 |
+| access JWT | 短效 15 min；签名 EdDSA，`kid` 轮换、算法白名单；claims: iss/aud/sub/uid/role/epoch/device_id/channel/jti/iat/exp；服务端用 `users.token_epoch` 实现全局失效（缓存窗口默认值 5 s，M2 spec 确认，15 §C；管理面写操作强制查库） |
+| refresh token | 不透明随机串（非 JWT），服务端只存哈希；默认值 30 天绝对寿命（M2 spec 确认，15 §C）；每次刷新轮换；重放检测：旧 token 被用 ⇒ 吊销该设备整个会话族。refresh 绑定 `device_id` + `channel`，access 携带两者，跨设备使用一律拒绝 |
 | 刷新时机 | 过期前 60 s 主动刷新；单飞（single-flight）避免并发刷新；刷新失败 = 会话结束，清本地会话回登录页 |
 | 401 处理 | 收到 `AUTH_EXPIRED` ⇒ 刷新一次 ⇒ 重放原请求一次；仍 401 ⇒ 登出；不做无限重试；403 不刷新 |
 | 吊销 | logout、改密、降权、禁用、管理员强制下线、设备移除；refresh 立即失效；access **每请求校验 `token_epoch`**（≤5s 缓存，写操作强制查库），禁用/降权后下一次请求即 401；WS 推 `session.revoked`（§8） |
@@ -152,7 +152,7 @@
 | 能力协商 | `GET /api/meta/capabilities` 返回 `api_version`、`server_version`、`min_client_version`、`features[]`、`event_topics[]`；客户端缓存并随登录刷新；未知 feature 一律忽略，不得假设存在 |
 | 客户端标识 | 所有请求带 `X-ZeoKeel-Client`（版本/渠道/平台/设备）；服务端记录用于灰度与排障，不用于授权 |
 | 最小版本 | 服务端按渠道配置 `min_client_version`（硬门槛）与 `recommended`；低于硬门槛：业务面返回 `426 CLIENT_TOO_OLD`（稳定面、登录/刷新除外），客户端展示强制升级页 |
-| 灰度/强制升级 | 客户端渠道（official/beta/oem）+ 服务端清单 `rollout`/`forced`/`deadline`；按渠道/用户比例灰度（D53，管理台配置），到期限后业务面 426；本地 agent 离线能力在升级前保持可用（宽限待确认）；同一用户不得在灰度中反复横跳 |
+| 灰度/强制升级 | 客户端渠道（official/beta/oem）+ 服务端清单 `rollout`/`forced`/`deadline`；按渠道/用户比例灰度（D53，管理台配置），到期限后业务面 426；本地 agent 离线能力在升级前保持可用（宽限默认值：允许仅本地 agent，M3 spec 确认，15 §C）；同一用户不得在灰度中反复横跳 |
 
 ## 5. 权限模型与路由真源
 
@@ -206,9 +206,9 @@
 
 | 项 | 规则 |
 | --- | --- |
-| 建连 | `POST /api/client/v1/events/ticket`（Bearer）→ 一次性 ticket（建议 30 s）→ `wss://<server>/api/client/v1/events?ticket=…`；ticket 单次使用，避免把 JWT 放 URL/日志 |
+| 建连 | `POST /api/client/v1/events/ticket`（Bearer）→ 一次性 ticket（默认值 30 s，M2 spec 确认，15 §C）→ `wss://<server>/api/client/v1/events?ticket=…`；ticket 单次使用，避免把 JWT 放 URL/日志 |
 | 信封 | `{v, event_id, type, topic, seq, ts, payload, schema_version}`；`seq` 按 topic 单调递增，与客户端本地 IPC 的 stream seq 无关（[05-client-runtime.md](05-client-runtime.md) §6）；payload 最小化，业务数据一律回源 HTTP 拉取 |
-| 订阅 | 客户端发 `subscribe{topic, from_seq}` / `unsubscribe` / `ping`；服务端按 topic 维护环形缓冲（建议 ≥1024 条或 ≥5 min） |
+| 订阅 | 客户端发 `subscribe{topic, from_seq}` / `unsubscribe` / `ping`；服务端按 topic 维护环形缓冲（默认值 ≥1024 条或 ≥5 min，M2 spec 确认，15 §C） |
 | 重放 | 断线后带 `from_seq` 续订；缓冲已过期 ⇒ 服务端回 `resync_required{topic, latest_seq}`，客户端整量重取（bootstrap/目录）后从 latest 继续 |
 | 投递语义 | 至多一次推送 + 至少一次效果：客户端按 `event_id` 去重；事件只是"通知/触发"，不是状态真源（`session.revoked` 等短指令除外） |
 | 恢复 | 指数退避 + 抖动重连；刷新失败或 ticket 被拒 ⇒ 登出；心跳 25 s，两个周期无 pong 即重连 |
@@ -239,21 +239,25 @@
 | --- | --- | --- | --- |
 | `api.gen.ts` / DTO 绑定 | ts-rs（`export_bindings`） | 客户端 UI 与 server-connector | `git diff --exit-code`；枚举 tagging 与 serde 一致 |
 | `http-routes.json`、`permissions.json` | `zk api` 从 `[[routes]]` 生成 | 客户端权限门控、文档、全量扫描测试 | `--check`；路由/权限/幂等/审计/限流/body 上限缺一即失败 |
-| `openapi.json` | 路由表 + schemars | 内部联调/可选对外 | 默认生成、入库、`--check`；是否对外发布待确认（§11） |
+| `openapi.json` | 路由表 + schemars | 内部联调/可选对外 | 生成与入库默认开启、`--check`（已定）；是否对外发布待定（15 §C；§11 04-Q5） |
 | `events.json` + topic 注册表 | `zk-contract-events` | 双端 | 未注册 topic/type ⇒ CI 失败；缺 schema_version ⇒ 失败 |
 | `schema/*.json` | schemars | 工具/配置校验、前端类型 | `git diff --exit-code` |
 
 规则：DTO 只写在契约 crate（双端共用，禁止两侧各写一份）；网络 DTO 不加 `deny_unknown_fields`，保证旧客户端可解析新服务端；枚举增值客户端降级 Unknown 并保留原文；`errors.json` 由错误码枚举生成；契约 PR 必须附 `cargo public-api` diff 与两侧反序列化对拍样本。
 
-## 11. 实现细节待定（本文件编号 04-Q*，与 15 的 Q 无关）
+## 11. 实现细节待定（索引 15 §C；编号 04-Q* 保留）
 
-| # | 问题 | 影响 | 建议默认 |
-| --- | --- | --- | --- |
-| 04-Q2 | refresh 寿命/轮换与 reuse 检测处置（access 已定 15 min） | 安全 vs 离线体验；401 风暴 | refresh 30 d / 轮换 + 族吊销 |
-| 04-Q4 | 强制更新与离线宽限（到期限后是否允许纯本地会话） | 更新契约、用户可用性 | 允许仅本地 agent，禁服务端依赖功能 |
-| 04-Q5 | OpenAPI 是否对外发布/作为第三方集成契约 | 契约范围与兼容承诺 | 只内部用，不承诺外部 |
-| 04-Q6 | WS 鉴权用一次性 ticket 还是首帧鉴权；是否复用本地 IPC 通道 | 事件协议、安全、复杂度 | ticket（浏览器/WebView 不便自定义头） |
-| 04-Q7 | 灰度口径（按渠道/用户比例）与是否允许用户自选通道 | 版本策略 | 服务端配置 + 渠道，用户不可自选 |
-| 04-Q8 | 幂等键的适用范围（网关写、技能发布、遥测） | 错误模型与重试 | 仅显式声明幂等的端点 |
-| 04-Q9 | 个人版 BYOK/本地连接器 | 配置下发、网关边界 | 个人版开放；企业版关闭（AI 只走网关） |
-| 04-Q11 | step-up 二次确认 token 的形态与有效期（header vs 独立端点、绑定参数摘要） | 写端点安全与可用性 | `X-ZeoKeel-Confirm` 一次性 60 s，绑定 operation + 参数摘要 |
+> 本表给的是**默认值**，不是已定结论；实现前在「收敛点」指定的里程碑 change spec 冻结（C16）。
+> 未决项统一索引见 [`15` §C](15-open-questions.md#c-待定清单) T14（唯一正文在本表，15 只引用）。
+> 编号缺 Q1/Q3/Q10/Q12：已决或并入 D，不再列出。
+
+| # | 问题 | 影响 | 默认值 | 收敛点 |
+| --- | --- | --- | --- | --- |
+| 04-Q2 | refresh 寿命/轮换与 reuse 检测处置（access 已定 15 min） | 安全 vs 离线体验；401 风暴 | refresh 30 d / 轮换 + 族吊销 | M2 spec |
+| 04-Q4 | 强制更新与离线宽限（到期限后是否允许纯本地会话；与 `15` §C T8 同族） | 更新契约、用户可用性 | 允许仅本地 agent，禁服务端依赖功能 | M2 spec |
+| 04-Q5 | OpenAPI 是否对外发布/作为第三方集成契约 | 契约范围与兼容承诺 | 只内部用，不承诺外部 | M2 spec |
+| 04-Q6 | WS 鉴权用一次性 ticket 还是首帧鉴权；是否复用本地 IPC 通道 | 事件协议、安全、复杂度 | ticket（浏览器/WebView 不便自定义头） | M2 spec |
+| 04-Q7 | 灰度口径（按渠道/用户比例）与是否允许用户自选通道 | 版本策略 | 服务端配置 + 渠道，用户不可自选 | M3 spec |
+| 04-Q8 | 幂等键的适用范围（网关写、技能发布、遥测） | 错误模型与重试 | 仅显式声明幂等的端点 | M2 spec |
+| 04-Q9 | 个人版本地 MCP/连接器形态（BYOK 已由 D7/D8/C7 定） | 配置下发、网关边界 | 个人版本地自配（D53：M3 后补）；企业版关闭 | M3 spec |
+| 04-Q11 | step-up 二次确认 token 的形态与有效期（header vs 独立端点、绑定参数摘要） | 写端点安全与可用性 | `X-ZeoKeel-Confirm` 一次性 60 s，绑定 operation + 参数摘要 | M2 spec |

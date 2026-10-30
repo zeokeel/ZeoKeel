@@ -1,7 +1,7 @@
 # 09 · 版本与交付：企业版 / 个人版 / OEM 白标
 
 > 范围：**同一代码库产出哪几种产品、构建期怎么裁剪、OEM 数据放哪、CI 怎么出包、客户怎么部署、客户端怎么更新。**
-> 不涉及：服务端内部架构、安装器 UI 细节。状态：Plan v3.2（仍含 §9 细节待确认）。关联：`02-package-model.md`（角色）、
+> 不涉及：服务端内部架构、安装器 UI 细节。状态：Plan v3.2（§9 为默认值；开放项索引见 [`15` §C](15-open-questions.md#c-待定清单)）。关联：`02-package-model.md`（角色）、
 > `03-composition-and-ci.md`（profile/生成物/门禁）、`10-repo-and-build.md`（目录/锁/可复现）、`research/harness-client-channel.md`（渠道/品牌一手事实）。
 
 ## 1. 版本矩阵
@@ -32,7 +32,7 @@
 - `editions/enterprise.toml` 继承 `personal`，`exclude` 个人专属包，`[packages]` 追加/覆盖企业角色；`profiles/*` 只做环境覆盖；`channel` 注入品牌/默认值（含 `server_url`）。
 - 角色统一为 `llm.provider.default`（本地 provider ↔ `zeokeel/llm-gateway`）、`client.update`（GitHub ↔ 服务端）、`auth.client`；`targets` 统一为 `server,desktop,admin`（门户/webadmin 作为 server/admin 内嵌产物）。
 - edition 事实由 `zk compose` 固化成常量 `edition.gen.{rs,ts}`（`EDITION`/`LOGIN_REQUIRED`/`PROVIDER_MODE`/`UPDATE_SOURCE`/`CHANNEL_ID`/`DEFAULT_SERVER_URL`），`--check` 字节比对；**禁止 Cargo feature 或运行期 env 切 edition**（理由同 `03-composition-and-ci.md` §2）。
-- 企业版能力**在服务端**：客户端二进制不含"解锁代码"；`zk plan --edition personal --profile default` 可证明服务端包/企业包不在闭包里。
+- 企业版能力**在服务端**：客户端二进制不含"解锁代码"；`zk plan --edition personal --profile default --channel official` 可证明服务端包/企业包不在闭包里。
 - 新增版本 = 新 edition + profile + channel；不改构建器、不加开关。
 
 ### 1.5 构建期锁定
@@ -57,8 +57,8 @@ zeokeel/demo-oem-index/           # demo 索引仓（CI 只读；示例客户渠
 └─ .gitmodules
 # oem/index.toml
 schema = 1
-[channels.acme]                   # 键 = channel id，必须等于目录名
-submodule = "oem/customers/acme"
+[channels.oem-acme]               # 键 = channel id（oem-<customer>，见 §3），必须等于目录名
+submodule = "oem/customers/oem-acme"
 pin       = "9f2c…"               # 冗余断言值，必须 == submodule gitlink
 edition   = "enterprise"
 depth     = "basic"               # basic | deep
@@ -173,7 +173,7 @@ depth = "basic"
 | 1 | 建客户 | 私有仓建 `<channel>/`（`oem.toml`+`channel.json`+`logo*/app-icon/assistedMessages`+`strings/`+`config/`）；索引仓加 submodule 并在 `index.toml` 登记；**不做 OEM 自助门户** | schema + 评审 checklist（品牌点清单逐项标必改/可选/保留） | 一次纯数据 PR |
 | 2 | 取包 + 解析 pin | CI 用只读凭据拉索引仓 → `git submodule update --init --recursive --depth 1` → 校验 gitlink == pin | pin 一致 + 渠道集 == manifest | `channels.list`（渠道 id 全程 add-mask） |
 | 3 | 全渠道校验 | `zk channel validate --index <dir> --all`（形状/素材/i18n/跨渠道唯一/深度包门禁） | 全绿 | 校验报告（进交付记录/SBOM） |
-| 4 | 逐渠道构建 | `zk compose --edition enterprise --channel <id>` → cargo build → 三平台 `tauri build` → `zk channel verify --channel <id> --dist` | 产物级白标 + 启动冒烟 + mock 登录会话 | 安装包 + `CLIENT-RELEASE.json` |
+| 4 | 逐渠道构建 | `zk compose --edition enterprise --profile default --channel <id>` → cargo build → 三平台 `tauri build` → `zk channel verify --channel <id> --dist` | 产物级白标 + 启动冒烟 + mock 登录会话 | 安装包 + `CLIENT-RELEASE.json` |
 | 5 | 镜像与发布 | docker build（`clientassets` + `channelassets` 上下文）→ 镜像内断言 → `docker save` → tar.zst → 上传私有更新面 | 镜像内容逐项断言 + `SHA256SUMS` 复算 | 镜像 tar + 三平台安装包 + 校验和 |
 
 **CI 取私有仓**
@@ -231,7 +231,7 @@ curl -fsS https://$DOMAIN/healthz  # 门户下载页即落地页
 
 | 键 | 必填 | 说明 |
 | --- | --- | --- |
-| `DOMAIN` | 是 | 门户/登录/更新清单的绝对 https 基址（前面还有反代时用 `ZEOKEEL_PUBLIC_BASE_URL` 覆盖对外基址） |
+| `DOMAIN` | 是 | 门户/登录/更新清单的绝对 https 基址（前面还有反代时可用 `ZEOKEEL_PUBLIC_BASE_URL` 覆盖对外基址；该覆盖是可选变量，不计入最小 6 键） |
 | `TLS_MODE` | 是 | `auto`/`manual`/`internal`，决定挂哪份 Caddyfile |
 | `ADMIN_PASSWORD` | 首启 | 首启强制改密；只在客户环境，不进镜像 |
 | `PG_PASSWORD` | 是 | 与 server 注入一致；随机生成并写进客户交付记录 |
@@ -297,7 +297,7 @@ curl -fsS https://$DOMAIN/healthz  # 门户下载页即落地页
 | 清单 | `{schema, channel_id, edition, server_version, client_version, min_supported, forced, rollout?, deadline?, previous?, assets{<platform>:{url,sha256,size}}, signature}`；`url` 必须同源绝对 https |
 | 1:1 | 清单里的 `client_version` 必须等于当前服务端镜像内 `CLIENT-RELEASE.json` 的版本；客户端安装该版本后与登录服务端配对可用；服务端版本变化 → 清单变化 → 客户端强制跟进 |
 | 防串渠道 | `channel_id`/`edition` 不匹配 → 拒绝升级并报错（不提示"手动下载"，否则等于跨渠道洗包） |
-| 强制更新 | 服务端可标记 `forced`/`min_supported`；低于最低版本的业务 API 返回 `426 CLIENT_TOO_OLD`，客户端显示强制升级页；本地 agent 离线能力可短暂保留（宽限待确认） |
+| 强制更新 | 服务端可标记 `forced`/`min_supported`；低于最低版本的业务 API 返回 `426 CLIENT_TOO_OLD`，客户端显示强制升级页；本地 agent 离线能力可短暂保留（宽限待定，见 [`15` §C](15-open-questions.md#c-待定清单)） |
 | 流程 | 检查 → 断点续传（`.partial`+Range）→ sha256 + 清单签名校验 → 安装 → 启动标记；失败回滚上一版；Win 静默 NSIS `/S`，mac 原地替换 + 30s 启动标记回滚，Linux AppImage 原子替换 |
 | 门户 | 服务端根路径门户展示三平台安装包（读 `CLIENT-RELEASE.json`），按渠道品牌；员工首次安装也从这里下载 |
 
@@ -321,17 +321,19 @@ curl -fsS https://$DOMAIN/healthz  # 门户下载页即落地页
 | 产物隔离 | 每渠道独立 artifact 目录/文件名带 channel；OEM 产物**不进公开 release**，走私有更新面；跨渠道中转路径不含渠道名（HMAC 派生临时前缀，取回即销毁） |
 | 私有仓权限 | 索引仓/客户仓对 CI 只读；写权限仅限两名维护者；客户无本仓写权（提交经我方 review）；分支保护 + 必须 PR |
 | 密钥注入 | 仓库/子仓零密钥；签名与上传凭据只进 CI secret（OIDC/短期优先）；镜像与 tar 不含密钥；渠道 id 与 token 打码；错误只报字段名 |
-| SBOM | 每产物 CycloneDX（cargo+pnpm），进交付目录与 tar；深度 OEM 代码包必须出现；`zk sbom --edition --channel` |
+| SBOM | 每产物 CycloneDX（cargo+pnpm），进交付目录与 tar；深度 OEM 代码包必须出现；`zk sbom --edition E --profile X --channel C` |
 | 许可证 | 本产品 MIT（两版均免费开源）；`cargo-deny` + pnpm 许可证白名单；生成 `THIRD-PARTY.md`（含 caddy/postgres 镜像与内置字体/图标素材） |
 | 供应链/数据 | lockfile + vendor + 基础镜像 digest + 依赖审计 + 发布前签名；企业数据留客户服务器、个人数据本地；遥测默认关且不含 PII |
 | 白标合规 | MIT 允许商用改名，但 ZeoKeel 商标/官方标识不得用于暗示背书；**官方默认显示 Powered by，OEM 默认隐藏、可按渠道配置**（D62） |
 
-## 9. 交付细节（本文件编号 09-Q1…09-Q13；与 15 的 Q1–Q20 无关）
+## 9. 交付细节默认值（编号 09-Q* 保留；收敛点：M5 spec）
 
-| # | 问题 | 默认建议 |
+> Q1/Q4/Q6/Q13 为**已定**（见对应 D/ADR），其余为默认值；实现前在 M5 spec 确认（C16），未决项统一索引见 [`15` §C](15-open-questions.md#c-待定清单) T12。
+
+| # | 问题 | 默认值 |
 | --- | --- | --- |
 | 09-Q1 | ~~Windows 签名主体~~ → **Windows 不签名**（所有渠道）；macOS **需要公证**（ADR-037） | 已定；证书待配 |
-| 09-Q2 | 交付 tar 是否必须含 caddy/postgres 镜像（离线导入）？体积预算多少？ | 必须含；预算待测 |
+| 09-Q2 | 交付 tar 是否必须含 caddy/postgres 镜像（离线导入）？体积预算多少？ | 必须含；体积预算按 M5 实测确定 |
 | 09-Q3 | 个人版是否也允许 OEM？ | 否，仅 `official` |
 | 09-Q4 | ~~Powered by~~ → **官方默认显示；OEM 默认不出现，可按渠道配置**（D62） | 已定 |
 | 09-Q5 | 企业版免费 + MIT 后是否需要 entitlement 校验？ | 不做；商业边界 = 服务端能力 + 私域更新面 |

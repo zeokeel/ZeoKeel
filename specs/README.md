@@ -68,14 +68,12 @@ specs/
 - 变更引入新规范/新决策：先改 `docs/`（或先写 ADR），再在 spec 的 `design.md` 链接，不复制正文。
 - 变更完成后：`docs-check` 必须 0/0；`specs/` 目录归档；PR 描述链接 spec。
 
-## 6. 门禁
+## 6. 门禁（当前如实口径）
 
-```bash
-python3 scripts/spec-check.py      # spec 结构/必填/任务 verify
-python3 scripts/docs-check.py      # 文档 SSOT/链接/编号/废弃口径
-```
-
-CI 顺序：`spec-check` → `docs-check` → 代码/契约/测试门禁（见 `AGENTS.md` §6）。
+- `python3 scripts/spec-check.py`：**只做结构检查**——模板齐全、`changes/<id>/` 五件套存在、`proposal.md` 状态合法、`tasks.md` 有任务表头与验证列。**`specs/changes/` 为空时不报错**；内容质量由评审负责，不由脚本保证。
+- `python3 scripts/docs-check.py`：文档结构/链接/SSOT 登记/ADR-D 编号/废弃口径。**不检查"多文档重复短语"**；去重靠 SSOT 评审 + `rg` 手工检索。
+- **C16（无 spec 不开工）当前由评审执行**：没有自动门禁拦截"未建 spec 就改代码"；scaffold 后接入 CI（`AGENTS.md` §6）。
+- CI 顺序（scaffold 后）：`spec-check` → `docs-check` → 代码/契约/测试门禁（见 `AGENTS.md` §6）。
 
 ## 7. 最小示例（只看结构）
 

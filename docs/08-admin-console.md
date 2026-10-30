@@ -41,30 +41,34 @@
 页面注册是静态声明（ADR-017）：
 
 ```toml
-# packages/server/admin-users/zk.toml
+# packages/server/admin-users/zk.toml（管理台页面包：只声明页面/权限/消费的服务端 API，不实现域）
 [facets]
-rust = { crate = "zk-srv-users" }           # 提供 /api/admin/users* 路由（域包）
+rust = { crate = "zk-admin-users" }          # 声明 crate：页面/权限/消费的服务端 API；域路由由 zk-srv-users 提供
 ui   = { package = "@zeokeel/admin-users" }
 
 [[ui.contributions]]
 slot      = "admin.nav"
 component = "admin.users"
 order     = 20
-permission = "users.read"
+permission = "users:read"
 ```
+
+管理台 slot 注册表（`admin.nav`、`admin.page.*`）在 `16` §3 唯一定义，本节只引用 slotId。
 
 ## 3. 服务端 API 包与管理台 UI 包的配对
 
 一个域通常由两个包组成：
 
 ```
-packages/server/users/            # Rust：路由 + 仓储 + 权限点（zk-srv-users）
-packages/server/admin-users/      # UI：页面（@zeokeel/admin-users）+ 声明 crate（zk-admin-users）
+packages/server/users/            # 域：路由 + 仓储 + 权限点（zk-srv-users）
+packages/server/admin-users/      # 管理台页面：UI（@zeokeel/admin-users）+ 声明 crate（zk-admin-users）
 ```
 
+- 管理台页面包**不实现域**：域路由/仓储由 `zk-srv-users` 提供；页面经 `ui.transport` 调 `/api/admin/*`（类型来自 `zk-contract-user` 生成的 TS），不直接 import Rust 契约 crate。
 - 二者在 profile 里分别选择；可以只换 UI 不换 API（OEM 换皮），也可以整体替换（自研管理端）。
 - `zk validate` 校验：管理台页面的 `permission` 必须存在于服务端 API 包声明的权限点集合。
-- 管理台 API 的权限矩阵由生成器产出（`shared/contracts/admin-permissions.json`），CI 校验覆盖率。
+- 管理台页面包角色 `admin.page.<page>`（singleton，选页面实现）；页面内贡献角色 `admin.slot.page.<page>`（multi）。
+- 管理台 API 的权限矩阵由生成器产出（`shared/contracts/permissions.json` 含 `admin.*` 权限点），CI 校验覆盖率；完整路由/权限点目录在 M2 spec 冻结（`15` §C T19）。
 
 ## 4. OEM 与可替换性
 
@@ -72,14 +76,14 @@ packages/server/admin-users/      # UI：页面（@zeokeel/admin-users）+ 声�
 - 文案：i18n 包，OEM 客户仓可覆盖词条（见 `09-delivery-and-oem.md`）。
 - 页面：OEM 可禁用某页（从 profile 里移除）、替换某页（提供同 component id 的包）、新增页面（新包）。
 - 深度 OEM 可替换整个域的实现（例如客户已有用户中心，替换 `srv-users` 与 `admin-users`），
-  但必须满足 `zk-contract-admin-api` 契约。
+  但必须满足 `zk-contract-admin-ui` 契约。
 
 ## 5. 构建与交付
 
 ```bash
-zk compose --edition enterprise            # 生成 admin registry + 路由表
+zk compose --edition enterprise --profile default --channel official   # 生成 admin registry + 路由表
 pnpm --filter @zeokeel/admin-shell build    # 产出 dist/admin
-cargo build -p zeokeel-server               # include_dir! 把 dist/admin 编进二进制
+cargo build -p zk-server                    # include_dir! 把 dist/admin 编进二进制
 ```
 
 - 生产镜像里管理台静态资源在二进制内，不需要单独容器（参考实现同样内嵌）。
@@ -115,8 +119,6 @@ cargo build -p zeokeel-server               # include_dir! 把 dist/admin 编进
 | XSS | 无 `dangerouslySetInnerHTML`（除白名单）；CSP；依赖审计 |
 | 内嵌资源 | 使用 `include_dir!` 时禁止目录穿越；开发模式另起 vite |
 
-## 7. 待确认
+## 7. 待定（索引 15 §C）
 
-- 管理台是否复用客户端主题包（一份 token 两处用）还是独立主题包？
-- ~~审计员可见页面范围~~ → 已定：审计/用量/登录/内容变更，只读（D53）。
-- OEM 深度定制管理台时，客户是否需要自己构建前端（还是我们代构建）？
+- 管理台主题包是否复用客户端 token 包（一份 token 两处用）？见 [15 §C](15-open-questions.md#c-待定清单)（T13）。
