@@ -25,7 +25,9 @@ def respond(body):
         return {"id":"chatcmpl-final","object":"chat.completion","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"已完成工具调用并通过审批。"}}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}
     if "multi" in user and tool_count>=2:
         return {"id":"chatcmpl-final","object":"chat.completion","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"已完成工具调用并通过审批。"}}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}
-    if "ask" in user:
+    if "bash" in user:
+        call={"id":"call_bash","type":"function","function":{"name":"bash","arguments":json.dumps({"command":"printf hi"})}}
+    elif "ask" in user:
         call={"id":"call_ask","type":"function","function":{"name":"ask_user_question","arguments":json.dumps({"questions":[{"id":"name","question":"你的名字？"}]})}}
     elif "multi" in user and tool_count==0:
         call={"id":"call_read","type":"function","function":{"name":"fs.read","arguments":json.dumps({"path":"agent-e2e.txt"})}}
