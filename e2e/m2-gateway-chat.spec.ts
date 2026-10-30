@@ -15,6 +15,7 @@ test.describe("M2 enterprise chat through gateway", () => {
     await page.getByRole("button", { name: "登录" }).click();
     await page.getByRole("button", { name: "打开设置" }).click();
     await expect(page.getByLabel("企业模型")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("模型 provider")).toHaveCount(0);
     await page.keyboard.press("Escape");
     const firstRun = page.getByRole("heading", { name: "先选择一个工作区" });
     if (await firstRun.isVisible().catch(() => false)) {

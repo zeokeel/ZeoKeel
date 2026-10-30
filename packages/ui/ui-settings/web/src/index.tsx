@@ -49,7 +49,8 @@ export interface SettingsDialogProps {
 export function SettingsDialog(props: SettingsDialogProps = {}) {
   const ui = useUi();
   const models = props.gatewayModels ?? [];
-  const { t, settings, settingsOpen, actions } = ui;
+  const { t, settings, settingsOpen, actions, meta } = ui;
+  const personal = meta.edition !== "enterprise";
   const [form, setForm] = useState<SettingsForm>(() => toForm(settings));
   const [errors, setErrors] = useState<SettingsErrors>(EMPTY_ERRORS);
   const [saving, setSaving] = useState(false);
@@ -125,6 +126,7 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
           </Dialog.Description>
 
           <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
+            {personal ? (
             <fieldset className="rounded-document bg-muted p-4">
               <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
                 {t("settingsSectionProvider")}
@@ -213,6 +215,8 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
                 </div>
               </div>
             </fieldset>
+
+            ) : null}
 
             <fieldset className="rounded-document bg-muted p-4">
               <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">

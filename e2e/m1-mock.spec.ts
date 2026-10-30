@@ -18,6 +18,7 @@ test.describe("M1 mock UI (human flow)", () => {
   test("settings validate and Esc closes; axe has no serious issues", async ({ page }) => {
     await page.goto("/?mock=1", { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /设置|Settings/ }).first().click();
+    await expect(page.getByText(/模型 provider|Model provider/)).toBeVisible();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await page.keyboard.press("Escape");
