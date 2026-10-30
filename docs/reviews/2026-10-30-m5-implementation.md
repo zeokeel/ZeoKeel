@@ -2,7 +2,7 @@
 
 - **评审对象**：`tools/zk` channel validate/verify、`brands/{official,oem-demo}`、`oem/fixtures`、`packages/server/updates`、`scripts/{oem-e2e,updates-e2e,build-dist,upgrade-drill,sbom}.sh`、`deploy/{updates,portal}`、`e2e/m5-portal.spec.ts`、`.github/workflows/release.yml`、docs/09/23/27、M5 spec/tasks/acceptance
 - **评审者**：audit-arch（独立只读；仅写本记录）
-- **结论**：CHANGES-REQUESTED
+- **结论**：APPROVED
 - **关联 spec**：`specs/changes/2026-10-30-oem-delivery`
 - 证据日期：2026-10-30；本记录为唯一新增文件，未改产品代码/spec。
 
@@ -419,3 +419,54 @@ M5 的 channel validate/verify、OEM fixture、updates 端点、dist 脚本和 p
 
 - 关联 spec：`specs/changes/2026-10-30-oem-delivery`。
 - 复评结论（第五轮）：**CHANGES-REQUESTED**
+
+---
+
+## 12. 第六轮复评（R6，2026-10-30）
+
+> 对象：R5 修复后的 M5 实现。只读复跑；未改产品代码/spec（仅本记录）。
+> 仅列剩余 P0/P1。
+
+### 12.1 结论
+
+**APPROVED**
+
+- **P0：0；P1：0**。
+- **M5 实现可 APPROVED**。
+- **P2/manual（环境阻塞）**：真实 Docker/三平台安装包/macOS 公证/真实升级/SBOM；acceptance 必须标 `UNVERIFIED`，不能写 complete。
+
+### 12.2 R5 P1 关闭
+
+- **channel.json id 一致性**：`validate_channel_dir` 现 `if file.id != channel { bail! }`；`cargo test -p zk` 的 `rejects_id_mismatch` PASS。
+- **logo symlink 逃逸**：`symlink_metadata` 拒绝 symlink + `canonicalize` 后必须 `starts_with(canonical_dir)`；`rejects_symlink_logo` PASS。
+- **build-dist**：fallback client 先创建再算 assets/sha；`bash scripts/build-dist.sh official 0.1.0 /tmp/zk-dist-r6` PASS，assets 非空。
+- **deep OEM**：oem-e2e `zk plan`/`compose --edition oem-deep --channel oem-deep --check`/`cargo test -p acme-brand` PASS。
+- **updates/portal**：updates-e2e 仍 PASS（version 409、OEM portal、artifact）。
+- **channel verify**：dist/SHA/SBOM/二进制扫描 PASS。
+
+### 12.3 验证
+
+| 命令 | 结果 |
+| --- | --- |
+| `cargo test -p zk --offline` | **PASS**：id mismatch/symlink tests 2 passed |
+| `bash scripts/oem-e2e.sh` | **PASS**：channel/index/pin/compose/brand/residue + deep |
+| `bash scripts/updates-e2e.sh` | **PASS**：manifest/version reject/artifact/oem-portal |
+| `bash scripts/build-dist.sh official 0.1.0 /tmp/zk-dist-r6` | **PASS**；CLIENT-RELEASE assets 非空 |
+| `bash scripts/upgrade-drill.sh --dry-run` | **PASS（dry-run）**：local fallback + sha；docker 模拟 |
+| `cargo test --workspace` / clippy / `zk validate` / `channel validate` / `compose official --check` | **PASS**（前轮 R5） |
+
+### 12.4 P2/manual（环境阻塞，不阻塞本次实现 verdict）
+
+- 真实 Docker image save/load/compose、PG 备份/PITR。
+- 三平台 Tauri 安装包与 Windows SHA；release installers 仍 echo 模板。
+- macOS notarize/staple（证书未配）。
+- 真实升级/回滚；`upgrade-drill --docker` 仍 echo。
+- 真实 CycloneDX SBOM（当前占位）。
+- 真实 OEM 镜像/安装包二进制残留扫描（当前 fixture 负向）。
+- 非阻塞：`channel_validate` 对 `.gitmodules` 只查 path 字符串，不读真实 gitlink；fixture pin 用目录 hash；`oem-demo` 门户仅 Linux；`acme-brand` 命名/conformance 深度可在 M6 加固。
+
+### 12.5 结论
+
+- **P0：0；P1：0**。
+- 关联 spec：`specs/changes/2026-10-30-oem-delivery`。
+- 复评结论（第六轮）：**APPROVED**

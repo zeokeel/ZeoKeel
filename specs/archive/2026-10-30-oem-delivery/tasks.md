@@ -9,7 +9,7 @@
 | 5 | dist 产物树/CLIENT-RELEASE/CHANNEL/SHA256/SBOM/脚本 | `scripts`, `deploy`, `.github/workflows` | 4 | `bash scripts/oem-e2e.sh`（产物部分） | ✅ |
 | 6 | portal + `/api/updates/manifest` 1:1 + e2e | `deploy/portal`, `packages/server/updates`, `e2e/m5-portal.spec.ts` | 5 | Playwright + server e2e | ✅ |
 | 7 | 签名 dry-run + upgrade drill | `scripts/upgrade-drill.sh`, `.github/workflows`, `docs/20` | 5 | `bash scripts/upgrade-drill.sh --dry-run` | ✅ |
-| 8 | 文档/验收/归档 | `docs/09/20/23`, acceptance | 1–7 | docs/spec/review; `oem-e2e.sh` | ☐ |
+| 8 | 文档/验收/归档 | `docs/09/20/23`, acceptance | 1–7 | docs/spec/review; `oem-e2e.sh` | ✅ |
 
 ## 2. 写作用域
 

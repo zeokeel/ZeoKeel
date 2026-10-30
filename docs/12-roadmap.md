@@ -176,7 +176,7 @@ P1（双 app 组合）、P3（认证+JWT）、P4（OEM submodule CI）、P5（�
 
 **退出条件**
 
-- [ ] 用 demo 客户仓跑通"新增客户 → 产出其镜像 + 三平台安装包"；按 `brand.powered_by` 断言品牌残留（hide=零厂商串，show=仅固定文案）。
+- [ ] 用 demo 客户仓跑通（实现 R6 APPROVED；真实镜像/三平台包 UNVERIFIED）"新增客户 → 产出其镜像 + 三平台安装包"；按 `brand.powered_by` 断言品牌残留（hide=零厂商串，show=仅固定文案）。
 - [ ] 深度 OEM 代码包通过契约 conformance + 换包矩阵。
 - [ ] macOS 公证 CI 就绪（拿到证书后一键启用）；Windows 安装包附 SHA256 并在文档提示未签名。
 - [ ] 企业版员工从门户下载客户端，且只从登录服务端 1:1 更新；个人版从 GitHub Releases 更新。

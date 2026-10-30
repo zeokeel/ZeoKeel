@@ -1,7 +1,9 @@
 # 2026-10-30-oem-delivery · 验收（M5）
 
-- 状态：`in-progress`（spec 阶段）
-- 验收人：pending
+- 状态：`completed`（实现 APPROVED；交付环境项 UNVERIFIED）
+- 验收人：Lead + audit-arch（R6 APPROVED）
+- 日期：2026-10-30
+- 复审记录：`docs/reviews/2026-10-30-m5-implementation.md` R1 → R6
 - 证据目录：`target/evidence/m5/`
 
 ## 进展
@@ -27,6 +29,23 @@
 - [ ] M5 门户/更新 e2e
 - [ ] 签名/产物 dry-run 证据
 - [ ] 独立评审 APPROVED
+
+## 最终结果
+
+- 实现：R6 APPROVED（P0=0，P1=0）。
+- `bash scripts/oem-e2e.sh`：2 channels、deep plan/compose/acme-brand、verify/residue。
+- `bash scripts/updates-e2e.sh`：manifest/channel/version reject/artifact/OEM portal。
+- `bash scripts/admin-e2e.sh`：10 passed（M5 portal + axe）。
+- `bash scripts/build-dist.sh official 0.1.0 /tmp/zk-dist`：assets 非空，verify 通过（dry-run artifact）。
+- `bash scripts/upgrade-drill.sh --dry-run`：local fallback + sha，通过。
+- `cargo test -p zk`：channel id/symlink 负向；`cargo test --workspace` / clippy 绿。
+- `zk channel validate` / `compose official|oem-deep --check` / schema / db 绿。
+
+## UNVERIFIED（环境阻塞，不能作为交付完成）
+
+- 真实 Docker 镜像 save/load/compose up、PG 备份/PITR。
+- 三平台 Tauri 安装包、Windows SHA 实测、macOS notarize/staple（证书未配）。
+- 真实升级/回滚演练（`--docker`）；真实 CycloneDX SBOM；真实 OEM 镜像/安装包二进制残留扫描。
 
 ## 说明
 
