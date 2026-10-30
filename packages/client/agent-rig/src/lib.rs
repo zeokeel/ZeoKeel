@@ -42,7 +42,7 @@ impl RigAgent {
             .enable_all()
             .build()
             .map_err(|error| AgentError::Invalid(format!("tokio runtime: {error}")))?;
-        Ok(Self { model, tools, preamble, approval: Arc::new(zk_kit_approval::GlobalGate), streaming: true, memory_dir: std::env::var_os("ZEOKEEL_AGENT_MEMORY_DIR").map(PathBuf::from), cancelled: AtomicBool::new(false), runtime })
+        Ok(Self { model, tools, preamble, approval: Arc::new(zk_kit_approval::GlobalGate), streaming: std::env::var("ZEOKEEL_AGENT_STREAMING").map(|value| value != "0").unwrap_or(true), memory_dir: std::env::var_os("ZEOKEEL_AGENT_MEMORY_DIR").map(PathBuf::from), cancelled: AtomicBool::new(false), runtime })
     }
 
     /// Enable rig-memory conversation persistence in `dir`.

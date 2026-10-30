@@ -47,7 +47,7 @@ pub fn model_from(config: &RigConfig) -> Result<DynModel<Completion>, LlmError> 
         return Err(LlmError::InvalidRequest("rig model is empty".to_owned()));
     }
     let mut openai = OpenAIConfig::new(config.api_key.clone()).with_base_url(config.base_url.trim_end_matches('/').to_owned()).client();
-    let model: DynModel<Completion> = openai.completion(config.model.clone()).into();
+    let model: DynModel<Completion> = openai.chat(config.model.clone()).into();
     let _: &mut OpenAI = &mut openai;
     Ok(model)
 }
