@@ -70,9 +70,13 @@
   官方渠道必须使用这两个文件；个人版使用官方 logo。
 - `brands/<channel>/channel.json` 必填：
   ```json
-  { "brand": { "name": "ZeoKeel", "powered_by": "show",
-               "logo": { "light": "logo.svg", "dark": "logo-dark.svg" } } }
+  { "identity": { "slug": "zeokeel", "product_name": "ZeoKeel", "app_id": "dev.zeokeel.app",
+                  "company": "ZeoKeel", "copyright": "ZeoKeel", "deep_link_scheme": "zeokeel",
+                  "app_origin_scheme": "zk-app", "data_dir_name": "ZeoKeel", "product_home_dir": ".zeokeel" },
+    "brand": { "powered_by": "show", "logo": { "light": "logo.svg", "dark": "logo-dark.svg" } },
+    "assets": { "accent": "#0F766E" }, "defaults": { "server_url": "" } }
   ```
+  完整字段/校验以 `09` §3 为唯一真源；`product_name` 是显示名，`identity.*` 负责安装包/路径/协议身份。
 - 构建期：`zk compose` 校验 logo 存在 → 复制到 `apps/desktop/web/public/brand/logo.svg`、`logo-dark.svg`，
   并生成 `apps/desktop/web/src/generated/brand.ts`（`BRAND.logoLight/logoDark`）与 `shared/contracts/brand.json`；
   这些是 `@generated`，禁止手改；`--check` 必须绿。
