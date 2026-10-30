@@ -2,7 +2,7 @@
 
 # Package Index
 
-edition `enterprise` · channel `official` · 54 packages
+edition `enterprise` · channel `official` · 62 packages
 
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
@@ -40,15 +40,23 @@ edition `enterprise` · channel `official` · 54 packages
 | `store.session` | `zeokeel/store-session-sqlite` | `zk-store-session-sqlite` | `zk-contract-session` | singleton |
 | `store.settings` | `zeokeel/store-settings-json` | `zk-store-settings-json` | `zk-contract-config` | singleton |
 | `tool.bash` | `zeokeel/tool-bash` | `zk-tool-bash` | `zk-contract-tool` | singleton |
+| `tool.bash_persistent` | `zeokeel/tool-bash-persistent` | `zk-tool-bash-persistent` | `zk-contract-tool` | singleton |
 | `tool.fs` | `zeokeel/tool-fs` | `zk-tool-fs` | `zk-contract-tool` | singleton |
 | `tool.fs.edit` | `zeokeel/tool-fs-edit` | `zk-tool-fs-edit` | `zk-contract-tool` | singleton |
 | `tool.fs.search` | `zeokeel/tool-fs-search` | `zk-tool-fs-search` | `zk-contract-tool` | singleton |
 | `tool.fs.write` | `zeokeel/tool-fs-write` | `zk-tool-fs-write` | `zk-contract-tool` | singleton |
+| `tool.glob` | `zeokeel/tool-glob` | `zk-tool-glob` | `zk-contract-tool` | singleton |
+| `tool.grep` | `zeokeel/tool-grep` | `zk-tool-grep` | `zk-contract-tool` | singleton |
+| `tool.jobs.kill` | `zeokeel/tool-job-kill` | `zk-tool-job-kill` | `zk-contract-tool` | singleton |
+| `tool.jobs.list` | `zeokeel/tool-job-list` | `zk-tool-job-list` | `zk-contract-tool` | singleton |
+| `tool.jobs.output` | `zeokeel/tool-job-output` | `zk-tool-job-output` | `zk-contract-tool` | singleton |
 | `tool.present` | `zeokeel/tool-present` | `zk-tool-present` | `zk-contract-tool` | singleton |
 | `tool.skill` | `zeokeel/tool-skill` | `zk-tool-skill` | `zk-contract-tool` | singleton |
 | `tool.todo` | `zeokeel/tool-todo` | `zk-tool-todo` | `zk-contract-tool` | singleton |
 | `tool.web.fetch` | `zeokeel/tool-web-fetch` | `zk-tool-web-fetch` | `zk-contract-tool` | singleton |
 | `tool.working_directory` | `zeokeel/tool-working-directory` | `zk-tool-working-directory` | `zk-contract-tool` | singleton |
+| `tool.workspace_dependencies` | `zeokeel/tool-workspace-dependencies` | `zk-tool-workspace-dependencies` | `zk-contract-tool` | singleton |
+| `tool.worktree` | `zeokeel/tool-worktree` | `zk-tool-worktree` | `zk-contract-tool` | singleton |
 | `ui.kit` | `zeokeel/ui-kit` | `zk-ui-kit` | `zk-contract-ui` | singleton |
 | `ui.shell` | `zeokeel/ui-shell` | `zk-ui-shell` | `zk-contract-ui` | singleton |
 | `ui.slot.apps` | `zeokeel/ui-apps` | `zk-ui-apps` | `zk-contract-ui` | singleton |

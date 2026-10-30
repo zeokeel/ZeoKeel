@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-job-kill"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "job_kill tool"
+
+[role]
+name = "tool.jobs.kill"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-job-kill" }

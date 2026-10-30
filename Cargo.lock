@@ -8370,15 +8370,23 @@ dependencies = [
  "zk-store-session-sqlite",
  "zk-store-settings-json",
  "zk-tool-bash",
+ "zk-tool-bash-persistent",
  "zk-tool-fs",
  "zk-tool-fs-edit",
  "zk-tool-fs-search",
  "zk-tool-fs-write",
+ "zk-tool-glob",
+ "zk-tool-grep",
+ "zk-tool-job-kill",
+ "zk-tool-job-list",
+ "zk-tool-job-output",
  "zk-tool-present",
  "zk-tool-skill",
  "zk-tool-todo",
  "zk-tool-web-fetch",
  "zk-tool-working-directory",
+ "zk-tool-workspace-dependencies",
+ "zk-tool-worktree",
  "zk-ui-apps",
  "zk-ui-chat",
  "zk-ui-commands",
@@ -8609,6 +8617,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-kit-jobs"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zk-contract-tool",
+ "zk-kit-tools",
+]
+
+[[package]]
 name = "zk-kit-server"
 version = "0.1.0"
 dependencies = [
@@ -8629,6 +8646,7 @@ dependencies = [
 name = "zk-kit-tools"
 version = "0.1.0"
 dependencies = [
+ "regex",
  "serde_json",
  "zk-contract-tool",
 ]
@@ -8980,6 +8998,16 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
+ "zk-kit-jobs",
+ "zk-kit-tools",
+]
+
+[[package]]
+name = "zk-tool-bash-persistent"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zk-contract-tool",
  "zk-kit-tools",
 ]
 
@@ -9016,6 +9044,51 @@ dependencies = [
  "serde_json",
  "zk-contract-tool",
  "zk-kit-tools",
+]
+
+[[package]]
+name = "zk-tool-glob"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zk-contract-tool",
+ "zk-kit-tools",
+]
+
+[[package]]
+name = "zk-tool-grep"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zk-contract-tool",
+ "zk-kit-tools",
+]
+
+[[package]]
+name = "zk-tool-job-kill"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zk-contract-tool",
+ "zk-kit-jobs",
+]
+
+[[package]]
+name = "zk-tool-job-list"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zk-contract-tool",
+ "zk-kit-jobs",
+]
+
+[[package]]
+name = "zk-tool-job-output"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zk-contract-tool",
+ "zk-kit-jobs",
 ]
 
 [[package]]
@@ -9060,6 +9133,26 @@ name = "zk-tool-working-directory"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "zk-contract-tool",
+ "zk-kit-tools",
+]
+
+[[package]]
+name = "zk-tool-workspace-dependencies"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "toml 0.8.2",
+ "zk-contract-tool",
+ "zk-kit-tools",
+]
+
+[[package]]
+name = "zk-tool-worktree"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "toml 0.8.2",
  "zk-contract-tool",
  "zk-kit-tools",
 ]

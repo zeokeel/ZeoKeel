@@ -1,0 +1,13 @@
+[package]
+name = "zk-kit-jobs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde_json = { workspace = true }
+zk-contract-tool = { path = "../../packages/contracts/tool" }
+zk-kit-tools = { path = "../zk-kit-tools" }
+
+[lints]
+workspace = true

@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-glob"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "按 glob 查找文件"
+
+[role]
+name = "tool.glob"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-glob" }

@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-workspace-dependencies"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "读取工作区 Cargo/Node 依赖清单"
+
+[role]
+name = "tool.workspace_dependencies"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-workspace-dependencies" }

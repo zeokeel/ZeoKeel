@@ -272,6 +272,14 @@
     ]
   },
   {
+    "id": "zeokeel/tool-bash-persistent",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.bash_persistent"
+    ]
+  },
+  {
     "id": "zeokeel/tool-fs",
     "version": "0.1.0",
     "kind": "capability",
@@ -301,6 +309,46 @@
     "kind": "capability",
     "roles": [
       "tool.fs.write"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-glob",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.glob"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-grep",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.grep"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-job-kill",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.jobs.kill"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-job-list",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.jobs.list"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-job-output",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.jobs.output"
     ]
   },
   {
@@ -341,6 +389,22 @@
     "kind": "capability",
     "roles": [
       "tool.working_directory"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-workspace-dependencies",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.workspace_dependencies"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-worktree",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.worktree"
     ]
   },
   {

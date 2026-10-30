@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-bash-persistent"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Persistent bash shell tool"
+
+[role]
+name = "tool.bash_persistent"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-bash-persistent" }

@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 serde_json = { workspace = true }
+regex = { workspace = true }
 zk-contract-tool = { path = "../../packages/contracts/tool" }
 
 [lints]

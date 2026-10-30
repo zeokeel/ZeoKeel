@@ -1,4 +1,15 @@
 [packages]
+"tool.workspace_dependencies" = "zeokeel/tool-workspace-dependencies"
+"tool.worktree" = "zeokeel/tool-worktree"
+
+"tool.glob" = "zeokeel/tool-glob"
+"tool.grep" = "zeokeel/tool-grep"
+
+"tool.bash_persistent" = "zeokeel/tool-bash-persistent"
+"tool.jobs.output" = "zeokeel/tool-job-output"
+"tool.jobs.list" = "zeokeel/tool-job-list"
+"tool.jobs.kill" = "zeokeel/tool-job-kill"
+
 "tool.web.fetch" = "zeokeel/tool-web-fetch"
 "tool.skill" = "zeokeel/tool-skill"
 "tool.working_directory" = "zeokeel/tool-working-directory"

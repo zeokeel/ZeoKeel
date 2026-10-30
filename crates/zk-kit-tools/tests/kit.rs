@@ -49,3 +49,25 @@ fn bash_runs_in_workspace() {
     let out = zk_kit_tools::run_bash(&context, "printf hi", None, Some(5000)).unwrap();
     assert_eq!(out, "hi");
 }
+
+#[test]
+fn persistent_shell_keeps_state() {
+    let (dir, context) = ctx();
+    std::fs::create_dir_all(dir.join("sub")).unwrap();
+    let first = zk_kit_tools::persistent::run(&context, "cd sub; export ZK_TEST=ok", 5000).unwrap();
+    let _ = first;
+    let second = zk_kit_tools::persistent::run(&context, "printf '%s:%s' \"$PWD\" \"$ZK_TEST\"", 5000).unwrap();
+    assert!(second.contains("/sub"));
+    assert!(second.contains(":ok"));
+    zk_kit_tools::persistent::close_all();
+}
+
+#[test]
+fn glob_and_grep_find_workspace_files() {
+    let (_dir, context) = ctx();
+    write_text(&safe_path(&context, "src/main.rs").unwrap(), "fn main() {}\nlet secret = 1;\n").unwrap();
+    let globbed = zk_kit_tools::glob_files(&context, "**/*.rs", None).unwrap();
+    assert!(globbed.contains("src/main.rs"));
+    let grepped = zk_kit_tools::grep_files(&context, "secret", None, Some("*.rs")).unwrap();
+    assert!(grepped.contains("src/main.rs:2"));
+}

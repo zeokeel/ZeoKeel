@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-worktree"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "创建/列出/删除 git worktree"
+
+[role]
+name = "tool.worktree"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-worktree" }

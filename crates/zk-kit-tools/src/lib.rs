@@ -176,3 +176,75 @@ pub fn search(context: &TurnContext, query: &str, path: Option<&str>) -> Result<
     }
     if results.is_empty() { Ok("no matches".to_owned()) } else { Ok(truncate(results.join("\n"))) }
 }
+
+pub mod persistent;
+
+
+fn glob_match(pattern: &str, text: &str) -> bool {
+    fn inner(p: &[u8], t: &[u8]) -> bool {
+        let Some(&first) = p.first() else { return t.is_empty(); };
+        let rest = p.get(1..).unwrap_or_default();
+        let text_rest = t.get(1..).unwrap_or_default();
+        match first {
+            b'*' => {
+                if p.get(1) == Some(&b'*') {
+                    let after = p.get(2..).unwrap_or_default();
+                    if inner(after, t) { return true; }
+                    return !t.is_empty() && inner(p, text_rest);
+                }
+                inner(rest, t) || (!t.is_empty() && inner(p, text_rest))
+            }
+            b'?' => !t.is_empty() && inner(rest, text_rest),
+            byte => t.first() == Some(&byte) && inner(rest, text_rest),
+        }
+    }
+    inner(pattern.as_bytes(), text.as_bytes())
+}
+
+/// Find files whose relative path matches a glob pattern.
+pub fn glob_files(context: &TurnContext, pattern: &str, path: Option<&str>) -> Result<String, ToolError> {
+    let root = workspace_root(context)?;
+    let base = match path { Some(path) if !path.trim().is_empty() => safe_path(context, path)?, _ => root.clone() };
+    let mut stack = vec![base];
+    let mut out = Vec::new();
+    while let Some(dir) = stack.pop() {
+        if out.len() >= 100 { break; }
+        for entry in std::fs::read_dir(&dir).map_err(|error| ToolError::Io(error.to_string()))? {
+            let entry = entry.map_err(|error| ToolError::Io(error.to_string()))?;
+            let file_type = entry.file_type().map_err(|error| ToolError::Io(error.to_string()))?;
+            let path = entry.path();
+            if file_type.is_dir() { if entry.file_name() != ".git" && entry.file_name() != "node_modules" { stack.push(path); } continue; }
+            if !file_type.is_file() { continue; }
+            let relative = path.strip_prefix(&root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+            if glob_match(pattern, &relative) || glob_match(pattern, entry.file_name().to_string_lossy().as_ref()) { out.push(relative); }
+        }
+    }
+    out.sort();
+    if out.is_empty() { Ok("no matches".to_owned()) } else { Ok(truncate(out.join("\n"))) }
+}
+
+/// Search content with a regex.
+pub fn grep_files(context: &TurnContext, pattern: &str, path: Option<&str>, include: Option<&str>) -> Result<String, ToolError> {
+    let regex = regex::Regex::new(pattern).map_err(|error| ToolError::InvalidArgs(error.to_string()))?;
+    let root = workspace_root(context)?;
+    let base = match path { Some(path) if !path.trim().is_empty() => safe_path(context, path)?, _ => root.clone() };
+    let mut stack = vec![base];
+    let mut out = Vec::new();
+    while let Some(dir) = stack.pop() {
+        if out.len() >= 250 { break; }
+        for entry in std::fs::read_dir(&dir).map_err(|error| ToolError::Io(error.to_string()))? {
+            let entry = entry.map_err(|error| ToolError::Io(error.to_string()))?;
+            let file_type = entry.file_type().map_err(|error| ToolError::Io(error.to_string()))?;
+            let path = entry.path();
+            if file_type.is_dir() { if entry.file_name() != ".git" && entry.file_name() != "node_modules" { stack.push(path); } continue; }
+            if !file_type.is_file() { continue; }
+            let relative = path.strip_prefix(&root).unwrap_or(&path).to_string_lossy().to_string();
+            if let Some(include) = include { if !glob_match(include, &relative) { continue; } }
+            let Ok(text) = std::fs::read_to_string(&path) else { continue; };
+            for (index, line) in text.lines().enumerate() {
+                if regex.is_match(line) { out.push(format!("{relative}:{}\t{line}", index.saturating_add(1))); if out.len() >= 250 { break; } }
+            }
+        }
+    }
+    if out.is_empty() { Ok("no matches".to_owned()) } else { Ok(truncate(out.join("\n"))) }
+}
