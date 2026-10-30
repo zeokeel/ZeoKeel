@@ -59,6 +59,20 @@ curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X PUT "http:/
 USERS=$(curl -fsS -b /tmp/zk-login-admin.cookies "http://127.0.0.1:$SERVER_PORT/api/admin/users")
 ADMIN_ID=$(printf '%s' "$USERS" | python3 -c 'import json,sys;print([u["id"] for u in json.load(sys.stdin)["users"] if u["username"]=="admin"][0])')
 curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/wallet/$ADMIN_ID/adjust" -H 'content-type: application/json' -d '{"delta_micros":1000000,"reason":"login e2e grant","idempotency_key":"login-e2e-grant"}' >/dev/null
+# Seed one approved skill + one connector for the client store e2e.
+python3 - <<'PYZIP'
+import zipfile
+with zipfile.ZipFile('/tmp/zk-client-skill.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+    z.writestr('SKILL.md', '# client e2e skill\n')
+PYZIP
+SKILL=$(curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/skills" -H 'content-type: application/json' -d '{"name":"client-skill"}')
+SKILL_ID=$(printf '%s' "$SKILL" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
+curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/skills/$SKILL_ID/approve" >/dev/null
+curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/skills/$SKILL_ID/versions" -F "version=1.0.0" -F "archive=@/tmp/zk-client-skill.zip" >/dev/null
+curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X PUT "http://127.0.0.1:$SERVER_PORT/api/admin/skills/$SKILL_ID/grants" -H 'content-type: application/json' -d '{"grants":[{"grantee":"all","can_install":true}]}' >/dev/null
+CONN=$(curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/connectors" -H 'content-type: application/json' -d '{"name":"client-mcp","transport":"http","config":{}}')
+CONN_ID=$(printf '%s' "$CONN" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
+curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X PUT "http://127.0.0.1:$SERVER_PORT/api/admin/connectors/$CONN_ID/grants" -H 'content-type: application/json' -d '{"grants":[{"grantee":"all","can_enable":true}]}' >/dev/null
 ZEOKEEL_LOGIN_URL="http://127.0.0.1:$UI_PORT" ZEOKEEL_LOGIN_SERVER="http://127.0.0.1:$SERVER_PORT" \
-  pnpm exec playwright test e2e/m2-login.spec.ts e2e/m2-gateway-chat.spec.ts --reporter=line
+  pnpm exec playwright test e2e/m2-login.spec.ts e2e/m2-gateway-chat.spec.ts e2e/m3-client-content.spec.ts --reporter=line
 echo "login e2e ok"

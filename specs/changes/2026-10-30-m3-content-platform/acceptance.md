@@ -8,6 +8,13 @@
 
 ## 1. 自动验证（实现后填写真实结果）
 
+### task 7 evidence (2026-10-30)
+
+- 新增 `@zeokeel/ui-skills` / `@zeokeel/ui-connectors`，接入 registry、⌘K 命令、shell overlay。
+- Rust IPC `skills.install`：base64 → zip → 安全解压（路径/链接/总量）→ 规范化 tree_sha256 → 原子落盘；`skills.installed` 列表。
+- `bash scripts/login-e2e.sh`：3 passed（登录、网关聊天、客户端安装技能 + 启停连接器）；axe 0 serious/critical；截图 `target/evidence/m3/client-skills.png` / `client-connectors.png`。
+- 仍缺 task8：恶意 zip/树哈希/OAuth 刷新客户端测试。
+
 ### task 6 evidence (2026-10-30)
 
 - `bash scripts/srv-store-test.sh`：创建 connector → 全员 grants → OAuth public client → 客户端目录含 OAuth → enable/disable → 删除；`store ok: content schema + skill archive + connectors`

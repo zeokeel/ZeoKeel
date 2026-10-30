@@ -1,158 +1,14 @@
 {
-  "admin.kit": {
-    "package": "zeokeel/admin-ui-kit",
-    "crate_name": "zk-admin-ui-kit",
-    "contract": "zk-contract-admin-ui",
-    "cardinality": "singleton"
-  },
-  "admin.page.audit": {
-    "package": "zeokeel/admin-audit",
-    "crate_name": "zk-admin-admin-audit",
-    "contract": "zk-contract-admin-ui",
-    "cardinality": "singleton"
-  },
-  "admin.page.connectors": {
-    "package": "zeokeel/admin-connectors",
-    "crate_name": "zk-admin-admin-connectors",
-    "contract": "zk-contract-admin-ui",
-    "cardinality": "singleton"
-  },
-  "admin.page.jobs": {
-    "package": "zeokeel/admin-jobs",
-    "crate_name": "zk-admin-admin-jobs",
-    "contract": "zk-contract-admin-ui",
-    "cardinality": "singleton"
-  },
-  "admin.page.pricing": {
-    "package": "zeokeel/admin-pricing",
-    "crate_name": "zk-admin-admin-pricing",
-    "contract": "zk-contract-admin-ui",
-    "cardinality": "singleton"
-  },
-  "admin.page.settings": {
-    "package": "zeokeel/admin-settings",
-    "crate_name": "zk-admin-admin-settings",
-    "contract": "zk-contract-admin-ui",
-    "cardinality": "singleton"
-  },
-  "admin.page.skills": {
-    "package": "zeokeel/admin-skills",
-    "crate_name": "zk-admin-admin-skills",
-    "contract": "zk-contract-admin-ui",
-    "cardinality": "singleton"
-  },
-  "admin.page.usage": {
-    "package": "zeokeel/admin-usage",
-    "crate_name": "zk-admin-admin-usage",
-    "contract": "zk-contract-admin-ui",
-    "cardinality": "singleton"
-  },
-  "admin.page.users": {
-    "package": "zeokeel/admin-users",
-    "crate_name": "zk-admin-admin-users",
-    "contract": "zk-contract-admin-ui",
-    "cardinality": "singleton"
-  },
-  "admin.page.wallet": {
-    "package": "zeokeel/admin-wallet",
-    "crate_name": "zk-admin-admin-wallet",
-    "contract": "zk-contract-admin-ui",
-    "cardinality": "singleton"
-  },
-  "admin.shell": {
-    "package": "zeokeel/admin-shell",
-    "crate_name": "zk-admin-shell",
-    "contract": "zk-contract-admin-ui",
-    "cardinality": "singleton"
-  },
   "agent.loop": {
     "package": "zeokeel/agent-loop",
     "crate_name": "zk-agent-loop",
     "contract": "zk-contract-agent",
     "cardinality": "singleton"
   },
-  "auth.client": {
-    "package": "zeokeel/client-auth",
-    "crate_name": "zk-client-auth",
-    "contract": "zk-contract-auth-client",
-    "cardinality": "singleton"
-  },
   "llm.provider.default": {
-    "package": "zeokeel/llm-gateway",
-    "crate_name": "zk-llm-gateway",
+    "package": "zeokeel/llm-mock",
+    "crate_name": "zk-llm-mock",
     "contract": "zk-contract-llm",
-    "cardinality": "singleton"
-  },
-  "srv.audit": {
-    "package": "zeokeel/audit",
-    "crate_name": "zk-srv-audit",
-    "contract": "zk-contract-server",
-    "cardinality": "singleton"
-  },
-  "srv.auth.session": {
-    "package": "zeokeel/auth",
-    "crate_name": "zk-srv-auth-local",
-    "contract": "zk-contract-auth",
-    "cardinality": "singleton"
-  },
-  "srv.connectors": {
-    "package": "zeokeel/connectors",
-    "crate_name": "zk-srv-connectors",
-    "contract": "zk-contract-connector",
-    "cardinality": "singleton"
-  },
-  "srv.content": {
-    "package": "zeokeel/content",
-    "crate_name": "zk-srv-content",
-    "contract": "zk-contract-content",
-    "cardinality": "singleton"
-  },
-  "srv.gateway": {
-    "package": "zeokeel/gateway",
-    "crate_name": "zk-srv-gateway",
-    "contract": "zk-contract-gateway",
-    "cardinality": "singleton"
-  },
-  "srv.http": {
-    "package": "zeokeel/srv-http",
-    "crate_name": "zk-srv-http",
-    "contract": "zk-contract-server",
-    "cardinality": "singleton"
-  },
-  "srv.jobs": {
-    "package": "zeokeel/jobs",
-    "crate_name": "zk-srv-jobs",
-    "contract": "zk-contract-server",
-    "cardinality": "singleton"
-  },
-  "srv.pricing": {
-    "package": "zeokeel/pricing",
-    "crate_name": "zk-srv-pricing",
-    "contract": "zk-contract-wallet",
-    "cardinality": "singleton"
-  },
-  "srv.settings": {
-    "package": "zeokeel/settings",
-    "crate_name": "zk-srv-settings",
-    "contract": "zk-contract-server",
-    "cardinality": "singleton"
-  },
-  "srv.skills": {
-    "package": "zeokeel/skills",
-    "crate_name": "zk-srv-skills",
-    "contract": "zk-contract-skill",
-    "cardinality": "singleton"
-  },
-  "srv.users": {
-    "package": "zeokeel/users",
-    "crate_name": "zk-srv-users",
-    "contract": "zk-contract-user",
-    "cardinality": "singleton"
-  },
-  "srv.wallet": {
-    "package": "zeokeel/wallet",
-    "crate_name": "zk-srv-wallet",
-    "contract": "zk-contract-wallet",
     "cardinality": "singleton"
   },
   "store.session": {
@@ -203,12 +59,6 @@
     "contract": "zk-contract-ui",
     "cardinality": "singleton"
   },
-  "ui.slot.login": {
-    "package": "zeokeel/ui-login",
-    "crate_name": "zk-ui-login",
-    "contract": "zk-contract-ui",
-    "cardinality": "singleton"
-  },
   "ui.slot.sessions": {
     "package": "zeokeel/ui-sessions",
     "crate_name": "zk-ui-sessions",
@@ -219,6 +69,18 @@
     "package": "zeokeel/ui-settings",
     "crate_name": "zk-ui-settings",
     "contract": "zk-contract-ui",
+    "cardinality": "singleton"
+  },
+  "ui.slot.settings-provider": {
+    "package": "zeokeel/ui-settings-provider",
+    "crate_name": "zk-ui-settings-provider",
+    "contract": "zk-contract-ui",
+    "cardinality": "singleton"
+  },
+  "update.client": {
+    "package": "zeokeel/client-update-github",
+    "crate_name": "zk-client-update-github",
+    "contract": "zk-contract-update",
     "cardinality": "singleton"
   }
 }

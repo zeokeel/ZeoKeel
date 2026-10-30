@@ -1,75 +1,5 @@
 [
   {
-    "component": "page.audit",
-    "order": 10,
-    "package": "zeokeel/admin-audit",
-    "role": "admin.page.audit",
-    "slot": "admin.page.audit"
-  },
-  {
-    "component": "page.connectors",
-    "order": 10,
-    "package": "zeokeel/admin-connectors",
-    "role": "admin.page.connectors",
-    "slot": "admin.page.connectors"
-  },
-  {
-    "component": "page.jobs",
-    "order": 10,
-    "package": "zeokeel/admin-jobs",
-    "role": "admin.page.jobs",
-    "slot": "admin.page.jobs"
-  },
-  {
-    "component": "page.pricing",
-    "order": 10,
-    "package": "zeokeel/admin-pricing",
-    "role": "admin.page.pricing",
-    "slot": "admin.page.pricing"
-  },
-  {
-    "component": "page.settings",
-    "order": 10,
-    "package": "zeokeel/admin-settings",
-    "role": "admin.page.settings",
-    "slot": "admin.page.settings"
-  },
-  {
-    "component": "page.skills",
-    "order": 10,
-    "package": "zeokeel/admin-skills",
-    "role": "admin.page.skills",
-    "slot": "admin.page.skills"
-  },
-  {
-    "component": "page.usage",
-    "order": 10,
-    "package": "zeokeel/admin-usage",
-    "role": "admin.page.usage",
-    "slot": "admin.page.usage"
-  },
-  {
-    "component": "page.users",
-    "order": 10,
-    "package": "zeokeel/admin-users",
-    "role": "admin.page.users",
-    "slot": "admin.page.users"
-  },
-  {
-    "component": "page.wallet",
-    "order": 10,
-    "package": "zeokeel/admin-wallet",
-    "role": "admin.page.wallet",
-    "slot": "admin.page.wallet"
-  },
-  {
-    "component": "shell.admin",
-    "order": 10,
-    "package": "zeokeel/admin-shell",
-    "role": "admin.shell",
-    "slot": "admin.shell"
-  },
-  {
     "component": "chat.thread",
     "order": 10,
     "package": "zeokeel/ui-chat",
@@ -91,13 +21,6 @@
     "slot": "ui.inspector"
   },
   {
-    "component": "login.page",
-    "order": 10,
-    "package": "zeokeel/ui-login",
-    "role": "ui.slot.login",
-    "slot": "ui.login"
-  },
-  {
     "component": "sessions.sidebar",
     "order": 10,
     "package": "zeokeel/ui-sessions",
@@ -110,6 +33,13 @@
     "package": "zeokeel/ui-settings",
     "role": "ui.slot.settings",
     "slot": "ui.settings"
+  },
+  {
+    "component": "settings.provider",
+    "order": 10,
+    "package": "zeokeel/ui-settings-provider",
+    "role": "ui.slot.settings-provider",
+    "slot": "ui.settings.provider"
   },
   {
     "component": "shell.frame",

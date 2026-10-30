@@ -1,93 +1,5 @@
 [
   {
-    "id": "zeokeel/admin-ui-kit",
-    "version": "0.1.0",
-    "kind": "ui",
-    "roles": [
-      "admin.kit"
-    ]
-  },
-  {
-    "id": "zeokeel/admin-audit",
-    "version": "0.1.0",
-    "kind": "ui",
-    "roles": [
-      "admin.page.audit"
-    ]
-  },
-  {
-    "id": "zeokeel/admin-connectors",
-    "version": "0.1.0",
-    "kind": "ui",
-    "roles": [
-      "admin.page.connectors"
-    ]
-  },
-  {
-    "id": "zeokeel/admin-jobs",
-    "version": "0.1.0",
-    "kind": "ui",
-    "roles": [
-      "admin.page.jobs"
-    ]
-  },
-  {
-    "id": "zeokeel/admin-pricing",
-    "version": "0.1.0",
-    "kind": "ui",
-    "roles": [
-      "admin.page.pricing"
-    ]
-  },
-  {
-    "id": "zeokeel/admin-settings",
-    "version": "0.1.0",
-    "kind": "ui",
-    "roles": [
-      "admin.page.settings"
-    ]
-  },
-  {
-    "id": "zeokeel/admin-skills",
-    "version": "0.1.0",
-    "kind": "ui",
-    "roles": [
-      "admin.page.skills"
-    ]
-  },
-  {
-    "id": "zeokeel/admin-usage",
-    "version": "0.1.0",
-    "kind": "ui",
-    "roles": [
-      "admin.page.usage"
-    ]
-  },
-  {
-    "id": "zeokeel/admin-users",
-    "version": "0.1.0",
-    "kind": "ui",
-    "roles": [
-      "admin.page.users"
-    ]
-  },
-  {
-    "id": "zeokeel/admin-wallet",
-    "version": "0.1.0",
-    "kind": "ui",
-    "roles": [
-      "admin.page.wallet"
-    ]
-  },
-  {
-    "id": "zeokeel/admin-shell",
-    "version": "0.1.0",
-    "kind": "ui",
-    "roles": [
-      "admin.shell"
-    ]
-  },
-  {
     "id": "zeokeel/agent-loop",
     "version": "0.1.0",
     "kind": "capability",
@@ -96,115 +8,11 @@
     ]
   },
   {
-    "id": "zeokeel/client-auth",
-    "version": "0.1.0",
-    "kind": "capability",
-    "roles": [
-      "auth.client"
-    ]
-  },
-  {
-    "id": "zeokeel/llm-gateway",
+    "id": "zeokeel/llm-mock",
     "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "llm.provider.default"
-    ]
-  },
-  {
-    "id": "zeokeel/audit",
-    "version": "0.1.0",
-    "kind": "service",
-    "roles": [
-      "srv.audit"
-    ]
-  },
-  {
-    "id": "zeokeel/auth",
-    "version": "0.1.0",
-    "kind": "service",
-    "roles": [
-      "srv.auth.session"
-    ]
-  },
-  {
-    "id": "zeokeel/connectors",
-    "version": "0.1.0",
-    "kind": "capability",
-    "roles": [
-      "srv.connectors"
-    ]
-  },
-  {
-    "id": "zeokeel/content",
-    "version": "0.1.0",
-    "kind": "capability",
-    "roles": [
-      "srv.content"
-    ]
-  },
-  {
-    "id": "zeokeel/gateway",
-    "version": "0.1.0",
-    "kind": "service",
-    "roles": [
-      "srv.gateway"
-    ]
-  },
-  {
-    "id": "zeokeel/srv-http",
-    "version": "0.1.0",
-    "kind": "service",
-    "roles": [
-      "srv.http"
-    ]
-  },
-  {
-    "id": "zeokeel/jobs",
-    "version": "0.1.0",
-    "kind": "service",
-    "roles": [
-      "srv.jobs"
-    ]
-  },
-  {
-    "id": "zeokeel/pricing",
-    "version": "0.1.0",
-    "kind": "service",
-    "roles": [
-      "srv.pricing"
-    ]
-  },
-  {
-    "id": "zeokeel/settings",
-    "version": "0.1.0",
-    "kind": "service",
-    "roles": [
-      "srv.settings"
-    ]
-  },
-  {
-    "id": "zeokeel/skills",
-    "version": "0.1.0",
-    "kind": "capability",
-    "roles": [
-      "srv.skills"
-    ]
-  },
-  {
-    "id": "zeokeel/users",
-    "version": "0.1.0",
-    "kind": "service",
-    "roles": [
-      "srv.users"
-    ]
-  },
-  {
-    "id": "zeokeel/wallet",
-    "version": "0.1.0",
-    "kind": "service",
-    "roles": [
-      "srv.wallet"
     ]
   },
   {
@@ -272,14 +80,6 @@
     ]
   },
   {
-    "id": "zeokeel/ui-login",
-    "version": "0.1.0",
-    "kind": "ui",
-    "roles": [
-      "ui.slot.login"
-    ]
-  },
-  {
     "id": "zeokeel/ui-sessions",
     "version": "0.1.0",
     "kind": "ui",
@@ -293,6 +93,22 @@
     "kind": "ui",
     "roles": [
       "ui.slot.settings"
+    ]
+  },
+  {
+    "id": "zeokeel/ui-settings-provider",
+    "version": "0.1.0",
+    "kind": "ui",
+    "roles": [
+      "ui.slot.settings-provider"
+    ]
+  },
+  {
+    "id": "zeokeel/client-update-github",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "update.client"
     ]
   }
 ]
