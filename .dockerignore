@@ -1,0 +1,13 @@
+target
+node_modules
+.git
+.github
+research
+experiments
+docs
+specs
+shared
+target/
+**/target
+**/node_modules
+**/dist
