@@ -37,6 +37,10 @@
 - 安全/限额负向（部分）：`crates/zk-kit-wasm/tests/limits.rs` fuel/内存耗尽；`apps/tests` bad wasm 400；`app-db/tests/schema.rs` host migration/降级/DDL 拒绝/16 表上限；SQL 闸门表驱动。
 - 仍缺：并发配额、跨应用 DB 隔离 e2e、API 层 fuel/time/DB 配额断言。
 
+## 进展（续 6）
+
+- task 9（部分）：跨应用 DB 隔离 e2e（app1 有行、app2 空库）；fuel/内存/DDL/表数/坏 wasm 负向已覆盖；并发/API 层超时仍未覆盖。
+
 ## 检查
 
 - [ ] `bash scripts/apps-e2e.sh`

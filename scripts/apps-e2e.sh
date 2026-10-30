@@ -45,6 +45,14 @@ REQ=$(python3 -c "import json;print(json.dumps({'abi':'zeokeel-app/1','app_id':'
 curl -fsS -X POST "$BASE/api/client/v1/apps/$APP_ID/request" -H "Authorization: Bearer $ADMIN_JWT" -H 'content-type: application/json' -d "$REQ" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["status"]==200'
 LIST=$(printf '{"abi":"zeokeel-app/1","app_id":"%s","method":"GET","path":"/items","query":"","headers":{},"body_b64":"","request_id":"r2"}' "$APP_ID")
 curl -fsS -X POST "$BASE/api/client/v1/apps/$APP_ID/request" -H "Authorization: Bearer $ADMIN_JWT" -H 'content-type: application/json' -d "$LIST" | python3 -c 'import json,sys,base64;d=json.load(sys.stdin);body=json.loads(base64.b64decode(d["body_b64"]));assert body["rows"][0]["name"]=="e2e"'
+# cross-app DB isolation: a second app on a fresh DB must see no rows from app1.
+printf '{"name":"e2e-app2","version":"1.0.0","description":"e2e2","icon":"","db_schema_version":1,"db_migrations":[{"version":1,"sql":"CREATE TABLE IF NOT EXISTS items(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);"}],"ui":[]}' > /tmp/zk-app2-manifest.json
+UP2=$(curl -fsS -X POST "$BASE/api/client/v1/apps" -H "Authorization: Bearer $ADMIN_JWT" -F "manifest=</tmp/zk-app2-manifest.json" -F "wasm=@$GUEST")
+APP2=$(printf '%s' "$UP2" | python3 -c 'import json,sys;print(json.load(sys.stdin)["app_id"])')
+curl -fsS -b /tmp/zk-apps.cookies -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/admin/apps/$APP2/approve" >/dev/null
+curl -fsS -b /tmp/zk-apps.cookies -H "X-CSRF-Token: $CSRF" -X PUT "$BASE/api/admin/apps/$APP2/grants" -H 'content-type: application/json' -d '{"grants":[{"grantee":"all","can_open":true}]}' >/dev/null
+LIST2=$(printf '{"abi":"zeokeel-app/1","app_id":"%s","method":"GET","path":"/items","query":"","headers":{},"body_b64":"","request_id":"r3"}' "$APP2")
+curl -fsS -X POST "$BASE/api/client/v1/apps/$APP2/request" -H "Authorization: Bearer $ADMIN_JWT" -H 'content-type: application/json' -d "$LIST2" | python3 -c 'import json,sys,base64;d=json.load(sys.stdin);body=json.loads(base64.b64decode(d["body_b64"]));assert body["rows"]==[]'
 # restart and verify persistence
 kill "$SERVER_PID"; wait "$SERVER_PID" 2>/dev/null || true
 start_server
