@@ -20,6 +20,7 @@ import {
   parseWorkspaces,
 } from "../protocol";
 import type { AppSettings, Conversation, Transport, Workspace } from "../types";
+import { upgradeInfoOf, type UpgradeInfo } from "../upgrade";
 import { appReducer, createInitialState, type AppState } from "./reducer";
 
 let localIdCounter = 0;
@@ -97,6 +98,7 @@ export interface AppController {
   setSettingsOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   setCommandsOpen: (open: boolean) => void;
+  reportUpgrade: (info: UpgradeInfo) => void;
   dismissToast: () => void;
 }
 
@@ -206,7 +208,12 @@ export function useAppController(transport: Transport): AppController {
         });
       } catch (error: unknown) {
         if (!isCancelled()) {
-          dispatch({ type: "boot_failed", message: friendlyError(error, stateRef.current.settings.locale) });
+          const upgrade = upgradeInfoOf(error);
+          if (upgrade !== null) {
+            dispatch({ type: "upgrade_required", info: upgrade });
+          } else {
+            dispatch({ type: "boot_failed", message: friendlyError(error, stateRef.current.settings.locale) });
+          }
         }
       }
     })();
@@ -685,6 +692,10 @@ export function useAppController(transport: Transport): AppController {
     dispatch({ type: "commands_open", open });
   }, []);
 
+  const reportUpgrade = useCallback((info: UpgradeInfo) => {
+    dispatch({ type: "upgrade_required", info });
+  }, []);
+
   const dismissToast = useCallback(() => {
     dispatch({ type: "toast", message: null });
   }, []);
@@ -710,6 +721,7 @@ export function useAppController(transport: Transport): AppController {
     setSettingsOpen,
     toggleSidebar,
     setCommandsOpen,
+    reportUpgrade,
     dismissToast,
   };
 }

@@ -15,6 +15,7 @@ import {
   type ToolCallView,
   type Workspace,
 } from "../types";
+import type { UpgradeInfo } from "../upgrade";
 
 export type BootState = "loading" | "ready" | "error";
 export type MessagesState = "idle" | "loading" | "error";
@@ -44,6 +45,8 @@ export interface AppState {
   toast: string | null;
   sidebarOpen: boolean;
   commandsOpen: boolean;
+  /** Forced-upgrade gate (HTTP 426 CLIENT_TOO_OLD); highest-priority UI. */
+  upgrade: UpgradeInfo | null;
 }
 
 export type AppAction =
@@ -94,6 +97,7 @@ export type AppAction =
   | { type: "toast"; message: string | null }
   | { type: "sidebar_toggled"; open: boolean }
   | { type: "commands_open"; open: boolean }
+  | { type: "upgrade_required"; info: UpgradeInfo }
   | { type: "approval_decided"; approvalId: string; decision: "approved" | "rejected" }
   | { type: "question_answered"; questionId: string; answers: unknown };
 
@@ -122,6 +126,7 @@ export function createInitialState(): AppState {
     toast: null,
     sidebarOpen: false,
     commandsOpen: false,
+    upgrade: null,
   };
 }
 
@@ -643,6 +648,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, sidebarOpen: action.open };
     case "commands_open":
       return { ...state, commandsOpen: action.open };
+    case "upgrade_required":
+      return { ...state, upgrade: action.info };
     case "question_answered": {
       const messages = state.messages.map((message) => {
         const questions = message.questions.map((question) =>

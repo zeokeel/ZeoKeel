@@ -9125,6 +9125,7 @@ dependencies = [
  "sha2 0.10.9",
  "sqlx",
  "tokio",
+ "tower",
  "tower-http",
  "uuid",
  "zk-contract-server",

@@ -3,6 +3,7 @@
  * Same command/event shapes as Tauri (transport-agnostic IPC contract).
  */
 import { parseCommandResponse, parseUiEvent } from "../protocol";
+import { parseUpgradeInfo, UpgradeRequiredError } from "../upgrade";
 import type { Transport, UiEvent } from "../types";
 
 const IPC_PATH = "/ipc";
@@ -17,6 +18,10 @@ export function createHttpTransport(): Transport {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name, payload }),
       });
+      if (response.status === 426) {
+        const text = await response.text();
+        throw new UpgradeRequiredError(parseUpgradeInfo(426, text) ?? { current: null, minimum: null, portalUrl: null });
+      }
       if (!response.ok) {
         throw new Error(`IPC request failed with HTTP ${String(response.status)}`);
       }

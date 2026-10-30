@@ -284,6 +284,12 @@ const zhCN = {
   inspectorChangesError: "变更加载失败",
   inspectorChangesRetry: "重新加载",
   inspectorChangesWarning: "变更扫描提示：{message}",
+  upgradeTitle: "需要更新客户端",
+  upgradeBody: "当前客户端版本过低，已被服务端拒绝。请下载并安装最新版本后再使用。",
+  upgradeCurrent: "当前版本",
+  upgradeMinimum: "最低支持版本",
+  upgradePortal: "打开下载页",
+  upgradeUnknown: "未知",
 } as const;
 
 export type MessageKey = keyof typeof zhCN;
@@ -568,6 +574,12 @@ const enUS: Record<MessageKey, string> = {
   inspectorChangesError: "Failed to load changes",
   inspectorChangesRetry: "Retry",
   inspectorChangesWarning: "Change scan notice: {message}",
+  upgradeTitle: "Update required",
+  upgradeBody: "This client is too old and was rejected by the server. Download and install the latest version to continue.",
+  upgradeCurrent: "Current version",
+  upgradeMinimum: "Minimum supported",
+  upgradePortal: "Open download page",
+  upgradeUnknown: "Unknown",
 };
 
 const dictionaries: Record<Locale, Record<string, string>> = {

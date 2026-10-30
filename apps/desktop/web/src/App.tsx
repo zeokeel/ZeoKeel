@@ -12,6 +12,8 @@ import {
 import { BRAND } from "./generated/brand";
 import { AppSurfaceSlot, AppsSlot, ChatSlot, CommandsSlot, ConnectorsSlot, InspectorSlot, LoginSlot, SessionsSlot, SettingsProviderSlot, SettingsSlot, ShellSlot, SkillsSlot } from "./generated/registry";
 import { translate } from "./i18n";
+import { UpgradeGate } from "./UpgradeGate";
+import { upgradeInfoOf } from "./upgrade";
 import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
 import type { Transport } from "./types";
@@ -65,6 +67,7 @@ interface SurfaceResponse {
 
 export function App(props: { transport: Transport }) {
   const controller = useAppController(props.transport);
+  const reportUpgrade = controller.reportUpgrade;
   const { state } = controller;
   const [session, setSession] = useState<AuthSession | null>(loadSession);
   const [sessionServerUrl, setSessionServerUrl] = useState<string | null>(() =>
@@ -166,7 +169,14 @@ export function App(props: { transport: Transport }) {
         }
         setInstalled(local.filter((entry) => !tombstones.includes(entry.name)));
       })
-      .catch((error: unknown) => { setContentError(error instanceof Error ? error.message : t("contentLoadFailed")); });
+      .catch((error: unknown) => {
+        const upgrade = upgradeInfoOf(error);
+        if (upgrade !== null) {
+          reportUpgrade(upgrade);
+          return;
+        }
+        setContentError(error instanceof Error ? error.message : t("contentLoadFailed"));
+      });
     const refreshMs = Math.max(session.expires_in, 60) * 800;
     const timer = window.setTimeout(() => {
       void refreshSession(session, url)
@@ -175,10 +185,18 @@ export function App(props: { transport: Transport }) {
           setSession(next);
           void props.transport.call("auth.configure", { server_url: url, access_token: next.access_token, model: loadGatewayModel() }).catch(() => undefined);
         })
-        .catch(() => { clearSession(); setSession(null); });
+        .catch((error: unknown) => {
+          const upgrade = upgradeInfoOf(error);
+          if (upgrade !== null) {
+            reportUpgrade(upgrade);
+            return;
+          }
+          clearSession();
+          setSession(null);
+        });
     }, refreshMs);
     return () => { window.clearTimeout(timer); };
-  }, [state.meta.edition, session, activeServerUrl, props.transport, t]);
+  }, [state.meta.edition, session, activeServerUrl, props.transport, t, reportUpgrade]);
 
   // Policy/catalog may change server-side; refresh it on every authenticated start (not only login).
   useEffect(() => {
@@ -195,9 +213,14 @@ export function App(props: { transport: Transport }) {
           saveGatewayModel(model);
         }
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        const upgrade = upgradeInfoOf(error);
+        if (upgrade !== null) {
+          reportUpgrade(upgrade);
+        }
+      });
     return () => { cancelled = true; };
-  }, [state.meta.edition, session, activeServerUrl]);
+  }, [state.meta.edition, session, activeServerUrl, reportUpgrade]);
 
   const ui: UiValue = {
     t,
@@ -264,6 +287,14 @@ export function App(props: { transport: Transport }) {
     },
   };
 
+  if (state.upgrade !== null) {
+    return (
+      <UiProvider value={ui}>
+        <UpgradeGate info={state.upgrade} serverUrl={activeServerUrl} locale={state.settings.locale} />
+      </UiProvider>
+    );
+  }
+
   if (state.meta.edition === "enterprise" && state.boot === "ready" && session === null) {
     const submit = (input: { serverUrl?: string; username: string; password: string; deviceName: string }): void => {
       // The first-run address is persisted to settings so it is not asked again (docs/19 §3.3).
@@ -288,10 +319,20 @@ export function App(props: { transport: Transport }) {
               if (model !== "") saveGatewayModel(model);
               return props.transport.call("auth.configure", { server_url: target, access_token: next.access_token, model });
             })
-            .catch(() => undefined);
+            .catch((error: unknown) => {
+              const upgrade = upgradeInfoOf(error);
+              if (upgrade !== null) reportUpgrade(upgrade);
+            });
           setSession(next);
         })
-        .catch((error: unknown) => { setLoginError(error instanceof Error ? error.message : t("loginFailed")); })
+        .catch((error: unknown) => {
+          const upgrade = upgradeInfoOf(error);
+          if (upgrade !== null) {
+            reportUpgrade(upgrade);
+            return;
+          }
+          setLoginError(error instanceof Error ? error.message : t("loginFailed"));
+        })
         .finally(() => { setLoginLoading(false); });
     };
     return (

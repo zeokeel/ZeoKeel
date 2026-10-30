@@ -1,4 +1,6 @@
+import { clientHeaders } from "./client";
 import { isRecord, readNumber, readString } from "@zeokeel/ui-kit";
+import { readJsonOrUpgrade } from "./upgrade";
 
 /** Enterprise auth session (M2 P4). Tokens stay in local storage for now; keychain later. */
 export interface AuthSession {
@@ -78,10 +80,10 @@ export interface BootstrapInfo {
 
 export async function fetchBootstrapInfo(session: AuthSession, serverUrl: string): Promise<BootstrapInfo> {
   const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/config/bootstrap`, {
-    headers: { authorization: `Bearer ${session.access_token}` },
+    headers: { ...clientHeaders(), authorization: `Bearer ${session.access_token}` },
   });
   if (!response.ok) return { defaultModel: "", models: [] };
-  const body: unknown = await response.json();
+  const body: unknown = await readJsonOrUpgrade(response);
   if (!isRecord(body)) return { defaultModel: "", models: [] };
   const gateway = body["gateway"];
   if (!isRecord(gateway)) return { defaultModel: "", models: [] };
@@ -99,10 +101,10 @@ export async function fetchBootstrapInfo(session: AuthSession, serverUrl: string
 export async function refreshSession(session: AuthSession, serverUrl: string): Promise<AuthSession> {
   const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/auth/refresh`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { ...clientHeaders(), "content-type": "application/json" },
     body: JSON.stringify({ refresh_token: session.refresh_token, device_id: session.device_name || "client" }),
   });
-  const body: unknown = await response.json();
+  const body: unknown = await readJsonOrUpgrade(response);
   const tokens = parseTokenResponse(body);
   if (!response.ok || tokens === null) {
     throw new Error(isRecord(body) ? (readString(body, "error") ?? `HTTP ${String(response.status)}`) : `HTTP ${String(response.status)}`);
@@ -113,10 +115,10 @@ export async function refreshSession(session: AuthSession, serverUrl: string): P
 export async function login(serverUrl: string, username: string, password: string, deviceName: string): Promise<AuthSession> {
   const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/auth/login`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { ...clientHeaders(), "content-type": "application/json" },
     body: JSON.stringify({ username, password, device_id: deviceName }),
   });
-  const body: unknown = await response.json();
+  const body: unknown = await readJsonOrUpgrade(response);
   const tokens = parseTokenResponse(body);
   if (!response.ok || tokens === null) {
     throw new Error(isRecord(body) ? (readString(body, "error") ?? `HTTP ${String(response.status)}`) : `HTTP ${String(response.status)}`);

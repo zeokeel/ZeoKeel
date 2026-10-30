@@ -10,6 +10,7 @@ export const BRAND = {
   accent: "#0F766E",
   dataDirName: "ZeoKeel",
   productHomeDir: ".zeokeel",
+  clientVersion: "0.1.0",
   logoLight: "./brand/logo.svg",
   logoDark: "./brand/logo-dark.svg",
 } as const;
