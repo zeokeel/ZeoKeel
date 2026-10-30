@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-todo"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "会话内 TODO 列表状态"
+
+[role]
+name = "tool.todo"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-todo" }

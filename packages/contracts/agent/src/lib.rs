@@ -3,6 +3,8 @@
 //! @capability contract.agent
 #![forbid(unsafe_code)]
 
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 use zk_contract_tool::TurnContext;
 use thiserror::Error;
@@ -53,14 +55,41 @@ pub enum AgentEvent {
     ToolCallStarted { name: String, args: String },
     /// A tool call finished (success or error text in `result`).
     ToolCallFinished { name: String, result: String },
-    /// The turn needs a user approval decision (reserved for M1 approval flow).
+    /// The turn needs a user approval decision.
     ApprovalRequested { approval_id: String, tool: String, args: String, reason: String },
+    /// An approval request was resolved (UI may render the outcome).
+    ApprovalResolved { approval_id: String, decision: ApprovalDecision },
     /// Turn finished successfully.
     TurnCompleted { reply: AgentReply },
     /// Turn was cancelled by the user.
     TurnCancelled,
     /// Turn failed.
     Error { message: String },
+}
+
+/// One approval request raised by a tool.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApprovalRequest {
+    /// Stable id for this decision.
+    pub approval_id: String,
+    /// Tool name.
+    pub tool: String,
+    /// JSON arguments.
+    pub args: String,
+    /// Why the tool needs approval.
+    pub reason: String,
+}
+
+/// Result of an approval request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalDecision {
+    /// Allow exactly this call.
+    AllowOnce,
+    /// Reject this call.
+    Reject,
+    /// Cancel the turn.
+    Cancel,
 }
 
 /// Sink for streaming events (UI/bridge implements it).
@@ -98,6 +127,17 @@ pub trait Agent: Send + Sync {
                 Err(err)
             }
         }
+    }
+
+    /// Run with a shared sink so tools/approval gates can emit while executing.
+    fn run_stream_in_shared(
+        &self,
+        context: &TurnContext,
+        turn_id: &str,
+        input: &str,
+        sink: Arc<dyn EventSink>,
+    ) -> Result<AgentReply, AgentError> {
+        self.run_stream_in(context, turn_id, input, sink.as_ref())
     }
 
     /// Run one turn with a workspace context and stream events.

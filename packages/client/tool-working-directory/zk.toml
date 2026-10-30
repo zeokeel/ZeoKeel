@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-working-directory"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Return the current workspace directory"
+
+[role]
+name = "tool.working_directory"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-working-directory" }

@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-present"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "向用户呈现交付物"
+
+[role]
+name = "tool.present"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-present" }

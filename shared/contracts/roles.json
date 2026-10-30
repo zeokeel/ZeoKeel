@@ -197,9 +197,63 @@
     "contract": "zk-contract-config",
     "cardinality": "singleton"
   },
+  "tool.bash": {
+    "package": "zeokeel/tool-bash",
+    "crate_name": "zk-tool-bash",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
   "tool.fs": {
     "package": "zeokeel/tool-fs",
     "crate_name": "zk-tool-fs",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.fs.edit": {
+    "package": "zeokeel/tool-fs-edit",
+    "crate_name": "zk-tool-fs-edit",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.fs.search": {
+    "package": "zeokeel/tool-fs-search",
+    "crate_name": "zk-tool-fs-search",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.fs.write": {
+    "package": "zeokeel/tool-fs-write",
+    "crate_name": "zk-tool-fs-write",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.present": {
+    "package": "zeokeel/tool-present",
+    "crate_name": "zk-tool-present",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.skill": {
+    "package": "zeokeel/tool-skill",
+    "crate_name": "zk-tool-skill",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.todo": {
+    "package": "zeokeel/tool-todo",
+    "crate_name": "zk-tool-todo",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.web.fetch": {
+    "package": "zeokeel/tool-web-fetch",
+    "crate_name": "zk-tool-web-fetch",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.working_directory": {
+    "package": "zeokeel/tool-working-directory",
+    "crate_name": "zk-tool-working-directory",
     "contract": "zk-contract-tool",
     "cardinality": "singleton"
   },

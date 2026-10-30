@@ -264,11 +264,83 @@
     ]
   },
   {
+    "id": "zeokeel/tool-bash",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.bash"
+    ]
+  },
+  {
     "id": "zeokeel/tool-fs",
     "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.fs"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-fs-edit",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.fs.edit"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-fs-search",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.fs.search"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-fs-write",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.fs.write"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-present",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.present"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-skill",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.skill"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-todo",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.todo"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-web-fetch",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.web.fetch"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-working-directory",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.working_directory"
     ]
   },
   {

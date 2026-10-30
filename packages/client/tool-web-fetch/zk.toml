@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-web-fetch"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Fetch a public HTTP(S) URL with limits (SSRF guard)"
+
+[role]
+name = "tool.web.fetch"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-web-fetch" }

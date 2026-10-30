@@ -11,6 +11,9 @@ impl Tool for Echo {
         ToolSpec {
             name: "demo.echo".to_owned(),
             description: "echo".to_owned(),
+            parameters: serde_json::json!({"type":"object"}),
+            mutating: false,
+            requires_approval: false,
         }
     }
 

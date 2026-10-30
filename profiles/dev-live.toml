@@ -8,4 +8,5 @@ name = "dev-live"
 base = "default"
 
 [packages]
-"llm.provider.default" = "zeokeel/llm-openai-compatible"
+"llm.provider.default" = "zeokeel/llm-rig"
+"agent.loop" = "zeokeel/agent-rig"

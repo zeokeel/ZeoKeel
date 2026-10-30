@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-skill"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "List/read workspace agent skills"
+
+[role]
+name = "tool.skill"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-skill" }
