@@ -2,7 +2,7 @@
 
 - **评审对象**：`packages/client/agent-rig`、`llm-rig`、`packages/client/tool-*`、`crates/zk-kit-{tools,jobs,approval,questions,events,session,subagent}`、desktop approval/question IPC、`e2e/agent-rig.spec.ts`、`scripts/agent-e2e.sh`、`docs/38`、`research/dsh-agent-inventory.md`、`specs/changes/2026-10-30-agent-dsh-parity`
 - **评审者**：audit-arch（独立只读；仅写本记录）
-- **结论**：CHANGES-REQUESTED
+- **结论**：APPROVED
 - **关联 spec**：`specs/changes/2026-10-30-agent-dsh-parity`
 - 证据日期：2026-10-30；本记录为唯一新增文件，未改产品代码/spec。
 
@@ -560,3 +560,41 @@ rig 循环/审批/ask-user/工具包**happy path 能跑**，但离 spec 的“DS
 
 - 关联 spec：`specs/changes/2026-10-30-agent-dsh-parity`。
 - 复评结论（第七轮）：**CHANGES-REQUESTED**
+
+---
+
+## 15. 第八轮复评（R8，2026-10-30）
+
+> 对象：R7 修复后的 agent rig 实现。只读复跑；未改产品代码/spec（仅本记录）。
+> R7 唯一 P1（acceptance 计数）已修。
+
+### 15.1 结论
+
+**APPROVED**
+
+- **P0：0；P1：0**。
+- **agent 实现可 APPROVED**（范围：R6/R7 已接受的 P2/manual 除外）。
+- **P2/manual 保留**：capability placeholders（hooks/vector/media）`available()==false` + `CAPABILITY_UNAVAILABLE`；subagent 异步 send/interrupt；工具名/参数 DSH 对齐；`call-timeout` C3 豁免。
+- **acceptance 头部仍写 R7/等待 R8**：批准后应由实现者改为 R8/APPROVED 并勾选独立评审；不影响本次 verdict。
+
+### 15.2 R7 P1 关闭
+
+- `acceptance.md` 已写 **9 scenarios**（unknown/max/拒绝/审批/取消/ask-user/bash/present/多步/provider），与 `e2e/agent-rig.spec.ts` 9 条一致；状态/清单已对齐。
+
+### 15.3 验证
+
+| 命令 | 结果 |
+| --- | --- |
+| `bash scripts/agent-e2e.sh` | **PASS：9 passed (20.5s)，retries=0，无 flaky** |
+| `cargo test --workspace` / clippy | PASS |
+| `docs-check` / `spec-check` | PASS |
+| `agent-tool-matrix.py --check` | PASS |
+| `review-check` | R8 APPROVED 后转绿（本记录追加后验证） |
+| max/unknown e2e | PASS（unknown handled / AGENT_MAX_STEPS） |
+| axe / provider hot-swap | PASS（9 条内） |
+
+### 15.4 结论
+
+- **P0：0；P1：0**。
+- 关联 spec：`specs/changes/2026-10-30-agent-dsh-parity`。
+- 复评结论（第八轮）：**APPROVED**

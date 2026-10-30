@@ -1,7 +1,7 @@
 # 2026-10-30-agent-dsh-parity · 验收
 
-- 状态：`implementation-in-progress`（R7 CHANGES-REQUESTED；等待 R8 复评）
-- 验收人：pending
+- 状态：`completed`（R8 APPROVED；P0=0/P1=0；P2/manual 保留）
+- 验收人：Lead + audit-arch（R8 APPROVED）
 - 证据：`target/evidence/agent-parity/`
 
 ## 已落地证据
@@ -12,6 +12,13 @@
 - `cargo test --workspace` / clippy 绿
 - SSRF/redirect/私网负向；worktree 注入/逃逸负向
 - 实时 ToolCallStarted/Finished；取消标志；审批 fail-closed；ask-user IPC/UI
+
+## 最终结果
+
+- 独立评审 R8 **APPROVED**，P0=0/P1=0。
+- 9 条 Playwright e2e，retries=0，无 flaky。
+- `cargo test` / clippy / docs / spec / matrix / review 绿。
+- P2/manual：capability placeholders（hooks/vector/media）、subagent 异步 send/interrupt、工具名 DSH 对齐、call-timeout C3 豁免。
 
 ## 仍未完成 / P2 manual
 
@@ -28,4 +35,4 @@
 - [x] 每工具正/负测试
 - [x] Playwright 工具+审批+provider 设置
 - [x] axe 0 serious/critical
-- [ ] 独立评审 APPROVED
+- [x] 独立评审 APPROVED
