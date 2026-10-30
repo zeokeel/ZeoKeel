@@ -1,16 +1,23 @@
 {
   "schema": 1,
   "id": "official",
-  "edition": "personal",
-  "defaults": {
-    "server_url": ""
+  "identity": {
+    "slug": "zeokeel",
+    "product_name": "ZeoKeel",
+    "app_id": "dev.zeokeel.app",
+    "company": "ZeoKeel",
+    "copyright": "ZeoKeel",
+    "deep_link_scheme": "zeokeel",
+    "app_origin_scheme": "zk-app",
+    "data_dir_name": "ZeoKeel",
+    "product_home_dir": ".zeokeel",
+    "linux": { "maintainer": "ZeoKeel", "synopsis": "ZeoKeel Agent Platform", "category": "Development" }
   },
   "brand": {
-    "name": "ZeoKeel",
     "powered_by": "show",
-    "logo": {
-      "light": "logo.svg",
-      "dark": "logo-dark.svg"
-    }
-  }
+    "logo": { "light": "logo.svg", "dark": "logo-dark.svg" }
+  },
+  "assets": { "accent": "#0F766E" },
+  "copy": {},
+  "defaults": { "server_url": "" }
 }

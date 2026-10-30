@@ -1,0 +1,5 @@
+channel = "oem-demo"
+edition_base = "enterprise"
+locales = ["zh-CN"]
+platforms = ["linux-x64"]
+depth = "basic"

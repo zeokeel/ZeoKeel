@@ -49,6 +49,7 @@ fn run() -> Result<()> {
             find(&root, &keyword)
         }
         "lint" => lint(&root, rest.iter().any(|a| a == "--duplicates")),
+        "channel" => channel_command(&root, &rest),
         "db" => {
             let sub = rest.first().map(String::as_str).unwrap_or("");
             if sub.is_empty() {
@@ -295,13 +296,40 @@ struct ProfileDecl {
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
 struct ChannelFile {
-    #[allow(dead_code)]
+    #[serde(default)]
     id: String,
     #[serde(default)]
-    edition: String,
+    identity: Identity,
     #[serde(default)]
     brand: Brand,
+    #[serde(default)]
+    assets: Assets,
+    #[serde(default)]
+    defaults: Defaults,
 }
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct Identity {
+    #[serde(default)]
+    slug: String,
+    #[serde(default)]
+    product_name: String,
+    #[serde(default)]
+    app_id: String,
+    #[serde(default)]
+    deep_link_scheme: String,
+    #[serde(default)]
+    app_origin_scheme: String,
+    #[serde(default)]
+    data_dir_name: String,
+    #[serde(default)]
+    product_home_dir: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct Assets { #[serde(default)] #[allow(dead_code)] accent: String }
+#[derive(Debug, Clone, Default, Deserialize)]
+struct Defaults { #[serde(default)] #[allow(dead_code)] server_url: String }
 
 #[derive(Debug, Clone, Default, Deserialize)]
 struct Brand {
@@ -499,9 +527,11 @@ fn load_channel(root: &Path, channel: &str) -> Result<(ChannelFile, PathBuf)> {
     }
     let text = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
     let file: ChannelFile = serde_json::from_str(&text).with_context(|| format!("parse {}", path.display()))?;
-    if file.brand.name.trim().is_empty() {
-        bail!("channel {channel}: brand.name is required");
-    }
+    let display_name = if file.identity.product_name.trim().is_empty() { file.brand.name.trim() } else { file.identity.product_name.trim() };
+    if display_name.is_empty() { bail!("channel {channel}: identity.product_name is required"); }
+    if !file.identity.slug.is_empty() && !file.identity.slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') { bail!("channel {channel}: bad identity.slug"); }
+    if !file.identity.app_id.is_empty() && (!file.identity.app_id.contains('.') || file.identity.app_id.contains(' ')) { bail!("channel {channel}: bad identity.app_id"); }
+    if !matches!(file.brand.powered_by.as_str(), "" | "show" | "hide") { bail!("channel {channel}: brand.powered_by must be show|hide"); }
     if file.brand.logo.light.trim().is_empty() || file.brand.logo.dark.trim().is_empty() {
         bail!("channel {channel}: brand.logo.light and brand.logo.dark are required");
     }
@@ -517,7 +547,8 @@ fn load_channel(root: &Path, channel: &str) -> Result<(ChannelFile, PathBuf)> {
 fn resolve(root: &Path, flags: &Flags) -> Result<Resolved> {
     let config = load_root(root)?;
     let manifests = scan_manifests(root)?;
-    let (channel, channel_dir) = load_channel(root, &flags.channel)?;
+    let (mut channel_file, channel_dir) = load_channel(root, &flags.channel)?;
+    if channel_file.brand.name.is_empty() { channel_file.brand.name = channel_file.identity.product_name.clone(); }
 
     let mut chain = Vec::new();
     let mut packages = resolve_edition(root, &flags.edition, &mut chain)?;
@@ -604,7 +635,7 @@ fn resolve(root: &Path, flags: &Flags) -> Result<Resolved> {
         manifests,
         roles: config.roles,
         paths: config.paths,
-        brand: channel.brand,
+        brand: channel_file.brand,
         channel_dir,
     })
 }
@@ -933,6 +964,110 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
     ));
     out.push_str("    Ok(Runtime { agent, sessions, settings })\n}\n");
     Ok(out)
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct OemIndex { #[allow(dead_code)] schema: u32, channels: BTreeMap<String, OemChannel> }
+#[derive(Debug, serde::Deserialize)]
+struct OemChannel { submodule: String, pin: String, edition: String, depth: String, #[serde(default)] #[allow(dead_code)] owner: String }
+
+fn channel_command(root: &Path, args: &[String]) -> Result<()> {
+    match args.first().map(String::as_str).unwrap_or("") {
+        "validate" => {
+            let mut index_dir: Option<PathBuf> = None;
+            let mut i = 1;
+            while let Some(arg) = args.get(i) {
+                match arg.as_str() {
+                    "--index" => { index_dir = args.get(i.saturating_add(1)).map(PathBuf::from); i = i.saturating_add(2); }
+                    "--all" => i = i.saturating_add(1),
+                    other => bail!("unknown channel validate arg: {other}"),
+                }
+            }
+            let index_dir = index_dir.context("usage: zk channel validate --index <dir> --all")?;
+            channel_validate(&index_dir)
+        }
+        "verify" => {
+            let mut channel: Option<String> = None;
+            let mut dist: Option<PathBuf> = None;
+            let mut i = 1;
+            while let Some(arg) = args.get(i) {
+                match arg.as_str() {
+                    "--channel" => { channel = args.get(i.saturating_add(1)).cloned(); i = i.saturating_add(2); }
+                    "--dist" => { dist = args.get(i.saturating_add(1)).map(PathBuf::from); i = i.saturating_add(2); }
+                    other => bail!("unknown channel verify arg: {other}"),
+                }
+            }
+            channel_verify(root, &channel.context("--channel")?, &dist.context("--dist")?)
+        }
+        other => bail!("usage: zk channel <validate|verify> (got {other})"),
+    }
+}
+
+fn channel_validate(index_dir: &Path) -> Result<()> {
+    let index_text = fs::read_to_string(index_dir.join("index.toml")).with_context(|| "read oem index.toml")?;
+    let index: OemIndex = toml::from_str(&index_text).context("parse oem index.toml")?;
+    let manifest_path = index_dir.join("channels.manifest.json");
+    if manifest_path.is_file() {
+        let manifest: Vec<String> = serde_json::from_str(&fs::read_to_string(&manifest_path)?).context("parse channels.manifest.json")?;
+        let mut expected = manifest;
+        let mut actual: Vec<String> = index.channels.keys().cloned().collect();
+        expected.sort();
+        actual.sort();
+        if expected != actual { bail!("channels.manifest.json != index.toml channels"); }
+    }
+    let mut seen = BTreeMap::<String, String>::new();
+    for (id, entry) in &index.channels {
+        if id == "official" || id == "beta" || id == "personal" || id == "demo" || id == "test" { bail!("reserved channel id: {id}"); }
+        if !id.starts_with("oem-") { bail!("OEM channel must be oem-<customer>: {id}"); }
+        if entry.edition != "enterprise" { bail!("channel {id}: edition must be enterprise"); }
+        if !matches!(entry.depth.as_str(), "basic" | "deep") { bail!("channel {id}: bad depth"); }
+        let customer = index_dir.join(&entry.submodule);
+        let channel_text = fs::read_to_string(customer.join("channel.json")).with_context(|| format!("channel {id}: channel.json"))?;
+        let actual_pin = sha256_hex(channel_text.as_bytes());
+        if actual_pin != entry.pin { bail!("channel {id}: pin mismatch (fixture pin = sha256(channel.json))"); }
+        let file: ChannelFile = serde_json::from_str(&channel_text).context("parse channel.json")?;
+        let display = if file.identity.product_name.is_empty() { file.brand.name.clone() } else { file.identity.product_name.clone() };
+        if display.is_empty() || file.identity.slug.is_empty() || file.identity.app_id.is_empty() { bail!("channel {id}: missing identity fields"); }
+        for (value, label) in [(&file.identity.app_id, "app_id"), (&file.identity.deep_link_scheme, "deep_link_scheme"), (&file.identity.app_origin_scheme, "app_origin_scheme"), (&file.identity.data_dir_name, "data_dir_name"), (&file.identity.product_home_dir, "product_home_dir"), (&display, "product_name")] {
+            if let Some(previous) = seen.insert(format!("{label}:{value}"), id.clone()) { if previous != *id { bail!("channel uniqueness {label} {value}: {previous} vs {id}"); } }
+        }
+        if file.identity.deep_link_scheme == file.identity.app_origin_scheme { bail!("channel {id}: deep link and app origin schemes must differ"); }
+        if entry.depth == "deep" {
+            let packages = customer.join("packages");
+            if !packages.is_dir() { bail!("channel {id}: deep requires packages/"); }
+        }
+        if !customer.join("oem.toml").is_file() { bail!("channel {id}: oem.toml missing"); }
+    }
+    println!("channel validate ok: {} channels", index.channels.len());
+    Ok(())
+}
+
+fn channel_verify(root: &Path, channel: &str, dist: &Path) -> Result<()> {
+    let (file, _) = load_channel(root, channel)?;
+    for name in ["CHANNEL.json", "CLIENT-RELEASE.json", "SHA256SUMS"] {
+        if !dist.join(name).is_file() { bail!("dist missing {name}"); }
+    }
+    if file.brand.powered_by == "hide" {
+        let mut stack = vec![dist.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            for entry in fs::read_dir(dir)? {
+                let path = entry?.path();
+                if path.is_dir() { stack.push(path); continue; }
+                let name = path.file_name().and_then(|value| value.to_str()).unwrap_or_default();
+                if matches!(name, "LICENSE" | "NOTICE" | "CHANNEL.json" | "SHA256SUMS") { continue; }
+                if let Ok(text) = fs::read_to_string(&path) { if text.contains("ZeoKeel") { bail!("brand residue in {}", path.display()); } }
+            }
+        }
+    }
+    println!("channel verify ok: {channel}");
+    Ok(())
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hash = Sha256::new();
+    hash.update(bytes);
+    format!("{:x}", hash.finalize())
 }
 
 fn db_lock(root: &Path, check: bool) -> Result<()> {

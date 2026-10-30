@@ -1,0 +1,3 @@
+[submodule "customers/oem-demo"]
+	path = customers/oem-demo
+	url = ../demo-oem-acme

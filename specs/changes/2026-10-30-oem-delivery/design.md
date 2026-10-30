@@ -1,6 +1,6 @@
 # 2026-10-30-oem-delivery · 设计（M5）
 
-- 状态：`draft`
+- 状态：`approved`
 
 ## 1. 命令/生成
 

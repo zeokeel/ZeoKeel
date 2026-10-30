@@ -1,6 +1,6 @@
 # 2026-10-30-oem-delivery · 规格（M5）
 
-- 状态：`draft`
+- 状态：`approved`
 - 依据：`docs/09` §1–§7（channel schema/产物/签名/更新）、`docs/23`、`docs/03` §6.2（`zk channel validate|verify`）、`docs/10`、`docs/27` §4
 - SSOT 声明：channel.json 字段以 `docs/09` §3 为唯一真源；本文只写验收增量，不复制 schema 正文。
 

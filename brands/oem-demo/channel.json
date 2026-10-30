@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "id": "oem-demo",
+  "identity": {
+    "slug": "acme-keel",
+    "product_name": "Acme Keel",
+    "app_id": "com.acme.keel",
+    "company": "Acme",
+    "copyright": "Acme",
+    "deep_link_scheme": "acmekeel",
+    "app_origin_scheme": "acme-app",
+    "data_dir_name": "AcmeKeel",
+    "product_home_dir": ".acmekeel",
+    "linux": { "maintainer": "Acme", "synopsis": "Acme Keel", "category": "Development" }
+  },
+  "brand": {
+    "powered_by": "hide",
+    "logo": { "light": "logo.svg", "dark": "logo-dark.svg" }
+  },
+  "assets": { "accent": "#7C3AED" },
+  "copy": {},
+  "defaults": { "server_url": "https://keel.acme.example" }
+}

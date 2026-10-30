@@ -1,6 +1,6 @@
 # 2026-10-30-oem-delivery · 提案（M5）
 
-- 状态：`draft`
+- 状态：`approved`
 - 评审：`docs/reviews/2026-10-30-m5-spec.md`
 - 依据：`docs/09`、`docs/23`、`docs/10`、`docs/03`、`docs/27`、ADR-033/037/041/042/044/D61/D62
 - 关联：M0–M4 已交付；M5 只做渠道/品牌/OEM 索引/产物/更新/门户/交付文档

@@ -4,6 +4,14 @@
 - 验收人：pending
 - 证据目录：`target/evidence/m5/`
 
+## 进展
+
+- task 1：docs/09 schema 的 `ChannelFile`/identity 校验；`zk channel validate --index oem/fixtures --all` 通过。
+- task 2：brand/渠道生成物；`compose --channel oem-demo --check` 生成后绿，`brand.ts` 含 `Acme Keel`/`oem-demo`。
+- task 3：`oem/fixtures` index/.gitmodules/pin/manifest；pin=sha256(channel.json) 通过。
+- task 4：`brands/oem-demo`；`bash scripts/oem-e2e.sh` 通过（含 hide 残留负向）。
+- task 5/6/7 未开始。
+
 ## 检查
 
 - [ ] `zk channel validate --index oem/fixtures --all` / `zk channel verify --channel official --dist <fixture>`

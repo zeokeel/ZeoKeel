@@ -1,0 +1,8 @@
+schema = 1
+
+[channels.oem-demo]
+submodule = "customers/oem-demo"
+pin = "0a0cf60bd9d806cf6b3374b8835fb8d1d559cefaa78717409e61442ae1e30cba"
+edition = "enterprise"
+depth = "basic"
+owner = "demo"
