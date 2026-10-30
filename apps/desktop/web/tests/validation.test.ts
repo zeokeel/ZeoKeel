@@ -151,6 +151,21 @@ describe("protocol boundary rejects invalid data after schema validation", () =>
     const resolved = parseAgentEvent({ type: "approval_resolved", approval_id: "a1", decision: "reject" });
     expect(resolved).toEqual({ type: "approval_resolved", approval_id: "a1", decision: "reject" });
   });
+  it("rejects a turn_completed reply whose usage is missing required counters", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(validateAgentEvent({
+      type: "turn_completed",
+      reply: { text: "x", tool_calls: [], usage: { input_tokens: 1, output_tokens: 2, total_tokens: 3 } },
+    })).toBe(false);
+    expect(parseAgentEvent({
+      type: "turn_completed",
+      reply: { text: "x", tool_calls: [], usage: { input_tokens: 1, output_tokens: 2, total_tokens: 3 } },
+    })).toBeNull();
+    expect(validateAgentEvent({
+      type: "turn_completed",
+      reply: { text: "x", tool_calls: [], usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0, cached_tokens: 0, reasoning_tokens: 0 } },
+    })).toBe(true);
+  });
 
   it("parses meta.get.agent_config_error for the boot warning", () => {
     expect(parseMeta({ edition: "personal", version: "1", packages: [], agent_config_error: "agent.max_steps must be within 1..=200" }).agentConfigError).toBe("agent.max_steps must be within 1..=200");

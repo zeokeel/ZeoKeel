@@ -314,12 +314,13 @@ function parseUsage(value: unknown): AgentUsage | null {
   if (!isRecord(value)) {
     return null;
   }
+  // `usage` is only emitted when the provider reported usage; unreported counters are normalized to 0.
   return {
-    input_tokens: readNullableNumber(value["input_tokens"]),
-    output_tokens: readNullableNumber(value["output_tokens"]),
-    total_tokens: readNullableNumber(value["total_tokens"]),
-    cached_tokens: readNullableNumber(value["cached_tokens"]),
-    reasoning_tokens: readNullableNumber(value["reasoning_tokens"]),
+    input_tokens: readNumber(value, "input_tokens") ?? 0,
+    output_tokens: readNumber(value, "output_tokens") ?? 0,
+    total_tokens: readNumber(value, "total_tokens") ?? 0,
+    cached_tokens: readNumber(value, "cached_tokens") ?? 0,
+    reasoning_tokens: readNumber(value, "reasoning_tokens") ?? 0,
     cost_micros: readNullableNumber(value["cost_micros"]),
   };
 }
