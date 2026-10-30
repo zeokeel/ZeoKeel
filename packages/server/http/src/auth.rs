@@ -75,7 +75,7 @@ pub struct AdminLoginRequest {
 }
 
 #[derive(Debug)]
-struct AuthError {
+pub(crate) struct AuthError {
     status: StatusCode,
     code: &'static str,
 }
@@ -86,7 +86,7 @@ impl IntoResponse for AuthError {
     }
 }
 
-fn auth_error(status: StatusCode, code: &'static str) -> AuthError {
+pub(crate) fn auth_error(status: StatusCode, code: &'static str) -> AuthError {
     AuthError { status, code }
 }
 
@@ -100,7 +100,7 @@ fn random_token() -> String {
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
-fn sha256_hex(value: &str) -> String {
+pub(crate) fn sha256_hex(value: &str) -> String {
     let mut hash = Sha256::new();
     hash.update(value.as_bytes());
     format!("{:x}", hash.finalize())
@@ -194,7 +194,7 @@ fn bearer(headers: &HeaderMap) -> Option<&str> {
         .and_then(|value| value.strip_prefix("Bearer "))
 }
 
-fn cookie<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+pub(crate) fn cookie<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     headers.get(header::COOKIE).and_then(|value| value.to_str().ok()).and_then(|cookies| {
         cookies.split(';').find_map(|cookie| {
             let (key, value) = cookie.trim().split_once('=')?;
@@ -339,7 +339,7 @@ async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Result<Jso
 }
 
 async fn admin_login(State(state): State<AppState>, Json(request): Json<AdminLoginRequest>) -> Result<Response, AuthError> {
-    let row = sqlx::query("SELECT id, password_hash FROM users WHERE username = $1 AND role = 'super_admin' AND status = 'active' AND deleted_at IS NULL")
+    let row = sqlx::query("SELECT id, password_hash, role FROM users WHERE username = $1 AND role IN ('super_admin', 'auditor') AND status = 'active' AND deleted_at IS NULL")
         .bind(&request.username)
         .fetch_optional(&state.pool)
         .await
@@ -394,6 +394,51 @@ async fn admin_logout(State(state): State<AppState>, headers: HeaderMap) -> Resu
     let mut response = Json(json!({ "ok": true })).into_response();
     response.headers_mut().insert(header::SET_COOKIE, HeaderValue::from_static("zk_admin=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"));
     Ok(response)
+}
+
+/// Authenticated admin session context.
+pub(crate) struct AdminContext {
+    pub user_id: uuid::Uuid,
+}
+
+/// Verify admin cookie session; `write` additionally enforces CSRF and super_admin.
+pub(crate) async fn require_admin(
+    state: &AppState,
+    headers: &HeaderMap,
+    write: bool,
+) -> Result<AdminContext, AuthError> {
+    let session = cookie(headers, "zk_admin").ok_or_else(|| auth_error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
+    let row = sqlx::query(
+        "SELECT s.id, s.csrf_hash, s.user_id, u.role, u.status
+         FROM admin_sessions s JOIN users u ON u.id = s.user_id
+         WHERE s.session_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()",
+    )
+    .bind(sha256_hex(session))
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?
+    .ok_or_else(|| auth_error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
+    let status: String = row.try_get("status").map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    if status != "active" {
+        return Err(auth_error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"));
+    }
+    let role: String = row.try_get("role").map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    if role != "super_admin" && role != "auditor" {
+        return Err(auth_error(StatusCode::FORBIDDEN, "FORBIDDEN"));
+    }
+    if write {
+        if role != "super_admin" {
+            return Err(auth_error(StatusCode::FORBIDDEN, "FORBIDDEN"));
+        }
+        let csrf_hash: String = row.try_get("csrf_hash").map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        let supplied = headers.get("x-csrf-token").and_then(|value| value.to_str().ok()).unwrap_or("");
+        if sha256_hex(supplied) != csrf_hash {
+            return Err(auth_error(StatusCode::FORBIDDEN, "CSRF_INVALID"));
+        }
+    }
+    Ok(AdminContext {
+        user_id: row.try_get("user_id").map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?,
+    })
 }
 
 /// Auth routes (client + admin login/session).

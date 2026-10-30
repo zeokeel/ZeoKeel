@@ -36,4 +36,25 @@ CODE=$(curl -sS -b /tmp/zk-auth-admin.cookies -o /dev/null -w '%{http_code}' -X 
 [[ "$CODE" == "403" ]]
 CODE=$(curl -sS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -o /dev/null -w '%{http_code}' -X POST "$BASE/api/admin/auth/logout")
 [[ "$CODE" == "200" ]]
-echo "auth ok: login/me/refresh/reuse/admin-csrf"
+
+# users/roles + permission matrix (fresh admin session)
+ADMIN=$(curl -fsS -c /tmp/zk-auth-admin.cookies -X POST "$BASE/api/admin/auth/login" -H 'content-type: application/json' -d '{"username":"admin","password":"admin-pass"}')
+CSRF=$(printf '%s' "$ADMIN" | python3 -c 'import json,sys;print(json.load(sys.stdin)["csrf_token"])')
+curl -fsS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/admin/users" -H 'content-type: application/json' -d '{"username":"alice","password":"alice-pass","role":"employee"}' >/dev/null
+CODE=$(curl -sS -b /tmp/zk-auth-admin.cookies -o /dev/null -w '%{http_code}' -X POST "$BASE/api/admin/users" -H 'content-type: application/json' -d '{"username":"bob","password":"bob-pass","role":"employee"}')
+[[ "$CODE" == "403" ]]
+USERS=$(curl -fsS -b /tmp/zk-auth-admin.cookies "$BASE/api/admin/users")
+[[ "$(printf '%s' "$USERS" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["users"]))')" == "2" ]]
+CODE=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/admin/users")
+[[ "$CODE" == "401" ]]
+curl -fsS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/admin/users" -H 'content-type: application/json' -d '{"username":"auditor","password":"auditor-pass","role":"auditor"}' >/dev/null
+AUD=$(curl -fsS -c /tmp/zk-auth-auditor.cookies -X POST "$BASE/api/admin/auth/login" -H 'content-type: application/json' -d '{"username":"auditor","password":"auditor-pass"}')
+AUDCSRF=$(printf '%s' "$AUD" | python3 -c 'import json,sys;print(json.load(sys.stdin)["csrf_token"])')
+CODE=$(curl -sS -b /tmp/zk-auth-auditor.cookies -o /dev/null -w '%{http_code}' "$BASE/api/admin/users")
+[[ "$CODE" == "200" ]]
+CODE=$(curl -sS -b /tmp/zk-auth-auditor.cookies -H "X-CSRF-Token: $AUDCSRF" -o /dev/null -w '%{http_code}' -X POST "$BASE/api/admin/users" -H 'content-type: application/json' -d '{"username":"carol","password":"carol-pass","role":"employee"}')
+[[ "$CODE" == "403" ]]
+ADMIN_ID=$(printf '%s' "$LOGIN" | python3 -c 'import json,sys;print(json.load(sys.stdin)["user"]["id"])')
+CODE=$(curl -sS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -o /dev/null -w '%{http_code}' -X DELETE "$BASE/api/admin/users/$ADMIN_ID")
+[[ "$CODE" == "409" ]]
+echo "auth ok: login/me/refresh/reuse/admin-csrf/users-auditor"

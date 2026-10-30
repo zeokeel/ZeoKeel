@@ -12,6 +12,7 @@ use sqlx::postgres::PgPoolOptions;
 use zk_contract_server::ServerModule;
 
 pub mod auth;
+pub mod users;
 
 /// Stable module descriptor.
 #[must_use]
@@ -78,6 +79,7 @@ pub fn router_from(state: AppState) -> Router {
         .route("/readyz", get(readyz))
         .route("/api/meta", get(meta))
         .merge(auth::routes())
+        .merge(users::routes())
         .with_state(state)
 }
 
