@@ -25,7 +25,7 @@ curl -fsS "$BASE/api/updates/manifest" -H 'X-ZeoKeel-Client: 0.1.0;official;linu
 CODE=$(curl -sS -o /tmp/zk-updates-mismatch.json -w '%{http_code}' "$BASE/api/updates/manifest" -H 'X-ZeoKeel-Client: 0.1.0;oem-demo;linux-x64;dev'); [[ "$CODE" == "409" ]]
 # Below min_supported -> 426 CLIENT_TOO_OLD (docs/04 §2.7 / docs/09 §7.3).
 CODE=$(curl -sS -o /tmp/zk-updates-too-old.json -w '%{http_code}' "$BASE/api/updates/manifest" -H 'X-ZeoKeel-Client: 0.0.9;official;linux-x64;dev'); [[ "$CODE" == "426" ]]
-python3 -c 'import json;d=json.load(open("/tmp/zk-updates-too-old.json"));assert d["error"]=="CLIENT_TOO_OLD", d' 
+python3 -c 'import json;d=json.load(open("/tmp/zk-updates-too-old.json"));assert d["error"]["code"]=="CLIENT_TOO_OLD" and d["error"]["request_id"], d' 
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/updates/client/../CLIENT-RELEASE.json"); [[ "$CODE" == "400" || "$CODE" == "404" ]]
 curl -fsS "$BASE/portal" | grep -q 'ZeoKeel 客户端下载'
 curl -fsS "$BASE/api/updates/client/ZeoKeel_0.1.0_linux_x64.AppImage" -o /tmp/zk-updates-client; cmp -s /tmp/zk-updates-client deploy/updates/clients/ZeoKeel_0.1.0_linux_x64.AppImage
