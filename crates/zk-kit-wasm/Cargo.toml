@@ -16,6 +16,7 @@ wasmtime-wasi = { workspace = true }
 workspace = true
 
 [dev-dependencies]
+wat = { workspace = true }
 rusqlite = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }

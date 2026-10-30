@@ -214,6 +214,8 @@ pub fn run(input: RunInput<'_>) -> Result<RunOutput, WasmError> {
         let exit_ok = error.downcast_ref::<wasmtime_wasi::I32Exit>().is_some_and(|exit| exit.0 == 0);
         if !exit_ok {
             let text = error.to_string();
+            if store.get_fuel().unwrap_or(1) == 0 { return Err(WasmError::Fuel); }
+            if elapsed >= input.limits.timeout.saturating_sub(Duration::from_millis(10)) { return Err(WasmError::Timeout); }
             return if text.contains("fuel") { Err(WasmError::Fuel) } else if text.contains("epoch") || text.contains("timeout") { Err(WasmError::Timeout) } else if text.contains("memory") { Err(WasmError::Memory) } else { Err(WasmError::BadWasm) };
         }
     }

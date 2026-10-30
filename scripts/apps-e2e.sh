@@ -34,6 +34,8 @@ with zipfile.ZipFile('/tmp/zk-app-ui.zip','w') as z: z.writestr('index.html','<!
 PY
 UPLOAD=$(curl -fsS -X POST "$BASE/api/client/v1/apps" -H "Authorization: Bearer $ADMIN_JWT" -F "manifest=</tmp/zk-app-manifest.json" -F "wasm=@$GUEST" -F "ui=@/tmp/zk-app-ui.zip")
 APP_ID=$(printf '%s' "$UPLOAD" | python3 -c 'import json,sys;print(json.load(sys.stdin)["app_id"])')
+printf 'not-wasm' > /tmp/zk-app-bad.wasm
+CODE=$(curl -sS -o /tmp/zk-app-bad.json -w '%{http_code}' -X POST "$BASE/api/client/v1/apps" -H "Authorization: Bearer $ADMIN_JWT" -F "manifest=</tmp/zk-app-manifest.json" -F "wasm=@/tmp/zk-app-bad.wasm"); [[ "$CODE" == "400" ]]
 CODE=$(curl -sS -b /tmp/zk-apps.cookies -H "X-CSRF-Token: $CSRF" -o /dev/null -w '%{http_code}' -X POST "$BASE/api/admin/apps/$APP_ID/approve"); [[ "$CODE" == "200" ]]
 CODE=$(curl -sS -b /tmp/zk-apps.cookies -H "X-CSRF-Token: $CSRF" -o /dev/null -w '%{http_code}' -X PUT "$BASE/api/admin/apps/$APP_ID/grants" -H 'content-type: application/json' -d '{"grants":[{"grantee":"all","can_open":true}]}'); [[ "$CODE" == "200" ]]
 curl -fsS "$BASE/api/client/v1/apps" -H "Authorization: Bearer $ADMIN_JWT" | python3 -c 'import json,sys;d=json.load(sys.stdin)["items"];assert len(d)==1 and d[0]["app_id"]'

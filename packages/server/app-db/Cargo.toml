@@ -12,3 +12,6 @@ zk-contract-app = { path = "../../contracts/app" }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+uuid = { workspace = true }

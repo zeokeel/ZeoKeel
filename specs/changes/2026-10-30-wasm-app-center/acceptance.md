@@ -32,6 +32,11 @@
 
 - task 7（部分）：新增 `AppSurface` sandbox iframe + `app_request` IPC/`gateway_credentials`；`login-e2e` 能打开隔离应用窗口并渲染静态 UI；应用内脚本→host `app_request` 的闭环尚未跑通。Tauri per-app scheme/partition/capability 未实现。
 
+## 进展（续 5）
+
+- 安全/限额负向（部分）：`crates/zk-kit-wasm/tests/limits.rs` fuel/内存耗尽；`apps/tests` bad wasm 400；`app-db/tests/schema.rs` host migration/降级/DDL 拒绝/16 表上限；SQL 闸门表驱动。
+- 仍缺：并发配额、跨应用 DB 隔离 e2e、API 层 fuel/time/DB 配额断言。
+
 ## 检查
 
 - [ ] `bash scripts/apps-e2e.sh`
