@@ -108,6 +108,10 @@
     "path": "crates/zk-kit-jobs/src/lib.rs"
   },
   {
+    "id": "kit.media",
+    "path": "crates/zk-kit-media/src/lib.rs"
+  },
+  {
     "id": "kit.questions",
     "path": "crates/zk-kit-questions/src/lib.rs"
   },
@@ -140,6 +144,22 @@
     "path": "packages/client/llm-rig/src/lib.rs"
   },
   {
+    "id": "media.audio",
+    "path": "packages/client/cap-audio/src/lib.rs"
+  },
+  {
+    "id": "media.image",
+    "path": "packages/client/cap-image/src/lib.rs"
+  },
+  {
+    "id": "media.rerank",
+    "path": "packages/client/cap-rerank/src/lib.rs"
+  },
+  {
+    "id": "media.transcription",
+    "path": "packages/client/cap-transcription/src/lib.rs"
+  },
+  {
     "id": "store.session.sqlite",
     "path": "packages/client/store-session-sqlite/src/lib.rs"
   },
@@ -150,6 +170,10 @@
   {
     "id": "tool.fs",
     "path": "packages/client/tool-fs/src/lib.rs"
+  },
+  {
+    "id": "vector.store",
+    "path": "packages/client/cap-vector/src/lib.rs"
   },
   {
     "id": "wasm.runtime",

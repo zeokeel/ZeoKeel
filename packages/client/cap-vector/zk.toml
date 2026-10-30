@@ -3,7 +3,7 @@ id = "zeokeel/cap-vector"
 kind = "capability"
 version = "0.1.0"
 license = "MIT"
-summary = "Vector store/dynamic context (capability unavailable without provider)"
+summary = "Vector store with rig embeddings via kit.media (dynamic availability)"
 
 [role]
 name = "vector.store"
