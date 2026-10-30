@@ -21,7 +21,7 @@
 | `@zeokeel/ui-sessions` | `ui.slot.sessions` | Sidebar（**平铺 Workspace 列表**/会话列表/新建/选中/设置入口/窄窗；规则见 `26` §6） | ui-kit |
 | `@zeokeel/ui-chat` | `ui.slot.chat` | ChatView + assistant-ui primitives + 工具卡/审批/空态 + ExternalStoreRuntime adapter | ui-kit + `@assistant-ui/*` |
 | `@zeokeel/ui-settings` | `ui.slot.settings` | SettingsDialog + 校验 | ui-kit + Radix dialog |
-| `@zeokeel/ui-shell` | `ui.shell` | AppShell 框架（布局/header/status/overlay 挂载；app 已接入） | ui-kit + Radix tooltip |
+| `@zeokeel/ui-shell` | `ui.shell` | AppShell + FirstRun（布局/header/status/overlay/首用页；app 已接入） | ui-kit + Radix tooltip |
 | `@zeokeel/ui-inspector`（骨架，M1 不接入） | `ui.slot.inspector` | 右栏文件/变更/终端骨架 | ui-kit |
 | `@zeokeel/ui-commands`（骨架，M1 不接入） | `ui.slot.commands` | ⌘K 命令面板骨架 | ui-kit |
 | `apps/desktop/web` | 薄壳 | transport/controller/reducer/i18n/theme/UiProvider/registry/first-run | registry 生成的包 |

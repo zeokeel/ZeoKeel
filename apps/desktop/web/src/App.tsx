@@ -1,8 +1,5 @@
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import {
-  BrandLogo,
-  Button,
-  IconFolder,
   UiProvider,
   type BrandConfig,
   type UiValue,
@@ -104,91 +101,6 @@ export function App(props: { transport: Transport }) {
   );
 }
 
-function FirstRun(props: { ui: UiValue }) {
-  const { t, workspaceError, actions } = props.ui;
-  const [path, setPath] = useState("");
-  const [title, setTitle] = useState("");
-  const [showPicker, setShowPicker] = useState(false);
-
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    actions.createWorkspace(path, title);
-  };
-
-  return (
-    <div className="flex h-dvh flex-col items-center justify-center bg-background px-6 text-center">
-      <BrandLogo className="h-10 w-10 rounded-document" />
-      <h1 className="mt-5 text-[20px] font-semibold tracking-[-0.01em] text-foreground">
-        {t("workspaceFirstTitle")}
-      </h1>
-      <p className="mt-2 max-w-[460px] text-[13px] text-muted-foreground">
-        {t("workspaceFirstBody")}
-      </p>
-      {workspaceError !== null ? (
-        <p className="mt-3 max-w-[460px] rounded-document bg-muted px-3 py-1.5 text-[12px] text-destructive">
-          {workspaceError === "workspace/path-required" ? t("workspacePathInvalid") : workspaceError}
-        </p>
-      ) : null}
-      <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-        <Button
-          variant="primary"
-          onClick={() => {
-            actions.createWorkspace("~", "主目录");
-          }}
-          title={t("workspaceUseHome")}
-        >
-          <IconFolder />
-          <span>{t("workspaceUseHome")}</span>
-        </Button>
-        <Button
-          variant="default"
-          aria-expanded={showPicker}
-          onClick={() => {
-            setShowPicker((value) => !value);
-          }}
-        >
-          <IconFolder />
-          <span>{t("workspaceAdd")}</span>
-        </Button>
-      </div>
-      {showPicker ? (
-        <form
-          className="mt-4 flex w-full max-w-[460px] flex-col gap-2 rounded-document bg-muted p-3 text-start"
-          onSubmit={submit}
-        >
-          <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">
-            {t("workspacePathLabel")}
-            <input
-              autoFocus
-              value={path}
-              onChange={(event) => {
-                setPath(event.target.value);
-              }}
-              placeholder={t("workspaceAddHint")}
-              className="w-full rounded-control border border-border bg-background px-2 py-1.5 text-[13px] text-foreground placeholder:text-muted-foreground"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">
-            {t("workspaceTitleLabel")}
-            <input
-              value={title}
-              onChange={(event) => {
-                setTitle(event.target.value);
-              }}
-              className="w-full rounded-control border border-border bg-background px-2 py-1.5 text-[13px] text-foreground"
-            />
-          </label>
-          <div className="mt-1 flex justify-end">
-            <Button variant="primary" size="sm" type="submit" disabled={path.trim() === ""}>
-              {t("workspaceCreate")}
-            </Button>
-          </div>
-        </form>
-      ) : null}
-    </div>
-  );
-}
-
 function AppShell(props: { controller: AppController; ui: UiValue }) {
   const { ui, controller } = props;
   const t = ui.t;
@@ -214,13 +126,14 @@ function AppShell(props: { controller: AppController; ui: UiValue }) {
       packageLine={packageLine}
       workspacePath={activeWorkspace === undefined ? t("noConversation") : activeWorkspace.path}
       toast={state.toast}
-      firstRun={<FirstRun ui={ui} />}
+      workspaceError={ui.workspaceError}
       navigation={<SessionsSlot />}
       conversation={<ChatSlot key={ui.activeWorkspaceId === null ? "none" : ui.activeWorkspaceId} />}
       settings={<SettingsSlot />}
       onRetryBoot={ui.actions.retryBoot}
       onToggleSidebar={ui.actions.toggleSidebar}
       onDismissToast={controller.dismissToast}
+      onCreateWorkspace={(path, title) => { ui.actions.createWorkspace(path, title); }}
     />
   );
 }

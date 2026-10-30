@@ -34,7 +34,7 @@
 
 | slotId | 角色 | 包 | skeleton component | props（M1 约定） |
 | --- | --- | --- | --- | --- |
-| `ui.shell`（M1 已接入） | `ui.shell` | `@zeokeel/ui-shell` | `ShellFrame`（`shell.frame`） | `boot/bootError/workspaceCount/sidebarOpen/offline/streaming/mock/title/packageLine/workspacePath/toast/firstRun/navigation/conversation/settings/onRetryBoot/onToggleSidebar/onDismissToast/t` |
+| `ui.shell`（M1 已接入） | `ui.shell` | `@zeokeel/ui-shell` | `ShellFrame`（`shell.frame`） | `boot/bootError/workspaceCount/workspaceError/sidebarOpen/offline/streaming/mock/title/packageLine/workspacePath/toast/navigation/conversation/settings/onRetryBoot/onToggleSidebar/onDismissToast/onCreateWorkspace/t` |
 | `ui.sessions` | `ui.slot.sessions` | `@zeokeel/ui-sessions` | `Sidebar` | 现有 |
 | `ui.chat` | `ui.slot.chat` | `@zeokeel/ui-chat` | `ChatView` | 现有 |
 | `ui.inspector`（骨架，M1 不接入） | `ui.slot.inspector` | `@zeokeel/ui-inspector` | `InspectorPanel`（`inspector.panel`） | `open/tab/onTab/onClose/files/changes` |

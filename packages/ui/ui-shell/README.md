@@ -3,13 +3,14 @@
 **功能说明（骨架，尚未实现业务）**：应用框架与全局 chrome。
 
 ## 职责
+- 首用页（FirstRun）：无 workspace 时提供 `~` 主目录/添加路径。
 - 三栏 AppFrame：`navigation` / `conversation + composer` / `inspector`；窄窗收起左栏/右栏。
-- 顶栏：会话标题、分支、模型、上下文占用、Jobs 入口、右栏开关、更多菜单。
+- 顶栏：会话标题、状态、mock 标识、侧栏开关。
 - 底部状态栏：连接状态、workspace 路径、package 数、版本、⌘K 提示。
 - 主题 token/`data-theme` 由 app 提供；shell 只使用 token。
 - Overlay 挂载点：命令面板、设置、工作区弹窗、toast。
 
-## Props（骨架约定）
+## Props（当前实际，见 `web/src/index.tsx`）
 ```ts
 interface AppShellProps {
   title: string;

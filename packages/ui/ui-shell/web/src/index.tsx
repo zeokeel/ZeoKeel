@@ -1,7 +1,7 @@
 /** App shell frame: layout, header, status bar, overlays. Business slots are injected. */
 import * as Tooltip from "@radix-ui/react-tooltip";
-import type { ReactNode } from "react";
-import { BrandLogo, Button, Chip, IconClose, IconMenu, IconRetry, IconWifiOff, StatusDot } from "@zeokeel/ui-kit";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { BrandLogo, Button, Chip, IconClose, IconFolder, IconMenu, IconRetry, IconWifiOff, StatusDot } from "@zeokeel/ui-kit";
 
 const tooltipClass = "z-50 rounded-surface bg-foreground px-2 py-1 text-[12px] text-background";
 const iconButtonClass =
@@ -20,13 +20,56 @@ export interface ShellFrameProps {
   packageLine: string;
   workspacePath: string;
   toast: string | null;
-  firstRun: ReactNode;
+  workspaceError: string | null;
   navigation: ReactNode;
   conversation: ReactNode;
   settings: ReactNode;
   onRetryBoot: () => void;
   onToggleSidebar: () => void;
   onDismissToast: () => void;
+  onCreateWorkspace: (path: string, title: string) => void;
+}
+
+function FirstRun(props: { t: ShellFrameProps["t"]; error: string | null; onCreateWorkspace: (path: string, title: string) => void }) {
+  const { t } = props;
+  const [path, setPath] = useState("");
+  const [title, setTitle] = useState("");
+  const [showPicker, setShowPicker] = useState(false);
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    props.onCreateWorkspace(path, title);
+  };
+  return (
+    <div className="flex h-dvh flex-col items-center justify-center bg-background px-6 text-center">
+      <BrandLogo className="h-10 w-10 rounded-document" />
+      <h1 className="mt-5 text-[20px] font-semibold tracking-[-0.01em] text-foreground">{t("workspaceFirstTitle")}</h1>
+      <p className="mt-2 max-w-[460px] text-[13px] text-muted-foreground">{t("workspaceFirstBody")}</p>
+      {props.error !== null ? (
+        <p className="mt-3 max-w-[460px] rounded-document bg-muted px-3 py-1.5 text-[12px] text-destructive">
+          {props.error === "workspace/path-required" ? t("workspacePathInvalid") : props.error}
+        </p>
+      ) : null}
+      <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+        <Button variant="primary" onClick={() => { props.onCreateWorkspace("~", "主目录"); }} title={t("workspaceUseHome")}>
+          <IconFolder /><span>{t("workspaceUseHome")}</span>
+        </Button>
+        <Button variant="default" aria-expanded={showPicker} onClick={() => { setShowPicker((value) => !value); }}>
+          <IconFolder /><span>{t("workspaceAdd")}</span>
+        </Button>
+      </div>
+      {showPicker ? (
+        <form className="mt-4 flex w-full max-w-[460px] flex-col gap-2 rounded-document bg-muted p-3 text-start" onSubmit={submit}>
+          <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">{t("workspacePathLabel")}
+            <input autoFocus value={path} onChange={(event) => { setPath(event.target.value); }} placeholder={t("workspaceAddHint")} className="w-full rounded-control border border-border bg-background px-2 py-1.5 text-[13px] text-foreground placeholder:text-muted-foreground" />
+          </label>
+          <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">{t("workspaceTitleLabel")}
+            <input value={title} onChange={(event) => { setTitle(event.target.value); }} className="w-full rounded-control border border-border bg-background px-2 py-1.5 text-[13px] text-foreground" />
+          </label>
+          <div className="mt-1 flex justify-end"><Button variant="primary" size="sm" type="submit" disabled={path.trim() === ""}>{t("workspaceCreate")}</Button></div>
+        </form>
+      ) : null}
+    </div>
+  );
 }
 
 export function ShellFrame(props: ShellFrameProps) {
@@ -53,7 +96,7 @@ export function ShellFrame(props: ShellFrameProps) {
       </div>
     );
   }
-  if (props.workspaceCount === 0) return <>{props.firstRun}</>;
+  if (props.workspaceCount === 0) { return <FirstRun t={props.t} error={props.workspaceError} onCreateWorkspace={props.onCreateWorkspace} />; }
   return (
     <Tooltip.Provider delayDuration={300}>
       <a className="zk-skip-link" href="#zk-composer-input">{t("skipToInput")}</a>
