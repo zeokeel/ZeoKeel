@@ -6475,8 +6475,10 @@ name = "zk-srv-content"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "serde",
  "serde_json",
  "sqlx",
+ "uuid",
  "zk-contract-content",
  "zk-contract-skill",
  "zk-kit-content",

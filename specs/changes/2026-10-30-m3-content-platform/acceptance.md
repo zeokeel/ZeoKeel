@@ -8,6 +8,12 @@
 
 ## 1. 自动验证（实现后填写真实结果）
 
+### task 3 evidence (2026-10-30)
+
+- `bash scripts/srv-store-test.sh`：创建（pending）→ approve → grants(all,can_install) → client catalog 1 项 → DELETE 软删 → catalog 0 项；`store ok: content schema wired`
+- 路由：`/api/admin/skills` 列表/创建/approve/reject/delist/transfer/grants/force-update/delete + `/api/client/v1/skills`
+- `cargo test --workspace` / clippy：pass
+
 ### task 2 evidence (2026-10-30)
 
 - `cargo run -q -p zk -- validate`：enterprise 33 / personal 14 packages，57 scanned
