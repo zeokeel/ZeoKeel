@@ -234,8 +234,11 @@ async fn request(State(state): State<AppState>, headers: HeaderMap, Path(id): Pa
         let status = if code.starts_with("APP_LIMIT") { StatusCode::TOO_MANY_REQUESTS } else { StatusCode::BAD_REQUEST };
         error(status, code)
     })?;
-    for line in output.logs.iter().take(100) {
-        let _ = sqlx::query("INSERT INTO app_runtime_logs (app_id, level, message) VALUES ($1,'info',$2)").bind(app).bind(line).execute(&state.pool).await;
+    let log_count: i64 = sqlx::query_scalar("SELECT count(*) FROM app_runtime_logs").fetch_one(&state.pool).await.unwrap_or(0);
+    if log_count < 100_000 {
+        for line in output.logs.iter().take(100) {
+            let _ = sqlx::query("INSERT INTO app_runtime_logs (app_id, level, message) VALUES ($1,'info',$2)").bind(app).bind(line).execute(&state.pool).await;
+        }
     }
     sqlx::query("INSERT INTO app_calls (app_id, user_id, request_id, status, duration_ms, fuel) VALUES ($1,$2,$3,$4,$5,$6)")
         .bind(app).bind(user).bind(&body.request_id).bind(i64::try_from(output.response.get("status").and_then(Value::as_u64).unwrap_or(500)).unwrap_or(500))

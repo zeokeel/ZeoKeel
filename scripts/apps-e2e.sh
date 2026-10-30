@@ -77,4 +77,8 @@ curl -fsS -X POST "$BASE/api/client/v1/apps/$APP_ID/request" -H "Authorization: 
 CODE=$(curl -sS -b /tmp/zk-apps.cookies -H "X-CSRF-Token: $CSRF" -o /dev/null -w '%{http_code}' -X POST "$BASE/api/admin/apps/$APP_ID/delist"); [[ "$CODE" == "200" ]]
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/client/v1/apps/$APP_ID/open" -H "Authorization: Bearer $ADMIN_JWT"); [[ "$CODE" == "403" ]]
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/client/v1/apps/$APP_ID/request" -H "Authorization: Bearer $ADMIN_JWT" -H 'content-type: application/json' -d "$LIST"); [[ "$CODE" == "410" ]]
-echo "apps e2e ok: upload/approve/open/request/restart/delist"
+# retire: age the delisted row and run the scheduled job.
+PGPASSWORD="$ROLE" psql "postgres://$ROLE:$ROLE@127.0.0.1:5432/$DB" -Atqc "UPDATE contents SET deleted_at=now()-interval '31 days' WHERE id='$APP_ID';"
+curl -fsS -b /tmp/zk-apps.cookies -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/admin/jobs/app-retire/run" >/dev/null
+CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/client/v1/apps/$APP_ID/open" -H "Authorization: Bearer $ADMIN_JWT"); [[ "$CODE" == "404" || "$CODE" == "403" ]]
+echo "apps e2e ok: upload/approve/open/request/restart/delist/retire"

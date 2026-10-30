@@ -198,7 +198,7 @@ document.title='SELFTEST|'+JSON.stringify({appRequest,ipc,open,core});
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)] // test-only
     #[test]
     fn app_capability_has_no_core_permissions() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities/app-window.json");

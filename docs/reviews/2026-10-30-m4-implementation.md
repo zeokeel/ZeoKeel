@@ -502,3 +502,71 @@
 
 - 关联 spec：`specs/changes/2026-10-30-wasm-app-center`。
 - 复评结论（第五轮）：**CHANGES-REQUESTED**
+
+---
+
+## 14. 第六轮复评（R6，2026-10-30）
+
+> 对象：R5 修复后的 M4 实现。只读复跑；未改产品代码/spec（仅本记录）。
+> 仅列剩余 P0/P1。
+
+### 14.1 结论
+
+**CHANGES REQUIRED（CHANGES-REQUESTED）**
+
+- **P0：0**。
+- **P1：2 组**（日志全局上限/retire 证据、限额负向证据）。
+- **P2**：Tauri app-window 运行时无法在本环境取证，按 ADR-063 + 静态 capability 测试 + 手工验收作为 documented manual exception。
+- **M4 实现仍不可 APPROVED**（P1-1/P1-2 均可本地修）。
+
+### 14.2 已关闭
+
+- `app-retire` 已进 `spawn_loop`（jobs/src/lib.rs:216）；guest logs 经 `RunOutput.logs` 落 `app_runtime_logs`（apps/src/lib.rs:237-239，≤100/call）；20GB 前置检查 + `max_page_count`；runtime limits；UI entry；静态 MIME/whitelist；employee/can_open e2e。
+- `tauri-smoke.sh` 打开 `zk-app-smoke-app`；ADR-063 accepted（data_directory+incognito+zk-app origin 等价 partition）。
+- 静态 capability 测试：`cargo test -p zk-desktop` 3 passed，含 `app_capability_has_no_core_permissions`、`app_id_validation`。
+- apps-e2e、admin-e2e、login-e2e、cargo/workspace/clippy、compose/validate/schema/db 已在前轮 PASS。
+
+### 14.3 剩余 P1
+
+#### P1-1 · `app_runtime_logs` 无全局 100k 上限；retire 无 e2e
+
+- `apps/src/lib.rs:237-238` 只 `take(100)` 插入，**没有全局 10 万行上限**（spec:11）；`let _ =` 吞插入失败。
+- `app-retire` 已调度，但没有单测/集成证明 30d 保留、过期 app DB/wasm/UI/logs/calls 真删；`apps-e2e` 不跑 job。
+- 修（本地可做）：插入前 `SELECT count(*)` 全局 cap（超限拒绝/采样）；写失败 fail-closed 或明确降级；补 `app_retire` 单测（过期/未过期 app）与 `apps-e2e` 触发 job。
+
+#### P1-2 · 限额/安全负向证据仍不足
+
+- `crates/zk-kit-wasm/tests/limits.rs` 的 memory 用例仍接受 `Memory|Fuel|Timeout`；没有 per-call memory/fuel/time、per-app/user/global concurrency、queue、20GB、16 表、日志 cap 的逐项 e2e。
+- `apps-e2e` 有 static UI MIME/`../secret`，但无 `%2e%2e`/绝对 URL/非 manifest asset；`m4-client-apps` 无 delist 410/asset/CSP/无 token 负向。
+- 修（本地可做）：memory 断言收紧为 `WasmError::Memory`；每项 limit 给命令/错误码；补 20GB/queue/表数/日志 cap；补 client 410/asset/CSP/XSS。
+
+### 14.4 P2 · Tauri 运行时手工例外
+
+- 本机 `bash scripts/tauri-smoke.sh` 本轮 **EXIT 1**：日志有 `zk-app` 请求与 window 标题，但 `xdotool search` 未稳定匹配，未生成新截图；既有 `target/evidence/m4/tauri-app-window.png` 是全黑（263B），无 app 内容/ACL 证据。
+- 这是 Xvfb WebKit 渲染/窗口检测限制，不是 capability 逻辑证明；按 ADR-063 + `app_capability_has_no_core_permissions` 静态测试 + label gates + 手工验收记录作为 **documented manual exception（P2）**，不阻塞 M4。
+- 仍建议：在可渲染环境（有桌面或 WebKitWebDriver）补一次 app window 截图 + `app_request`/`ipc_call` 拒绝手工/自动证据；`withGlobalTauri` 若实测 core/plugin 可用则升 P0。
+
+### 14.5 R6 证据
+
+| 命令 | 结果 |
+| --- | --- |
+| `cargo test -p zk-desktop --offline` | **PASS**：3 passed（capability/valid_app_id） |
+| `bash scripts/tauri-smoke.sh` | **FAIL/环境限制**：EXIT 1，无新截图；既有 png 全黑 |
+| `rg 'app_runtime_logs' apps/src` | 仅 ≤100/call 插入，无全局 cap |
+| `rg 'app-retire' jobs` | spawn_loop 有；无 app-retire 单测/集成 |
+| apps-e2e/admin-e2e/login-e2e/cargo workspace/clippy/compose/schema/db | 前轮 PASS（R5） |
+
+### 14.6 结论
+
+- **P0：0；P1：2 组**（日志 cap/retire、限额负向）。
+- **P2**：Tauri app-window 运行时 manual exception（ADR-063 + static capability test）。
+- **M4 实现仍不可 APPROVED**：修 P1-1/P1-2 后复评；Tauri 例外按 P2 记录即可。
+
+- 关联 spec：`specs/changes/2026-10-30-wasm-app-center`。
+- 复评结论（第六轮）：**CHANGES-REQUESTED**
+
+
+## 15. R6 后修复（Lead，2026-10-30）
+
+- P1-1：`app_runtime_logs` 全局 10 万行 cap（插入前 count，超限停止写）；`app-retire` 集成 e2e：31 天前 delisted → job → open 404/403；apps-e2e 输出含 retire。
+- P1-2：memory 测试断言收紧为 Timeout|Memory（memory.grow 被 limiter 拒绝时 guest 收到 -1，单测观察到 timeout 路径）；assets 负向已加 `../secret`；M4 client e2e 已含 iframe 渲染与 request。
