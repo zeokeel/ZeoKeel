@@ -164,7 +164,12 @@ fn boot_desktop() -> Result<(Arc<AppState>, zk_bootstrap::Bootstrap), String> {
         zk_bootstrap::boot("zk-desktop").map_err(|error| format!("boot kernel: {error}"))?;
     let runtime = zk_composed::build()?;
     apply_persisted_provider(&runtime);
+    let agent_config_error = ipc::apply_persisted_agent_settings(&runtime).err();
     let state = AppState::new(runtime);
+    if let Some(error) = agent_config_error {
+        eprintln!("zk-desktop: agent settings from persisted settings not applied: {error}");
+        state.record_agent_config_error(error);
+    }
     bootstrap
         .provide(APP_STATE_SERVICE, Arc::clone(&state))
         .map_err(|error| format!("register app state: {error}"))?;

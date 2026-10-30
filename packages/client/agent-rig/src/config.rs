@@ -19,9 +19,8 @@
 //! prompt-cache override; memory and hooks are enabled but only persist/observe
 //! when a directory/log is configured.
 
-use std::sync::{Mutex, OnceLock};
-
 use serde::{Deserialize, Serialize};
+use zk_contract_config::{AgentSettings, ToolChoiceSetting};
 
 /// Multi-turn memory via `rig-memory` conversation persistence.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -334,36 +333,159 @@ fn env_parse<T: std::str::FromStr>(key: &str) -> Option<T> {
         .and_then(|value| value.trim().parse().ok())
 }
 
-static DEFAULT_CONFIG: OnceLock<Mutex<AgentRuntimeConfig>> = OnceLock::new();
-
-fn default_slot() -> &'static Mutex<AgentRuntimeConfig> {
-    DEFAULT_CONFIG.get_or_init(|| Mutex::new(AgentRuntimeConfig::from_env()))
-}
-
 /// Install the process-wide default agent config (desktop settings loader).
 ///
-/// Invalid configs are rejected before they are stored. Subsequent agents read
-/// the stored value on creation; already-created agents pick it up on their
-/// next turn (the run loop snapshots the config each turn).
+/// Delegates to the contract registry (`zk_contract_agent`), so the desktop can
+/// publish settings without depending on this crate. Invalid configs are
+/// rejected before they are stored; the run loop snaps the config every turn.
 ///
 /// # Errors
 ///
 /// As [`AgentRuntimeConfig::validate`].
 pub fn set_default_agent_config(config: AgentRuntimeConfig) -> Result<(), String> {
     config.validate()?;
-    let slot = default_slot();
-    let mut guard = slot
-        .lock()
-        .map_err(|_| "agent config lock poisoned".to_owned())?;
-    *guard = config;
-    Ok(())
+    zk_contract_agent::set_default_agent_settings(&config.to_contract())
 }
 
-/// The process-wide default agent config (env fallback when never set).
+/// The process-wide default agent config: the published contract settings when
+/// present, else the `ZEOKEEL_AGENT_*` environment fallback.
 #[must_use]
 pub fn default_agent_config() -> AgentRuntimeConfig {
-    default_slot()
-        .lock()
-        .map(|guard| guard.clone())
-        .unwrap_or_default()
+    if let Some(settings) = zk_contract_agent::default_agent_settings() {
+        if let Ok(config) = AgentRuntimeConfig::from_contract(&settings) {
+            return config;
+        }
+    }
+    AgentRuntimeConfig::from_env()
+}
+
+impl ReasoningEffort {
+    /// Contract string form.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Minimal => "minimal",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::XHigh => "xhigh",
+            Self::Max => "max",
+        }
+    }
+}
+
+impl PromptCache {
+    /// Contract string form.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Short => "short",
+            Self::Long => "long",
+        }
+    }
+}
+
+impl AgentRuntimeConfig {
+    /// Convert this runtime config back into the contract `AgentSettings`
+    /// (used when desktop hands it over through the contract registry).
+    #[must_use]
+    pub fn to_contract(&self) -> AgentSettings {
+        AgentSettings {
+            max_steps: self.max_steps,
+            completion: zk_contract_config::CompletionSettings {
+                temperature: self.completion.temperature,
+                max_tokens: self.completion.max_tokens,
+                top_p: self.completion.top_p,
+                seed: self.completion.seed,
+                stop: self.completion.stop.clone(),
+                tool_choice: match &self.completion.tool_choice {
+                    ToolChoiceConfig::Auto => ToolChoiceSetting::Auto,
+                    ToolChoiceConfig::None => ToolChoiceSetting::None,
+                    ToolChoiceConfig::Required => ToolChoiceSetting::Required,
+                    ToolChoiceConfig::Specific(tools) => ToolChoiceSetting::Specific(tools.clone()),
+                },
+                parallel_tool_calls: self.completion.parallel_tool_calls,
+                reasoning_effort: self
+                    .completion
+                    .reasoning_effort
+                    .map(|effort| effort.as_str().to_owned()),
+                prompt_cache: self
+                    .completion
+                    .prompt_cache
+                    .map(|cache| cache.as_str().to_owned()),
+            },
+            memory: zk_contract_config::MemorySettings {
+                enabled: self.memory.enabled,
+                dir: self.memory.dir.clone(),
+            },
+            hooks: zk_contract_config::HookSettings {
+                enabled: self.hooks.enabled,
+                log: self.hooks.log.clone(),
+            },
+        }
+    }
+
+    /// Convert the contract `AgentSettings` (AppSettings.agent) into the
+    /// runtime config, validating closed enums while mapping.
+    ///
+    /// # Errors
+    ///
+    /// A message naming the invalid field (reasoning effort / prompt cache are
+    /// strings in the contract, enums in the runtime).
+    pub fn from_contract(settings: &AgentSettings) -> Result<Self, String> {
+        settings.validate().map_err(|error| error.to_string())?;
+        let reasoning_effort = match settings.completion.reasoning_effort.as_deref() {
+            None => None,
+            Some(value) => Some(match value {
+                "minimal" => ReasoningEffort::Minimal,
+                "low" => ReasoningEffort::Low,
+                "medium" => ReasoningEffort::Medium,
+                "high" => ReasoningEffort::High,
+                "xhigh" => ReasoningEffort::XHigh,
+                "max" => ReasoningEffort::Max,
+                other => {
+                    return Err(format!(
+                        "agent.completion.reasoning_effort must be minimal|low|medium|high|xhigh|max (got {other})"
+                    ));
+                }
+            }),
+        };
+        let prompt_cache = match settings.completion.prompt_cache.as_deref() {
+            None => None,
+            Some("short") => Some(PromptCache::Short),
+            Some("long") => Some(PromptCache::Long),
+            Some(other) => {
+                return Err(format!(
+                    "agent.completion.prompt_cache must be short|long (got {other})"
+                ));
+            }
+        };
+        Ok(Self {
+            completion: CompletionConfig {
+                temperature: settings.completion.temperature,
+                max_tokens: settings.completion.max_tokens,
+                top_p: settings.completion.top_p,
+                seed: settings.completion.seed,
+                stop: settings.completion.stop.clone(),
+                tool_choice: match &settings.completion.tool_choice {
+                    ToolChoiceSetting::Auto => ToolChoiceConfig::Auto,
+                    ToolChoiceSetting::None => ToolChoiceConfig::None,
+                    ToolChoiceSetting::Required => ToolChoiceConfig::Required,
+                    ToolChoiceSetting::Specific(tools) => ToolChoiceConfig::Specific(tools.clone()),
+                },
+                parallel_tool_calls: settings.completion.parallel_tool_calls,
+                reasoning_effort,
+                prompt_cache,
+            },
+            memory: MemoryConfig {
+                enabled: settings.memory.enabled,
+                dir: settings.memory.dir.clone(),
+            },
+            hooks: HooksConfig {
+                enabled: settings.hooks.enabled,
+                log: settings.hooks.log.clone(),
+            },
+            max_steps: settings.max_steps,
+        })
+    }
 }

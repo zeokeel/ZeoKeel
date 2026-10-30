@@ -80,6 +80,7 @@ impl AgentLoop {
             return Ok(AgentReply {
                 text: output.to_owned(),
                 tool_calls: Vec::new(),
+                usage: None,
             });
         };
 
@@ -132,6 +133,7 @@ impl AgentLoop {
         Ok(AgentReply {
             text,
             tool_calls: vec![record],
+            usage: None,
         })
     }
 

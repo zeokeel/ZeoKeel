@@ -7,6 +7,7 @@ use std::sync::{mpsc, Arc, Mutex};
 
 use serde_json::{json, Value};
 use tokio::sync::broadcast;
+use zk_contract_agent::AgentHookSink;
 use zk_contract_config::{AppSettings, ProviderKind};
 use zk_contract_ipc::{commands, CommandResponse, UiEvent};
 use zk_contract_session::Message;
@@ -38,6 +39,7 @@ pub struct AppState {
     turns: Mutex<HashMap<String, mpsc::Sender<TurnJob>>>,
     approvals: Arc<ApprovalBroker>,
     questions: Arc<QuestionBroker>,
+    agent_config_error: Mutex<Option<String>>,
 }
 
 impl AppState {
@@ -59,6 +61,7 @@ impl AppState {
             turns: Mutex::new(HashMap::new()),
             approvals,
             questions,
+            agent_config_error: Mutex::new(None),
         })
     }
 
@@ -70,6 +73,63 @@ impl AppState {
     fn seq(&self) -> &AtomicU64 {
         &self.seq
     }
+
+    /// Record a non-fatal agent-settings startup error for the UI (`meta.get`).
+    pub fn record_agent_config_error(&self, error: impl Into<String>) {
+        if let Ok(mut slot) = self.agent_config_error.lock() {
+            *slot = Some(error.into());
+        }
+    }
+
+    /// The agent-settings startup error, when the persisted settings could not
+    /// be applied (the app still boots so the user can fix them).
+    #[must_use]
+    pub fn agent_config_error(&self) -> Option<String> {
+        self.agent_config_error
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone())
+    }
+}
+
+/// Desktop hook logger: every lifecycle event (including usage) is echoed as
+/// JSON to stderr; `agent.hooks.log` additionally writes JSONL inside
+/// `zk-agent-rig`. Hosts without a UI bridge still get observable hooks.
+struct DesktopHookSink;
+
+impl AgentHookSink for DesktopHookSink {
+    fn on_agent_hook(&self, event: &Value) {
+        match serde_json::to_string(event) {
+            Ok(line) => eprintln!("zk-desktop agent hook: {line}"),
+            Err(error) => eprintln!("zk-desktop agent hook: serialize failed: {error}"),
+        }
+    }
+}
+
+/// Validate and publish `AppSettings.agent` to the contract registry the agent
+/// runtime reads each turn; install/remove the global hook sink accordingly.
+pub(crate) fn apply_agent_settings(settings: &AppSettings) -> Result<(), String> {
+    settings
+        .agent
+        .validate()
+        .map_err(|error| format!("agent settings: {error}"))?;
+    zk_contract_agent::set_default_agent_settings(&settings.agent)
+        .map_err(|error| format!("agent settings: {error}"))?;
+    if settings.agent.hooks.enabled {
+        zk_contract_agent::set_agent_hook_sink(Some(Arc::new(DesktopHookSink)));
+    } else {
+        zk_contract_agent::set_agent_hook_sink(None);
+    }
+    Ok(())
+}
+
+/// Boot path: load persisted settings and publish the agent section.
+pub(crate) fn apply_persisted_agent_settings(runtime: &zk_composed::Runtime) -> Result<(), String> {
+    let settings = runtime
+        .settings()
+        .load()
+        .map_err(|error| format!("settings load: {error}"))?;
+    apply_agent_settings(&settings)
 }
 
 /// Dispatch one command. Never panics; all failures become `CommandResponse::err`.
@@ -79,6 +139,7 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             "edition": zk_composed::EDITION,
             "packages": zk_composed::PACKAGES,
             "version": env!("CARGO_PKG_VERSION"),
+            "agent_config_error": state.agent_config_error(),
         })),
         commands::WORKSPACE_LIST => match state.runtime.sessions().list_workspaces() {
             Ok(list) => CommandResponse::ok(json!(list)),
@@ -215,7 +276,12 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             if let Err(error) = validate_settings(&settings) {
                 return CommandResponse::err(error);
             }
-            // Apply provider hot-swap first: a configure failure must reach the UI
+            // Apply agent settings first: validation/runtime failures must reach
+            // the UI instead of persisting settings that never take effect.
+            if let Err(error) = apply_agent_settings(&settings) {
+                return CommandResponse::err(error);
+            }
+            // Apply provider hot-swap: a configure failure must reach the UI
             // instead of being discarded after persisting an unusable provider.
             let provider = match settings.provider.kind {
                 ProviderKind::Mock => None,
@@ -280,6 +346,9 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             // The local session (tokens/server URL) is owned by the UI layer; here we
             // only make sure no in-flight turn can keep using the old credentials.
             zk_composed::configure_llm("", "", "");
+            // Reset the already-built rig model to the boot placeholder so a
+            // logged-out agent cannot keep using the old gateway credentials.
+            let _ = state.runtime.configure_llm("", "", "", "gateway");
             if let Ok(streams) = state.streams.lock() {
                 for cancelled in streams.values() {
                     cancelled.store(true, Ordering::SeqCst);
@@ -990,6 +1059,25 @@ mod tests {
         writer.write_all(b"# link\n").unwrap();
         writer.add_symlink("link", "target", options).unwrap();
         writer.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn agent_settings_apply_to_the_runtime_registry_and_validate() {
+        let mut settings = zk_contract_config::AppSettings::default();
+        settings.agent.completion.temperature = Some(0.25);
+        settings.agent.max_steps = 12;
+        super::apply_agent_settings(&settings).unwrap();
+        let published = zk_contract_agent::default_agent_settings().unwrap();
+        assert_eq!(published.completion.temperature, Some(0.25));
+        assert_eq!(published.max_steps, 12);
+
+        // Out-of-range settings are rejected and surface as an error (no silent save).
+        let mut invalid = settings.clone();
+        invalid.agent.completion.temperature = Some(9.0);
+        assert!(super::apply_agent_settings(&invalid).is_err());
+
+        super::apply_agent_settings(&zk_contract_config::AppSettings::default()).unwrap();
+        zk_contract_agent::set_agent_hook_sink(None);
     }
 
     #[test]

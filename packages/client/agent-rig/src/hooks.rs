@@ -137,6 +137,11 @@ pub(crate) fn emit_hook(
     if let Some(sink) = sink {
         sink.on_event(event);
     }
+    if let Ok(value) = serde_json::to_value(event) {
+        if let Some(contract_sink) = zk_contract_agent::agent_hook_sink() {
+            contract_sink.on_agent_hook(&value);
+        }
+    }
     if config.log.trim().is_empty() {
         return;
     }
