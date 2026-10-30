@@ -188,7 +188,8 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             ) else {
                 return CommandResponse::err("missing server_url/access_token");
             };
-            zk_composed::configure_llm(base_url, access_token);
+            let model = payload.get("model").and_then(Value::as_str).unwrap_or("");
+            zk_composed::configure_llm(base_url, access_token, model);
             CommandResponse::ok(json!({ "configured": true }))
         }
         commands::CHAT_SEND => chat_send(state, payload),

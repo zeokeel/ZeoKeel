@@ -39,7 +39,7 @@ impl Runtime {
     }
 }
 
-pub fn configure_llm(_base_url: &str, _access_token: &str) {}
+pub fn configure_llm(_base_url: &str, _access_token: &str, _model: &str) {}
 
 pub fn build() -> Result<Runtime, String> {
     let tools: Vec<Arc<dyn zk_contract_tool::Tool>> = vec![

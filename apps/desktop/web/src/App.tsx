@@ -11,7 +11,7 @@ import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
 import type { FileEntry, Transport } from "./types";
 import { parseFileEntries } from "./protocol";
-import { clearSession, loadServerUrl, loadSession, login as loginRequest, refreshSession, saveServerUrl, saveSession, type AuthSession } from "./auth";
+import { clearSession, fetchBootstrapModel, loadGatewayModel, loadServerUrl, loadSession, login as loginRequest, refreshSession, saveGatewayModel, saveServerUrl, saveSession, type AuthSession } from "./auth";
 
 
 function isMockMode(): boolean {
@@ -29,14 +29,14 @@ export function App(props: { transport: Transport }) {
     if (state.meta.edition !== "enterprise" || session === null) return;
     const url = serverUrl === "" ? state.settings.server_url : serverUrl;
     if (url === "") return;
-    void props.transport.call("auth.configure", { server_url: url, access_token: session.access_token }).catch(() => {});
+    void props.transport.call("auth.configure", { server_url: url, access_token: session.access_token, model: loadGatewayModel() }).catch(() => {});
     const refreshMs = Math.max(session.expires_in, 60) * 800;
     const timer = window.setTimeout(() => {
       void refreshSession(session, url)
         .then((next) => {
           saveSession(next);
           setSession(next);
-          void props.transport.call("auth.configure", { server_url: url, access_token: next.access_token }).catch(() => {});
+          void props.transport.call("auth.configure", { server_url: url, access_token: next.access_token, model: loadGatewayModel() }).catch(() => {});
         })
         .catch(() => { clearSession(); setSession(null); });
     }, refreshMs);
@@ -106,7 +106,12 @@ export function App(props: { transport: Transport }) {
           saveSession(next);
           saveServerUrl(serverUrl);
           setServerUrl(serverUrl);
-          void props.transport.call("auth.configure", { server_url: serverUrl, access_token: next.access_token }).catch(() => {});
+          void fetchBootstrapModel(next, serverUrl)
+            .then((model) => {
+              if (model !== "") saveGatewayModel(model);
+              return props.transport.call("auth.configure", { server_url: serverUrl, access_token: next.access_token, model });
+            })
+            .catch(() => {});
           setSession(next);
         })
         .catch((error: unknown) => { setLoginError(error instanceof Error ? error.message : "login failed"); })

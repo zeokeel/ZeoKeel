@@ -11,6 +11,7 @@ export interface AuthSession {
 
 const KEY = "zk.enterprise.session";
 const SERVER_KEY = "zk.enterprise.server";
+const MODEL_KEY = "zk.enterprise.model";
 
 export function loadSession(): AuthSession | null {
   try {
@@ -49,6 +50,25 @@ export function loadServerUrl(): string {
 
 export function saveServerUrl(serverUrl: string): void {
   localStorage.setItem(SERVER_KEY, serverUrl.replace(/\/$/, ""));
+}
+
+export function loadGatewayModel(): string {
+  return localStorage.getItem(MODEL_KEY) ?? "";
+}
+
+export function saveGatewayModel(model: string): void {
+  localStorage.setItem(MODEL_KEY, model);
+}
+
+export async function fetchBootstrapModel(session: AuthSession, serverUrl: string): Promise<string> {
+  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/config/bootstrap`, {
+    headers: { authorization: `Bearer ${session.access_token}` },
+  });
+  if (!response.ok) return "";
+  const body: unknown = await response.json();
+  if (typeof body !== "object" || body === null) return "";
+  const gateway = (body as { gateway?: { default_model?: unknown } }).gateway;
+  return typeof gateway?.default_model === "string" ? gateway.default_model : "";
 }
 
 export async function refreshSession(session: AuthSession, serverUrl: string): Promise<AuthSession> {

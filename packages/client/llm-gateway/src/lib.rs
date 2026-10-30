@@ -38,6 +38,16 @@ pub fn set_credentials(base_url: &str, access_token: &str) {
     }
 }
 
+/// Override the default gateway model (from bootstrap catalog).
+pub fn set_model(model: &str) {
+    if model.trim().is_empty() {
+        return;
+    }
+    if let Ok(mut config) = config().write() {
+        config.model = model.to_owned();
+    }
+}
+
 /// Gateway provider configured from env or the runtime credential injection.
 pub struct GatewayLlm {
     http: reqwest::blocking::Client,
