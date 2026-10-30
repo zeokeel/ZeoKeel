@@ -17,37 +17,48 @@ fn forbidden_ip(ip: IpAddr) -> bool {
     }
 }
 
-fn host_allowed(url: &reqwest::Url) -> bool {
-    if !matches!(url.scheme(), "http" | "https") { return false; }
-    if url.username() != "" || url.password().is_some() { return false; }
-    let Some(host) = url.host_str() else { return false; };
-    if host.eq_ignore_ascii_case("localhost") || host.ends_with(".local") { return false; }
-    if let Ok(ip) = host.parse::<IpAddr>() { return !forbidden_ip(ip); }
-    let Ok(addresses) = (host, url.port_or_known_default().unwrap_or(443)).to_socket_addrs() else { return false; };
-    let mut any = false;
-    for address in addresses { any = true; if forbidden_ip(address.ip()) { return false; } }
-    any
+fn resolve_public(url: &reqwest::Url) -> Option<std::net::SocketAddr> {
+    if !matches!(url.scheme(), "http" | "https") { return None; }
+    if url.username() != "" || url.password().is_some() { return None; }
+    let host = url.host_str()?;
+    if host.eq_ignore_ascii_case("localhost") || host.ends_with(".local") { return None; }
+    if let Ok(ip) = host.parse::<IpAddr>() { return (!forbidden_ip(ip)).then(|| std::net::SocketAddr::new(ip, url.port_or_known_default().unwrap_or(443))); }
+    let addresses: Vec<_> = (host, url.port_or_known_default().unwrap_or(443)).to_socket_addrs().ok()?.collect();
+    if addresses.is_empty() || addresses.iter().any(|address| forbidden_ip(address.ip())) { return None; }
+    addresses.first().copied()
 }
 
 impl Tool for WebFetchTool {
     fn spec(&self) -> ToolSpec { ToolSpec { name: "web.fetch".to_owned(), description: "Fetch a public http(s) URL and return its text (max 1MB). Private/local hosts and redirects to them are rejected.".to_owned(), parameters: serde_json::json!({"type":"object","properties":{"url":{"type":"string"}},"required":["url"],"additionalProperties":false}), mutating: false, requires_approval: false } }
     fn call(&self, _args: &str) -> Result<String, ToolError> { Err(ToolError::InvalidArgs("web.fetch requires JSON arguments".to_owned())) }
     fn call_json(&self, _context: &TurnContext, args: serde_json::Value) -> Result<String, ToolError> {
-        let url = args.get("url").and_then(serde_json::Value::as_str).ok_or_else(|| ToolError::InvalidArgs("url".to_owned()))?;
-        let parsed = reqwest::Url::parse(url).map_err(|error| ToolError::InvalidArgs(error.to_string()))?;
-        if !host_allowed(&parsed) { return Err(ToolError::Denied("private/local/invalid URL is not allowed".to_owned())); }
-        let policy = reqwest::redirect::Policy::custom(|attempt| {
-            if host_allowed(attempt.url()) { attempt.follow() } else { attempt.stop() }
-        });
-        let client = reqwest::blocking::Client::builder().timeout(Duration::from_secs(20)).redirect(policy).build().map_err(|error| ToolError::Io(error.to_string()))?;
-        let response = client.get(parsed).send().map_err(|error| ToolError::Io(error.to_string()))?;
-        if !response.status().is_success() { return Err(ToolError::Io(format!("HTTP {}", response.status()))); }
-        if response.content_length().is_some_and(|length| length > MAX_BYTES) { return Err(ToolError::Denied("response too large (max 1MB)".to_owned())); }
-        let mut bytes = Vec::new();
-        response.take(MAX_BYTES.saturating_add(1)).read_to_end(&mut bytes).map_err(|error| ToolError::Io(error.to_string()))?;
-        if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_BYTES { return Err(ToolError::Denied("response too large (max 1MB)".to_owned())); }
-        Ok(zk_kit_tools::truncate(String::from_utf8_lossy(&bytes).into_owned()))
+        let input = args.get("url").and_then(serde_json::Value::as_str).ok_or_else(|| ToolError::InvalidArgs("url".to_owned()))?;
+        let mut current = reqwest::Url::parse(input).map_err(|error| ToolError::InvalidArgs(error.to_string()))?;
+        for _ in 0..=3 {
+            let Some(address) = resolve_public(&current) else { return Err(ToolError::Denied("private/local/invalid URL is not allowed".to_owned())); };
+            let host = current.host_str().ok_or_else(|| ToolError::InvalidArgs("URL has no host".to_owned()))?.to_owned();
+            let client = reqwest::blocking::Client::builder()
+                .timeout(Duration::from_secs(20))
+                .redirect(reqwest::redirect::Policy::none())
+                .resolve(&host, address)
+                .build()
+                .map_err(|error| ToolError::Io(error.to_string()))?;
+            let response = client.get(current.clone()).send().map_err(|error| ToolError::Io(error.to_string()))?;
+            if response.status().is_redirection() {
+                let Some(location) = response.headers().get(reqwest::header::LOCATION).and_then(|value| value.to_str().ok()) else { return Err(ToolError::Io("redirect without location".to_owned())); };
+                current = current.join(location).map_err(|error| ToolError::InvalidArgs(error.to_string()))?;
+                continue;
+            }
+            if !response.status().is_success() { return Err(ToolError::Io(format!("HTTP {}", response.status()))); }
+            if response.content_length().is_some_and(|length| length > MAX_BYTES) { return Err(ToolError::Denied("response too large (max 1MB)".to_owned())); }
+            let mut bytes = Vec::new();
+            response.take(MAX_BYTES.saturating_add(1)).read_to_end(&mut bytes).map_err(|error| ToolError::Io(error.to_string()))?;
+            if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_BYTES { return Err(ToolError::Denied("response too large (max 1MB)".to_owned())); }
+            return Ok(zk_kit_tools::truncate(String::from_utf8_lossy(&bytes).into_owned()));
+        }
+        Err(ToolError::Io("too many redirects".to_owned()))
     }
+
 }
 
 #[cfg(test)]
@@ -57,7 +68,7 @@ mod tests {
     fn rejects_private_hosts() {
         for url in ["http://127.0.0.1/", "http://172.20.0.1/", "http://10.0.0.1/", "http://192.168.1.1/", "http://[::1]/", "http://169.254.169.254/"] {
             let parsed = reqwest::Url::parse(url).unwrap();
-            assert!(!super::host_allowed(&parsed), "{url}");
+            assert!(super::resolve_public(&parsed).is_none(), "{url}");
         }
     }
 }

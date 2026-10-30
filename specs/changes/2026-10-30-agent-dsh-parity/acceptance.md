@@ -1,6 +1,6 @@
 # 2026-10-30-agent-dsh-parity · 验收
 
-- 状态：`in-progress`（spec 阶段）
+- 状态：`implementation-in-progress`（R2 CHANGES-REQUESTED；不可标 completed）
 - 验收人：pending
 - 证据：`target/evidence/agent-parity/`
 
@@ -8,7 +8,7 @@
 
 - `docs/generated/AGENT-TOOL-MATRIX.md`（`scripts/agent-tool-matrix.py --check`）
 - `docs/39-agent-prompts.md`
-- `scripts/agent-e2e.sh`：真实 personal + fake upstream，6 scenarios（审批/拒绝/取消/ask-user/bash/present/多步；retry=1 处理会话切换竞态）
+- `scripts/agent-e2e.sh`：真实 personal + fake upstream，6 scenarios（审批/拒绝/取消/ask-user/bash/present/多步）
 - `cargo test --workspace` / clippy 绿
 - SSRF/redirect/私网负向；worktree 注入/逃逸负向
 - 实时 ToolCallStarted/Finished；取消标志；审批 fail-closed；ask-user IPC/UI
@@ -18,7 +18,7 @@
 - rig hooks/extractor/vector/loaders/多 provider
 - agent-team（禁用）、call-timeout 策略包、schedule 执行器、workflow DAG、subagent fork/异步 control
 - 工具参数/名称与 DSH 完全对齐
-- 逐工具 Playwright 全矩阵（当前 3 条 agent e2e）
+- 逐工具 Playwright 全矩阵（当前 6 条 agent e2e）
 
 ## 检查
 

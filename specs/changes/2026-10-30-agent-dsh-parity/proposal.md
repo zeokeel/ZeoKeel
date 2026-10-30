@@ -1,6 +1,7 @@
 # 2026-10-30-agent-dsh-parity · 提案
 
 - 状态：`approved`
+- 评审：`docs/reviews/2026-10-30-agent-implementation.md`
 - 依据：用户指令“对照 dsh 把 agent 所有能力补齐，所有工具模块都要支持，提示词直接用 dsh 的”；DSH 本地安装 `/usr/local/lib/node_modules/@deepseek-ai/dsh`；`docs/05`、`docs/19`、`docs/21`、`docs/25`、C2/C3/C4/C9/C10/C16/C17
 - 关联：M1b provider 运行时、审批、工具扩展；企业版 gateway 兼容
 
