@@ -9,17 +9,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "@zeokeel/admin-ui-kit": "workspace:*",
+    "@zeokeel/admin-audit": "workspace:*",
+    "@zeokeel/admin-jobs": "workspace:*",
+    "@zeokeel/admin-pricing": "workspace:*",
+    "@zeokeel/admin-settings": "workspace:*",
     "@zeokeel/admin-shell": "workspace:*",
+    "@zeokeel/admin-ui-kit": "workspace:*",
+    "@zeokeel/admin-usage": "workspace:*",
     "@zeokeel/admin-users": "workspace:*",
     "@zeokeel/admin-wallet": "workspace:*",
-    "@zeokeel/admin-pricing": "workspace:*",
-    "@zeokeel/admin-audit": "workspace:*",
-    "@zeokeel/admin-usage": "workspace:*",
-    "@zeokeel/admin-jobs": "workspace:*",
-    "@zeokeel/admin-settings": "workspace:*"
+    "ajv": "^8.20.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",

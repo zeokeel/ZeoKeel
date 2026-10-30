@@ -1,6 +1,6 @@
 /** Admin shell: login + nav + page slot. Pages are supplied by admin-page packages. */
 import { useState } from "react";
-import { api, setCsrf, clearCsrf } from "@zeokeel/admin-ui-kit";
+import { api, setCsrf, clearCsrf, validateLogin, assertValid } from "@zeokeel/admin-ui-kit";
 
 export type AdminPage = "users" | "wallet" | "pricing" | "audit" | "usage" | "jobs" | "settings";
 const LABELS: Record<AdminPage, string> = {
@@ -32,7 +32,9 @@ function Login({ onDone }: { onDone: () => void }) {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     try {
-      const result = await api<{ csrf_token: string }>("/api/admin/auth/login", { method: "POST", body: JSON.stringify({ username, password }) });
+      const payload = { username, password };
+      assertValid(validateLogin, payload, "LOGIN");
+      const result = await api<{ csrf_token: string }>("/api/admin/auth/login", { method: "POST", body: JSON.stringify(payload) });
       setCsrf(result.csrf_token);
       onDone();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "login failed"); }
