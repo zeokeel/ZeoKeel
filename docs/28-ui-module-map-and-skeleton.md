@@ -34,17 +34,17 @@
 
 | slotId | 角色 | 包 | skeleton component | props（M1 约定） |
 | --- | --- | --- | --- | --- |
-| `ui.shell`（骨架，M1 不接入） | `ui.shell` | `@zeokeel/ui-shell` | `AppShell`（`shell.frame`） | `title/workspaceName/streaming/inspectorOpen/onToggleInspector/onOpenCommands/navigation/conversation/composer/inspector/overlay?` |
+| `ui.shell`（M1 已接入） | `ui.shell` | `@zeokeel/ui-shell` | `ShellFrame`（`shell.frame`） | `boot/bootError/workspaceCount/sidebarOpen/offline/streaming/mock/title/packageLine/workspacePath/toast/firstRun/navigation/conversation/settings/onRetryBoot/onToggleSidebar/onDismissToast/t` |
 | `ui.sessions` | `ui.slot.sessions` | `@zeokeel/ui-sessions` | `Sidebar` | 现有 |
 | `ui.chat` | `ui.slot.chat` | `@zeokeel/ui-chat` | `ChatView` | 现有 |
 | `ui.inspector`（骨架，M1 不接入） | `ui.slot.inspector` | `@zeokeel/ui-inspector` | `InspectorPanel`（`inspector.panel`） | `open/tab/onTab/onClose/files/changes` |
 | `ui.commands`（骨架，M1 不接入） | `ui.slot.commands` | `@zeokeel/ui-commands` | `CommandPalette`（`commands.palette`） | `open/onClose/commands/onRun` |
 | `ui.settings` | `ui.slot.settings` | `@zeokeel/ui-settings` | `SettingsDialog` | 现有 |
 
-- 新包先只提供**空壳组件 + props 类型 + README 功能说明**；`zk compose` 生成 registry，**M1 app 不接入**（M1 active slot 仍只有 sessions/chat/settings）。
-- ui-shell 是可选目标：M1 现有 app 薄壳继续工作；`ui-shell` 骨架用于后续把布局从 app 移入包。
+- 新包先只提供**空壳组件 + props 类型 + README 功能说明**；`zk compose` 生成 registry。`ui.shell` 已在 M1 接入；`ui.inspector/commands` 仍未接入。
+- `ui-shell` 已承接 AppShell 布局/header/status/overlay；app 薄壳保留 transport/controller/reducer/i18n/theme/first-run。
 - 工具/计划/审批的独立 slot 预留（`ui.toolcall`/`ui.approval`/`ui.plan`），M1 不建独立包。
-- **冲突裁决**：`docs/16/19` 的“M1 只有 3 active slot”优先；`ui.shell/ui.inspector/ui.commands` 是已建骨架、post-M1 接入，不计 M1 验收。docs/16 表里 6 个 slot 是“已注册/骨架”，§2.2 的 M1 active 仍 3 个。
+- **冲突裁决**：`docs/16/19` 的 M1 active slot 以 `ui.shell` + `ui.sessions/chat/settings` 为准；`ui.inspector/ui.commands` 是已建骨架、post-M1 接入，不计 M1 验收。
 
 ## 4. 交互行为（UX 骨架目标）
 

@@ -40,7 +40,7 @@ Boot
 | 个人版引导 | `ui.onboarding` | `client-onboarding-personal` | 首次、已配置、key 无效、网络不通 |
 | 登录 | `ui.login` | `client-auth` | 空、加载、错误、锁定、强制改密、OEM 地址锁定 |
 | 首配服务端地址（官方企业版） | `ui.first-run` | `client-auth` | 地址非法、不可达、证书错误、保存成功 |
-| 主界面（M1 三 slot 组合） | —（M1 无 ui.shell） | app 薄壳 | 正常、离线、连接中、断线重连中 |
+| 主界面（M1: ui.shell + 三内容槽） | — | `@zeokeel/ui-shell` + app 薄壳 | 正常、离线、连接中、断线重连中 |
 | 工作区切换/首用 | `ui.sessions` | `ui-sessions` | 无工作区、加载中、目录不可用、切换/取消流式 |
 | 对话 | `ui.chat` | `ui-chat` | 六态 + 长会话 + 取消/重试 |
 | 输入 | `ui.composer` | `ui-composer` | 空、 composing（IME）、附件中、超长、发送失败 |

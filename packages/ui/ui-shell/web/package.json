@@ -10,7 +10,8 @@
     "react-dom": "^19"
   },
   "dependencies": {
-    "@zeokeel/ui-kit": "workspace:*"
+    "@zeokeel/ui-kit": "workspace:*",
+    "@radix-ui/react-tooltip": "^1.4.1"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",

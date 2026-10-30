@@ -9,11 +9,11 @@
 - **声明真源 = `zk.toml`**：每个 UI 包在 manifest 里用 `[[ui.contributions]]` 声明 `slot/component/order`；
   `zk compose` 读取后生成 `apps/desktop/web/src/generated/registry.ts` 与 `shared/contracts/ui-contributions.json`。
 - **build-time 组合**：换 UI 包 = 改 edition/profile → `zk compose` → 重新 `pnpm build`；运行期无加载器/热插拔（C2）。
-- **shell 只认 slot/component**：`App.tsx` 从 `registry.ts` 取 `SessionsSlot/ChatSlot/SettingsSlot`，不直接 import 业务 UI 包。
+- **shell 只认 slot/component**：`App.tsx` 从 `registry.ts` 取 `ShellSlot/SessionsSlot/ChatSlot/SettingsSlot`，不直接 import 业务 UI 包。
 - **M1 app 不接入**（已注册骨架）`package.json#zeokeel.client`、`props_schema` 闭包校验、`virtual:@zeokeel/registry`、`scripts/lint-boundaries.mjs`、
-  `ui-shell-kit`/`ui-shell`/transport 包——这些是 §6 的目标模型（T21），不是现状。
+  `ui-shell-kit`/transport 包——这些是 §6 的目标模型（T21），不是现状；`ui-shell` 已在 M1 接入。
 
-## 2. M1 包结构（active 3 + 已注册骨架 3）
+## 2. M1 包结构（active 4 + 已注册骨架 2）
 
 | 包 | 角色 | 内容 | 依赖 |
 | --- | --- | --- | --- |
@@ -21,10 +21,10 @@
 | `@zeokeel/ui-sessions` | `ui.slot.sessions` | Sidebar（**平铺 Workspace 列表**/会话列表/新建/选中/设置入口/窄窗；规则见 `26` §6） | ui-kit |
 | `@zeokeel/ui-chat` | `ui.slot.chat` | ChatView + assistant-ui primitives + 工具卡/审批/空态 + ExternalStoreRuntime adapter | ui-kit + `@assistant-ui/*` |
 | `@zeokeel/ui-settings` | `ui.slot.settings` | SettingsDialog + 校验 | ui-kit + Radix dialog |
-| `@zeokeel/ui-shell`（骨架，M1 不接入） | `ui.shell` | AppShell 骨架（布局/header/status/overlay 挂载） | ui-kit |
+| `@zeokeel/ui-shell` | `ui.shell` | AppShell 框架（布局/header/status/overlay 挂载；app 已接入） | ui-kit + Radix tooltip |
 | `@zeokeel/ui-inspector`（骨架，M1 不接入） | `ui.slot.inspector` | 右栏文件/变更/终端骨架 | ui-kit |
 | `@zeokeel/ui-commands`（骨架，M1 不接入） | `ui.slot.commands` | ⌘K 命令面板骨架 | ui-kit |
-| `apps/desktop/web` | 薄壳 | transport/controller/reducer/i18n/theme/UiProvider/registry/boot/error/header/toast | registry 生成的包 |
+| `apps/desktop/web` | 薄壳 | transport/controller/reducer/i18n/theme/UiProvider/registry/first-run | registry 生成的包 |
 
 依赖方向：`ui-chat/ui-sessions/ui-settings → ui-kit`；app → `generated/registry` → UI 包；**包不得 import app，业务包不得互相 import**。
 `@assistant-ui/*` 只允许出现在 `ui-chat`；React 为 peer dependency。共享视觉/交互必须进 `ui-kit`（C17）。
@@ -62,11 +62,11 @@ order = 10
 | `ui.sessions` | `ui.slot.sessions` | `sessions.sidebar` | 侧栏（**平铺 Workspace 列表**/会话列表） |
 | `ui.chat` | `ui.slot.chat` | `chat.thread` | 对话区（含 composer/工具卡/审批/空态） |
 | `ui.settings` | `ui.slot.settings` | `settings.dialog` | 设置弹窗 |
-| `ui.shell` | `ui.shell` | `shell.frame` | 应用框架（骨架，app 暂未接入） |
+| `ui.shell` | `ui.shell` | `shell.frame` | 应用框架（布局/header/status/overlay；app 已接入） |
 | `ui.inspector` | `ui.slot.inspector` | `inspector.panel` | 右侧检查器（骨架） |
 | `ui.commands` | `ui.slot.commands` | `commands.palette` | 命令面板（骨架） |
 
-M1 **active** slot 仍只有 `ui.sessions/chat/settings`；`ui.shell/inspector/commands` 已建骨架、`zk compose` 会注册但 app 未接入（post-M1）；新增 slot 必须同时改 `tools/zk` 的 `slot_binding` 与本文，否则 `registry.ts` 不生成。
+M1 **active** slot 为 `ui.shell` + 内容三槽 `ui.sessions/chat/settings`；`ui.inspector/commands` 已建骨架、`zk compose` 会注册但 app 未接入（post-M1）；新增 slot 必须同时改 `tools/zk` 的 `slot_binding` 与本文，否则 `registry.ts` 不生成。
 
 ### 2.3 生成器行为（M1 实际）
 
