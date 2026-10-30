@@ -119,7 +119,7 @@
 
 ### 8.2 结构：协议 → reducer → 视图
 
-- 服务端/agent 事件 schema 由 Rust 契约生成 TS（ts-rs），UI 只消费生成类型。
+- 服务端/agent 事件 schema 由 Rust 契约生成 JSON Schema（schemars `export_schema`），再由 `scripts/schema-ts.py` 生成 TS interfaces + `SCHEMAS`；UI 只消费生成类型并用 Ajv 校验。
 - 所有流式事件进入**纯 reducer**（`agentTurnReducer(state, event)`），UI 渲染只读 reducer 结果。
 - reducer 无 DOM/时间/网络依赖 → 可用"golden traces"（录制的事件序列）做确定性测试。
 - 未知事件/未知字段忽略并记日志，不崩溃（前向兼容）。

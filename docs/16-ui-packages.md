@@ -82,7 +82,7 @@ M1 **active** slot 为 `ui.shell` + 内容三槽 `ui.sessions/chat/settings` + `
 - `apps/desktop/web/src` 不得出现业务 UI 的第二份实现；已删除旧 `components/**`、`assistant/**`、`settings-validation.ts`。
 - app 可直接使用 `@zeokeel/ui-kit` 基础件（BrandLogo/icons 等）；**业务 slot 必须经 registry**。
 - Tailwind 4：`src/app.css` 必须为每个 UI 包源码加 `@source`；新增 UI 包必须同步加，否则包内 utility 丢失。
-- 类型：M1 的 DTO 是 `ui-kit/types.ts` 手写镜像（注释标注 Mirrors）+ `guards.ts` 运行时 guard；这是 **C10 的 M1 过渡例外（ADR-059）**，ts-rs/schemars/Ajv 是 T22（M2 前硬退出条件），不是现状。
+- 类型：M1 的 DTO 是 `ui-kit/types.ts` 手写镜像（注释标注 Mirrors）+ `guards.ts` 运行时 guard；这是 **C10 的 M1 过渡例外（ADR-059）**。T22 后端已落地（schemars → `shared/contracts/schema/*.json` → `shared/contracts/ts/contracts.ts` interfaces + `SCHEMAS`），桌面端 Ajv 接线与手写镜像删除是 T22 剩余项（M2 前硬退出条件）。
 - i18n/theme/transport/controller/reducer 仍在 app（应用基础设施，不是展示包）；`t` 经 `UiProvider` 注入。
 
 ## 4. 换包主通道（M1）
@@ -105,6 +105,6 @@ M1 **active** slot 为 `ui.shell` + 内容三槽 `ui.sessions/chat/settings` + `
 - `props_schema` + slot props 兼容/组件闭包校验；`registry.gen.ts` / `virtual:@zeokeel/registry`；
 - `scripts/lint-boundaries.mjs` 读 rollup metafile 拒绝越界 import；
 - `ui-shell-kit`/`ui-shell`/transport-tauri/http/mock 包拆分；
-- ts-rs 生成 `shared/ts/*`、schemars JSON Schema + 前端 Ajv（C10）；
+- schemars JSON Schema → `scripts/schema-ts.py`（`shared/contracts/ts/contracts.ts`：interfaces + `SCHEMAS`）→ 前端 Ajv（C10）；
 - 完整 SLOT_DEFS（login/onboarding/first-run/gate/skills/connectors/apps/update/diagnostics/admin.*）与对应包。
 这些目标不得写进 M1 验收；M1 只按 §2–§5 验收。

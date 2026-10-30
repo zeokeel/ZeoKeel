@@ -86,7 +86,7 @@ DSH 的 `host-webserver` + `host-frontend-static` 正是该形态。
 
 ### ADR-008 · 生成物入库，`--check` 防漂移 `accepted`
 
-**决策**：`crates/zk-composed`、`apps/desktop/web/src/generated`、`shared/contracts`、文档索引、ts-rs bindings 的 **default 产物**入库；
+**决策**：`crates/zk-composed`、`apps/desktop/web/src/generated`、`shared/contracts`、`shared/contracts/{schema,ts}` bindings、文档索引的 **default 产物**入库；
 CI `zk compose --check` + `git diff --exit-code`。
 **理由**：新人 clone 即可构建；生成物变更在 PR 里可审；避免"生成器坏了 CI 才发现"。
 **后果**：生成器改动会产生大 diff，需用 `--check` 与 golden 测试约束格式。
@@ -418,7 +418,7 @@ indexing_slicing/arithmetic_side_effects/as_conversions=deny`）；所有外部�
 
 ### ADR-046 · 生成物一路径一 writer `accepted`
 
-**决策**：每个生成物只有一个写入者（zk / ts-rs / schemars / 生成块）；`--check` 只生成到临时目录逐字节比较、不写源文件；
+**决策**：每个生成物只有一个写入者（zk / schemars `export_schema` / `scripts/schema-ts.py` / 生成块）；`--check` 只生成到临时目录逐字节比较、不写源文件；
 混合文件用 `@generated:begin/end` 块；禁止两个命令写同一路径。详见 `24` §3。
 
 ### ADR-047 · 路由与 IPC 命令采用静态真源 `accepted`
@@ -501,15 +501,17 @@ M1 验收包含"无工作区不建会话/跨工作区隔离/重启归属不丢"�
 
 **背景**：C10 要求"外部输入必须运行时校验：Rust 生成 JSON Schema，前端 Ajv 校验；禁止类型断言代替校验"。
 M1 的 IPC 命令/事件/设置边界目前用 `ui-kit/types.ts` 手写镜像 + `guards.ts` 运行时 guard + 负向测试；
-ts-rs/schemars/Ajv 代码生成尚未接入（T22），若把 C10 直接判 red，M1 无法交付。
+代码生成在 M1 尚未接入（T22），若把 C10 直接判 red，M1 无法交付。
 **决策（时间盒例外）**：M1 允许"手写 TS 镜像 + 运行时 guard"作为 C10 的**过渡实现**，但必须满足：
 1. 禁止 `any`/`as` 断言；所有外部输入在边界用显式 guard 校验，未知/非法形状拒绝并记日志；
 2. 每个 IPC 命令/事件/设置字段有 conformance/负向测试（缺字段、错类型、未知命令、跨 workspace）；
 3. 契约变更必须同步改镜像与 guard，并在 PR 写"未生成代码"的差异；
-4. **退出条件（硬）**：M2 服务端/网关/客户端联调前完成 T22（ts-rs export_bindings → `shared/ts/*`、schemars schema → `shared/schema/*`、前端 Ajv 校验），
+4. **退出条件（硬）**：M2 服务端/网关/客户端联调前完成 T22（schemars `export_schema` → `shared/contracts/schema/*.json`、`scripts/schema-ts.py` → `shared/contracts/ts/contracts.ts`（interfaces + `SCHEMAS`）、前端 Ajv 校验；不引入 ts-rs），
    删除手写镜像；未完成不得发布 M2。T22 未完成时 CI 必须显示 warning/跟踪 issue，不得静默。
 **理由**：M1 范围是本地单机 UI/agent/会话，边界面小且已有 guard；完整代码生成需要契约新增导出与构建链，放到 M2 前完成风险更低。
 **后果**：C10 在 M1 有明确例外与退出条件；`16`/`27` 不得把手写镜像写成"最终方案"；ADR 与 T22 必须在 M2 spec 回链。
+**实现状态（2026-10-31）**：T22 后端已落地（schemars → JSON Schema → `contracts.ts` interfaces + `SCHEMAS`，53 个 schema，`schema-check.sh` 绿）；
+剩余 = 桌面端 Ajv 接线 + 删除手写镜像（见下方 T22 跟踪项）。
 详见 `11` §9、`15` T22。
 
 ## B. 风险登记

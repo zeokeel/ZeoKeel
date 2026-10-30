@@ -202,7 +202,6 @@ zk capability --check
 zk docs --check
 python3 scripts/review-check.py
 zk db lock --check
-cargo test --workspace export_bindings && git diff --exit-code
 cargo test --workspace export_schema && git diff --exit-code
 bash scripts/schema-check.sh
 ```

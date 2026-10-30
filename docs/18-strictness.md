@@ -146,7 +146,7 @@ as_conversions = "deny"
 
 | 检查 | 工具 | 失败即阻断 |
 | --- | --- | --- |
-| DTO → TS 类型 | ts-rs `export_bindings` + `git diff --exit-code` | ✅ |
+| DTO → TS 类型 | schemars `export_schema` + `scripts/schema-ts.py` + `git diff --exit-code` | ✅ |
 | DTO → JSON Schema | schemars + `--check` | ✅ |
 | 示例数据 round-trip | Rust 序列化 → TS 反序列化 → 再序列化，字节一致 | ✅ |
 | 枚举穷举 | TS `switch-exhaustiveness-check`；Rust `match` 穷举 | ✅ |
@@ -189,8 +189,8 @@ zk compose --edition personal --profile default --channel official --check
 zk api --edition personal --profile default --channel official --check
 zk docs --check
 zk db lock --check
-cargo test --workspace export_bindings && git diff --exit-code
 cargo test --workspace export_schema && git diff --exit-code
+bash scripts/schema-check.sh
 ```
 
 ## 8. 例外政策

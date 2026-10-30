@@ -16,7 +16,7 @@
 | HTTP API 契约（客户端↔服务端） | 服务端 manifest `[[routes]]` 静态声明 + `zk-contract-api` DTO；运行期 `Register()` 校验 | `shared/contracts/http-routes.json`、`openapi.json`；客户端 `server-connector` 包 | v1 内只增不改；破坏性变更开 v2（§4） |
 | 事件契约（WS） | `zk-contract-events` DTO + topic 注册表 | `events.json`；客户端按 topic 订阅 | 只增字段/只增 type；未知 type 忽略并记日志 |
 | UI 契约 | `zeokeel/ui-shell-kit` 包（UI 包，非契约 crate）的 SlotDefs/props 类型 + 各包 `[[ui.contributions]]` | `ui-contributions.json`；shell 只认 componentId/slotId | 构建期闭包校验失败即构建失败（ADR-017） |
-| 数据契约（DTO/serde） | `zk-contract-api` 与领域契约 crate 里的 serde 类型 | ts-rs → TS；schemars → JSON Schema；serde 版本字段 | 只增字段 + `#[serde(default)]`；枚举增值客户端降级 Unknown |
+| 数据契约（DTO/serde） | `zk-contract-api` 与领域契约 crate 里的 serde 类型 | schemars → JSON Schema → `scripts/schema-ts.py` → TS interfaces + `SCHEMAS`；前端 Ajv；serde 版本字段 | 只增字段 + `#[serde(default)]`；枚举增值客户端降级 Unknown |
 
 三条硬规则：
 
@@ -244,11 +244,11 @@
 
 | 产物 | 生成者 | 消费者 | 门禁 |
 | --- | --- | --- | --- |
-| `api.gen.ts` / DTO 绑定 | ts-rs（`export_bindings`） | 客户端 UI 与 server-connector | `git diff --exit-code`；枚举 tagging 与 serde 一致 |
+| `shared/contracts/ts/contracts.ts`（interfaces + `SCHEMAS`） | `cargo test export_schema` + `scripts/schema-ts.py` | 客户端 UI 与 server-connector（Ajv） | `git diff --exit-code` + `scripts/schema-check.sh`；枚举 tagging 与 serde 一致 |
 | `http-routes.json`、`permissions.json` | `zk api` 从 `[[routes]]` 生成 | 客户端权限门控、文档、全量扫描测试 | `--check`；路由/权限/幂等/审计/限流/body 上限缺一即失败 |
 | `openapi.json` | 路由表 + schemars | 内部联调/可选对外 | 生成与入库默认开启、`--check`（已定）；是否对外发布待定（15 §C；§11 04-Q5） |
 | `events.json` + topic 注册表 | `zk-contract-events` | 双端 | 未注册 topic/type ⇒ CI 失败；缺 schema_version ⇒ 失败 |
-| `schema/*.json` | schemars | 工具/配置校验、前端类型 | `git diff --exit-code` |
+| `shared/contracts/schema/*.json` | schemars（`export_schema`） | 工具/配置校验、前端 Ajv 与 TS 生成 | `git diff --exit-code` |
 
 规则：DTO 只写在契约 crate（双端共用，禁止两侧各写一份）；网络 DTO 不加 `deny_unknown_fields`，保证旧客户端可解析新服务端；枚举增值客户端降级 Unknown 并保留原文；`errors.json` 由错误码枚举生成；契约 PR 必须附 `cargo public-api` diff 与两侧反序列化对拍样本。
 

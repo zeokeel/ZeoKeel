@@ -214,7 +214,7 @@ base = "default"
   拿不到 cargo metadata 直接报错，不降级（降级会漏掉同名副本，见 research/review-plan.md §6）
 6 生成：crates/zk-composed + apps/desktop/web/src/generated + apps/server/src/generated
         + apps/admin/web/src/generated + shared/contracts/*（zk api/zk compose 按 24 §3 分工）
-        + shared/ts/*（ts-rs 生成）+ deploy 生成段 + docs/generated（zk docs）
+        + shared/contracts/schema/*.json（schemars export_schema）+ shared/contracts/ts/contracts.ts（schema-ts.py）+ deploy 生成段 + docs/generated（zk compose/zk capability/zk docs）
 7 写/校验 zk.lock（含 edition/profile/oem 三层输入哈希）
 ```
 
@@ -328,8 +328,9 @@ writer 分工（唯一清单见 `24` §3）：`api-catalog/http-routes/openapi/p
 
 ### 5.4 TS 类型
 
-`ts-rs` 从契约 DTO 导出 `.ts`（`cargo test -p zk-contract-* export_bindings`），CI 里
-`git diff --exit-code` 防漂移。工具参数 schema 用 `schemars`（本来就是 JSON Schema，无需转换）。
+`schemars` 从契约 DTO 导出 JSON Schema（`cargo test -p zk-contract-* export_schema` → `shared/contracts/schema/*.json`），
+`scripts/schema-ts.py` 再生成 `shared/contracts/ts/contracts.ts`（interfaces + `SCHEMAS` map），前端用 Ajv 校验；
+CI 用 `export_schema` + `scripts/schema-check.sh --check` 防漂移（不引入 ts-rs）。
 
 ### 5.5 生成目录、锁文件与 profile 的关系（重要，与 ADR-015 配套）
 
@@ -376,8 +377,8 @@ jobs:
                     zk capability --check
                     zk docs --check
                     zk db lock --check
-                    cargo test --workspace export_bindings && git diff --exit-code
                     cargo test --workspace export_schema && git diff --exit-code
+                    bash scripts/schema-check.sh
   rust:             cargo nextest run --workspace --locked   # default 锁
   frontend:         pnpm -r typecheck && pnpm -r test:unit && pnpm build
   contracts:        cargo test -p zk-contract-testkit    # 每个实现的符合性套件

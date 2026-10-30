@@ -156,4 +156,4 @@
 | D64 | **暂不定义 RPO/RTO**；备份/恢复按最佳实践与演练记录 |
 | D65 | 安全门槛 = **内部安全评审**；不做第三方渗透/等保/SOC2 作为发布前置 |
 | D66 | **所有对话必须归属工作区**（本地目录 + 稳定 id）；无工作区不建会话；agent cwd/工具默认根 = 工作区根；会话列表/消息按工作区隔离（参考 DSH workspace/session 设计） |
-| D67 | **M1 IPC 边界校验走 C10 过渡例外（ADR-059）**：手写 TS 镜像 + 运行时 guard；T22（ts-rs/schemars/Ajv）为 M2 前硬退出条件 |
+| D67 | **M1 IPC 边界校验走 C10 过渡例外（ADR-059）**：手写 TS 镜像 + 运行时 guard；T22（schemars JSON Schema → TS/`SCHEMAS` + Ajv；不引入 ts-rs）为 M2 前硬退出条件 |
