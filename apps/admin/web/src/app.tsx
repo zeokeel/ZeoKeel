@@ -17,15 +17,15 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export function AdminApp() {
   const [loggedIn, setLoggedIn] = useState(false);
-  const [page, setPage] = useState<"users" | "wallet" | "pricing">("users");
+  const [page, setPage] = useState<"users" | "wallet" | "pricing" | "audit" | "usage">("users");
   const [error, setError] = useState("");
   if (!loggedIn) return <Login onDone={() => { setLoggedIn(true); setError(""); }} />;
   return (
     <div className="admin">
       <aside>
         <h1>ZeoKeel <span>Admin</span></h1>
-        {(["users", "wallet", "pricing"] as const).map((item) => (
-          <button key={item} className={page === item ? "active" : ""} onClick={() => setPage(item)}>{item === "users" ? "用户/角色" : item === "wallet" ? "钱包" : "价格"}</button>
+        {(["users", "wallet", "pricing", "audit", "usage"] as const).map((item) => (
+          <button key={item} className={page === item ? "active" : ""} onClick={() => setPage(item)}>{item === "users" ? "用户/角色" : item === "wallet" ? "钱包" : item === "pricing" ? "价格" : item === "audit" ? "审计" : "用量"}</button>
         ))}
         <button className="logout" onClick={() => { void api("/api/admin/auth/logout", { method: "POST" }).finally(() => { csrf = ""; setLoggedIn(false); }); }}>退出</button>
       </aside>
@@ -34,6 +34,8 @@ export function AdminApp() {
         {page === "users" ? <Users onError={setError} /> : null}
         {page === "wallet" ? <Wallets onError={setError} /> : null}
         {page === "pricing" ? <Pricing onError={setError} /> : null}
+        {page === "audit" ? <AuditLog onError={setError} /> : null}
+        {page === "usage" ? <Usage onError={setError} /> : null}
       </main>
     </div>
   );
@@ -77,4 +79,19 @@ function Pricing({ onError }: { onError: (message: string) => void }) {
   useEffect(load, []);
   const save = async (event: React.FormEvent) => { event.preventDefault(); try { await api(`/api/admin/pricing/${model}`, { method: "PUT", body: JSON.stringify({ input_per_1k_micros: Number(input), output_per_1k_micros: Number(output) }) }); load(); } catch (e) { onError((e as Error).message); } };
   return <section><h2>模型价格</h2><form className="row" onSubmit={save}><input value={model} onChange={(e) => setModel(e.target.value)} /><input value={input} onChange={(e) => setInput(e.target.value)} /><input value={output} onChange={(e) => setOutput(e.target.value)} /><button type="submit">保存</button></form><table><thead><tr><th>模型</th><th>输入/1k</th><th>输出/1k</th><th>启用</th></tr></thead><tbody>{items.map((item) => <tr key={item.model}><td>{item.model}</td><td>{item.input_per_1k_micros}</td><td>{item.output_per_1k_micros}</td><td>{item.enabled ? "是" : "否"}</td></tr>)}</tbody></table></section>;
+}
+
+
+interface AuditItem { id: number; action: string; target: string; actor_id: string | null }
+function AuditLog({ onError }: { onError: (message: string) => void }) {
+  const [items, setItems] = useState<AuditItem[]>([]);
+  useEffect(() => { void api<{ items: AuditItem[] }>("/api/admin/audit").then((r) => setItems(r.items)).catch((e: Error) => onError(e.message)); }, []);
+  return <section><h2>审计</h2><p className="hint">最近 100 条；哈希链字段在服务端保存。</p><table><thead><tr><th>ID</th><th>动作</th><th>对象</th><th>操作者</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td>{item.id}</td><td>{item.action}</td><td>{item.target}</td><td className="mono">{item.actor_id?.slice(0, 8) ?? "system"}</td></tr>)}</tbody></table></section>;
+}
+
+interface UsageItem { username: string; requests: number; input_tokens: number; output_tokens: number; cost_micros: number }
+function Usage({ onError }: { onError: (message: string) => void }) {
+  const [items, setItems] = useState<UsageItem[]>([]);
+  useEffect(() => { void api<{ items: UsageItem[] }>("/api/admin/usage").then((r) => setItems(r.items)).catch((e: Error) => onError(e.message)); }, []);
+  return <section><h2>用量</h2><table><thead><tr><th>用户</th><th>请求数</th><th>输入 tokens</th><th>输出 tokens</th><th>成本 micros</th></tr></thead><tbody>{items.map((item) => <tr key={item.username}><td>{item.username}</td><td>{item.requests}</td><td>{item.input_tokens}</td><td>{item.output_tokens}</td><td>{item.cost_micros}</td></tr>)}</tbody></table></section>;
 }
