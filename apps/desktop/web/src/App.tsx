@@ -5,13 +5,13 @@ import {
   type UiValue,
 } from "@zeokeel/ui-kit";
 import { BRAND } from "./generated/brand";
-import { ChatSlot, CommandsSlot, ConnectorsSlot, InspectorSlot, LoginSlot, SessionsSlot, SettingsProviderSlot, SettingsSlot, ShellSlot, SkillsSlot } from "./generated/registry";
+import { ChatSlot, CommandsSlot, AppsSlot, ConnectorsSlot, InspectorSlot, LoginSlot, SessionsSlot, SettingsProviderSlot, SettingsSlot, ShellSlot, SkillsSlot } from "./generated/registry";
 import { translate } from "./i18n";
 import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
 import type { FileEntry, Transport } from "./types";
 import { parseFileEntries, parseUpdateRelease } from "./protocol";
-import { downloadSkillArchive, fetchConnectors, fetchSkills, fetchTombstones, sendInstallReceipt, toggleConnector, type ConnectorItem, type SkillItem } from "./store";
+import { downloadSkillArchive, fetchApps, fetchConnectors, fetchSkills, fetchTombstones, openApp, sendInstallReceipt, toggleConnector, type AppItem, type ConnectorItem, type SkillItem } from "./store";
 import { buildAuthorizeUrl, createPkcePair, exchangeCode, parseOAuthTokens, refreshOAuthToken, savePendingAuth, takePendingAuth, tokenNeedsRefresh } from "./oauth";
 import { clearSession, fetchBootstrapInfo, loadGatewayModel, loadServerUrl, loadSession, login as loginRequest, refreshSession, saveGatewayModel, saveServerUrl, saveSession, type AuthSession } from "./auth";
 
@@ -32,6 +32,9 @@ export function App(props: { transport: Transport }) {
   const [updateBusy, setUpdateBusy] = useState(false);
   const [skills, setSkills] = useState<SkillItem[]>([]);
   const [connectors, setConnectors] = useState<ConnectorItem[]>([]);
+  const [apps, setApps] = useState<AppItem[]>([]);
+  const [appOpened, setAppOpened] = useState<string | null>(null);
+  const [appError, setAppError] = useState<string | null>(null);
   const [installed, setInstalled] = useState<Array<{ name: string; version: string }>>([]);
   const [contentError, setContentError] = useState<string | null>(null);
   const [contentBusy, setContentBusy] = useState<string | null>(null);
@@ -57,10 +60,11 @@ export function App(props: { transport: Transport }) {
     const url = serverUrl === "" ? state.settings.server_url : serverUrl;
     if (url === "") return;
     void props.transport.call("auth.configure", { server_url: url, access_token: session.access_token, model: loadGatewayModel() }).catch(() => {});
-    void Promise.all([fetchSkills(session, url), fetchConnectors(session, url), props.transport.call("skills.installed", {}), fetchTombstones(session, url)])
-      .then(async ([skillItems, connectorItems, installedValue, tombstones]) => {
+    void Promise.all([fetchSkills(session, url), fetchConnectors(session, url), props.transport.call("skills.installed", {}), fetchTombstones(session, url), fetchApps(session, url)])
+      .then(async ([skillItems, connectorItems, installedValue, tombstones, appItems]) => {
         setSkills(skillItems);
         setConnectors(connectorItems);
+        setApps(appItems);
         const oauthIds: string[] = [];
         for (const connector of connectorItems) {
           if (connector.oauth === null) continue;
@@ -231,6 +235,17 @@ export function App(props: { transport: Transport }) {
             window.location.assign(buildAuthorizeUrl(metadata, pair.challenge, stateValue));
           }).catch(() => { setContentError("OAUTH_FAILED"); });
         }}
+        apps={apps}
+        appOpened={appOpened}
+        appError={appError}
+        onOpenApp={(item) => {
+          if (session === null) return;
+          const url = serverUrl === "" ? state.settings.server_url : serverUrl;
+          setAppError(null);
+          void openApp(session, url, item)
+            .then((result) => setAppOpened(`已打开 ${item.name} v${result.version}`))
+            .catch((error: unknown) => setAppError(error instanceof Error ? error.message : "打开失败"));
+        }}
         onToggleConnector={(item) => {
           if (session === null) return;
           const url = serverUrl === "" ? state.settings.server_url : serverUrl;
@@ -265,12 +280,12 @@ export function App(props: { transport: Transport }) {
 
 function AppShell(props: { controller: AppController; ui: UiValue; transport: Transport; gatewayModels: string[]; gatewayModel: string; onSelectGatewayModel: (model: string) => void; updateText: string | null; updateBusy: boolean; onCheckUpdate?: (() => void) | undefined;
   skills: SkillItem[]; connectors: ConnectorItem[]; installed: Array<{ name: string; version: string }>; contentError: string | null; contentBusy: string | null;
-  onInstall: (item: SkillItem) => void; onAuthorize: (item: ConnectorItem) => void; onToggleConnector: (item: ConnectorItem) => void; authorized: string[] }) {
-  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel, updateText, updateBusy, onCheckUpdate, skills, connectors, installed, contentError, contentBusy, onInstall, onAuthorize, onToggleConnector, authorized } = props;
+  onInstall: (item: SkillItem) => void; onAuthorize: (item: ConnectorItem) => void; onToggleConnector: (item: ConnectorItem) => void; authorized: string[]; apps: AppItem[]; appOpened: string | null; appError: string | null; onOpenApp: (item: AppItem) => void }) {
+  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel, updateText, updateBusy, onCheckUpdate, skills, connectors, installed, contentError, contentBusy, onInstall, onAuthorize, onToggleConnector, authorized, apps, appOpened, appError, onOpenApp } = props;
   const t = ui.t;
   const state = controller.state;
   const [commandsOpen, setCommandsOpen] = useState(false);
-  const [panel, setPanel] = useState<"skills" | "connectors" | null>(null);
+  const [panel, setPanel] = useState<"skills" | "connectors" | "apps" | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<"files" | "changes" | "terminal">("files");
   const [files, setFiles] = useState<FileEntry[]>([]);
@@ -309,6 +324,7 @@ function AppShell(props: { controller: AppController; ui: UiValue; transport: Tr
     { id: "toggle-inspector", title: t("inspectorToggle"), group: t("workspaceActions") },
     { id: "open-skills", title: "技能", group: t("workspaceActions") },
     { id: "open-connectors", title: "连接器", group: t("workspaceActions") },
+    { id: "open-apps", title: "应用", group: t("workspaceActions") },
   ];
   const runCommand = (id: string): void => {
     if (id === "new-conversation") ui.actions.createConversation();
@@ -317,6 +333,7 @@ function AppShell(props: { controller: AppController; ui: UiValue; transport: Tr
     if (id === "toggle-inspector") setInspectorOpen((value) => !value);
     if (id === "open-skills") setPanel("skills");
     if (id === "open-connectors") setPanel("connectors");
+    if (id === "open-apps") setPanel("apps");
   };
   const activeWorkspace = ui.workspaces.find((workspace) => workspace.id === ui.activeWorkspaceId);
   const active = ui.conversations.find((conversation) => conversation.id === ui.activeConversationId);
@@ -347,6 +364,7 @@ function AppShell(props: { controller: AppController; ui: UiValue; transport: Tr
       overlay={<>
         <SkillsSlot open={panel === "skills"} items={skills} installed={installed} busy={contentBusy} error={contentError} onInstall={onInstall} onClose={() => { setPanel(null); }} />
         <ConnectorsSlot open={panel === "connectors"} items={connectors} error={contentError} authorized={authorized} onAuthorize={onAuthorize} onToggle={onToggleConnector} onClose={() => { setPanel(null); }} />
+        <AppsSlot open={panel === "apps"} items={apps} error={appError} opened={appOpened} onOpenApp={onOpenApp} onClose={() => { setPanel(null); }} />
       </>}
       inspector={<InspectorSlot open={inspectorOpen} tab={inspectorTab} files={files} changes={[]} onTab={setInspectorTab} onClose={() => { setInspectorOpen(false); }} />}
       inspectorOpen={inspectorOpen}

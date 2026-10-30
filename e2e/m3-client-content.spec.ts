@@ -42,5 +42,15 @@ test.describe("M3 client content store", () => {
     await connectorsAfter.getByRole("button", { name: "启用" }).click();
     await expect(connectorsAfter.getByRole("button", { name: "停用" })).toBeVisible({ timeout: 10_000 });
     await page.screenshot({ path: "target/evidence/m3/client-connectors.png" });
+    await connectors.getByRole("button", { name: "关闭", exact: true }).click();
+
+    await page.keyboard.press("Control+k");
+    await page.getByRole("option", { name: "应用" }).click();
+    const apps = page.getByRole("dialog", { name: "应用" });
+    await expect(apps).toBeVisible();
+    await expect(apps.getByText("client-app")).toBeVisible();
+    await apps.getByRole("button", { name: "打开" }).click();
+    await expect(apps.getByRole("status")).toContainText("已打开 client-app v1.0.0", { timeout: 10_000 });
+    await page.screenshot({ path: "target/evidence/m4/client-apps.png" });
   });
 });

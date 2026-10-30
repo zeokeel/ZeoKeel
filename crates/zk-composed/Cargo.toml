@@ -60,6 +60,7 @@ zk-srv-wallet = { path = "../../packages/server/wallet" }
 zk-store-session-sqlite = { path = "../../packages/client/store-session-sqlite" }
 zk-store-settings-json = { path = "../../packages/client/store-settings-json" }
 zk-tool-fs = { path = "../../packages/client/tool-fs" }
+zk-ui-apps = { path = "../../packages/ui/ui-apps" }
 zk-ui-chat = { path = "../../packages/ui/ui-chat" }
 zk-ui-commands = { path = "../../packages/ui/ui-commands" }
 zk-ui-connectors = { path = "../../packages/ui/ui-connectors" }

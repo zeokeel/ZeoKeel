@@ -131,3 +131,29 @@ export async function sendInstallReceipt(session: AuthSession, serverUrl: string
   });
   if (!response.ok) throw new Error(`install receipt HTTP ${response.status}`);
 }
+
+export interface AppItem { appId: string; name: string; description: string; version: string; access: string }
+
+export async function fetchApps(session: AuthSession, serverUrl: string): Promise<AppItem[]> {
+  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/apps`, { headers: { authorization: `Bearer ${session.access_token}` } });
+  if (!response.ok) throw new Error(`apps HTTP ${response.status}`);
+  const body: unknown = await response.json();
+  const items = record(body)?.["items"];
+  if (!Array.isArray(items)) return [];
+  return items.flatMap((item) => {
+    const value = record(item);
+    if (value === null) return [];
+    const appId = text(value["app_id"]);
+    const name = text(value["name"]);
+    const version = text(value["version"]);
+    if (appId === null || name === null || version === null) return [];
+    return [{ appId, name, description: text(value["description"]) ?? "", version, access: text(value["access"]) ?? "" }];
+  });
+}
+
+export async function openApp(session: AuthSession, serverUrl: string, item: AppItem): Promise<{ version: string }> {
+  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/apps/${encodeURIComponent(item.appId)}/open`, { method: "POST", headers: { authorization: `Bearer ${session.access_token}` } });
+  if (!response.ok) throw new Error(`open HTTP ${response.status}`);
+  const version = response.headers.get("x-zeokeel-app-version") ?? item.version;
+  return { version };
+}

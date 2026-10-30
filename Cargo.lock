@@ -7812,6 +7812,7 @@ dependencies = [
  "zk-store-session-sqlite",
  "zk-store-settings-json",
  "zk-tool-fs",
+ "zk-ui-apps",
  "zk-ui-chat",
  "zk-ui-commands",
  "zk-ui-connectors",
@@ -8369,6 +8370,13 @@ name = "zk-tool-fs"
 version = "0.1.0"
 dependencies = [
  "zk-contract-tool",
+]
+
+[[package]]
+name = "zk-ui-apps"
+version = "0.1.0"
+dependencies = [
+ "zk-contract-ui",
 ]
 
 [[package]]

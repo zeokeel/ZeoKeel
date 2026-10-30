@@ -1,0 +1,21 @@
+schema = 1
+id = "zeokeel/ui-apps"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "Client WASM apps catalog/open panel (M4)"
+
+[role]
+name = "ui.slot.apps"
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-ui-apps" }
+ui = { package = "@zeokeel/ui-apps" }
+
+[[ui.contributions]]
+slot = "ui.apps"
+component = "panel.apps"
+order = 10

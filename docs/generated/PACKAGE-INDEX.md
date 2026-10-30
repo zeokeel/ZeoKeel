@@ -2,7 +2,7 @@
 
 # Package Index
 
-edition `enterprise` · channel `official` · 43 packages
+edition `enterprise` · channel `official` · 44 packages
 
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
@@ -41,6 +41,7 @@ edition `enterprise` · channel `official` · 43 packages
 | `tool.fs` | `zeokeel/tool-fs` | `zk-tool-fs` | `zk-contract-tool` | singleton |
 | `ui.kit` | `zeokeel/ui-kit` | `zk-ui-kit` | `zk-contract-ui` | singleton |
 | `ui.shell` | `zeokeel/ui-shell` | `zk-ui-shell` | `zk-contract-ui` | singleton |
+| `ui.slot.apps` | `zeokeel/ui-apps` | `zk-ui-apps` | `zk-contract-ui` | singleton |
 | `ui.slot.chat` | `zeokeel/ui-chat` | `zk-ui-chat` | `zk-contract-ui` | singleton |
 | `ui.slot.commands` | `zeokeel/ui-commands` | `zk-ui-commands` | `zk-contract-ui` | singleton |
 | `ui.slot.connectors` | `zeokeel/ui-connectors` | `zk-ui-connectors` | `zk-contract-ui` | singleton |
