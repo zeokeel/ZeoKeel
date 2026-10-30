@@ -1,6 +1,6 @@
 # 2026-10-31-round5-upgrade-and-e2e · 验收
 
-- 状态：`in-progress`（实现完成；C19 复评待）
+- 状态：`done`（C19 独立复评 APPROVED at HEAD 9e2ae62）
 - 验收人：lead；C19 独立评审：auditor-rig
 
 ## 1. 验收结果
@@ -24,3 +24,5 @@
 ## 2. UNVERIFIED
 
 - 真实签名密钥/证书、Docker/多平台、`zk api` 路由真源、cargo-deny 本地、真实超大规模仓库 changes。
+- **Tauri 真机企业登录/强制升级 UNVERIFIED**：round-5 客户端证据为浏览器/serve 载体；Tauri 壳 CSP（`connect-src`）与外部打开门户能力需在真实桌面壳验证。
+- P2（review §4）：store.ts 直连 426 未统一映射门禁、portal_url 相对路径、错误 envelope、平台/X-Request-Id、docs/19 门禁动作、per-channel min version、无真实 server 426 e2e、OEM dir-hash fallback 限制、changes 行级计数。
