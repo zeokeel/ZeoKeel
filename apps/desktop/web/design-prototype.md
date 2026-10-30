@@ -98,6 +98,13 @@ pnpm --dir apps/desktop/web exec vite preview --host 127.0.0.1 --port 4173
 
 截图：`screenshots/prototype/dense-*.png`；拼图 `contact-sheet-v2.png`。
 
+## Workspace 规范更新（用户 2026-10-30 反馈）
+
+- **Workspace 平铺**：侧栏以一层平铺列表展示所有 Workspace（不嵌套、不分组；当前原型：`~` / `zeokeel` / `api-server`）。
+- **默认 Workspace = 用户 home `~`**：不再使用 `Documents/ZeoKeel/default-workspace`；`workspace.create` 仍要求目录已存在。
+- 会话列表只显示当前 Workspace，行平铺（M1 不做日期分组）。
+- 迁移/代码：`store-session-sqlite` 默认 root 已改为 `dirs::home_dir()`；docs/26/ADR-058/spec 已同步，等待评审 delta。
+
 ## 待确认
 
 1. 右栏默认展开还是默认收起（当前默认展开，`⌘B` 收起）？
@@ -105,3 +112,34 @@ pnpm --dir apps/desktop/web exec vite preview --host 127.0.0.1 --port 4173
 3. 工具调用默认单行折叠，是否需要“展开全部”？
 4. 顶栏是否放模型/上下文/分支（DSH 有）；窄窗隐藏哪些？
 5. 13px 是否合适，还是 12.5/13.5？
+
+## 交互设计（v2 原型对应行为，待确认后实现）
+
+### Workspace 平铺列表
+- 点击整行 = 切换当前 Workspace；当前行左侧 2px live 蓝条 + muted 底。
+- 默认 `~` 永远第一行，标题“主目录 · 默认”；不可直接移除（先设其他默认）。
+- hover 行尾出现 `⋯`：重命名 / 设为默认 / 移除（有会话时要求选择接收 Workspace 并二次确认）。
+- 列表底部 `+ 添加工作区`：打开目录选择器；只接受已存在、可读写目录；重复路径提示。
+- 键盘：↑/↓ 移动、Enter 切换、F2 重命名、Delete 移除（确认）。
+
+### 会话行
+- 点击切换；hover 出现 pin/重命名/归档（M1 先 pin/rename，归档 post-M1）。
+- 当前会话：左侧 2px live 蓝条；流式状态点脉动；未读完成点。
+- 新建会话按钮在会话区顶部；`⌘N`；流式进行中禁用切换未完成会话？M1 允许切换并取消当前 turn。
+
+### Composer
+- Enter 发送、Shift+Enter 换行、IME 组合中不发送。
+- 输入 `/` 打开命令 popup（`/new`、`/model`、`/permission`、`/clear`）；`@` 打开文件引用；Esc 关闭 popup 再按一次失焦。
+- 流式中主按钮切为“停止”（destructive 描边），停止保留已生成内容并标“已取消”。
+- 模型下拉、附件、上下文占用（3.1k/32k）在底部一行；超长禁用发送。
+
+### 工具 / 计划
+- 工具行默认单行折叠：状态点 + tool + 关键参数 + 耗时；点击展开 args/result；Shift+点击“展开全部”。
+- 计划卡默认展开 5 行，可折叠；当前步骤状态点（done/running/pending）。
+- 审批：inline takeover，允许一次 / 拒绝；危险工具文案用中性卡 + destructive 只用于错误（不滥用）。
+
+### 右栏 / 顶栏 / 全局
+- 右栏 tabs：文件 / 变更 / 终端；`⌘B` 收起；拖拽分隔条调整宽度（post-M1）。
+- 顶栏：分支/模型/上下文/Jobs/右栏开关；窄窗隐藏 branch/context，保留模型与右栏。
+- `⌘K` 命令面板：新建会话、切换 Workspace、切主题、设置、快捷键；↑↓/Enter/Esc。
+- 全局快捷键：`⌘N` 新会话、`⌘,` 设置、`⌘B` 侧栏、`⌘K` 命令；焦点可见、`prefers-reduced-motion` 关闭动效。

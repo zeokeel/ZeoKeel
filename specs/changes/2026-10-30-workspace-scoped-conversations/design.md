@@ -13,8 +13,8 @@
 
 ## 3. 默认 Workspace
 
-- 路径：`dirs::document_dir()/ZeoKeel/default-workspace`；不存在则创建（初始化默认工作区属于首用流程，不是 `workspace.create`）；
-  canonicalize 后写入；平台不可用 → 启动时返回错误让 UI 选择目录（不猜）。
+- 路径：`dirs::home_dir()`（用户 home `~`）；canonicalize 后写入；home 不可用 → 启动时返回错误让 UI 选择目录（不猜）。
+- 侧栏 Workspace 列表平铺（不嵌套/不分组）；默认 `~`。
 - 默认 id 由迁移生成 UUIDv4；已有默认不重复插入。
 
 ## 4. 兼容层

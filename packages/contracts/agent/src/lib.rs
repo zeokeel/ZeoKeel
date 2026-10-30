@@ -4,6 +4,7 @@
 #![forbid(unsafe_code)]
 
 use serde::{Deserialize, Serialize};
+use zk_contract_tool::TurnContext;
 use thiserror::Error;
 
 /// One executed tool call, recorded for UI and diagnostics.
@@ -73,6 +74,11 @@ pub trait Agent: Send + Sync {
     /// Run one turn for the given user input.
     fn run(&self, input: &str) -> Result<AgentReply, AgentError>;
 
+    /// Run one turn with an explicit workspace context.
+    fn run_in(&self, _context: &TurnContext, input: &str) -> Result<AgentReply, AgentError> {
+        self.run(input)
+    }
+
     /// Run one turn and stream events. Default implementation emits start/complete only.
     fn run_stream(
         &self,
@@ -82,6 +88,28 @@ pub trait Agent: Send + Sync {
     ) -> Result<AgentReply, AgentError> {
         sink.emit(AgentEvent::TurnStarted { turn_id: turn_id.to_owned() });
         match self.run(input) {
+            Ok(reply) => {
+                sink.emit(AgentEvent::TextDelta { delta: reply.text.clone() });
+                sink.emit(AgentEvent::TurnCompleted { reply: reply.clone() });
+                Ok(reply)
+            }
+            Err(err) => {
+                sink.emit(AgentEvent::Error { message: err.to_string() });
+                Err(err)
+            }
+        }
+    }
+
+    /// Run one turn with a workspace context and stream events.
+    fn run_stream_in(
+        &self,
+        context: &TurnContext,
+        turn_id: &str,
+        input: &str,
+        sink: &dyn EventSink,
+    ) -> Result<AgentReply, AgentError> {
+        sink.emit(AgentEvent::TurnStarted { turn_id: turn_id.to_owned() });
+        match self.run_in(context, input) {
             Ok(reply) => {
                 sink.emit(AgentEvent::TextDelta { delta: reply.text.clone() });
                 sink.emit(AgentEvent::TurnCompleted { reply: reply.clone() });

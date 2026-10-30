@@ -490,7 +490,7 @@ Session 的 workspace root；首用先创建/选择默认 Workspace，再建 Ses
 导致上下文/文件根不一致、会话无法按项目归档、agent 工具默认根不可预测。
 **决策**：所有会话必须且只能属于一个 Workspace（`conversations.workspace_id` 创建后不可变；唯一显式例外：用户二次确认的 `workspace.remove{reassign_to}`，系统内部不得迁移）；无 Workspace 不建会话；
 列表/消息/归档按 Workspace 隔离；agent loop 的 cwd、shell/fs/搜索/附件/checkpoint 默认根 = Workspace 根；
-首用创建/选择 `Documents/ZeoKeel/default-workspace` 或用户目录，但**初始化不自动建 Session、不发消息**；
+首用创建默认 Workspace = 用户 home `~`（或用户选择目录）；Workspace 列表平铺，但**初始化不自动建 Session、不发消息**；
 Workspace 移除只从注册表移除、不删目录；有会话时必须 `reassign_to` 迁移到另一 Workspace 后移除（不允许 ungrouped；默认 Workspace 需先 `set_default` 才能移除）。归档/置顶为 post-M1。工作区是上下文/默认根，**不是安全沙箱**（弱管控）。
 **理由**：对话即项目上下文；按工作区组织才能可解释、可恢复、可归档；与 DSH 的 workspace/session/agent-loop 同构。
 **后果**：session store 增 `workspaces` 表与 `workspace_id` 外键；IPC 增 `workspace.*`；UI 增 workspace switcher/首用；

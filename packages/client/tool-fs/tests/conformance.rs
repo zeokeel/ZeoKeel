@@ -163,3 +163,20 @@ fn denies_symlink_escape() {
 fn default_factory_is_fs_read() {
     assert_eq!(tool().spec().name, "fs.read");
 }
+
+#[test]
+fn call_in_uses_workspace_root_not_tool_root() {
+    let tool_root = TempRoot::new("tool-root");
+    let workspace = TempRoot::new("workspace");
+    workspace.write("notes.txt", b"from workspace");
+    let ctx = zk_contract_tool::TurnContext {
+        conversation_id: "c1".to_owned(),
+        workspace_id: "w1".to_owned(),
+        workspace_root: workspace.path().to_string_lossy().to_string(),
+    };
+    let result = fs_tool(&tool_root).call_in(&ctx, "notes.txt").unwrap();
+    assert_eq!(result, "from workspace");
+    assert!(fs_tool(&tool_root).call_in(&ctx, "../escape").is_err());
+    let empty = zk_contract_tool::TurnContext { workspace_root: String::new(), ..ctx };
+    assert!(fs_tool(&tool_root).call_in(&empty, "notes.txt").is_err());
+}

@@ -62,7 +62,7 @@ const CHAT_MESSAGES: ChatMessage[] = [
 
 const SETTINGS_MESSAGES: ChatMessage[] = [
   msg({ id: "s1", role: "user", content: "你好，先帮我看一下这个工作区的结构。" }),
-  msg({ id: "s2", role: "assistant", content: "可以。当前工作区是 `~/Documents/ZeoKeel/default-workspace`，我会先列出顶层文件，再询问你想深入哪一部分。" }),
+  msg({ id: "s2", role: "assistant", content: "可以。当前工作区是 `~`（用户主目录），我会先列出顶层文件，再询问你想深入哪一部分。" }),
 ];
 
 const ERROR_MESSAGES: ChatMessage[] = [];
@@ -179,8 +179,8 @@ function FirstRun() {
           <div className="flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-control bg-muted text-muted-foreground"><FolderIcon /></span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-medium">Documents/ZeoKeel/default-workspace</p>
-              <p className="mt-0.5 text-[12px] text-muted-foreground">默认工作区 · 可读写</p>
+              <p className="truncate text-[13px] font-medium">~</p>
+              <p className="mt-0.5 text-[12px] text-muted-foreground">用户主目录 · 默认工作区 · 可读写</p>
             </div>
             <button type="button" className="text-[12px] text-muted-foreground underline decoration-border underline-offset-4">更改</button>
           </div>

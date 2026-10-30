@@ -6,7 +6,7 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use zk_contract_tool::{Tool, ToolError, ToolSpec};
+use zk_contract_tool::{Tool, ToolError, ToolSpec, TurnContext};
 
 /// Name exposed to the model and UI.
 const TOOL_NAME: &str = "fs.read";
@@ -60,50 +60,51 @@ impl Tool for FsTool {
     }
 
     fn call(&self, args: &str) -> Result<String, ToolError> {
-        let relative = args.trim();
-        if relative.is_empty() {
-            return Err(ToolError::InvalidArgs("路径为空".to_owned()));
-        }
-
-        let requested = Path::new(relative);
-        if requested.is_absolute() {
-            return Err(ToolError::Denied("不允许绝对路径".to_owned()));
-        }
-        if requested
-            .components()
-            .any(|component| matches!(component, Component::ParentDir))
-        {
-            return Err(ToolError::Denied("不允许 .. 路径穿越".to_owned()));
-        }
-
-        let root = std::fs::canonicalize(&self.root)
-            .map_err(|err| ToolError::Io(format!("root 不可用: {err}")))?;
-        let candidate = root.join(requested);
-        let canonical = std::fs::canonicalize(&candidate)
-            .map_err(|err| ToolError::Io(format!("文件不可用: {err}")))?;
-        if !canonical.starts_with(&root) {
-            return Err(ToolError::Denied("路径越出 root".to_owned()));
-        }
-
-        let meta = std::fs::metadata(&canonical)
-            .map_err(|err| ToolError::Io(format!("文件不可用: {err}")))?;
-        if !meta.is_file() {
-            return Err(ToolError::InvalidArgs("不是普通文件".to_owned()));
-        }
-        if meta.len() > MAX_BYTES {
-            return Err(ToolError::InvalidArgs(format!(
-                "文件超过 {MAX_BYTES} 字节上限"
-            )));
-        }
-
-        let bytes =
-            std::fs::read(&canonical).map_err(|err| ToolError::Io(format!("读取失败: {err}")))?;
-        if u64::try_from(bytes.len()).is_ok_and(|len| len > MAX_BYTES) {
-            return Err(ToolError::InvalidArgs(format!(
-                "文件超过 {MAX_BYTES} 字节上限"
-            )));
-        }
-        String::from_utf8(bytes)
-            .map_err(|err| ToolError::InvalidArgs(format!("不是 UTF-8 文本: {err}")))
+        read_confined(&self.root, args)
     }
+
+    fn call_in(&self, context: &TurnContext, args: &str) -> Result<String, ToolError> {
+        if context.workspace_root.trim().is_empty() {
+            return Err(ToolError::Denied("workspace_root is empty".to_owned()));
+        }
+        read_confined(Path::new(&context.workspace_root), args)
+    }
+}
+
+fn read_confined(root: &Path, args: &str) -> Result<String, ToolError> {
+    let relative = args.trim();
+    if relative.is_empty() {
+        return Err(ToolError::InvalidArgs("路径为空".to_owned()));
+    }
+    let requested = Path::new(relative);
+    if requested.is_absolute() {
+        return Err(ToolError::Denied("不允许绝对路径".to_owned()));
+    }
+    if requested
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err(ToolError::Denied("不允许 .. 路径穿越".to_owned()));
+    }
+    let root = std::fs::canonicalize(root)
+        .map_err(|err| ToolError::Io(format!("root 不可用: {err}")))?;
+    let candidate = root.join(requested);
+    let canonical = std::fs::canonicalize(&candidate)
+        .map_err(|err| ToolError::Io(format!("文件不可用: {err}")))?;
+    if !canonical.starts_with(&root) {
+        return Err(ToolError::Denied("路径越出 root".to_owned()));
+    }
+    let meta = std::fs::metadata(&canonical)
+        .map_err(|err| ToolError::Io(format!("文件不可用: {err}")))?;
+    if !meta.is_file() {
+        return Err(ToolError::InvalidArgs("不是普通文件".to_owned()));
+    }
+    if meta.len() > MAX_BYTES {
+        return Err(ToolError::InvalidArgs(format!("文件超过 {MAX_BYTES} 字节上限")));
+    }
+    let bytes = std::fs::read(&canonical).map_err(|err| ToolError::Io(format!("读取失败: {err}")))?;
+    if u64::try_from(bytes.len()).is_ok_and(|len| len > MAX_BYTES) {
+        return Err(ToolError::InvalidArgs(format!("文件超过 {MAX_BYTES} 字节上限")));
+    }
+    String::from_utf8(bytes).map_err(|err| ToolError::InvalidArgs(format!("不是 UTF-8 文本: {err}")))
 }

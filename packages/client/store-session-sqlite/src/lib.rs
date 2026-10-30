@@ -59,15 +59,16 @@ fn default_path() -> PathBuf {
 }
 
 fn default_workspace_root() -> PathBuf {
+    // Per product decision: the default workspace is the user's home (`~`).
+    // A custom ZEOKEEL_HOME is a test/embedding escape hatch, not the UI default.
     if let Ok(home) = std::env::var("ZEOKEEL_HOME") {
         if !home.is_empty() {
-            return PathBuf::from(home).join("default-workspace");
+            return PathBuf::from(home);
         }
     }
-    let base = dirs::document_dir().unwrap_or_else(|| {
+    dirs::home_dir().unwrap_or_else(|| {
         dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."))
-    });
-    base.join("ZeoKeel").join("default-workspace")
+    })
 }
 
 fn storage(error: impl std::fmt::Display) -> SessionError {

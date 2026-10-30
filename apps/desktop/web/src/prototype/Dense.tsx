@@ -74,21 +74,32 @@ function Logo() {
   return <img src={BRAND.logoLight} alt="" className="h-6 w-6 rounded-document object-contain" />;
 }
 
-function WorkspaceRow() {
+const WORKSPACES = [
+  { name: "~", detail: "主目录 · 默认", active: true },
+  { name: "zeokeel", detail: "~/code/zeokeel", active: false },
+  { name: "api-server", detail: "~/work/api-server", active: false },
+];
+
+function WorkspaceList() {
   return (
-    <button type="button" className="flex w-full items-center gap-2 rounded-control px-2 py-1.5 text-start hover:bg-foreground/[0.04]">
-      <span className="flex h-6 w-6 items-center justify-center rounded-document bg-muted text-muted-foreground"><Icon name="folder" /></span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[12px] font-medium text-foreground">zeokeel</span>
-        <span className="block truncate text-[11px] text-muted-foreground">~/code/zeokeel</span>
-      </span>
-      <Icon name="chevron" size={12} />
-    </button>
+    <div>
+      <p className="mb-1 px-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/80">工作区</p>
+      {WORKSPACES.map((w) => (
+        <button
+          key={w.name}
+          type="button"
+          className={`flex w-full items-center gap-2 rounded-sm px-1.5 py-[5px] text-start text-[12px] ${w.active ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-foreground/[0.035] hover:text-foreground"}`}
+        >
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-capsule ${w.active ? "bg-live" : "bg-border"}`} aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate">{w.name}</span>
+          <span className="max-w-[90px] shrink-0 truncate text-[10px] font-normal text-muted-foreground/70">{w.detail}</span>
+        </button>
+      ))}
+    </div>
   );
 }
 
 function LeftRail() {
-  let lastGroup = "";
   return (
     <aside className="flex w-[248px] shrink-0 flex-col border-e border-border bg-sidebar" aria-label="会话列表">
       <div className="flex items-center justify-between px-3 pt-3 pb-2">
@@ -98,25 +109,20 @@ function LeftRail() {
           <button className="flex h-6 w-6 items-center justify-center rounded-sm hover:bg-foreground/[0.05]" aria-label="新建会话"><Icon name="plus" size={13} /></button>
         </div>
       </div>
-      <div className="px-2"><div className="mb-2"><WorkspaceRow /></div>
-        <div className="flex items-center gap-1.5 rounded-control border border-border bg-background/60 px-2 py-1 text-muted-foreground">
+      <div className="px-2"><WorkspaceList />
+        <div className="mt-2 flex items-center gap-1.5 rounded-control border border-border bg-background/60 px-2 py-1 text-muted-foreground">
           <Icon name="search" size={12} /><span className="text-[11px]">搜索会话或 @文件</span><span className="ms-auto font-mono text-[10px]">⌘K</span>
         </div>
       </div>
-      <nav className="mt-2 min-h-0 flex-1 overflow-y-auto px-2 pb-2" aria-label="会话">
-        {SESSIONS.map((s) => {
-          const showGroup = s.group !== lastGroup; lastGroup = s.group;
-          return (
-            <div key={s.title}>
-              {showGroup ? <p className="mb-1 mt-2 px-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/80">{s.group}</p> : null}
-              <button type="button" className={`group flex w-full items-center gap-1.5 rounded-sm px-1.5 py-[5px] text-start text-[12px] ${s.title === "重构工作区导航" ? "bg-muted font-medium text-foreground shadow-[inset_2px_0_0_var(--zk-blue-500)]" : "text-muted-foreground hover:bg-foreground/[0.035] hover:text-foreground"}`}>
-                <span className={`h-1.5 w-1.5 shrink-0 rounded-capsule ${s.live ? "bg-live" : "bg-border"}`} aria-hidden="true" />
-                <span className="min-w-0 flex-1 truncate">{s.title}</span>
-                <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">{s.time}</span>
-              </button>
-            </div>
-          );
-        })}
+      <nav className="mt-1 min-h-0 flex-1 overflow-y-auto px-2 pb-2" aria-label="会话">
+        <p className="mb-1 px-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/80">会话</p>
+        {SESSIONS.map((s) => (
+          <button key={s.title} type="button" className={`group flex w-full items-center gap-1.5 rounded-sm px-1.5 py-[5px] text-start text-[12px] ${s.title === "重构工作区导航" ? "bg-muted font-medium text-foreground shadow-[inset_2px_0_0_var(--zk-blue-500)]" : "text-muted-foreground hover:bg-foreground/[0.035] hover:text-foreground"}`}>
+            <span className={`h-1.5 w-1.5 shrink-0 rounded-capsule ${s.live ? "bg-live" : "bg-border"}`} aria-hidden="true" />
+            <span className="min-w-0 flex-1 truncate">{s.title}</span>
+            <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">{s.time}</span>
+          </button>
+        ))}
       </nav>
       <div className="flex items-center gap-1 border-t border-border px-2 py-1.5 text-muted-foreground">
         <button className="flex h-6 flex-1 items-center gap-1.5 rounded-sm px-1.5 text-[11px] hover:bg-foreground/[0.04]"><Icon name="sliders" size={12} />设置</button>

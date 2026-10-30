@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use zk_contract_agent::{Agent, AgentError, AgentEvent, AgentReply, EventSink, ToolCallRecord};
 use zk_contract_llm::LlmProvider;
-use zk_contract_tool::Tool;
+use zk_contract_tool::{Tool, TurnContext};
 
 /// Tool directives returned by the provider start with this prefix.
 const TOOL_PREFIX: &str = "TOOL ";
@@ -21,6 +21,11 @@ fn prompt_for(input: &str) -> String {
     format!(
         "你是 ZeoKeel 最小 demo。\nUSER_INPUT:{input}\n如需读取文件只输出一行: TOOL fs.read <relative-path>"
     )
+}
+
+struct NoopSink;
+impl EventSink for NoopSink {
+    fn emit(&self, _event: AgentEvent) {}
 }
 
 /// Minimal agent loop: one synchronous turn, at most one tool call.
@@ -40,8 +45,19 @@ impl AgentLoop {
         self.tools.iter().find(|tool| tool.spec().name == name)
     }
 
-    /// Same as `run`, but emits tool events as they happen (no text deltas).
-    fn run_emitting(&self, input: &str, sink: &dyn EventSink) -> Result<AgentReply, AgentError> {
+    fn invoke(&self, tool: &Arc<dyn Tool>, context: Option<&TurnContext>, args: &str) -> Result<String, zk_contract_tool::ToolError> {
+        match context {
+            Some(ctx) => tool.call_in(ctx, args),
+            None => tool.call(args),
+        }
+    }
+
+    fn run_emitting(
+        &self,
+        input: &str,
+        sink: &dyn EventSink,
+        context: Option<&TurnContext>,
+    ) -> Result<AgentReply, AgentError> {
         let output = self
             .llm
             .complete(&prompt_for(input))
@@ -60,7 +76,7 @@ impl AgentLoop {
             .ok_or_else(|| AgentError::Tool(format!("工具未注册: {FS_READ}")))?;
 
         sink.emit(AgentEvent::ToolCallStarted { name: FS_READ.to_owned(), args: args.to_owned() });
-        let (text, record) = match tool.call(args) {
+        let (text, record) = match self.invoke(tool, context, args) {
             Ok(result) => {
                 sink.emit(AgentEvent::ToolCallFinished { name: FS_READ.to_owned(), result: result.clone() });
                 let text = format!("{FS_READ} 返回:\n{result}");
@@ -75,6 +91,77 @@ impl AgentLoop {
         };
 
         Ok(AgentReply { text, tool_calls: vec![record] })
+    }
+
+    fn execute(&self, input: &str, context: Option<&TurnContext>) -> Result<AgentReply, AgentError> {
+        self.run_emitting(input, &NoopSink, context)
+    }
+}
+
+/// Default factory used by the generated glue (role `agent.loop`).
+#[must_use]
+pub fn agent(tools: Vec<Arc<dyn Tool>>, llm: Arc<dyn LlmProvider>) -> AgentLoop {
+    AgentLoop::new(tools, llm)
+}
+
+impl Agent for AgentLoop {
+    fn run(&self, input: &str) -> Result<AgentReply, AgentError> {
+        self.execute(input, None)
+    }
+
+    fn run_in(&self, context: &TurnContext, input: &str) -> Result<AgentReply, AgentError> {
+        if context.workspace_root.trim().is_empty() {
+            return Err(AgentError::Tool("workspace_root is empty".to_owned()));
+        }
+        self.execute(input, Some(context))
+    }
+
+    fn run_stream(
+        &self,
+        turn_id: &str,
+        input: &str,
+        sink: &dyn EventSink,
+    ) -> Result<AgentReply, AgentError> {
+        sink.emit(AgentEvent::TurnStarted { turn_id: turn_id.to_owned() });
+        match self.run_emitting(input, sink, None) {
+            Ok(reply) => {
+                for delta in chunk_text(&reply.text) {
+                    sink.emit(AgentEvent::TextDelta { delta });
+                }
+                sink.emit(AgentEvent::TurnCompleted { reply: reply.clone() });
+                Ok(reply)
+            }
+            Err(error) => {
+                sink.emit(AgentEvent::Error { message: error.to_string() });
+                Err(error)
+            }
+        }
+    }
+
+    fn run_stream_in(
+        &self,
+        context: &TurnContext,
+        turn_id: &str,
+        input: &str,
+        sink: &dyn EventSink,
+    ) -> Result<AgentReply, AgentError> {
+        if context.workspace_root.trim().is_empty() {
+            return Err(AgentError::Tool("workspace_root is empty".to_owned()));
+        }
+        sink.emit(AgentEvent::TurnStarted { turn_id: turn_id.to_owned() });
+        match self.run_emitting(input, sink, Some(context)) {
+            Ok(reply) => {
+                for delta in chunk_text(&reply.text) {
+                    sink.emit(AgentEvent::TextDelta { delta });
+                }
+                sink.emit(AgentEvent::TurnCompleted { reply: reply.clone() });
+                Ok(reply)
+            }
+            Err(error) => {
+                sink.emit(AgentEvent::Error { message: error.to_string() });
+                Err(error)
+            }
+        }
     }
 }
 
@@ -96,90 +183,6 @@ fn chunk_text(text: &str) -> Vec<String> {
         out.push(current);
     }
     out
-}
-
-/// Default factory used by the generated glue (role `agent.loop`).
-#[must_use]
-pub fn agent(tools: Vec<Arc<dyn Tool>>, llm: Arc<dyn LlmProvider>) -> AgentLoop {
-    AgentLoop::new(tools, llm)
-}
-
-impl Agent for AgentLoop {
-    fn run_stream(
-        &self,
-        turn_id: &str,
-        input: &str,
-        sink: &dyn EventSink,
-    ) -> Result<AgentReply, AgentError> {
-        sink.emit(AgentEvent::TurnStarted { turn_id: turn_id.to_owned() });
-        match self.run_emitting(input, sink) {
-            Ok(reply) => {
-                for delta in chunk_text(&reply.text) {
-                    sink.emit(AgentEvent::TextDelta { delta });
-                }
-                sink.emit(AgentEvent::TurnCompleted { reply: reply.clone() });
-                Ok(reply)
-            }
-            Err(error) => {
-                sink.emit(AgentEvent::Error { message: error.to_string() });
-                Err(error)
-            }
-        }
-    }
-
-    fn run(&self, input: &str) -> Result<AgentReply, AgentError> {
-        let output = self
-            .llm
-            .complete(&prompt_for(input))
-            .map_err(|error| AgentError::Llm(error.to_string()))?;
-
-        let Some(directive) = output.trim().strip_prefix(TOOL_PREFIX) else {
-            return Ok(AgentReply {
-                text: output,
-                tool_calls: Vec::new(),
-            });
-        };
-
-        let (name, args) = parse_directive(directive)?;
-        if name != FS_READ {
-            return Err(AgentError::Tool(format!("不支持的工具: {name}")));
-        }
-        let tool = self
-            .find_tool(FS_READ)
-            .ok_or_else(|| AgentError::Tool(format!("工具未注册: {FS_READ}")))?;
-
-        // Tool failures are recorded in the turn, not propagated: the UI shows them.
-        let (text, record) = match tool.call(args) {
-            Ok(result) => {
-                let text = format!("{FS_READ} 返回:\n{result}");
-                (
-                    text,
-                    ToolCallRecord {
-                        name: FS_READ.to_owned(),
-                        args: args.to_owned(),
-                        result,
-                    },
-                )
-            }
-            Err(error) => {
-                let result = error.to_string();
-                let text = format!("调用 {FS_READ} 失败: {result}");
-                (
-                    text,
-                    ToolCallRecord {
-                        name: FS_READ.to_owned(),
-                        args: args.to_owned(),
-                        result,
-                    },
-                )
-            }
-        };
-
-        Ok(AgentReply {
-            text,
-            tool_calls: vec![record],
-        })
-    }
 }
 
 /// Split `TOOL <name> <args>`; both parts are required.

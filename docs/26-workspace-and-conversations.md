@@ -13,7 +13,7 @@
 | **Workspace** | 用户选择/创建的一个本地目录 + 稳定 id（UUIDv4）+ 标题；会话/文件浏览/agent cwd 的作用域 | `workspaces` 表 |
 | **Conversation** | 一条消息线程，**必须且只能属于一个 Workspace**；`workspace_id` 创建后不可变 | `conversations.workspace_id` |
 | **Agent turn** | 一次"模型请求→工具→落库"循环；cwd = 会话所属 Workspace 根 | `turns`/事件表（**post-M1**；M1 按消息落库） |
-| **Workspace switcher** | 侧栏按 Workspace 分组的会话列表 + 切换/新建/重命名/移除 | UI（`ui-sessions`） |
+| **Workspace switcher** | 侧栏**平铺的 Workspace 列表**（不嵌套/不分组）+ 切换/新建/重命名/移除；默认 `~` | UI（`ui-sessions`） |
 
 **不是安全沙箱**：工作区是上下文与默认根，不是文件/命令隔离边界（弱管控，ADR-030）。
 M1 **默认拒绝**绝对路径/工作区外访问；post-M1 才由 `TurnContext.allow_outside` 显式开启。**默认根、相对路径解析、目录浏览、索引、agent cwd 都以工作区为根**。
@@ -22,12 +22,12 @@ M1 **默认拒绝**绝对路径/工作区外访问；post-M1 才由 `TurnContext
 
 1. **无 Workspace 不建会话**：`session.create` 必须带 `workspace_id`；没有可用 Workspace 时 UI 进入"选择/新建工作区"，不创建空会话。
 2. **会话归属不可变（唯一显式例外）**：创建后 `workspace_id` 不得修改；唯一例外是用户二次确认的 `workspace.remove{reassign_to}`（系统内部不得迁移）。换目录 = 新建会话/工作区。
-3. **列表按 Workspace 隔离**：会话列表只显示当前 Workspace；切换 Workspace 切换列表与当前会话；不提供全局会话列表。
+3. **列表按 Workspace 隔离，Workspace 平铺**：侧栏以平铺列表展示 Workspace（不嵌套/不分组）；会话列表只显示当前 Workspace；切换 Workspace 切换列表与当前会话；不提供全局会话列表。
 4. **agent cwd = Workspace 根**：本地 agent loop、shell、fs、文件浏览、checkpoint 的默认根均为该会话的 Workspace 根。
 5. **相对路径先解析到 Workspace 根；M1 默认拒绝绝对路径/`~`/工作区外路径**（`tool-fs` 根内）；显式越界（`TurnContext.allow_outside`）为 post-M1，未实现前不得宣称支持。
 6. **消息不跨 Workspace**：会话命令必须携带当前 `workspace_id` 并与会话归属比对，不匹配 = `session/workspace-mismatch`。
 7. **一个 Workspace 可多会话**：共享目录，但各自独立 agent/loop；同一会话同一时刻只允许一个 turn。
-8. **首用 Workspace**：首次启动无 Workspace 时创建默认 Workspace（平台 Documents 下的 `ZeoKeel/default-workspace`；不可用则让用户选择目录）；**创建默认 Workspace 后不自动建会话、不发消息**。
+8. **首用 Workspace**：首次启动无 Workspace 时创建默认 Workspace = **用户 home 目录 `~`**（canonicalize；home 不可用则让用户选择目录）；**创建默认 Workspace 后不自动建会话、不发消息**。
 9. **Workspace 生命周期**：
    - 创建：`path` 必须是**已存在的目录**且可读写；不提供 `create_if_missing`（用户先在文件管理器创建，或后续 UI 显式建目录）。错误：`workspace/path-not-found`、`workspace/not-a-directory`、`workspace/not-writable`、`workspace/duplicate-path`（同一 canonical path 已登记）。
    - 重命名：只改 `title`，不动 path/id。
@@ -47,6 +47,7 @@ M1 **默认拒绝**绝对路径/工作区外访问；post-M1 才由 `TurnContext
 | C. 用 JSON `workspaces.json` + 会话目录（ADR-014 早期想法） | 否 | 与 SQLite 唯一真源冲突；并发/事务/迁移弱 | 改为 SQLite（ADR-058 修订 ADR-014 存储部分） |
 | D. 移除 Workspace 时直接删会话/目录 | 否 | 数据丢失风险；DSH 也不删 | 用 reassign/显式删除（M2） |
 | E. 允许 ungrouped 会话 | 否（M1） | 与 C18"必须且只能"冲突，UI/查询复杂 | 若将来需要，先改 C18/ADR 再实现 |
+| F. Workspace 分组/嵌套树 | 否（M1） | 用户明确要求**平铺**；嵌套导航增加认知成本，M1 不需要 | 若将来需要，先评审再扩展 |
 
 ## 2.6 与现有文档/契约的冲突与处理
 
@@ -101,7 +102,7 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_m
 ### 3.1 schema v2 迁移（可执行，SQLite）
 
 1. **准备**：`PRAGMA wal_checkpoint(TRUNCATE)`；复制 `sessions.db`、`sessions.db-wal`、`sessions.db-shm`（存在则）到 `sessions.db.bak-v<old>`；失败保留备份。
-2. **默认 Workspace**：`default_id = uuid v4`；`default_path = canonicalize(dirs::document_dir()?/ZeoKeel/default-workspace)`（绝对路径；目录不存在则创建后 canonicalize；平台无 Documents/不可写 → 迁移失败，让用户选择目录，不猜）。
+2. **默认 Workspace**：`default_id = uuid v4`；`default_path = canonicalize(dirs::home_dir())`（用户 home `~`；绝对路径；home 不可用 → 迁移失败，让用户选择目录，不猜）。
 3. **单事务 + `PRAGMA foreign_keys=OFF`**（必须在 BEGIN 之外设置）：
    ```sql
    PRAGMA foreign_keys=OFF;
@@ -173,8 +174,8 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_m
 
 ## 6. UI / UX（M1）
 
-- 侧栏顶部 = Workspace switcher（当前名称+目录，切换/新建/重命名/移除）；下方只显示该 Workspace 的会话。
-- 首次启动无 Workspace：全屏/空态"选择工作区"（打开目录 / 使用默认）；成功后进入空会话态（不自动建会话）。
+- 侧栏顶部 = **平铺 Workspace 列表**（默认 `~`，每个 Workspace 一行；切换/新建/重命名/移除；不嵌套/不分组）；下方只显示当前 Workspace 的会话（会话行平铺，M1 不做日期分组）。
+- 首次启动无 Workspace：全屏/空态"选择工作区"（使用默认 `~` / 打开目录）；成功后进入空会话态（不自动建会话）。
 - 会话头部显示 Workspace 名称；设置/诊断显示工作区路径、可读写状态。
 - 目录不可用：横幅"工作区目录不可用"+ 重新选择；禁用发送；消息只读可导出（导出 post-M1 则暂只读）。
 - 六态（空/加载/错误/离线/流式中/已取消）与 a11y/键盘/i18n/明暗/窄窗遵循 `19`/`27`；workspace 操作必须有 focus-visible、aria-label、Esc 关闭弹窗。
