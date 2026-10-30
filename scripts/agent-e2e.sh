@@ -14,11 +14,22 @@ mkdir -p target/evidence/agent-rig
 cat > /tmp/zk-agent-fake.py <<'PY'
 import json,sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
+UNKNOWN_SEEN = False
 def respond(body):
+    global UNKNOWN_SEEN
     global UNKNOWN_SEEN
     messages=body.get("messages",[])
     user=" ".join(str(m.get("content") or "") for m in messages if m.get("role")=="user")
     tool_count=len([m for m in messages if m.get("role")=="tool"])
+    if "unknown" in user:
+        if not UNKNOWN_SEEN:
+            UNKNOWN_SEEN = True
+            call={"id":"call_unknown","type":"function","function":{"name":"unknown_tool","arguments":"{}"}}
+            return {"id":"chatcmpl-unknown","object":"chat.completion","choices":[{"index":0,"finish_reason":"tool_calls","message":{"role":"assistant","content":None,"tool_calls":[call]}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
+        return {"id":"chatcmpl-final","object":"chat.completion","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"unknown handled"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
+    if "loop" in user:
+        call={"id":"call_loop","type":"function","function":{"name":"fs.read","arguments":json.dumps({"path":"agent-e2e.txt"})}}
+        return {"id":"chatcmpl-loop","object":"chat.completion","choices":[{"index":0,"finish_reason":"tool_calls","message":{"role":"assistant","content":None,"tool_calls":[call]}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
     if "present" in user:
         if tool_count==0:
             call={"id":"call_pwrite","type":"function","function":{"name":"fs.write","arguments":json.dumps({"path":"present.txt","content":"deliverable"})}}
@@ -78,8 +89,8 @@ cargo build -q -p zk-desktop
 pnpm --dir apps/desktop/web build >/dev/null
 rm -rf target/evidence/agent-rig/home && mkdir -p target/evidence/agent-rig/home/.agents/skills/demo && printf '# demo\n' > target/evidence/agent-rig/home/.agents/skills/demo/SKILL.md
 HOME="$PWD/target/evidence/agent-rig/home" ZEOKEEL_HOME="$PWD/target/evidence/agent-rig/home" ZEOKEEL_SERVE_ADDR="127.0.0.1:$UI_PORT" ZEOKEEL_AGENT_STREAMING=0 \
-ZEOKEEL_OPENAI_BASE_URL="http://127.0.0.1:$UPSTREAM_PORT/v1" ZEOKEEL_OPENAI_API_KEY=test ZEOKEEL_OPENAI_MODEL=test-model \
+ZEOKEEL_OPENAI_BASE_URL="http://127.0.0.1:$UPSTREAM_PORT/v1" ZEOKEEL_OPENAI_API_KEY=test ZEOKEEL_OPENAI_MODEL=test-model ZEOKEEL_AGENT_MAX_STEPS=3 \
 ./target/debug/zk-desktop --serve >/tmp/zk-agent-ui.log 2>&1 & UI_PID=$!
 for _ in $(seq 1 80); do curl -fsS "http://127.0.0.1:$UI_PORT/healthz" >/dev/null 2>&1 && break; sleep 0.25; done
-ZEOKEEL_AGENT_UI_URL="http://127.0.0.1:$UI_PORT" ZEOKEEL_AGENT_UPSTREAM2="http://127.0.0.1:$UPSTREAM2_PORT/v1" pnpm exec playwright test e2e/agent-rig.spec.ts --config=playwright.agent.config.ts
+ZEOKEEL_AGENT_UI_URL="http://127.0.0.1:$UI_PORT" ZEOKEEL_AGENT_UPSTREAM2="http://127.0.0.1:$UPSTREAM2_PORT/v1" pnpm exec playwright test e2e/agent-rig.spec.ts --config=playwright.agent.config.ts ${ZEOKEEL_AGENT_GREP:+--grep "$ZEOKEEL_AGENT_GREP"}
 echo "agent e2e ok"

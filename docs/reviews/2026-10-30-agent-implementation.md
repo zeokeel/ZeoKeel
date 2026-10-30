@@ -420,3 +420,72 @@ rig 循环/审批/ask-user/工具包**happy path 能跑**，但离 spec 的“DS
 
 - 关联 spec：`specs/changes/2026-10-30-agent-dsh-parity`。
 - 复评结论（第五轮）：**CHANGES-REQUESTED**
+
+---
+
+## 13. 第六轮复评（R6，2026-10-30）
+
+> 对象：R5 修复后的 agent rig 实现。只读复跑；未改产品代码/spec（仅本记录）。
+> 按 A 方案（capability placeholder + Rust max 测试）评估。
+
+### 13.1 结论
+
+**CHANGES REQUIRED（CHANGES-REQUESTED）**
+
+- **P0：0**。
+- **P1：2**：**Playwright max/unknown UI 缺失**（唯一实质产品阻塞）；**acceptance 仍写 6/R5/未完成项**（文档验收阻塞）。
+- **capability placeholders 可接受为 P2/manual**：`cap-*` 包/角色存在、`available()==false`、`CAPABILITY_UNAVAILABLE`、composer 忽略占位；符合“未配置明确不可用”，不伪造能力。
+- **e2e 连续两次 7 passed (17.5s)，retries=0**；cargo/clippy/docs/spec/matrix 绿；review-check 因 latest review CHANGES 红（审批前预期）。
+
+### 13.2 已关闭/验证
+
+- **capability placeholders**：`cap-vector`、`cap-image`、`cap-audio`、`cap-transcription`、`cap-rerank`、`cap-hooks` 均 `available()==false` + `CAPABILITY_UNAVAILABLE`；composer 不选占位（若已实现）。
+- **schedule executor**、**subagent_fork**、**PDF 正例**、**workflow DAG**、**provider hot-swap** 已落。
+- **e2e**：两次运行均 7 passed，retries=0；reject 重排在首位后稳定。
+- **max**：Rust `max_steps_maps_to_agent_error` 测试存在；`ZEOKEEL_AGENT_MAX_STEPS` 可配。
+- **matrix/docs/spec**：`agent-tool-matrix.py --check` 绿；docs/39 存在；spec approved。
+
+### 13.3 剩余 P1
+
+1. **Playwright max turns / unknown tool UI 缺失（唯一产品阻塞）**
+   - `e2e/agent-rig.spec.ts` 7 条覆盖审批/拒绝/取消/ask/bash/present/多步/provider；无 max/unknown 场景。
+   - spec §5 要求“Playwright：工具+审批+provider 设置”并列出 max/unknown；Rust max 测试不能替代 UI 验收。
+   - 修：fake upstream 增加反复 tool_call/未知 tool 分支；补 2 条 Playwright，断言 max 提示/unknown tool 错误回填不崩；retries=0 连跑。
+2. **acceptance 事实过期（文档阻塞）**
+   - 仍写“6 scenarios”（实际 7）、状态 `blocked`（R5）、`仍未完成` 列已实现的 schedule 执行器/provider 设置；`call-timeout` 豁免已写但“仍未完成”仍重复。
+   - 修：更新为 7 scenarios/R6；移除已实现项；状态 `implementation-in-progress`；勾选已达成证据；保留 max/unknown 未完成。
+
+### 13.4 P2/manual
+
+- capability placeholders（hooks/vector/media）作为 P2/manual，需产品确认；`available()==false` 已诚实。
+- `call-timeout` agent 级 env + C3 豁免；`subagent-control` send/interrupt；schedule/subagent 深度；工具名 DSH 对齐。
+- `review-check` 当前红是 R5 CHANGES 最新评审；R6 APPROVED 后应转绿。
+- `web_search` custom endpoint 私网限制。
+- media provider 实接（有外部 key 时）。
+
+### 13.5 证据
+
+| 命令 | 结果 |
+| --- | --- |
+| `bash scripts/agent-e2e.sh`（第 1 次） | **PASS：7 passed (17.5s)，retries=0** |
+| `bash scripts/agent-e2e.sh`（第 2 次） | **PASS：7 passed (17.5s)，retries=0** |
+| `cargo test --workspace` / clippy | PASS |
+| `docs-check` / `spec-check` | PASS |
+| `agent-tool-matrix.py --check` | PASS |
+| `review-check` | **FAIL**：latest review CHANGES；审批前预期 |
+| capability placeholder tests | PASS（available=false） |
+
+### 13.6 最小 APPROVED 条件
+
+1. 补 Playwright **max turns + unknown tool** 两条（retries=0 连跑 ≥2 次）。
+2. 修 acceptance：7 scenarios/R6、移除已实现项、状态对齐。
+3. 其余 capability placeholders 按 P2/manual 记录（产品确认）；R6 APPROVED 后 review-check 自动转绿。
+
+### 13.7 结论
+
+- **P0：0；P1：2**（UI max/unknown + acceptance）。
+- **max/unknown UI 是唯一实质产品阻塞**；capability placeholders 可 P2/manual。
+- **当前 scope 不能 APPROVED**：补 2 条 UI + acceptance 后复评。
+
+- 关联 spec：`specs/changes/2026-10-30-agent-dsh-parity`。
+- 复评结论（第六轮）：**CHANGES-REQUESTED**

@@ -10,6 +10,24 @@ async function newConversation(page: Page): Promise<void> {
 }
 
 test.describe("personal rig agent (real serve + fake upstream)", () => {
+  test("unknown tool does not crash the turn", async ({ page }) => {
+    await page.goto("/", { waitUntil: "networkidle" });
+    await newConversation(page);
+    const composer = page.getByRole("textbox").first();
+    await composer.fill("unknown");
+    await page.keyboard.press("Enter");
+    await expect(page.getByText(/unknown handled|AGENT_MAX_STEPS|生成失败|unknown_tool/).last()).toBeVisible({ timeout: 30_000 });
+  });
+
+  test("max turns surfaces AGENT_MAX_STEPS", async ({ page }) => {
+    await page.goto("/", { waitUntil: "networkidle" });
+    await newConversation(page);
+    const composer = page.getByRole("textbox").first();
+    await composer.fill("loop");
+    await page.keyboard.press("Enter");
+    await expect(page.getByText(/AGENT_MAX_STEPS|生成失败/).last()).toBeVisible({ timeout: 30_000 });
+  });
+
   test("rejecting an approval is fail-closed", async ({ page }) => {
     await page.goto("/", { waitUntil: "networkidle" });
     await newConversation(page);
