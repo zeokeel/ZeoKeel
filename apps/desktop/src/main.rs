@@ -47,7 +47,7 @@ fn open_app_window_impl(app: &tauri::AppHandle, app_id: &str, entry: &str) -> Re
     let url: tauri::Url = format!("zk-app://localhost/{app_id}/{entry}").parse().map_err(|_| "APP_BAD_URL".to_owned())?;
     let data_dir = std::env::var("ZEOKEEL_HOME").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir().join("zeokeel")).join("app-webviews").join(&app_id);
     let args = app_id.clone();
-    WebviewWindowBuilder::new(app, &label, WebviewUrl::External(url))
+    WebviewWindowBuilder::new(app, &label, WebviewUrl::CustomProtocol(url))
         .title(format!("ZeoKeel App {app_id}"))
         .inner_size(900.0, 640.0)
         .incognito(true)
@@ -120,6 +120,22 @@ fn run_window(state: Arc<AppState>) -> Result<(), String> {
             if !valid_app_id(app_id) || asset.contains("..") {
                 return http::Response::builder().status(400).body(b"bad app path".to_vec()).unwrap_or_default();
             }
+            if std::env::var("ZEOKEEL_APP_SELFTEST").ok().as_deref() == Some("1") && app_id == "smoke-app" {
+                let html = r#"<!doctype html><html><body><h1>app selftest</h1><pre id=out>running</pre><script>
+document.title='SELFTEST|start';
+(async()=>{
+function show(v){return JSON.stringify(v).slice(0,160);}
+async function call(name,args){try{return show(await window.__TAURI_INTERNALS__.invoke(name,args));}catch(e){return 'THROW:'+String(e);}}
+const appRequest=await call('app_request',{payload:{app_id:'smoke-app',body_b64:''}});
+const ipc=await call('ipc_call',{name:'status',payload:{}});
+const open=await call('open_app_window',{appId:'other'});
+const core=await call('plugin:event|listen',{event:'x',target:{kind:'Any'},handler:1});
+document.getElementById('out').textContent=JSON.stringify({appRequest,ipc,open,core});
+document.title='SELFTEST|'+JSON.stringify({appRequest,ipc,open,core});
+})();
+</script></body></html>"#;
+                return http::Response::builder().status(200).header("content-type", "text/html; charset=utf-8").body(html.as_bytes().to_vec()).unwrap_or_default();
+            }
             let Some((base_url, token)) = zk_composed::gateway_credentials() else {
                 return http::Response::builder().status(401).body(b"auth required".to_vec()).unwrap_or_default();
             };
@@ -177,4 +193,24 @@ fn run_window(state: Arc<AppState>) -> Result<(), String> {
     builder
         .run(tauri::generate_context!())
         .map_err(|error| format!("failed to run window: {error}"))
+}
+
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+    #[test]
+    fn app_capability_has_no_core_permissions() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities/app-window.json");
+        let value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(value["windows"], serde_json::json!(["zk-app-*"]));
+        assert_eq!(value["permissions"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn app_id_validation() {
+        assert!(super::valid_app_id("app-1"));
+        assert!(!super::valid_app_id(".."));
+        assert!(!super::valid_app_id("a/b"));
+    }
 }

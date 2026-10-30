@@ -425,3 +425,80 @@
 - P1-1：`app-retire` 加入 `spawn_loop` 小时任务；guest `log` 经 `RunOutput.logs` 落 `app_runtime_logs`（每次≤100行）；20GB 前置检查 + SQLite `max_page_count` 写限。
 - P1-2：`scripts/tauri-smoke.sh` 用 `ZEOKEEL_OPEN_APP_ID` 打开真实 `zk-app-smoke-app` Tauri 窗口并截图 `target/evidence/m4/tauri-app-window.png`；capability 文件/CSP 存在。仍未用 tauri-driver 验证 core/plugin ACL。
 - P1-3：apps-e2e 增加静态 UI MIME/whitelist 负向、can_open/employee；m4-client-apps e2e 打开+request。
+
+---
+
+## 13. 第五轮复评（R5，2026-10-30）
+
+> 对象：R4 修复后的 M4 实现。只读复跑；未改产品代码/spec（仅本记录）。
+> 仅列剩余 P0/P1。
+
+### 13.1 结论
+
+**CHANGES REQUIRED（CHANGES-REQUESTED）**
+
+- **P0：0**。
+- **P1：3 组**：Tauri app-window 运行时证据/ACL、日志全局上限与 retire 证据、限额/安全负向证据。
+- **M4 实现仍不可 APPROVED**。
+
+### 13.2 已关闭
+
+- `app-retire` 已加入 `spawn_loop`（`jobs/src/lib.rs:216`），小时幂等键。
+- guest `log` 经 `RunOutput.logs` 落 `app_runtime_logs`（`apps/src/lib.rs:237-239`，每次 ≤100）。
+- 20GB 前置检查（`:216-217`）+ SQLite `max_page_count`；runtime limits 读取；UI entry；静态 UI MIME/whitelist；employee/can_open e2e。
+- `tauri-smoke.sh` 现在设 `ZEOKEEL_OPEN_APP_ID=smoke-app`，实际打开 `zk-app-smoke-app` 并截图 `target/evidence/m4/tauri-app-window.png`。
+
+### 13.3 剩余 P1
+
+#### P1-1 · Tauri app-window 截图是黑屏，未验证登录/app_request/ACL/partition
+
+- 实测 `bash scripts/tauri-smoke.sh` **EXIT 0**，但 `target/evidence/m4/tauri-app-window.png` 是 1280x800 **全黑**（仅窗口存在）；没有登录、没有 `app_request` 回执、没有 app 内容。
+- 因此没有证明：
+  - app window 能加载认证后的静态 UI；
+  - `app_request` 在 app-window capability 下成功；
+  - `ipc_call`/`open_app_window`/core/plugin 被 ACL/标签拒绝；
+  - `withGlobalTauri` 下 app window 的 `__TAURI__` 未越权；
+  - per-app partition（当前仅 `incognito` + data_directory）满足 docs/04:222。
+- `e2e/m4-client-apps.spec.ts` 仍走 serve iframe，不是 Tauri 窗口路径。
+
+**修法/可接受替代（无 tauri-driver）**：
+
+1. 测试模式 `ZEOKEEL_APP_SELFTEST=1`：app window HTML 注入 self-test，依次调用 `app_request`（期望成功）、`ipc_call`/`open_app_window`（期望 `APP_FORBIDDEN`）、一个 core/plugin 命令（期望 ACL 拒绝），把结果写到本地测试 endpoint/标题；`tauri-smoke` Xvfb 截图并断言结果。该自检只在测试构建/环境变量下启用。
+2. 若无法做 Tauri 运行时自动化：把 capability 文件 `app-window` 空 permissions + 代码 label gate 作为**静态证据**，并补手工验收记录（截图 app 页面 + 命令拒绝结果）；接受为 **P2/manual exception**，不能写成完整 ACL 自动化。
+3. partition：补显式 partition 或 ADR 说明 `incognito`+per-app data_directory 等价；否则 P1 保留。
+
+#### P1-2 · `app_runtime_logs` 无全局 100k 上限，retire 无 e2e
+
+- 插入每 call ≤100，但**没有全局 10 万行上限**（spec:11）；`let _ =` 吞掉插入失败；`app-retire` 清理日志无 job/e2e 测试。
+- `app-retire` 已调度但无 test/evidence（30d 保留、DB/wasm/UI/logs/calls 真删）。
+- 修：插入前后检查全局行数/超限拒绝或采样；`INSERT` 失败 fail-closed 或明确降级；补 retire job 单测/集成（过期 app DB 真删/未过期保留）；日志全局 cap 测试。
+
+#### P1-3 · 限额/安全负向证据仍不足
+
+- `apps-e2e` 有 static MIME/whitelist、employee/can_open，但**没有** fuel/time/memory/concurrency/queue/DB 100MB/20GB/16 表/日志 30d 的逐项 e2e；`limits` memory 测试仍接受 `Memory|Fuel|Timeout`。
+- `m4-client-apps` 只测打开+request；未测下架 410 错误页、asset 白名单/MIME/CSP、无 token/跨 app 资源。
+- `apps-e2e` 静态 UI 负向只 `../secret`；没有 `%2e%2e`/绝对 URL/非 manifest 文件。
+- 修：每项 limit 给命令/期望错误码；memory 断言收紧；补 20GB/queue/表数/日志/retire；补 client 410/asset/CSP/XSS 负向。
+
+### 13.4 R5 证据
+
+| 命令 | 结果 |
+| --- | --- |
+| `bash scripts/apps-e2e.sh` | **PASS**（EXIT 0）；含 employee/can_open/static MIME |
+| `bash scripts/admin-e2e.sh` | **PASS**（EXIT 0）9 passed |
+| `bash scripts/login-e2e.sh` | **PASS**（EXIT 0）4 passed（M4 client 走 serve iframe） |
+| `cargo test -p zk-kit-wasm -p zk-srv-apps -p zk-srv-app-db --offline` | **PASS**；golden 1 passed（8.6s） |
+| `cargo test --workspace --offline` | **PASS** |
+| `cargo clippy --workspace --all-targets --offline -- -D warnings` | **PASS** |
+| `zk compose --check` / `zk validate` / `schema-check` / `zk db lock --check` | **PASS**（69 packages/13 migrations） |
+| `bash scripts/tauri-smoke.sh` | **PASS（仅窗口存在）**；`tauri-app-window.png` **全黑**，无 app 内容/ACL 证据 |
+| `rg 'app-retire' jobs/src/lib.rs` | `spawn_loop` 已含 |
+| `rg 'INSERT INTO app_runtime_logs'` | 已插入；无全局 cap |
+
+### 13.5 结论
+
+- **P0：0；P1：3 组**。
+- **M4 实现仍不可 APPROVED**：补 P1-1/P1-2/P1-3 后复评（P1-1 的静态/manual exception 需明确接受）。
+
+- 关联 spec：`specs/changes/2026-10-30-wasm-app-center`。
+- 复评结论（第五轮）：**CHANGES-REQUESTED**

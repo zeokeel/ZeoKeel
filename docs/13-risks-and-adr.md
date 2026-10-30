@@ -579,3 +579,10 @@ S0 验证尚未完成（见 `12`），这不是“未决架构问题”，而是
 **决策**：M4 应用由服务端 wasmtime 执行 guest（数据/API）；客户端只通过 `app_request` 信封访问服务端，**不执行应用 WASM**。应用 UI 为发布时随 release 存储的静态 HTML/JS/CSS（`ui/` 资源清单），由服务端按 app/version 提供，客户端在每应用独立 origin/partition 的 WebView 中渲染，且该 WebView 只有 `app_request` 一个 IPC 权限。客户端不持有应用 DB、不缓存应用数据。
 **理由**：`docs/04` §2.6 已固定“客户端不执行应用、不持有应用 DB”；`docs/07` §7 的“UI 编进 wasm”与前者冲突。把 UI 作为静态资源并用独立 origin 渲染，既满足独立窗口/资产缓存，又把执行面留在服务端沙箱。
 **后果**：`docs/07` §7 的“UI 编进 wasm”改为“UI 静态资源 + 服务端 guest”；`open` 只返回版本票据/`ui` 清单，不返回 UI WASM；M4 不实现客户端 WASM 沙箱；若未来要客户端 UI WASM，需新 ADR 并改 docs/04/07。
+
+
+### ADR-063 · M4 Tauri 应用窗口的存储隔离用 incognito + per-app data_directory `accepted`
+
+**决策**：M4 应用窗口使用 Tauri `data_directory(<ZEOKEEL_HOME>/app-webviews/<app_id>)` + `incognito(true)` + 自定义 `zk-app://` origin + 导航闸门作为每应用存储隔离；不直接映射浏览器 partition（Tauri/WebView2/WKWebView 未提供跨平台显式 partition API）。每个 app 的 storage/cookie/cache 目录独立，窗口关闭不共享。
+**理由**：docs/04 §9 要求“独立 origin + 独立 partition”；Tauri 2 的跨平台等价能力是独立 data directory + incognito，加上 `zk-app://<app_id>/` origin 和导航限制，达到同等的存储/导航隔离。
+**后果**：审计检查点改为“data_directory 按 app_id 唯一 + incognito + origin/导航闸门”，不再要求不存在的 partition API；若未来 Tauri 提供 partition，再替换实现。
