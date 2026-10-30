@@ -4,7 +4,7 @@
 - Owner：lead + 多 teammate
 - 日期：2026-10-30
 - 关联：docs/06、docs/07、docs/12 M2、docs/04、docs/13 ADR-028/030/031/032/041/042/044
-- 评审：`docs/reviews/2026-10-30-m2-plan.md`（修订后复评）
+- 评审：`docs/reviews/2026-10-30-m2-plan.md`
 - 变更预算：按 P1–P4 分片；每片独立可运行/可回滚
 
 ## 1. 背景 / 问题
