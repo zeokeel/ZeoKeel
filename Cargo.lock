@@ -5306,6 +5306,7 @@ dependencies = [
  "zk-contract-config",
  "zk-contract-ipc",
  "zk-contract-session",
+ "zk-contract-tool",
 ]
 
 [[package]]

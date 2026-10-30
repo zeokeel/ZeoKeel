@@ -22,6 +22,10 @@ impl Runtime {
         self.agent.run_stream(turn_id, input, sink)
     }
 
+    pub fn run_stream_in(&self, context: &zk_contract_tool::TurnContext, turn_id: &str, input: &str, sink: &dyn zk_contract_agent::EventSink) -> Result<zk_contract_agent::AgentReply, zk_contract_agent::AgentError> {
+        self.agent.run_stream_in(context, turn_id, input, sink)
+    }
+
     pub fn sessions(&self) -> Arc<dyn zk_contract_session::SessionStore> {
         Arc::clone(&self.sessions)
     }

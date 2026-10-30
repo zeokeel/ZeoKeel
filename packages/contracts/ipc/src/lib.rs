@@ -74,6 +74,16 @@ pub mod commands {
     pub const CHAT_SEND: &str = "chat.send";
     /// Cancel the active turn.
     pub const CHAT_CANCEL: &str = "chat.cancel";
+    /// List workspaces.
+    pub const WORKSPACE_LIST: &str = "workspace.list";
+    /// Register/create a workspace.
+    pub const WORKSPACE_CREATE: &str = "workspace.create";
+    /// Rename a workspace.
+    pub const WORKSPACE_RENAME: &str = "workspace.rename";
+    /// Set the default workspace.
+    pub const WORKSPACE_SET_DEFAULT: &str = "workspace.set_default";
+    /// Remove a workspace (reassign conversations first).
+    pub const WORKSPACE_REMOVE: &str = "workspace.remove";
     /// List conversations.
     pub const SESSION_LIST: &str = "session.list";
     /// Load messages for a conversation.

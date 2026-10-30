@@ -122,7 +122,7 @@ pub trait WorkspaceStore: Send + Sync {
 }
 
 /// Replaceable session store (workspace-scoped).
-pub trait SessionStore: Send + Sync {
+pub trait SessionStore: WorkspaceStore + Send + Sync {
     /// Create a conversation inside a workspace.
     fn create_conversation_in(
         &self,
