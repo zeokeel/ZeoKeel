@@ -213,7 +213,7 @@ pub fn spawn_loop(pool: PgPool) {
         let mut ticker = tokio::time::interval(Duration::from_secs(300));
         loop {
             ticker.tick().await;
-            for job in ["hold-expire", "usage-pending", "wallet-reconcile", "wallet-grant", "audit-retention", "audit-verify"] {
+            for job in ["hold-expire", "usage-pending", "wallet-reconcile", "wallet-grant", "audit-retention", "audit-verify", "app-retire"] {
                 let key = format!("{job}:{}", chrono::Utc::now().format("%Y%m%d%H"));
                 if let Err(error) = run_job(&pool, job, &key).await {
                     eprintln!("job {job} failed: {error}");

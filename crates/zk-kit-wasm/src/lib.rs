@@ -55,9 +55,9 @@ pub struct RunInput<'a> {
 
 /// One run output.
 #[derive(Debug, Clone, PartialEq)]
-pub struct RunOutput { pub response: Value, pub fuel_used: u64, pub elapsed: Duration }
+pub struct RunOutput { pub response: Value, pub fuel_used: u64, pub elapsed: Duration, pub logs: Vec<String> }
 
-struct HostState { wasi: WasiP1Ctx, last_error: String, limiter: StoreLimits }
+struct HostState { wasi: WasiP1Ctx, last_error: String, limiter: StoreLimits, logs: Arc<Mutex<Vec<String>>> }
 
 struct StoreLimits { max_memory: usize }
 
@@ -189,8 +189,11 @@ pub fn run(input: RunInput<'_>) -> Result<RunOutput, WasmError> {
         write_mem(&mut caller, out, cap, &data)
     }).map_err(|error| WasmError::Internal(error.to_string()))?;
 
-    linker.func_wrap("zeokeel", "log", |mut caller: Caller<'_, HostState>, ptr: u32, len: u32| {
-        if let Ok(raw) = read_mem(&mut caller, ptr, len) { eprintln!("[guest] {}", String::from_utf8_lossy(&raw)); }
+    linker.func_wrap("zeokeel", "log", move |mut caller: Caller<'_, HostState>, ptr: u32, len: u32| {
+        if let Ok(raw) = read_mem(&mut caller, ptr, len) {
+            let message = String::from_utf8_lossy(&raw).chars().take(4096).collect::<String>();
+            if let Ok(mut lines) = caller.data().logs.lock() { if lines.len() < 1000 { lines.push(message); } }
+        }
     }).map_err(|error| WasmError::Internal(error.to_string()))?;
 
     let assets = assets.clone();
@@ -201,7 +204,9 @@ pub fn run(input: RunInput<'_>) -> Result<RunOutput, WasmError> {
         assets.get(&name).map_or(-3, |bytes| write_mem(&mut caller, out, cap, bytes))
     }).map_err(|error| WasmError::Internal(error.to_string()))?;
 
-    let state = HostState { wasi, last_error: String::new(), limiter: StoreLimits { max_memory: input.limits.memory_bytes } };
+    let logs = Arc::new(Mutex::new(Vec::new()));
+    let log_sink = logs.clone();
+    let state = HostState { wasi, last_error: String::new(), limiter: StoreLimits { max_memory: input.limits.memory_bytes }, logs };
     let mut store = Store::new(&engine, state);
     store.limiter(|state| &mut state.limiter);
     store.set_fuel(input.limits.fuel).map_err(|error| WasmError::Internal(error.to_string()))?;
@@ -244,7 +249,8 @@ pub fn run(input: RunInput<'_>) -> Result<RunOutput, WasmError> {
     let take = length.min(bytes.len());
     let body = bytes.get(..take).ok_or(WasmError::BadFrame)?;
     let response: Value = serde_json::from_slice(body).map_err(|_| WasmError::BadFrame)?;
-    Ok(RunOutput { response, fuel_used, elapsed })
+    let logs = log_sink.lock().map(|lines| lines.clone()).unwrap_or_default();
+    Ok(RunOutput { response, fuel_used, elapsed, logs })
 }
 
 /// Re-export for callers that only need the DB path convention.

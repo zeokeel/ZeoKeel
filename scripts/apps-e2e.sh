@@ -42,7 +42,7 @@ curl -fsS "$BASE/api/client/v1/apps" -H "Authorization: Bearer $ADMIN_JWT" | pyt
 CODE=$(curl -sS -o /tmp/zk-app-open.json -w '%{http_code}' -X POST "$BASE/api/client/v1/apps/$APP_ID/open" -H "Authorization: Bearer $ADMIN_JWT"); [[ "$CODE" == "200" ]]
 BODY=$(printf '{"op":"add","name":"e2e"}' | base64 -w0)
 REQ=$(python3 -c "import json;print(json.dumps({'abi':'zeokeel-app/1','app_id':'$APP_ID','method':'POST','path':'/items','query':'','headers':{},'body_b64':'$BODY','request_id':'r1'}))")
-CODE=$(curl -sS -o /tmp/zk-req.json -w '%{http_code}' -X POST "$BASE/api/client/v1/apps/$APP_ID/request" -H "Authorization: Bearer $ADMIN_JWT" -H 'content-type: application/json' -d "$REQ"); echo REQ:$CODE:$(cat /tmp/zk-req.json); [[ "$CODE" == "200" ]]
+CODE=$(curl -sS -o /tmp/zk-req.json -w '%{http_code}' -X POST "$BASE/api/client/v1/apps/$APP_ID/request" -H "Authorization: Bearer $ADMIN_JWT" -H 'content-type: application/json' -d "$REQ"); [[ "$CODE" == "200" ]]
 LIST=$(printf '{"abi":"zeokeel-app/1","app_id":"%s","method":"GET","path":"/items","query":"","headers":{},"body_b64":"","request_id":"r2"}' "$APP_ID")
 curl -fsS -X POST "$BASE/api/client/v1/apps/$APP_ID/request" -H "Authorization: Bearer $ADMIN_JWT" -H 'content-type: application/json' -d "$LIST" | python3 -c 'import json,sys,base64;d=json.load(sys.stdin);body=json.loads(base64.b64decode(d["body_b64"]));assert body["rows"][0]["name"]=="e2e"'
 # cross-app DB isolation: a second app on a fresh DB must see no rows from app1.
@@ -65,6 +65,10 @@ curl -fsS -b /tmp/zk-apps.cookies -H "X-CSRF-Token: $CSRF" -X PUT "$BASE/api/adm
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/client/v1/apps/$EMP_ID/open" -H "Authorization: Bearer $EMP_JWT"); [[ "$CODE" == "403" || "$CODE" == "404" ]]
 curl -fsS -b /tmp/zk-apps.cookies -H "X-CSRF-Token: $CSRF" -X PUT "$BASE/api/admin/apps/$EMP_ID/grants" -H 'content-type: application/json' -d '{"grants":[{"grantee":"all","can_open":true}]}' >/dev/null
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/client/v1/apps/$EMP_ID/open" -H "Authorization: Bearer $EMP_JWT"); [[ "$CODE" == "200" ]]
+# static UI asset whitelist + MIME.
+curl -fsS -D /tmp/zk-app-asset.headers -o /tmp/zk-app-asset.html "$BASE/api/client/v1/apps/$APP_ID/assets/index.html" -H "Authorization: Bearer $ADMIN_JWT"
+grep -qi 'content-type: text/html' /tmp/zk-app-asset.headers
+CODE=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/client/v1/apps/$APP_ID/assets/../secret" -H "Authorization: Bearer $ADMIN_JWT"); [[ "$CODE" == "400" || "$CODE" == "404" ]]
 # restart and verify persistence
 kill "$SERVER_PID"; wait "$SERVER_PID" 2>/dev/null || true
 start_server

@@ -34,11 +34,10 @@ fn valid_app_id(value: &str) -> bool {
     !value.is_empty() && value.len() <= 64 && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
-/// Open an isolated static-UI app window under `zk-app://<app_id>/`.
-#[tauri::command]
-async fn open_app_window(app: tauri::AppHandle, window: tauri::WebviewWindow, app_id: String, entry: String) -> Result<(), String> {
-    if window.label().starts_with("zk-app-") { return Err("APP_FORBIDDEN".to_owned()); }
-    if !valid_app_id(&app_id) { return Err("APP_BAD_REQUEST".to_owned()); }
+fn open_app_window_impl(app: &tauri::AppHandle, app_id: &str, entry: &str) -> Result<(), String> {
+    if !valid_app_id(app_id) { return Err("APP_BAD_REQUEST".to_owned()); }
+    let app_id = app_id.to_owned();
+    let entry = entry.to_owned();
     let label = format!("zk-app-{app_id}");
     if let Some(window) = app.get_webview_window(&label) {
         window.set_focus().map_err(|error| error.to_string())?;
@@ -48,7 +47,7 @@ async fn open_app_window(app: tauri::AppHandle, window: tauri::WebviewWindow, ap
     let url: tauri::Url = format!("zk-app://localhost/{app_id}/{entry}").parse().map_err(|_| "APP_BAD_URL".to_owned())?;
     let data_dir = std::env::var("ZEOKEEL_HOME").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir().join("zeokeel")).join("app-webviews").join(&app_id);
     let args = app_id.clone();
-    WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(url))
+    WebviewWindowBuilder::new(app, &label, WebviewUrl::External(url))
         .title(format!("ZeoKeel App {app_id}"))
         .inner_size(900.0, 640.0)
         .incognito(true)
@@ -57,6 +56,13 @@ async fn open_app_window(app: tauri::AppHandle, window: tauri::WebviewWindow, ap
         .build()
         .map_err(|error| error.to_string())?;
     Ok(())
+}
+
+/// Open an isolated static-UI app window under `zk-app://<app_id>/`.
+#[tauri::command]
+async fn open_app_window(app: tauri::AppHandle, window: tauri::WebviewWindow, app_id: String, entry: String) -> Result<(), String> {
+    if window.label().starts_with("zk-app-") { return Err("APP_FORBIDDEN".to_owned()); }
+    open_app_window_impl(&app, &app_id, &entry)
 }
 
 /// App-window-only request command; main/webview windows are rejected by label.
@@ -158,6 +164,14 @@ fn run_window(state: Arc<AppState>) -> Result<(), String> {
                     }
                 }
             });
+            if let Ok(app_id) = std::env::var("ZEOKEEL_OPEN_APP_ID") {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = open_app_window_impl(&handle, &app_id, "index.html") {
+                        eprintln!("zk-desktop: open app window failed: {error}");
+                    }
+                });
+            }
             Ok(())
         });
     builder

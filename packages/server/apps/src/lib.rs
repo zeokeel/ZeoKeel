@@ -213,6 +213,8 @@ async fn request(State(state): State<AppState>, headers: HeaderMap, Path(id): Pa
     if decoded.len() > 1024 * 1024 { return Err(error(StatusCode::PAYLOAD_TOO_LARGE, "APP_BAD_REQUEST")); }
     let guest_body: Value = serde_json::from_slice(&decoded).unwrap_or(Value::Null);
     let request = json!({ "abi": ABI, "app_id": app.to_string(), "method": body.method, "path": body.path, "query": body.query, "body": guest_body, "request_id": body.request_id });
+    let total_before: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(size_bytes),0)::bigint FROM app_databases").fetch_one(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    if total_before > 20 * 1024 * 1024 * 1024 { return Err(error(StatusCode::TOO_MANY_REQUESTS, "APP_DB_QUOTA")); }
     let limits: Option<(i64, i64, i64)> = sqlx::query_as("SELECT fuel, max_concurrency, max_memory_bytes FROM app_runtime_limits WHERE app_id=$1").bind(app).fetch_optional(&state.pool).await.ok().flatten();
     let (fuel, max_concurrency, max_memory) = limits.unwrap_or((10_000_000, 4, 64 * 1024 * 1024));
     let app_permit = tokio::time::timeout(std::time::Duration::from_secs(5), semaphore(app, usize::try_from(max_concurrency).unwrap_or(4)).acquire_owned()).await.map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_CONCURRENCY"))?.map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_CONCURRENCY"))?;
@@ -232,6 +234,9 @@ async fn request(State(state): State<AppState>, headers: HeaderMap, Path(id): Pa
         let status = if code.starts_with("APP_LIMIT") { StatusCode::TOO_MANY_REQUESTS } else { StatusCode::BAD_REQUEST };
         error(status, code)
     })?;
+    for line in output.logs.iter().take(100) {
+        let _ = sqlx::query("INSERT INTO app_runtime_logs (app_id, level, message) VALUES ($1,'info',$2)").bind(app).bind(line).execute(&state.pool).await;
+    }
     sqlx::query("INSERT INTO app_calls (app_id, user_id, request_id, status, duration_ms, fuel) VALUES ($1,$2,$3,$4,$5,$6)")
         .bind(app).bind(user).bind(&body.request_id).bind(i64::try_from(output.response.get("status").and_then(Value::as_u64).unwrap_or(500)).unwrap_or(500))
         .bind(i64::try_from(output.elapsed.as_millis()).unwrap_or(0)).bind(i64::try_from(output.fuel_used).unwrap_or(0)).execute(&state.pool).await

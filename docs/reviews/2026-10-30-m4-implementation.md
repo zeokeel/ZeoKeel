@@ -349,3 +349,79 @@
 - P1-3：runtime limits max_concurrency/max_memory_bytes；UI entry 从 manifest 取。
 - P1-4：新增 `e2e/m4-client-apps.spec.ts`（真实窗口内 request 回显）；`apps-e2e.sh` employee/non-owner/can_open；golden 去 ignore（缺 artifact 时明确 skip，存在则运行）；`scripts/tauri-smoke.sh` Xvfb 启动真实 desktop 主窗口。
 - P1-5：capability 文件已加；Tauri 主窗口 smoke 通过；app-window capability 运行时仍无自动化（无 tauri-driver），partition 用 per-app data_directory+incognito 替代并记录。
+
+---
+
+## 10. 第四轮复评（R4，2026-10-30）
+
+> 对象：R3 修复后的 M4 实现。只读复跑；未改产品代码/spec（仅本记录）。
+> 仅列剩余 P0/P1。
+
+### 10.1 结论
+
+**CHANGES REQUIRED（CHANGES-REQUESTED）**
+
+- **P0：0**。
+- **P1：3 组**：retire/log 调度、Tauri app-window ACL/partition 运行时验证、限额/安全负向证据。
+- **M4 实现仍不可 APPROVED**。
+
+### 10.2 已关闭
+
+- SQL：`progress_handler` + per-query 5s + `max_page_count`；runtime limits `max_concurrency/max_memory` 读取；UI entry 从 manifest；20GB 全局检查；5s queue acquire。
+- 生命周期：`app-retire` job 代码、`delete`/purge/rollback；`0013_app_logs` 表。
+- 测试：`e2e/m4-client-apps.spec.ts` 增加；apps-e2e employee/can_open；golden 不再 ignored（本机 8.6s 通过）；tauri-smoke 主窗口通过。
+- 能力：capability 文件存在；app-window `permissions: []`；CSP 非 null；label gates。
+
+### 10.3 剩余 P1
+
+#### P1-1 · `app-retire` 未调度，`app_runtime_logs` 只建表不写入
+
+- `packages/server/jobs/src/lib.rs:216` 的 `spawn_loop` 只跑 `hold-expire/usage-pending/wallet-reconcile/wallet-grant/audit-retention/audit-verify`，**没有 `app-retire`**；只有 admin trigger 可手动跑，与 docs/06:99“每小时”不符。无 job/e2e 证明保留 30d/真删。
+- `app_runtime_logs` 仅 migration/job 引用；`crates/zk-kit-wasm` 的 `log` 仍是 `eprintln!`，没有任何 `INSERT INTO app_runtime_logs`。diagnostics 的 logs 为空，retire 清理的也是空表。
+- 20GB 检查只在 request 完成后；无超限写入/回滚/测试。
+- 修：把 `app-retire` 加进 `spawn_loop` 并配置小时幂等键；guest `log` 落 `app_runtime_logs`（app_id/level/长度上限）；20GB 写前/写后 fail-closed + e2e。
+
+#### P1-2 · Tauri app-window ACL/partition 仍未运行时验证
+
+- `scripts/tauri-smoke.sh` 只启动主窗口并截图（`target/evidence/m4/tauri-main.png` 263 bytes）；**没有打开 `zk-app-*` 窗口**，没有验证 app-window capability 是否允许 `app_request`、是否拒绝 `ipc_call`/`open_app_window`/core/plugin 命令。
+- `e2e/m4-client-apps.spec.ts` 走的是 serve 的 sandbox iframe（`App.tsx` Tauri 分支未在 Playwright 中执行），不能证明 Tauri 窗口路径。
+- `tauri.conf` 仍 `withGlobalTauri: true`；app-window `permissions: []` 是否阻断 core/plugin、而 `app_request` 是否可用，无实机/自动化证据。若任一 core/plugin 命令成功，应升 P0，修法为关闭 `withGlobalTauri`/独立 Tauri builder 或独立 IPC 通道。
+- `open_app_window` 的隔离是 `incognito` + per-app data_directory，**没有显式 partition**；docs/04:222 要求 partition；需 ADR 说明等价或补 partition。
+- 修：用 tauri-driver/窗口脚本打开 `zk-app-<id>`，断言 app_request 成功、其他命令 403、core/plugin 拒绝、导航逃逸受阻；捕获 app window 截图；补 partition 或 ADR。
+
+#### P1-3 · 限额/安全负向证据仍不足
+
+- `apps-e2e` 已加 employee/can_open，但**没有** fuel/time/memory/concurrency/queue/DB 100MB/20GB/16 表/日志 30d 的逐项 e2e；`cargo test` 的 memory 测试仍接受 `Memory|Fuel|Timeout`。
+- `m4-client-apps` 只测打开 + app_request roundtrip；未测下架 410 错误页、静态 UI asset 白名单/MIME/CSP、无 token/跨 app 资源。
+- 修：每项限额给命令与错误码；memory 断言收紧；apps-e2e 加 20GB/表数/日志/retire；client e2e 加 delist/asset/XSS/CSP 负向。
+
+### 10.4 R4 证据
+
+| 命令 | 结果 |
+| --- | --- |
+| `bash scripts/apps-e2e.sh` | **PASS**（EXIT 0）；含 employee/can_open |
+| `bash scripts/admin-e2e.sh` | **PASS**（EXIT 0）9 passed |
+| `bash scripts/login-e2e.sh` | **PASS**（EXIT 0）4 passed（含 `m4-client-apps`，但走 serve iframe） |
+| `cargo test -p zk-kit-wasm -p zk-srv-apps -p zk-srv-app-db --offline` | **PASS**；golden 1 passed（8.6s） |
+| `cargo test --workspace --offline` | **PASS** |
+| `cargo clippy --workspace --all-targets --offline -- -D warnings` | **PASS** |
+| `zk compose --edition enterprise ... --check` | **PASS**（16 files） |
+| `zk validate` / `schema-check` / `zk db lock --check` | **PASS**：69 packages/13 migrations |
+| `bash scripts/tauri-smoke.sh` | **PASS**：主窗口截图；**不含 app window** |
+| `rg 'app-retire' packages/server/jobs/src/lib.rs` | 只在 `run_job` match；`spawn_loop` 无 |
+| `rg 'INSERT INTO app_runtime_logs' packages crates` | **无匹配** |
+
+### 10.5 结论
+
+- **P0：0；P1：3 组**。
+- **M4 实现仍不可 APPROVED**：补 P1-1/P1-2/P1-3 后复评。
+
+- 关联 spec：`specs/changes/2026-10-30-wasm-app-center`。
+- 复评结论（第四轮）：**CHANGES-REQUESTED**
+
+
+## 12. R4 后修复（Lead，2026-10-30）
+
+- P1-1：`app-retire` 加入 `spawn_loop` 小时任务；guest `log` 经 `RunOutput.logs` 落 `app_runtime_logs`（每次≤100行）；20GB 前置检查 + SQLite `max_page_count` 写限。
+- P1-2：`scripts/tauri-smoke.sh` 用 `ZEOKEEL_OPEN_APP_ID` 打开真实 `zk-app-smoke-app` Tauri 窗口并截图 `target/evidence/m4/tauri-app-window.png`；capability 文件/CSP 存在。仍未用 tauri-driver 验证 core/plugin ACL。
+- P1-3：apps-e2e 增加静态 UI MIME/whitelist 负向、can_open/employee；m4-client-apps e2e 打开+request。
