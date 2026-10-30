@@ -199,6 +199,8 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 Err(error) => CommandResponse::err(format!("update/check: {error}")),
             }
         }
+        commands::SKILLS_INSTALL => install_skill(payload),
+        commands::SKILLS_INSTALLED => installed_skills(),
         commands::CHAT_SEND => chat_send(state, payload),
         commands::CHAT_CANCEL => chat_cancel(state, payload),
         commands::APPROVAL_DECIDE => {
@@ -242,6 +244,120 @@ fn list_workspace_files(root: &str) -> Result<Vec<Value>, String> {
         a_path.cmp(b_path)
     });
     Ok(items)
+}
+
+fn skill_root() -> Result<std::path::PathBuf, String> {
+    let base = match std::env::var("ZEOKEEL_HOME") {
+        Ok(value) => std::path::PathBuf::from(value),
+        Err(_) => dirs::home_dir().ok_or_else(|| "home directory unavailable".to_owned())?.join(".zeokeel"),
+    };
+    Ok(base.join("skills"))
+}
+
+fn safe_component(value: &str) -> bool {
+    !value.is_empty() && value.len() <= 128 && value.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+}
+
+fn install_skill(payload: &Value) -> CommandResponse {
+    use base64::Engine;
+    use std::io::Read;
+    let (Some(name), Some(version), Some(encoded)) = (
+        payload.get("name").and_then(Value::as_str),
+        payload.get("version").and_then(Value::as_str),
+        payload.get("archive_base64").and_then(Value::as_str),
+    ) else {
+        return CommandResponse::err("missing name/version/archive_base64");
+    };
+    if !safe_component(name) || !safe_component(version) {
+        return CommandResponse::err("SKILL_VALIDATION");
+    }
+    let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(encoded) else {
+        return CommandResponse::err("SKILL_ZIP_INVALID");
+    };
+    if bytes.len() > 16 * 1024 * 1024 {
+        return CommandResponse::err("SKILL_ARCHIVE_TOO_LARGE");
+    }
+    let Ok(mut archive) = zip::ZipArchive::new(std::io::Cursor::new(bytes)) else {
+        return CommandResponse::err("SKILL_ZIP_INVALID");
+    };
+    let root = match skill_root() { Ok(root) => root, Err(error) => return CommandResponse::err(error) };
+    let target = root.join(name).join(version);
+    if target.exists() {
+        return CommandResponse::err("CONFLICT");
+    }
+    let temp = root.join(format!(".tmp-{name}-{version}-{}", uuid::Uuid::new_v4()));
+    if let Err(error) = std::fs::create_dir_all(&temp) {
+        return CommandResponse::err(format!("skills install: {error}"));
+    }
+    let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut total = 0_u64;
+    for index in 0..archive.len() {
+        let Ok(mut entry) = archive.by_index(index) else {
+            let _ = std::fs::remove_dir_all(&temp);
+            return CommandResponse::err("SKILL_ZIP_INVALID");
+        };
+        let Some(relative) = entry.enclosed_name().map(|path| path.to_path_buf()) else {
+            let _ = std::fs::remove_dir_all(&temp);
+            return CommandResponse::err("SKILL_ENTRY_FORBIDDEN");
+        };
+        let mode = entry.unix_mode().unwrap_or(0o100644);
+        let kind = mode & 0o170000;
+        if kind != 0 && kind != 0o100000 && kind != 0o040000 {
+            let _ = std::fs::remove_dir_all(&temp);
+            return CommandResponse::err("SKILL_ENTRY_FORBIDDEN");
+        }
+        let destination = temp.join(&relative);
+        if entry.is_dir() {
+            if let Err(error) = std::fs::create_dir_all(&destination) { let _ = std::fs::remove_dir_all(&temp); return CommandResponse::err(error.to_string()); }
+            continue;
+        }
+        total = total.saturating_add(entry.size());
+        if total > 64 * 1024 * 1024 {
+            let _ = std::fs::remove_dir_all(&temp);
+            return CommandResponse::err("SKILL_ARCHIVE_TOO_LARGE");
+        }
+        let mut content = Vec::new();
+        if let Err(error) = entry.read_to_end(&mut content) {
+            let _ = std::fs::remove_dir_all(&temp);
+            return CommandResponse::err(format!("SKILL_ZIP_INVALID: {error}"));
+        }
+        if let Some(parent) = destination.parent() {
+            if let Err(error) = std::fs::create_dir_all(parent) { let _ = std::fs::remove_dir_all(&temp); return CommandResponse::err(error.to_string()); }
+        }
+        if let Err(error) = std::fs::write(&destination, &content) {
+            let _ = std::fs::remove_dir_all(&temp);
+            return CommandResponse::err(error.to_string());
+        }
+        entries.push((relative.to_string_lossy().replace('\\', "/"), content));
+    }
+    let tree = zk_kit_content::tree_sha256(entries);
+    if let Some(parent) = target.parent() {
+        if let Err(error) = std::fs::create_dir_all(parent) { let _ = std::fs::remove_dir_all(&temp); return CommandResponse::err(error.to_string()); }
+    }
+    if let Err(error) = std::fs::rename(&temp, &target) {
+        let _ = std::fs::remove_dir_all(&temp);
+        return CommandResponse::err(format!("skills install: {error}"));
+    }
+    CommandResponse::ok(json!({ "installed": true, "tree_sha256": tree, "path": target.to_string_lossy() }))
+}
+
+fn installed_skills() -> CommandResponse {
+    let root = match skill_root() { Ok(root) => root, Err(error) => return CommandResponse::err(error) };
+    let mut items = Vec::new();
+    if let Ok(names) = std::fs::read_dir(&root) {
+        for name in names.filter_map(Result::ok) {
+            if !name.file_type().map(|kind| kind.is_dir()).unwrap_or(false) { continue; }
+            let name_value = name.file_name().to_string_lossy().to_string();
+            if let Ok(versions) = std::fs::read_dir(name.path()) {
+                for version in versions.filter_map(Result::ok) {
+                    if version.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+                        items.push(json!({ "name": name_value, "version": version.file_name().to_string_lossy() }));
+                    }
+                }
+            }
+        }
+    }
+    CommandResponse::ok(json!({ "items": items }))
 }
 
 fn masked_settings(settings: &AppSettings) -> Value {

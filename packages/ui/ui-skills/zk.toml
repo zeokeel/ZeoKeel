@@ -1,0 +1,21 @@
+schema = 1
+id = "zeokeel/ui-skills"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "Client skills panel"
+
+[role]
+name = "ui.slot.skills"
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-ui-skills" }
+ui = { package = "@zeokeel/ui-skills" }
+
+[[ui.contributions]]
+slot = "ui.skills"
+component = "panel.skills"
+order = 10

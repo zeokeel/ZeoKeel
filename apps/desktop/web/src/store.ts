@@ -1,0 +1,100 @@
+/** Enterprise content catalog (skills/connectors) API client. */
+import type { AuthSession } from "./auth";
+
+export interface SkillItem {
+  id: string;
+  name: string;
+  version: string;
+  sha256: string;
+  enforced: boolean;
+  min_client_version: string;
+  can_install: boolean;
+}
+
+export interface ConnectorItem {
+  id: string;
+  name: string;
+  transport: string;
+  enabled: boolean;
+  can_enable: boolean;
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+function text(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function bool(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+export async function fetchSkills(session: AuthSession, serverUrl: string): Promise<SkillItem[]> {
+  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/skills`, {
+    headers: { authorization: `Bearer ${session.access_token}` },
+  });
+  if (!response.ok) throw new Error(`skills HTTP ${response.status}`);
+  const body: unknown = await response.json();
+  const items = record(body)?.["items"];
+  if (!Array.isArray(items)) return [];
+  return items.flatMap((item) => {
+    const value = record(item);
+    if (value === null) return [];
+    const name = text(value["name"]);
+    const version = text(value["version"]);
+    const sha256 = text(value["sha256"]);
+    const canInstall = bool(value["can_install"]);
+    if (name === null || version === null || sha256 === null || canInstall === null) return [];
+    return [{ id: text(value["id"]) ?? name, name, version, sha256, enforced: bool(value["enforced"]) ?? false, min_client_version: text(value["min_client_version"]) ?? "", can_install: canInstall }];
+  });
+}
+
+export async function fetchConnectors(session: AuthSession, serverUrl: string): Promise<ConnectorItem[]> {
+  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/connectors`, {
+    headers: { authorization: `Bearer ${session.access_token}` },
+  });
+  if (!response.ok) throw new Error(`connectors HTTP ${response.status}`);
+  const body: unknown = await response.json();
+  const items = record(body)?.["items"];
+  if (!Array.isArray(items)) return [];
+  return items.flatMap((item) => {
+    const value = record(item);
+    if (value === null) return [];
+    const name = text(value["name"]);
+    const transport = text(value["transport"]);
+    const canEnable = bool(value["can_enable"]);
+    if (name === null || transport === null || canEnable === null) return [];
+    return [{ id: text(value["id"]) ?? name, name, transport, enabled: bool(value["enabled"]) ?? false, can_enable: canEnable }];
+  });
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunk));
+  }
+  return btoa(binary);
+}
+
+export async function downloadSkillArchive(session: AuthSession, serverUrl: string, item: SkillItem): Promise<{ archive_base64: string; sha256: string }> {
+  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/skills/${encodeURIComponent(item.name)}/${encodeURIComponent(item.version)}/archive`, {
+    headers: { authorization: `Bearer ${session.access_token}` },
+  });
+  if (!response.ok) throw new Error(`skills download HTTP ${response.status}`);
+  const header = response.headers.get("x-zeokeel-skill-sha256");
+  if (header !== null && header !== item.sha256) throw new Error("CHECKSUM_MISMATCH");
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  return { archive_base64: toBase64(bytes), sha256: item.sha256 };
+}
+
+export async function toggleConnector(session: AuthSession, serverUrl: string, item: ConnectorItem): Promise<void> {
+  const action = item.enabled ? "disable" : "enable";
+  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/connectors/${encodeURIComponent(item.id)}/${action}`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${session.access_token}` },
+  });
+  if (!response.ok) throw new Error(`connector HTTP ${response.status}`);
+}

@@ -1,4 +1,6 @@
 [packages]
+"ui.slot.connectors" = "zeokeel/ui-connectors"
+"ui.slot.skills" = "zeokeel/ui-skills"
 "admin.page.connectors" = "zeokeel/admin-connectors"
 "srv.connectors" = "zeokeel/connectors"
 "admin.page.skills" = "zeokeel/admin-skills"

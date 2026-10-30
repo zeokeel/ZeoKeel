@@ -1,0 +1,21 @@
+schema = 1
+id = "zeokeel/ui-connectors"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "Client connectors panel"
+
+[role]
+name = "ui.slot.connectors"
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-ui-connectors" }
+ui = { package = "@zeokeel/ui-connectors" }
+
+[[ui.contributions]]
+slot = "ui.connectors"
+component = "panel.connectors"
+order = 10

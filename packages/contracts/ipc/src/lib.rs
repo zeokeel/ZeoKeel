@@ -100,6 +100,10 @@ pub mod commands {
     pub const WORKSPACE_FILES: &str = "workspace.files";
     /// Check personal update feed.
     pub const UPDATE_CHECK: &str = "update.check";
+    /// Install a downloaded skill archive (validated/extracted by host).
+    pub const SKILLS_INSTALL: &str = "skills.install";
+    /// List installed skills (host-managed).
+    pub const SKILLS_INSTALLED: &str = "skills.installed";
     /// Runtime metadata (edition/packages).
     pub const META_GET: &str = "meta.get";
     /// Inject enterprise gateway server URL/access token after login.

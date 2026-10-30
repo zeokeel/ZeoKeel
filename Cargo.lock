@@ -6192,19 +6192,8 @@ name = "zk-composed"
 version = "0.1.0"
 dependencies = [
  "serde_json",
- "zk-admin-admin-audit",
- "zk-admin-admin-connectors",
- "zk-admin-admin-jobs",
- "zk-admin-admin-pricing",
- "zk-admin-admin-settings",
- "zk-admin-admin-skills",
- "zk-admin-admin-usage",
- "zk-admin-admin-users",
- "zk-admin-admin-wallet",
- "zk-admin-shell",
- "zk-admin-ui-kit",
  "zk-agent-loop",
- "zk-client-auth",
+ "zk-client-update-github",
  "zk-contract-admin-ui",
  "zk-contract-agent",
  "zk-contract-auth",
@@ -6225,19 +6214,7 @@ dependencies = [
  "zk-contract-update",
  "zk-contract-user",
  "zk-contract-wallet",
- "zk-llm-gateway",
- "zk-srv-audit",
- "zk-srv-auth-local",
- "zk-srv-connectors",
- "zk-srv-content",
- "zk-srv-gateway",
- "zk-srv-http",
- "zk-srv-jobs",
- "zk-srv-pricing",
- "zk-srv-settings",
- "zk-srv-skills",
- "zk-srv-users",
- "zk-srv-wallet",
+ "zk-llm-mock",
  "zk-store-session-sqlite",
  "zk-store-settings-json",
  "zk-tool-fs",
@@ -6245,9 +6222,9 @@ dependencies = [
  "zk-ui-commands",
  "zk-ui-inspector",
  "zk-ui-kit",
- "zk-ui-login",
  "zk-ui-sessions",
  "zk-ui-settings",
+ "zk-ui-settings-provider",
  "zk-ui-shell",
 ]
 
@@ -6419,6 +6396,7 @@ name = "zk-desktop"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "dirs 6.0.0",
  "futures",
  "serde",
@@ -6428,12 +6406,14 @@ dependencies = [
  "tokio",
  "tower-http",
  "uuid",
+ "zip",
  "zk-composed",
  "zk-contract-agent",
  "zk-contract-config",
  "zk-contract-ipc",
  "zk-contract-session",
  "zk-contract-tool",
+ "zk-kit-content",
 ]
 
 [[package]]
@@ -6743,6 +6723,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-ui-connectors"
+version = "0.1.0"
+dependencies = [
+ "zk-contract-ui",
+]
+
+[[package]]
 name = "zk-ui-inspector"
 version = "0.1.0"
 dependencies = [
@@ -6786,6 +6773,13 @@ dependencies = [
 
 [[package]]
 name = "zk-ui-shell"
+version = "0.1.0"
+dependencies = [
+ "zk-contract-ui",
+]
+
+[[package]]
+name = "zk-ui-skills"
 version = "0.1.0"
 dependencies = [
  "zk-contract-ui",
