@@ -68,7 +68,7 @@ export function Connectors({ onError }: { onError: (message: string) => void }) 
           <button type="button" onClick={() => { void api(`/api/admin/connectors/${selected}/oauth`, { method: "POST", body: JSON.stringify({ client_id: clientId, scopes: ["mcp"], redirect_uri: redirect }) }).then(load).catch(fail); }}>保存 OAuth</button>
           <input aria-label="authorize_url" value={authorizeUrl} onChange={(event) => { setAuthorizeUrl(event.target.value); }} />
           <input aria-label="token_url" value={tokenUrl} onChange={(event) => { setTokenUrl(event.target.value); }} />
-          <button type="button" onClick={() => { act(selected, "force-update", { force: true, min_client_version: "0.1.0" }); }}>强制更新</button>
+          <button type="button" onClick={() => { act(selected, "force-update", "POST", { force: true, min_client_version: "0.1.0" }); }}>强制更新</button>
         </div>
       ) : null}
     </section>
