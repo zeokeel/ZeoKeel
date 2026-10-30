@@ -1,5 +1,10 @@
 //! Conformance + behavior tests for `zk-agent-loop` (role `agent.loop`).
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)] // test-only
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)] // test-only
 
 use std::sync::{Arc, Mutex};
 
@@ -162,24 +167,37 @@ fn streaming_emits_ordered_utf8_events() {
     struct Llm;
     impl LlmProvider for Llm {
         fn complete(&self, _prompt: &str) -> Result<String, LlmError> {
-            Ok("你好🙂这是一段用于测试分片的中文和 emoji 混合文本，长度足够产生多个 delta。".to_owned())
+            Ok(
+                "你好🙂这是一段用于测试分片的中文和 emoji 混合文本，长度足够产生多个 delta。"
+                    .to_owned(),
+            )
         }
     }
     struct Sink(Mutex<Vec<AgentEvent>>);
     impl EventSink for Sink {
         fn emit(&self, event: AgentEvent) {
-            if let Ok(mut guard) = self.0.lock() { guard.push(event); }
+            if let Ok(mut guard) = self.0.lock() {
+                guard.push(event);
+            }
         }
     }
     let loop_ = zk_agent_loop::AgentLoop::new(vec![], std::sync::Arc::new(Llm));
     let sink = Sink(Mutex::new(Vec::new()));
     let reply = loop_.run_stream("t1", "hi", &sink).unwrap();
     let events = sink.0.lock().unwrap();
-    assert!(matches!(events.first(), Some(AgentEvent::TurnStarted { .. })));
-    assert!(matches!(events.last(), Some(AgentEvent::TurnCompleted { .. })));
+    assert!(matches!(
+        events.first(),
+        Some(AgentEvent::TurnStarted { .. })
+    ));
+    assert!(matches!(
+        events.last(),
+        Some(AgentEvent::TurnCompleted { .. })
+    ));
     let mut joined = String::new();
     for event in events.iter() {
-        if let AgentEvent::TextDelta { delta } = event { joined.push_str(delta); }
+        if let AgentEvent::TextDelta { delta } = event {
+            joined.push_str(delta);
+        }
     }
     assert_eq!(joined, reply.text);
 }

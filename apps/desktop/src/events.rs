@@ -13,7 +13,12 @@ use zk_contract_ipc::UiEvent;
 pub const EVENT_BUFFER: usize = 1024;
 
 /// Emit one agent event as a `UiEvent` on the broadcast bus.
-pub fn emit_agent(bus: &broadcast::Sender<UiEvent>, stream_id: &str, seq: &AtomicU64, event: &AgentEvent) {
+pub fn emit_agent(
+    bus: &broadcast::Sender<UiEvent>,
+    stream_id: &str,
+    seq: &AtomicU64,
+    event: &AgentEvent,
+) {
     let Ok(payload) = serde_json::to_value(event) else {
         return;
     };
@@ -26,7 +31,13 @@ pub fn emit_agent(bus: &broadcast::Sender<UiEvent>, stream_id: &str, seq: &Atomi
     let _ = bus.send(value);
 }
 
-pub fn emit_kind(bus: &broadcast::Sender<UiEvent>, stream_id: &str, seq: &AtomicU64, kind: &str, payload: Value) {
+pub fn emit_kind(
+    bus: &broadcast::Sender<UiEvent>,
+    stream_id: &str,
+    seq: &AtomicU64,
+    kind: &str,
+    payload: Value,
+) {
     let value = UiEvent {
         stream_id: stream_id.to_owned(),
         seq: seq.fetch_add(1, Ordering::SeqCst),

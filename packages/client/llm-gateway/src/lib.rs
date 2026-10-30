@@ -1,9 +1,9 @@
 //! Enterprise gateway provider: only the login server, only Responses API.
 #![forbid(unsafe_code)]
 
-use std::sync::{OnceLock, RwLock};
-use std::io::{BufRead, BufReader};
 use serde_json::Value;
+use std::io::{BufRead, BufReader};
+use std::sync::{OnceLock, RwLock};
 use zk_contract_llm::{LlmError, LlmProvider};
 
 const DEFAULT_MODEL: &str = "deepseek-chat";
@@ -20,7 +20,8 @@ impl GatewayConfig {
         Self {
             base_url: std::env::var("ZEOKEEL_GATEWAY_BASE_URL").unwrap_or_default(),
             access_token: std::env::var("ZEOKEEL_GATEWAY_ACCESS_TOKEN").unwrap_or_default(),
-            model: std::env::var("ZEOKEEL_GATEWAY_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned()),
+            model: std::env::var("ZEOKEEL_GATEWAY_MODEL")
+                .unwrap_or_else(|_| DEFAULT_MODEL.to_owned()),
         }
     }
 }
@@ -42,7 +43,11 @@ pub fn set_credentials(base_url: &str, access_token: &str) {
 #[must_use]
 pub fn credentials() -> Option<(String, String)> {
     let config = config().read().ok()?;
-    if config.base_url.is_empty() || config.access_token.is_empty() { None } else { Some((config.base_url.clone(), config.access_token.clone())) }
+    if config.base_url.is_empty() || config.access_token.is_empty() {
+        None
+    } else {
+        Some((config.base_url.clone(), config.access_token.clone()))
+    }
 }
 
 /// Override the default gateway model (from bootstrap catalog).
@@ -63,7 +68,9 @@ pub struct GatewayLlm {
 /// Factory used by generated glue (role `llm.provider.default`).
 #[must_use]
 pub fn provider() -> GatewayLlm {
-    GatewayLlm { http: reqwest::blocking::Client::new() }
+    GatewayLlm {
+        http: reqwest::blocking::Client::new(),
+    }
 }
 
 impl GatewayLlm {
@@ -75,21 +82,33 @@ impl GatewayLlm {
             config.access_token = access_token;
             config.model = model;
         }
-        Self { http: reqwest::blocking::Client::new() }
+        Self {
+            http: reqwest::blocking::Client::new(),
+        }
     }
 
     fn credentials(&self) -> Result<(String, String, String), LlmError> {
         match config().read() {
             Ok(config) => {
                 if config.base_url.is_empty() {
-                    return Err(LlmError::InvalidRequest("gateway server URL is missing".to_owned()));
+                    return Err(LlmError::InvalidRequest(
+                        "gateway server URL is missing".to_owned(),
+                    ));
                 }
                 if config.access_token.is_empty() {
-                    return Err(LlmError::InvalidRequest("gateway access token is missing".to_owned()));
+                    return Err(LlmError::InvalidRequest(
+                        "gateway access token is missing".to_owned(),
+                    ));
                 }
-                Ok((config.base_url.clone(), config.access_token.clone(), config.model.clone()))
+                Ok((
+                    config.base_url.clone(),
+                    config.access_token.clone(),
+                    config.model.clone(),
+                ))
             }
-            Err(_) => Err(LlmError::InvalidRequest("gateway config poisoned".to_owned())),
+            Err(_) => Err(LlmError::InvalidRequest(
+                "gateway config poisoned".to_owned(),
+            )),
         }
     }
 
@@ -110,7 +129,10 @@ impl GatewayLlm {
             }
         }
         if text.is_empty() {
-            value.get("output_text").and_then(Value::as_str).map(str::to_owned)
+            value
+                .get("output_text")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
         } else {
             Some(text)
         }
@@ -133,25 +155,41 @@ impl LlmProvider for GatewayLlm {
             .map_err(|error| LlmError::Upstream(error.to_string()))?;
         let status = response.status();
         if !status.is_success() {
-            return Err(LlmError::Upstream(format!("gateway HTTP {}", status.as_u16())));
+            return Err(LlmError::Upstream(format!(
+                "gateway HTTP {}",
+                status.as_u16()
+            )));
         }
-        let content_type = response.headers().get("content-type").and_then(|value| value.to_str().ok()).unwrap_or("");
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
         if !content_type.starts_with("text/event-stream") {
-            let body = response.text().map_err(|error| LlmError::Upstream(error.to_string()))?;
-            let value: Value = serde_json::from_str(&body).map_err(|_| LlmError::Upstream("invalid gateway response".to_owned()))?;
-            let text = Self::text_from(&value).ok_or_else(|| LlmError::Upstream("gateway response has no output text".to_owned()))?;
+            let body = response
+                .text()
+                .map_err(|error| LlmError::Upstream(error.to_string()))?;
+            let value: Value = serde_json::from_str(&body)
+                .map_err(|_| LlmError::Upstream("invalid gateway response".to_owned()))?;
+            let text = Self::text_from(&value).ok_or_else(|| {
+                LlmError::Upstream("gateway response has no output text".to_owned())
+            })?;
             on_delta(&text);
             return Ok(text);
         }
         let mut full = String::new();
         for line in BufReader::new(response).lines() {
             let line = line.map_err(|error| LlmError::Upstream(error.to_string()))?;
-            let Some(data) = line.strip_prefix("data:") else { continue };
+            let Some(data) = line.strip_prefix("data:") else {
+                continue;
+            };
             let data = data.trim();
             if data == "[DONE]" {
                 break;
             }
-            let Ok(value) = serde_json::from_str::<Value>(data) else { continue };
+            let Ok(value) = serde_json::from_str::<Value>(data) else {
+                continue;
+            };
             if let Some(delta) = value.get("delta").and_then(Value::as_str) {
                 full.push_str(delta);
                 on_delta(delta);
@@ -170,11 +208,18 @@ impl LlmProvider for GatewayLlm {
             .send()
             .map_err(|error| LlmError::Upstream(error.to_string()))?;
         let status = response.status();
-        let body = response.text().map_err(|error| LlmError::Upstream(error.to_string()))?;
+        let body = response
+            .text()
+            .map_err(|error| LlmError::Upstream(error.to_string()))?;
         if !status.is_success() {
-            return Err(LlmError::Upstream(format!("gateway HTTP {}", status.as_u16())));
+            return Err(LlmError::Upstream(format!(
+                "gateway HTTP {}",
+                status.as_u16()
+            )));
         }
-        let value: Value = serde_json::from_str(&body).map_err(|_| LlmError::Upstream("invalid gateway response".to_owned()))?;
-        Self::text_from(&value).ok_or_else(|| LlmError::Upstream("gateway response has no output text".to_owned()))
+        let value: Value = serde_json::from_str(&body)
+            .map_err(|_| LlmError::Upstream("invalid gateway response".to_owned()))?;
+        Self::text_from(&value)
+            .ok_or_else(|| LlmError::Upstream("gateway response has no output text".to_owned()))
     }
 }

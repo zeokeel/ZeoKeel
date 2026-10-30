@@ -40,7 +40,8 @@ async fn main() -> Result<(), String> {
     let state = state(pool);
     zk_srv_jobs::spawn_loop(state.pool.clone());
     if let Ok(password) = std::env::var("ZEOKEEL_BOOTSTRAP_ADMIN_PASSWORD") {
-        let username = std::env::var("ZEOKEEL_BOOTSTRAP_ADMIN_USERNAME").unwrap_or_else(|_| "admin".to_owned());
+        let username = std::env::var("ZEOKEEL_BOOTSTRAP_ADMIN_USERNAME")
+            .unwrap_or_else(|_| "admin".to_owned());
         let created = ensure_bootstrap_admin(&state, &username, &password)
             .await
             .map_err(|error| format!("bootstrap admin: {error}"))?;
@@ -67,7 +68,8 @@ async fn main() -> Result<(), String> {
 
 async fn serve(app: Router) -> Result<(), String> {
     let addr = std::env::var("ZEOKEEL_SERVER_ADDR").unwrap_or_else(|_| DEFAULT_ADDR.to_owned());
-    let admin_dist = std::env::var("ZEOKEEL_ADMIN_DIST").unwrap_or_else(|_| "apps/admin/web/dist".to_owned());
+    let admin_dist =
+        std::env::var("ZEOKEEL_ADMIN_DIST").unwrap_or_else(|_| "apps/admin/web/dist".to_owned());
     let admin_index = format!("{admin_dist}/index.html");
     let app = app.nest_service(
         "/admin",
@@ -77,9 +79,16 @@ async fn serve(app: Router) -> Result<(), String> {
     let app = if let Ok(origin) = std::env::var("ZEOKEEL_DEV_CORS_ORIGIN") {
         app.layer(
             CorsLayer::new()
-                .allow_origin(origin.parse::<axum::http::HeaderValue>().map_err(|error| error.to_string())?)
+                .allow_origin(
+                    origin
+                        .parse::<axum::http::HeaderValue>()
+                        .map_err(|error| error.to_string())?,
+                )
                 .allow_methods([axum::http::Method::GET, axum::http::Method::POST])
-                .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::AUTHORIZATION]),
+                .allow_headers([
+                    axum::http::header::CONTENT_TYPE,
+                    axum::http::header::AUTHORIZATION,
+                ]),
         )
     } else {
         app

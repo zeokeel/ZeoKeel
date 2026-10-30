@@ -32,19 +32,30 @@ struct ServeState {
 
 /// Run the HTTP carrier until the process exits.
 pub fn run(state: Arc<AppState>, addr: &str) -> Result<(), String> {
-    let listener = std::net::TcpListener::bind(addr).map_err(|error| format!("bind {addr}: {error}"))?;
-    listener.set_nonblocking(true).map_err(|error| error.to_string())?;
-    let dist = std::env::var("ZEOKEEL_WEB_DIST").unwrap_or_else(|_| "apps/desktop/web/dist".to_owned());
-    let state = ServeState { app: state, token: uuid::Uuid::new_v4().to_string(), dist };
+    let listener =
+        std::net::TcpListener::bind(addr).map_err(|error| format!("bind {addr}: {error}"))?;
+    listener
+        .set_nonblocking(true)
+        .map_err(|error| error.to_string())?;
+    let dist =
+        std::env::var("ZEOKEEL_WEB_DIST").unwrap_or_else(|_| "apps/desktop/web/dist".to_owned());
+    let state = ServeState {
+        app: state,
+        token: uuid::Uuid::new_v4().to_string(),
+        dist,
+    };
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .map_err(|error| error.to_string())?;
     runtime.block_on(async move {
         let app = router(state);
-        axum::serve(tokio::net::TcpListener::from_std(listener).map_err(|e| e.to_string())?, app)
-            .await
-            .map_err(|error| error.to_string())
+        axum::serve(
+            tokio::net::TcpListener::from_std(listener).map_err(|e| e.to_string())?,
+            app,
+        )
+        .await
+        .map_err(|error| error.to_string())
     })
 }
 
@@ -86,7 +97,10 @@ fn authorized(headers: &HeaderMap, token: &str) -> bool {
         .and_then(|value| value.to_str().ok())
         .is_some_and(|cookies| {
             cookies.split(';').any(|cookie| {
-                cookie.trim().split_once('=').is_some_and(|(name, value)| name == COOKIE_NAME && value == token)
+                cookie
+                    .trim()
+                    .split_once('=')
+                    .is_some_and(|(name, value)| name == COOKIE_NAME && value == token)
             })
         })
 }
@@ -105,7 +119,10 @@ async fn index(State(state): State<ServeState>) -> Response {
     let Ok(body) = std::fs::read_to_string(path) else {
         return (StatusCode::INTERNAL_SERVER_ERROR, "web dist missing").into_response();
     };
-    let cookie = format!("{COOKIE_NAME}={}; HttpOnly; SameSite=Strict; Path=/", state.token);
+    let cookie = format!(
+        "{COOKIE_NAME}={}; HttpOnly; SameSite=Strict; Path=/",
+        state.token
+    );
     let mut response = Html(body).into_response();
     if let Ok(value) = HeaderValue::from_str(&cookie) {
         response.headers_mut().insert(header::SET_COOKIE, value);
@@ -119,15 +136,16 @@ async fn ipc(
     Json(request): Json<CommandRequest>,
 ) -> Response {
     if !authorized(&headers, &state.token) {
-        return (StatusCode::UNAUTHORIZED, Json(CommandResponse::err("unauthorized"))).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(CommandResponse::err("unauthorized")),
+        )
+            .into_response();
     }
     Json(dispatch(&state.app, &request.name, &request.payload)).into_response()
 }
 
-async fn events(
-    State(state): State<ServeState>,
-    headers: HeaderMap,
-) -> Response {
+async fn events(State(state): State<ServeState>, headers: HeaderMap) -> Response {
     if !authorized(&headers, &state.token) {
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
@@ -137,12 +155,17 @@ async fn events(
             match receiver.recv().await {
                 Ok(event) => {
                     let json = serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_owned());
-                    return Some((Ok::<_, std::convert::Infallible>(Event::default().data(json)), receiver));
+                    return Some((
+                        Ok::<_, std::convert::Infallible>(Event::default().data(json)),
+                        receiver,
+                    ));
                 }
                 Err(broadcast::error::RecvError::Lagged(_)) => continue,
                 Err(broadcast::error::RecvError::Closed) => return None,
             }
         }
     });
-    Sse::new(stream).keep_alive(KeepAlive::default()).into_response()
+    Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response()
 }

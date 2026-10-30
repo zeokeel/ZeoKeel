@@ -31,7 +31,10 @@ impl AppState {
     /// Build state with a fresh ephemeral EdDSA key.
     #[must_use]
     pub fn new(pool: PgPool) -> Self {
-        Self { pool, jwt: JwtKeys::ephemeral() }
+        Self {
+            pool,
+            jwt: JwtKeys::ephemeral(),
+        }
     }
 }
 
@@ -44,7 +47,11 @@ pub struct ServerError {
 
 impl IntoResponse for ServerError {
     fn into_response(self) -> Response {
-        (self.status, Json(json!({ "ok": false, "error": self.code }))).into_response()
+        (
+            self.status,
+            Json(json!({ "ok": false, "error": self.code })),
+        )
+            .into_response()
     }
 }
 
@@ -65,7 +72,10 @@ impl JwtKeys {
     /// Generate ephemeral dev keys.
     #[must_use]
     pub fn ephemeral() -> Self {
-        Self { signing: SigningKey::generate(&mut OsRng), kid: "ephemeral".to_owned() }
+        Self {
+            signing: SigningKey::generate(&mut OsRng),
+            kid: "ephemeral".to_owned(),
+        }
     }
 
     fn verifying(&self) -> VerifyingKey {
@@ -87,7 +97,10 @@ struct Claims {
 /// Current time seconds.
 #[must_use]
 pub fn now_secs() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 /// Random URL-safe token.
@@ -109,37 +122,81 @@ pub fn sha256_hex(value: &str) -> String {
 /// Hash a password.
 pub fn hash_password(password: &str) -> Result<String, String> {
     let salt = SaltString::generate(&mut OsRng);
-    Argon2::default().hash_password(password.as_bytes(), &salt).map(|hash| hash.to_string()).map_err(|error| error.to_string())
+    Argon2::default()
+        .hash_password(password.as_bytes(), &salt)
+        .map(|hash| hash.to_string())
+        .map_err(|error| error.to_string())
 }
 
 /// Verify a password.
 #[must_use]
 pub fn verify_password(password: &str, encoded: &str) -> bool {
-    PasswordHash::new(encoded).map(|parsed| Argon2::default().verify_password(password.as_bytes(), &parsed).is_ok()).unwrap_or(false)
+    PasswordHash::new(encoded)
+        .map(|parsed| {
+            Argon2::default()
+                .verify_password(password.as_bytes(), &parsed)
+                .is_ok()
+        })
+        .unwrap_or(false)
 }
 
 /// Issue an access token (15m).
-pub fn encode_token(state: &AppState, user_id: &str, role: &str, epoch: i32, device: &str) -> Result<String, ServerError> {
+pub fn encode_token(
+    state: &AppState,
+    user_id: &str,
+    role: &str,
+    epoch: i32,
+    device: &str,
+) -> Result<String, ServerError> {
     let now = now_secs();
-    let claims = Claims { sub: user_id.to_owned(), role: role.to_owned(), epoch, device: device.to_owned(), kid: state.jwt.kid.clone(), iat: now, exp: now.saturating_add(15 * 60) };
+    let claims = Claims {
+        sub: user_id.to_owned(),
+        role: role.to_owned(),
+        epoch,
+        device: device.to_owned(),
+        kid: state.jwt.kid.clone(),
+        iat: now,
+        exp: now.saturating_add(15 * 60),
+    };
     let header = json!({ "alg": "EdDSA", "typ": "JWT", "kid": state.jwt.kid });
-    let header_b64 = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&header).map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "TOKEN_ERROR"))?);
-    let payload_b64 = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "TOKEN_ERROR"))?);
+    let header_b64 = URL_SAFE_NO_PAD.encode(
+        serde_json::to_vec(&header)
+            .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "TOKEN_ERROR"))?,
+    );
+    let payload_b64 = URL_SAFE_NO_PAD.encode(
+        serde_json::to_vec(&claims)
+            .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "TOKEN_ERROR"))?,
+    );
     let message = format!("{header_b64}.{payload_b64}");
     let signature = state.jwt.signing.sign(message.as_bytes());
-    Ok(format!("{message}.{}", URL_SAFE_NO_PAD.encode(signature.to_bytes())))
+    Ok(format!(
+        "{message}.{}",
+        URL_SAFE_NO_PAD.encode(signature.to_bytes())
+    ))
 }
 
 fn decode_token(state: &AppState, token: &str) -> Result<Claims, ServerError> {
     let mut parts = token.split('.');
-    let (Some(header_b64), Some(payload_b64), Some(signature_b64), None) = (parts.next(), parts.next(), parts.next(), parts.next()) else {
+    let (Some(header_b64), Some(payload_b64), Some(signature_b64), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
         return Err(error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"));
     };
-    let signature_bytes = URL_SAFE_NO_PAD.decode(signature_b64).map_err(|_| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
-    let signature = Signature::from_slice(&signature_bytes).map_err(|_| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
-    state.jwt.verifying().verify_strict(format!("{header_b64}.{payload_b64}").as_bytes(), &signature).map_err(|_| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
-    let payload = URL_SAFE_NO_PAD.decode(payload_b64).map_err(|_| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
-    let claims: Claims = serde_json::from_slice(&payload).map_err(|_| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
+    let signature_bytes = URL_SAFE_NO_PAD
+        .decode(signature_b64)
+        .map_err(|_| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
+    let signature = Signature::from_slice(&signature_bytes)
+        .map_err(|_| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
+    state
+        .jwt
+        .verifying()
+        .verify_strict(format!("{header_b64}.{payload_b64}").as_bytes(), &signature)
+        .map_err(|_| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
+    let payload = URL_SAFE_NO_PAD
+        .decode(payload_b64)
+        .map_err(|_| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
+    let claims: Claims = serde_json::from_slice(&payload)
+        .map_err(|_| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
     if claims.exp <= now_secs() || claims.kid != state.jwt.kid {
         return Err(error(StatusCode::UNAUTHORIZED, "AUTH_EXPIRED"));
     }
@@ -149,34 +206,56 @@ fn decode_token(state: &AppState, token: &str) -> Result<Claims, ServerError> {
 /// Bearer token from headers.
 #[must_use]
 pub fn bearer(headers: &HeaderMap) -> Option<&str> {
-    headers.get(header::AUTHORIZATION).and_then(|value| value.to_str().ok()).and_then(|value| value.strip_prefix("Bearer "))
+    headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
 }
 
 /// Cookie value by name.
 #[must_use]
 pub fn cookie<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
-    headers.get(header::COOKIE).and_then(|value| value.to_str().ok()).and_then(|cookies| {
-        cookies.split(';').find_map(|cookie| {
-            let (key, value) = cookie.trim().split_once('=')?;
-            if key == name { Some(value) } else { None }
+    headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|cookie| {
+                let (key, value) = cookie.trim().split_once('=')?;
+                if key == name {
+                    Some(value)
+                } else {
+                    None
+                }
+            })
         })
-    })
 }
 
 /// Verify the current employee access token and DB status/epoch.
-pub async fn current_user(state: &AppState, headers: &HeaderMap) -> Result<(String, String, i32), ServerError> {
+pub async fn current_user(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<(String, String, i32), ServerError> {
     let token = bearer(headers).ok_or_else(|| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
     let claims = decode_token(state, token)?;
-    let user_id = uuid::Uuid::parse_str(&claims.sub).map_err(|_| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
-    let row = sqlx::query("SELECT role, token_epoch, status FROM users WHERE id = $1 AND deleted_at IS NULL")
-        .bind(user_id)
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?
-        .ok_or_else(|| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
-    let db_role: String = row.try_get("role").map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    let epoch: i32 = row.try_get("token_epoch").map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    let status: String = row.try_get("status").map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let user_id = uuid::Uuid::parse_str(&claims.sub)
+        .map_err(|_| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
+    let row = sqlx::query(
+        "SELECT role, token_epoch, status FROM users WHERE id = $1 AND deleted_at IS NULL",
+    )
+    .bind(user_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?
+    .ok_or_else(|| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
+    let db_role: String = row
+        .try_get("role")
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let epoch: i32 = row
+        .try_get("token_epoch")
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let status: String = row
+        .try_get("status")
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     if epoch != claims.epoch || status != "active" {
         return Err(error(StatusCode::UNAUTHORIZED, "AUTH_EXPIRED"));
     }
@@ -189,8 +268,13 @@ pub struct AdminContext {
 }
 
 /// Verify admin cookie session; `write` enforces CSRF + super_admin.
-pub async fn require_admin(state: &AppState, headers: &HeaderMap, write: bool) -> Result<AdminContext, ServerError> {
-    let session = cookie(headers, "zk_admin").ok_or_else(|| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
+pub async fn require_admin(
+    state: &AppState,
+    headers: &HeaderMap,
+    write: bool,
+) -> Result<AdminContext, ServerError> {
+    let session = cookie(headers, "zk_admin")
+        .ok_or_else(|| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
     let row = sqlx::query(
         "SELECT s.id, s.csrf_hash, s.user_id, u.role, u.status FROM admin_sessions s JOIN users u ON u.id = s.user_id
          WHERE s.session_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()",
@@ -200,11 +284,15 @@ pub async fn require_admin(state: &AppState, headers: &HeaderMap, write: bool) -
     .await
     .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?
     .ok_or_else(|| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
-    let status: String = row.try_get("status").map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let status: String = row
+        .try_get("status")
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     if status != "active" {
         return Err(error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"));
     }
-    let role: String = row.try_get("role").map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let role: String = row
+        .try_get("role")
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     if role != "super_admin" && role != "auditor" {
         return Err(error(StatusCode::FORBIDDEN, "FORBIDDEN"));
     }
@@ -212,21 +300,38 @@ pub async fn require_admin(state: &AppState, headers: &HeaderMap, write: bool) -
         if role != "super_admin" {
             return Err(error(StatusCode::FORBIDDEN, "FORBIDDEN"));
         }
-        let csrf_hash: String = row.try_get("csrf_hash").map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-        let supplied = headers.get("x-csrf-token").and_then(|value| value.to_str().ok()).unwrap_or("");
+        let csrf_hash: String = row
+            .try_get("csrf_hash")
+            .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        let supplied = headers
+            .get("x-csrf-token")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
         if sha256_hex(supplied) != csrf_hash {
             return Err(error(StatusCode::FORBIDDEN, "CSRF_INVALID"));
         }
     }
-    Ok(AdminContext { user_id: row.try_get("user_id").map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))? })
+    Ok(AdminContext {
+        user_id: row
+            .try_get("user_id")
+            .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?,
+    })
 }
 
 /// Append an audit row with a hash chain.
-pub async fn audit(state: &AppState, actor: uuid::Uuid, action: &str, target: &str, detail: &serde_json::Value) -> Result<(), ServerError> {
-    let prev: String = sqlx::query_scalar("SELECT COALESCE((SELECT hash FROM audit_log ORDER BY id DESC LIMIT 1), '')")
-        .fetch_one(&state.pool)
-        .await
-        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "AUDIT_FAILED"))?;
+pub async fn audit(
+    state: &AppState,
+    actor: uuid::Uuid,
+    action: &str,
+    target: &str,
+    detail: &serde_json::Value,
+) -> Result<(), ServerError> {
+    let prev: String = sqlx::query_scalar(
+        "SELECT COALESCE((SELECT hash FROM audit_log ORDER BY id DESC LIMIT 1), '')",
+    )
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "AUDIT_FAILED"))?;
     let hash = sha256_hex(&format!("{prev}{action}{target}{detail}"));
     sqlx::query("INSERT INTO audit_log (actor_id, action, target, detail, prev_hash, hash) VALUES ($1, $2, $3, $4, $5, $6)")
         .bind(actor)
@@ -242,7 +347,10 @@ pub async fn audit(state: &AppState, actor: uuid::Uuid, action: &str, target: &s
 }
 
 /// Apply an ordered, immutable migration list and record checksums.
-pub async fn run_migrations(pool: &sqlx::PgPool, migrations: &[(&str, &str)]) -> Result<(), sqlx::Error> {
+pub async fn run_migrations(
+    pool: &sqlx::PgPool,
+    migrations: &[(&str, &str)],
+) -> Result<(), sqlx::Error> {
     for (id, sql) in migrations {
         let mut hash = Sha256::new();
         hash.update(sql.as_bytes());
@@ -258,8 +366,14 @@ pub async fn run_migrations(pool: &sqlx::PgPool, migrations: &[(&str, &str)]) ->
 }
 
 /// Bootstrap the first super admin when the users table is empty.
-pub async fn ensure_bootstrap_admin(state: &AppState, username: &str, password: &str) -> Result<bool, sqlx::Error> {
-    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM users").fetch_one(&state.pool).await?;
+pub async fn ensure_bootstrap_admin(
+    state: &AppState,
+    username: &str,
+    password: &str,
+) -> Result<bool, sqlx::Error> {
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM users")
+        .fetch_one(&state.pool)
+        .await?;
     if count > 0 {
         return Ok(false);
     }

@@ -7,10 +7,17 @@ use sha2::{Digest, Sha256};
 /// Reject absolute paths, `..`, NUL, backslashes and empty segments.
 #[must_use]
 pub fn is_safe_archive_path(path: &str) -> bool {
-    if path.is_empty() || path.starts_with('/') || path.starts_with('\\') || path.contains('\\') || path.contains(':') || path.contains('\0') {
+    if path.is_empty()
+        || path.starts_with('/')
+        || path.starts_with('\\')
+        || path.contains('\\')
+        || path.contains(':')
+        || path.contains('\0')
+    {
         return false;
     }
-    path.split('/').all(|segment| !segment.is_empty() && segment != "." && segment != "..")
+    path.split('/')
+        .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
 }
 
 /// Canonical archive tree hash: sorted UTF-8 paths, `path NUL size NUL content`.

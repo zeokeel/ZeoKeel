@@ -25,7 +25,11 @@ pub fn provider() -> OpenAiCompatible {
     let api_key = env_first(&["ZEOKEEL_OPENAI_API_KEY", "ZEOKEEL_DEV_OPENAI_API_KEY"]);
     let model = {
         let m = env_first(&["ZEOKEEL_OPENAI_MODEL", "ZEOKEEL_DEV_MODEL"]);
-        if m.is_empty() { "gpt-4o-mini".to_owned() } else { m }
+        if m.is_empty() {
+            "gpt-4o-mini".to_owned()
+        } else {
+            m
+        }
     };
     OpenAiCompatible::new(base_url, api_key, model)
 }
@@ -49,7 +53,12 @@ impl OpenAiCompatible {
             .timeout(TIMEOUT)
             .build()
             .unwrap_or_else(|_| reqwest::blocking::Client::new());
-        Self { base_url: base_url.trim_end_matches('/').to_owned(), api_key, model, client }
+        Self {
+            base_url: base_url.trim_end_matches('/').to_owned(),
+            api_key,
+            model,
+            client,
+        }
     }
 }
 
@@ -70,7 +79,10 @@ struct ChatMessage {
 impl LlmProvider for OpenAiCompatible {
     fn complete(&self, prompt: &str) -> Result<String, LlmError> {
         if self.base_url.is_empty() {
-            return Err(LlmError::InvalidRequest("base_url is empty (set ZEOKEEL_OPENAI_BASE_URL / ZEOKEEL_DEV_OPENAI_BASE_URL)".to_owned()));
+            return Err(LlmError::InvalidRequest(
+                "base_url is empty (set ZEOKEEL_OPENAI_BASE_URL / ZEOKEEL_DEV_OPENAI_BASE_URL)"
+                    .to_owned(),
+            ));
         }
         if self.model.trim().is_empty() {
             return Err(LlmError::InvalidRequest("model is empty".to_owned()));
@@ -87,13 +99,20 @@ impl LlmProvider for OpenAiCompatible {
         if !self.api_key.is_empty() {
             request = request.bearer_auth(&self.api_key);
         }
-        let response = request.send().map_err(|error| LlmError::Upstream(error.to_string()))?;
+        let response = request
+            .send()
+            .map_err(|error| LlmError::Upstream(error.to_string()))?;
         let status = response.status();
         if !status.is_success() {
             let text = response.text().unwrap_or_default();
-            return Err(LlmError::Upstream(format!("HTTP {status}: {}", truncate(&text, 400))));
+            return Err(LlmError::Upstream(format!(
+                "HTTP {status}: {}",
+                truncate(&text, 400)
+            )));
         }
-        let parsed: ChatResponse = response.json().map_err(|error| LlmError::Upstream(error.to_string()))?;
+        let parsed: ChatResponse = response
+            .json()
+            .map_err(|error| LlmError::Upstream(error.to_string()))?;
         parsed
             .choices
             .first()

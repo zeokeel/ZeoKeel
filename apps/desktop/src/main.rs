@@ -33,11 +33,15 @@ fn ipc_call(
 }
 
 fn valid_app_id(value: &str) -> bool {
-    !value.is_empty() && value.len() <= 64 && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    !value.is_empty()
+        && value.len() <= 64
+        && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
 fn open_app_window_impl(app: &tauri::AppHandle, app_id: &str, entry: &str) -> Result<(), String> {
-    if !valid_app_id(app_id) { return Err("APP_BAD_REQUEST".to_owned()); }
+    if !valid_app_id(app_id) {
+        return Err("APP_BAD_REQUEST".to_owned());
+    }
     let app_id = app_id.to_owned();
     let entry = entry.to_owned();
     let label = format!("zk-app-{app_id}");
@@ -45,16 +49,26 @@ fn open_app_window_impl(app: &tauri::AppHandle, app_id: &str, entry: &str) -> Re
         window.set_focus().map_err(|error| error.to_string())?;
         return Ok(());
     }
-    if entry.is_empty() || entry.contains("..") || entry.contains(':') { return Err("APP_BAD_REQUEST".to_owned()); }
-    let url: tauri::Url = format!("zk-app://localhost/{app_id}/{entry}").parse().map_err(|_| "APP_BAD_URL".to_owned())?;
-    let data_dir = std::env::var("ZEOKEEL_HOME").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir().join("zeokeel")).join("app-webviews").join(&app_id);
+    if entry.is_empty() || entry.contains("..") || entry.contains(':') {
+        return Err("APP_BAD_REQUEST".to_owned());
+    }
+    let url: tauri::Url = format!("zk-app://localhost/{app_id}/{entry}")
+        .parse()
+        .map_err(|_| "APP_BAD_URL".to_owned())?;
+    let data_dir = std::env::var("ZEOKEEL_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir().join("zeokeel"))
+        .join("app-webviews")
+        .join(&app_id);
     let args = app_id.clone();
     WebviewWindowBuilder::new(app, &label, WebviewUrl::CustomProtocol(url))
         .title(format!("ZeoKeel App {app_id}"))
         .inner_size(900.0, 640.0)
         .incognito(true)
         .data_directory(data_dir)
-        .on_navigation(move |url| url.scheme() == "zk-app" && url.path().starts_with(&format!("/{args}/")))
+        .on_navigation(move |url| {
+            url.scheme() == "zk-app" && url.path().starts_with(&format!("/{args}/"))
+        })
         .build()
         .map_err(|error| error.to_string())?;
     Ok(())
@@ -62,14 +76,25 @@ fn open_app_window_impl(app: &tauri::AppHandle, app_id: &str, entry: &str) -> Re
 
 /// Open an isolated static-UI app window under `zk-app://<app_id>/`.
 #[tauri::command]
-async fn open_app_window(app: tauri::AppHandle, window: tauri::WebviewWindow, app_id: String, entry: String) -> Result<(), String> {
-    if window.label().starts_with("zk-app-") { return Err("APP_FORBIDDEN".to_owned()); }
+async fn open_app_window(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    app_id: String,
+    entry: String,
+) -> Result<(), String> {
+    if window.label().starts_with("zk-app-") {
+        return Err("APP_FORBIDDEN".to_owned());
+    }
     open_app_window_impl(&app, &app_id, &entry)
 }
 
 /// App-window-only request command; main/webview windows are rejected by label.
 #[tauri::command]
-fn app_request(window: tauri::WebviewWindow, state: tauri::State<'_, Arc<AppState>>, payload: serde_json::Value) -> CommandResponse {
+fn app_request(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Arc<AppState>>,
+    payload: serde_json::Value,
+) -> CommandResponse {
     if !window.label().starts_with("zk-app-") {
         return CommandResponse::err("APP_FORBIDDEN");
     }
@@ -83,7 +108,9 @@ fn build_state() -> Result<Arc<AppState>, String> {
 
 fn main() {
     let serve_mode = std::env::args().any(|arg| arg == "--serve")
-        || std::env::var("ZEOKEEL_SERVE").map(|v| v == "1").unwrap_or(false);
+        || std::env::var("ZEOKEEL_SERVE")
+            .map(|v| v == "1")
+            .unwrap_or(false);
 
     let state = match build_state() {
         Ok(state) => state,
@@ -97,7 +124,8 @@ fn main() {
     automation::start(Arc::clone(&state));
 
     if serve_mode {
-        let addr = std::env::var("ZEOKEEL_SERVE_ADDR").unwrap_or_else(|_| "127.0.0.1:8788".to_owned());
+        let addr =
+            std::env::var("ZEOKEEL_SERVE_ADDR").unwrap_or_else(|_| "127.0.0.1:8788".to_owned());
         if let Err(error) = serve::run(state, &addr) {
             eprintln!("zk-desktop serve: {error}");
             std::process::exit(1);
@@ -199,14 +227,15 @@ document.title='SELFTEST|'+JSON.stringify({appRequest,ipc,open,core});
         .map_err(|error| format!("failed to run window: {error}"))
 }
 
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)] // test-only
     #[test]
     fn app_capability_has_no_core_permissions() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities/app-window.json");
-        let value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities/app-window.json");
+        let value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
         assert_eq!(value["windows"], serde_json::json!(["zk-app-*"]));
         assert_eq!(value["permissions"], serde_json::json!([]));
     }

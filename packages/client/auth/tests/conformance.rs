@@ -7,15 +7,31 @@ use zk_client_auth::AuthClient;
 
 async fn fake_server() -> String {
     let app = Router::new()
-        .route("/api/client/v1/auth/login", post(|Json(_body): Json<Value>| async { Json(json!({
-            "ok": true, "access_token": "a1", "refresh_token": "r1", "expires_in": 900,
-            "user": { "id": "u1", "role": "employee", "username": "alice" }
-        })) }))
-        .route("/api/client/v1/auth/refresh", post(|Json(_body): Json<Value>| async { Json(json!({
-            "ok": true, "access_token": "a2", "refresh_token": "r2", "expires_in": 900
-        })) }))
-        .route("/api/client/v1/auth/me", get(|| async { Json(json!({ "id": "u1", "role": "employee" })) }))
-        .route("/api/client/v1/auth/logout", post(|| async { Json(json!({ "ok": true })) }));
+        .route(
+            "/api/client/v1/auth/login",
+            post(|Json(_body): Json<Value>| async {
+                Json(json!({
+                    "ok": true, "access_token": "a1", "refresh_token": "r1", "expires_in": 900,
+                    "user": { "id": "u1", "role": "employee", "username": "alice" }
+                }))
+            }),
+        )
+        .route(
+            "/api/client/v1/auth/refresh",
+            post(|Json(_body): Json<Value>| async {
+                Json(json!({
+                    "ok": true, "access_token": "a2", "refresh_token": "r2", "expires_in": 900
+                }))
+            }),
+        )
+        .route(
+            "/api/client/v1/auth/me",
+            get(|| async { Json(json!({ "id": "u1", "role": "employee" })) }),
+        )
+        .route(
+            "/api/client/v1/auth/logout",
+            post(|| async { Json(json!({ "ok": true })) }),
+        );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });

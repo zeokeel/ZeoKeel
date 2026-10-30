@@ -34,7 +34,11 @@ fn completes_and_streams_through_gateway_contract() {
         }),
     );
     let addr = serve(app);
-    let provider = GatewayLlm::new(format!("http://{addr}"), "access-token".to_owned(), "deepseek-chat".to_owned());
+    let provider = GatewayLlm::new(
+        format!("http://{addr}"),
+        "access-token".to_owned(),
+        "deepseek-chat".to_owned(),
+    );
     assert_eq!(provider.complete("hi").unwrap(), "hello from gateway");
     streams_sse_text_deltas();
 }
@@ -50,9 +54,15 @@ fn streams_sse_text_deltas() {
         }),
     );
     let addr = serve(app);
-    let provider = GatewayLlm::new(format!("http://{addr}"), "access-token".to_owned(), "deepseek-chat".to_owned());
+    let provider = GatewayLlm::new(
+        format!("http://{addr}"),
+        "access-token".to_owned(),
+        "deepseek-chat".to_owned(),
+    );
     let mut deltas = Vec::new();
-    let text = provider.complete_stream("hi", &mut |delta| deltas.push(delta.to_owned())).unwrap();
+    let text = provider
+        .complete_stream("hi", &mut |delta| deltas.push(delta.to_owned()))
+        .unwrap();
     assert_eq!(text, "gateway hello");
     assert_eq!(deltas, vec!["gateway ", "hello"]);
 }

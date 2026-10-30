@@ -6,13 +6,23 @@ use zk_llm_openai_compatible::OpenAiCompatible;
 #[test]
 fn missing_base_url_is_invalid_request() {
     let provider = OpenAiCompatible::new(String::new(), String::new(), "m".to_owned());
-    assert!(matches!(provider.complete("hi"), Err(LlmError::InvalidRequest(_))));
+    assert!(matches!(
+        provider.complete("hi"),
+        Err(LlmError::InvalidRequest(_))
+    ));
 }
 
 #[test]
 fn missing_model_is_invalid_request() {
-    let provider = OpenAiCompatible::new("http://127.0.0.1:1/v1".to_owned(), String::new(), String::new());
-    assert!(matches!(provider.complete("hi"), Err(LlmError::InvalidRequest(_))));
+    let provider = OpenAiCompatible::new(
+        "http://127.0.0.1:1/v1".to_owned(),
+        String::new(),
+        String::new(),
+    );
+    assert!(matches!(
+        provider.complete("hi"),
+        Err(LlmError::InvalidRequest(_))
+    ));
 }
 
 /// Live smoke test; run explicitly with env configured:

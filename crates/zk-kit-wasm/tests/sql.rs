@@ -3,7 +3,13 @@ use zk_kit_wasm::validate_sql;
 
 #[test]
 fn allows_only_single_dml() {
-    for sql in ["SELECT 1", "INSERT INTO t(a) VALUES (1)", "UPDATE t SET a=1 WHERE id=2", "DELETE FROM t WHERE id=1", "  select * from t  "] {
+    for sql in [
+        "SELECT 1",
+        "INSERT INTO t(a) VALUES (1)",
+        "UPDATE t SET a=1 WHERE id=2",
+        "DELETE FROM t WHERE id=1",
+        "  select * from t  ",
+    ] {
         assert!(validate_sql(sql).is_ok(), "{sql}");
     }
 }

@@ -45,7 +45,12 @@ impl AgentLoop {
         self.tools.iter().find(|tool| tool.spec().name == name)
     }
 
-    fn invoke(&self, tool: &Arc<dyn Tool>, context: Option<&TurnContext>, args: &str) -> Result<String, zk_contract_tool::ToolError> {
+    fn invoke(
+        &self,
+        tool: &Arc<dyn Tool>,
+        context: Option<&TurnContext>,
+        args: &str,
+    ) -> Result<String, zk_contract_tool::ToolError> {
         match context {
             Some(ctx) => tool.call_in(ctx, args),
             None => tool.call(args),
@@ -72,7 +77,10 @@ impl AgentLoop {
         context: Option<&TurnContext>,
     ) -> Result<AgentReply, AgentError> {
         let Some(directive) = output.trim().strip_prefix(TOOL_PREFIX) else {
-            return Ok(AgentReply { text: output.to_owned(), tool_calls: Vec::new() });
+            return Ok(AgentReply {
+                text: output.to_owned(),
+                tool_calls: Vec::new(),
+            });
         };
 
         let (name, args) = parse_directive(directive)?;
@@ -83,25 +91,55 @@ impl AgentLoop {
             .find_tool(FS_READ)
             .ok_or_else(|| AgentError::Tool(format!("工具未注册: {FS_READ}")))?;
 
-        sink.emit(AgentEvent::ToolCallStarted { name: FS_READ.to_owned(), args: args.to_owned() });
+        sink.emit(AgentEvent::ToolCallStarted {
+            name: FS_READ.to_owned(),
+            args: args.to_owned(),
+        });
         let (text, record) = match self.invoke(tool, context, args) {
             Ok(result) => {
-                sink.emit(AgentEvent::ToolCallFinished { name: FS_READ.to_owned(), result: result.clone() });
+                sink.emit(AgentEvent::ToolCallFinished {
+                    name: FS_READ.to_owned(),
+                    result: result.clone(),
+                });
                 let text = format!("{FS_READ} 返回:\n{result}");
-                (text, ToolCallRecord { name: FS_READ.to_owned(), args: args.to_owned(), result })
+                (
+                    text,
+                    ToolCallRecord {
+                        name: FS_READ.to_owned(),
+                        args: args.to_owned(),
+                        result,
+                    },
+                )
             }
             Err(error) => {
                 let result = error.to_string();
-                sink.emit(AgentEvent::ToolCallFinished { name: FS_READ.to_owned(), result: result.clone() });
+                sink.emit(AgentEvent::ToolCallFinished {
+                    name: FS_READ.to_owned(),
+                    result: result.clone(),
+                });
                 let text = format!("调用 {FS_READ} 失败: {result}");
-                (text, ToolCallRecord { name: FS_READ.to_owned(), args: args.to_owned(), result })
+                (
+                    text,
+                    ToolCallRecord {
+                        name: FS_READ.to_owned(),
+                        args: args.to_owned(),
+                        result,
+                    },
+                )
             }
         };
 
-        Ok(AgentReply { text, tool_calls: vec![record] })
+        Ok(AgentReply {
+            text,
+            tool_calls: vec![record],
+        })
     }
 
-    fn execute(&self, input: &str, context: Option<&TurnContext>) -> Result<AgentReply, AgentError> {
+    fn execute(
+        &self,
+        input: &str,
+        context: Option<&TurnContext>,
+    ) -> Result<AgentReply, AgentError> {
         self.run_emitting(input, &NoopSink, context)
     }
 }
@@ -155,7 +193,9 @@ impl AgentLoop {
         sink: &dyn EventSink,
         context: Option<&TurnContext>,
     ) -> Result<AgentReply, AgentError> {
-        sink.emit(AgentEvent::TurnStarted { turn_id: turn_id.to_owned() });
+        sink.emit(AgentEvent::TurnStarted {
+            turn_id: turn_id.to_owned(),
+        });
         let mut buffered = String::new();
         let result = self.llm.complete_stream(&prompt_for(input), &mut |delta| {
             buffered.push_str(delta);
@@ -164,7 +204,9 @@ impl AgentLoop {
                 return;
             }
             if buffered.chars().count() >= 32 {
-                sink.emit(AgentEvent::TextDelta { delta: std::mem::take(&mut buffered) });
+                sink.emit(AgentEvent::TextDelta {
+                    delta: std::mem::take(&mut buffered),
+                });
             }
         });
         match result {
@@ -175,11 +217,15 @@ impl AgentLoop {
                     sink.emit(AgentEvent::TextDelta { delta: buffered });
                 }
                 let reply = self.run_output(&output, sink, context)?;
-                sink.emit(AgentEvent::TurnCompleted { reply: reply.clone() });
+                sink.emit(AgentEvent::TurnCompleted {
+                    reply: reply.clone(),
+                });
                 Ok(reply)
             }
             Err(error) => {
-                sink.emit(AgentEvent::Error { message: error.to_string() });
+                sink.emit(AgentEvent::Error {
+                    message: error.to_string(),
+                });
                 Err(AgentError::Llm(error.to_string()))
             }
         }

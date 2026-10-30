@@ -13,8 +13,8 @@ use zk_contract_session::Message;
 use zk_contract_tool::TurnContext;
 
 use crate::approval::ApprovalBroker;
-use zk_kit_questions::QuestionBroker;
 use crate::events::{emit_kind, now_ms, BridgeSink, EVENT_BUFFER};
+use zk_kit_questions::QuestionBroker;
 
 /// Composed runtime + IPC/event state shared by all transports.
 pub struct AppState {
@@ -79,7 +79,11 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             let expanded = if path == "~" {
                 match dirs::home_dir() {
                     Some(home) => home.to_string_lossy().to_string(),
-                    None => return CommandResponse::err("workspace/path-unavailable: home directory unavailable"),
+                    None => {
+                        return CommandResponse::err(
+                            "workspace/path-unavailable: home directory unavailable",
+                        )
+                    }
                 }
             } else {
                 path.to_owned()
@@ -96,7 +100,11 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             ) else {
                 return CommandResponse::err("missing workspace_id/title");
             };
-            match state.runtime.sessions().rename_workspace(workspace_id, title) {
+            match state
+                .runtime
+                .sessions()
+                .rename_workspace(workspace_id, title)
+            {
                 Ok(workspace) => CommandResponse::ok(json!(workspace)),
                 Err(error) => session_err(error),
             }
@@ -115,18 +123,32 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 return CommandResponse::err("missing workspace_id");
             };
             let reassign = payload.get("reassign_to").and_then(Value::as_str);
-            let confirm = payload.get("confirm").and_then(Value::as_bool).unwrap_or(false);
-            match state.runtime.sessions().remove_workspace(workspace_id, reassign, confirm) {
+            let confirm = payload
+                .get("confirm")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            match state
+                .runtime
+                .sessions()
+                .remove_workspace(workspace_id, reassign, confirm)
+            {
                 Ok(result) => CommandResponse::ok(json!(result)),
                 Err(error) => session_err(error),
             }
         }
         commands::SESSION_CREATE => {
-            let title = payload.get("title").and_then(Value::as_str).unwrap_or("新会话");
+            let title = payload
+                .get("title")
+                .and_then(Value::as_str)
+                .unwrap_or("新会话");
             let Some(workspace_id) = payload.get("workspace_id").and_then(Value::as_str) else {
                 return CommandResponse::err("session/workspace-required: missing workspace_id");
             };
-            match state.runtime.sessions().create_conversation_in(workspace_id, title.trim()) {
+            match state
+                .runtime
+                .sessions()
+                .create_conversation_in(workspace_id, title.trim())
+            {
                 Ok(conversation) => CommandResponse::ok(json!(conversation)),
                 Err(error) => session_err(error),
             }
@@ -147,7 +169,11 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             ) else {
                 return CommandResponse::err("missing workspace_id/conversation_id");
             };
-            match state.runtime.sessions().messages_in(workspace_id, conversation_id) {
+            match state
+                .runtime
+                .sessions()
+                .messages_in(workspace_id, conversation_id)
+            {
                 Ok(messages) => CommandResponse::ok(json!(messages)),
                 Err(error) => session_err(error),
             }
@@ -176,8 +202,17 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             }
             match state.runtime.settings().save(&settings) {
                 Ok(()) => {
-                    let provider = match settings.provider.kind { ProviderKind::Mock => "mock", ProviderKind::OpenAiCompatible => "openai", ProviderKind::Ollama => "ollama" };
-                    let _ = state.runtime.configure_llm(&settings.provider.base_url, &settings.provider.api_key, &settings.provider.model, provider);
+                    let provider = match settings.provider.kind {
+                        ProviderKind::Mock => "mock",
+                        ProviderKind::OpenAiCompatible => "openai",
+                        ProviderKind::Ollama => "ollama",
+                    };
+                    let _ = state.runtime.configure_llm(
+                        &settings.provider.base_url,
+                        &settings.provider.api_key,
+                        &settings.provider.model,
+                        provider,
+                    );
                     CommandResponse::ok(masked_settings(&settings))
                 }
                 Err(error) => CommandResponse::err(error.to_string()),
@@ -188,7 +223,10 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 return CommandResponse::err("missing workspace_id");
             };
             match state.runtime.sessions().list_workspaces() {
-                Ok(workspaces) => match workspaces.iter().find(|workspace| workspace.id == workspace_id) {
+                Ok(workspaces) => match workspaces
+                    .iter()
+                    .find(|workspace| workspace.id == workspace_id)
+                {
                     Some(workspace) => match list_workspace_files(&workspace.path) {
                         Ok(items) => CommandResponse::ok(json!({ "items": items })),
                         Err(error) => CommandResponse::err(format!("workspace/files: {error}")),
@@ -212,7 +250,9 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
         commands::UPDATE_CHECK => {
             let platform = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
             match zk_composed::check_update(env!("CARGO_PKG_VERSION"), &platform) {
-                Ok(release) => CommandResponse::ok(json!({ "release": release, "platform": platform })),
+                Ok(release) => {
+                    CommandResponse::ok(json!({ "release": release, "platform": platform }))
+                }
                 Err(error) => CommandResponse::err(format!("update/check: {error}")),
             }
         }
@@ -264,7 +304,9 @@ fn list_workspace_files(root: &str) -> Result<Vec<Value>, String> {
         if depth > 2 || items.len() >= MAX_ENTRIES {
             continue;
         }
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         let mut children: Vec<_> = entries.filter_map(Result::ok).collect();
         children.sort_by_key(|entry| entry.file_name());
         for entry in children {
@@ -272,12 +314,17 @@ fn list_workspace_files(root: &str) -> Result<Vec<Value>, String> {
                 break;
             }
             let path = entry.path();
-            let rel = path.strip_prefix(root).map(|value| value.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+            let rel = path
+                .strip_prefix(root)
+                .map(|value| value.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_default();
             if rel.is_empty() || rel.starts_with(".git") || rel.contains("/.git/") {
                 continue;
             }
             let is_dir = entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false);
-            items.push(json!({ "path": rel, "depth": depth, "kind": if is_dir { "dir" } else { "file" } }));
+            items.push(
+                json!({ "path": rel, "depth": depth, "kind": if is_dir { "dir" } else { "file" } }),
+            );
             if is_dir {
                 stack.push((path, depth.saturating_add(1)));
             }
@@ -292,9 +339,20 @@ fn list_workspace_files(root: &str) -> Result<Vec<Value>, String> {
 }
 
 fn app_request(payload: &Value) -> CommandResponse {
-    let Some(app_id) = payload.get("app_id").and_then(Value::as_str) else { return CommandResponse::err("missing app_id"); };
-    if app_id.is_empty() || app_id.len() > 64 || !app_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') { return CommandResponse::err("APP_BAD_REQUEST"); }
-    let Some((base_url, token)) = zk_composed::gateway_credentials() else { return CommandResponse::err("AUTH_REQUIRED"); };
+    let Some(app_id) = payload.get("app_id").and_then(Value::as_str) else {
+        return CommandResponse::err("missing app_id");
+    };
+    if app_id.is_empty()
+        || app_id.len() > 64
+        || !app_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        return CommandResponse::err("APP_BAD_REQUEST");
+    }
+    let Some((base_url, token)) = zk_composed::gateway_credentials() else {
+        return CommandResponse::err("AUTH_REQUIRED");
+    };
     let request = json!({
         "abi": "zeokeel-app/1",
         "app_id": app_id,
@@ -305,11 +363,17 @@ fn app_request(payload: &Value) -> CommandResponse {
         "body_b64": payload.get("body_b64").and_then(Value::as_str).unwrap_or(""),
         "request_id": payload.get("request_id").and_then(Value::as_str).unwrap_or("host"),
     });
-    let url = format!("{}/api/client/v1/apps/{app_id}/request", base_url.trim_end_matches('/'));
+    let url = format!(
+        "{}/api/client/v1/apps/{app_id}/request",
+        base_url.trim_end_matches('/')
+    );
     let client = reqwest::blocking::Client::new();
     match client.post(url).bearer_auth(token).json(&request).send() {
         Ok(response) => match response.error_for_status() {
-            Ok(ok) => match ok.json::<Value>() { Ok(value) => CommandResponse::ok(value), Err(error) => CommandResponse::err(format!("APP_BAD_RESPONSE: {error}")) },
+            Ok(ok) => match ok.json::<Value>() {
+                Ok(value) => CommandResponse::ok(value),
+                Err(error) => CommandResponse::err(format!("APP_BAD_RESPONSE: {error}")),
+            },
             Err(error) => CommandResponse::err(format!("APP_UNAVAILABLE: {error}")),
         },
         Err(error) => CommandResponse::err(format!("APP_UNAVAILABLE: {error}")),
@@ -319,7 +383,9 @@ fn app_request(payload: &Value) -> CommandResponse {
 fn skill_root() -> Result<std::path::PathBuf, String> {
     let base = match std::env::var("ZEOKEEL_HOME") {
         Ok(value) => std::path::PathBuf::from(value),
-        Err(_) => dirs::home_dir().ok_or_else(|| "home directory unavailable".to_owned())?.join(".zeokeel"),
+        Err(_) => dirs::home_dir()
+            .ok_or_else(|| "home directory unavailable".to_owned())?
+            .join(".zeokeel"),
     };
     Ok(base.join("skills"))
 }
@@ -331,7 +397,9 @@ fn safe_component(value: &str) -> bool {
         && value != ".."
         && !value.starts_with('.')
         && !value.contains(':')
-        && value.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
 }
 
 fn install_skill(payload: &Value) -> CommandResponse {
@@ -356,7 +424,10 @@ fn install_skill(payload: &Value) -> CommandResponse {
     let Ok(mut archive) = zip::ZipArchive::new(std::io::Cursor::new(bytes)) else {
         return CommandResponse::err("SKILL_ZIP_INVALID");
     };
-    let root = match skill_root() { Ok(root) => root, Err(error) => return CommandResponse::err(error) };
+    let root = match skill_root() {
+        Ok(root) => root,
+        Err(error) => return CommandResponse::err(error),
+    };
     let target = root.join(name).join(version);
     if target.exists() {
         return CommandResponse::err("CONFLICT");
@@ -384,7 +455,10 @@ fn install_skill(payload: &Value) -> CommandResponse {
         }
         let destination = temp.join(&relative);
         if entry.is_dir() {
-            if let Err(error) = std::fs::create_dir_all(&destination) { let _ = std::fs::remove_dir_all(&temp); return CommandResponse::err(error.to_string()); }
+            if let Err(error) = std::fs::create_dir_all(&destination) {
+                let _ = std::fs::remove_dir_all(&temp);
+                return CommandResponse::err(error.to_string());
+            }
             continue;
         }
         total = total.saturating_add(entry.size());
@@ -398,7 +472,10 @@ fn install_skill(payload: &Value) -> CommandResponse {
             return CommandResponse::err(format!("SKILL_ZIP_INVALID: {error}"));
         }
         if let Some(parent) = destination.parent() {
-            if let Err(error) = std::fs::create_dir_all(parent) { let _ = std::fs::remove_dir_all(&temp); return CommandResponse::err(error.to_string()); }
+            if let Err(error) = std::fs::create_dir_all(parent) {
+                let _ = std::fs::remove_dir_all(&temp);
+                return CommandResponse::err(error.to_string());
+            }
         }
         if let Err(error) = std::fs::write(&destination, &content) {
             let _ = std::fs::remove_dir_all(&temp);
@@ -408,30 +485,43 @@ fn install_skill(payload: &Value) -> CommandResponse {
     }
     let tree = zk_kit_content::tree_sha256(entries);
     if let Some(parent) = target.parent() {
-        if let Err(error) = std::fs::create_dir_all(parent) { let _ = std::fs::remove_dir_all(&temp); return CommandResponse::err(error.to_string()); }
+        if let Err(error) = std::fs::create_dir_all(parent) {
+            let _ = std::fs::remove_dir_all(&temp);
+            return CommandResponse::err(error.to_string());
+        }
     }
     if let Err(error) = std::fs::rename(&temp, &target) {
         let _ = std::fs::remove_dir_all(&temp);
         return CommandResponse::err(format!("skills install: {error}"));
     }
-    CommandResponse::ok(json!({ "installed": true, "tree_sha256": tree, "path": target.to_string_lossy() }))
+    CommandResponse::ok(
+        json!({ "installed": true, "tree_sha256": tree, "path": target.to_string_lossy() }),
+    )
 }
 
 fn dev_oauth_fallback() -> bool {
-    std::env::var("ZEOKEEL_DEV_KEYCHAIN_FALLBACK").map(|value| value == "1").unwrap_or(false)
+    std::env::var("ZEOKEEL_DEV_KEYCHAIN_FALLBACK")
+        .map(|value| value == "1")
+        .unwrap_or(false)
 }
 
 fn dev_oauth_path() -> Result<std::path::PathBuf, String> {
     let base = match std::env::var("ZEOKEEL_HOME") {
         Ok(value) => std::path::PathBuf::from(value),
-        Err(_) => dirs::home_dir().ok_or_else(|| "home directory unavailable".to_owned())?.join(".zeokeel"),
+        Err(_) => dirs::home_dir()
+            .ok_or_else(|| "home directory unavailable".to_owned())?
+            .join(".zeokeel"),
     };
     Ok(base.join("oauth-dev.json"))
 }
 
 fn read_dev_oauth() -> serde_json::Map<String, Value> {
-    let Ok(path) = dev_oauth_path() else { return serde_json::Map::new() };
-    let Ok(raw) = std::fs::read_to_string(path) else { return serde_json::Map::new() };
+    let Ok(path) = dev_oauth_path() else {
+        return serde_json::Map::new();
+    };
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return serde_json::Map::new();
+    };
     match serde_json::from_str::<Value>(&raw) {
         Ok(Value::Object(map)) => map,
         _ => serde_json::Map::new(),
@@ -443,33 +533,49 @@ fn write_dev_oauth(map: &serde_json::Map<String, Value>) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
-    std::fs::write(&path, Value::Object(map.clone()).to_string()).map_err(|error| error.to_string())?;
+    std::fs::write(&path, Value::Object(map.clone()).to_string())
+        .map_err(|error| error.to_string())?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).map_err(|error| error.to_string())?;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .map_err(|error| error.to_string())?;
     }
     Ok(())
 }
 
 fn oauth_entry(connector_id: &str) -> Result<keyring::Entry, String> {
-    if connector_id.is_empty() || connector_id.len() > 128 || !connector_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')) {
+    if connector_id.is_empty()
+        || connector_id.len() > 128
+        || !connector_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    {
         return Err("OAUTH_VALIDATION".to_owned());
     }
-    keyring::Entry::new("zeokeel-connector-oauth", connector_id).map_err(|error| format!("keychain: {error}"))
+    keyring::Entry::new("zeokeel-connector-oauth", connector_id)
+        .map_err(|error| format!("keychain: {error}"))
 }
 
 fn oauth_save(payload: &Value) -> CommandResponse {
-    let (Some(connector_id), Some(tokens)) = (payload.get("connector_id").and_then(Value::as_str), payload.get("tokens")) else {
+    let (Some(connector_id), Some(tokens)) = (
+        payload.get("connector_id").and_then(Value::as_str),
+        payload.get("tokens"),
+    ) else {
         return CommandResponse::err("missing connector_id/tokens");
     };
-    if !tokens.is_object() { return CommandResponse::err("OAUTH_VALIDATION"); }
+    if !tokens.is_object() {
+        return CommandResponse::err("OAUTH_VALIDATION");
+    }
     let entry = match oauth_entry(connector_id) {
         Ok(entry) => entry,
         Err(_) if dev_oauth_fallback() => {
             let mut map = read_dev_oauth();
             map.insert(connector_id.to_owned(), tokens.clone());
-            return match write_dev_oauth(&map) { Ok(()) => CommandResponse::ok(json!({ "saved": true, "fallback": true })), Err(error) => CommandResponse::err(format!("keychain fallback: {error}")) };
+            return match write_dev_oauth(&map) {
+                Ok(()) => CommandResponse::ok(json!({ "saved": true, "fallback": true })),
+                Err(error) => CommandResponse::err(format!("keychain fallback: {error}")),
+            };
         }
         Err(error) => return CommandResponse::err(error),
     };
@@ -478,35 +584,51 @@ fn oauth_save(payload: &Value) -> CommandResponse {
         Err(_error) if dev_oauth_fallback() => {
             let mut map = read_dev_oauth();
             map.insert(connector_id.to_owned(), tokens.clone());
-            match write_dev_oauth(&map) { Ok(()) => CommandResponse::ok(json!({ "saved": true, "fallback": true })), Err(error) => CommandResponse::err(format!("keychain fallback: {error}")) }
+            match write_dev_oauth(&map) {
+                Ok(()) => CommandResponse::ok(json!({ "saved": true, "fallback": true })),
+                Err(error) => CommandResponse::err(format!("keychain fallback: {error}")),
+            }
         }
         Err(error) => CommandResponse::err(format!("keychain: {error}")),
     }
 }
 
 fn oauth_load(payload: &Value) -> CommandResponse {
-    let Some(connector_id) = payload.get("connector_id").and_then(Value::as_str) else { return CommandResponse::err("missing connector_id"); };
+    let Some(connector_id) = payload.get("connector_id").and_then(Value::as_str) else {
+        return CommandResponse::err("missing connector_id");
+    };
     let entry = match oauth_entry(connector_id) {
         Ok(entry) => entry,
-        Err(_) if dev_oauth_fallback() => return CommandResponse::ok(json!({ "tokens": read_dev_oauth().get(connector_id).map(Value::to_string) })),
+        Err(_) if dev_oauth_fallback() => {
+            return CommandResponse::ok(
+                json!({ "tokens": read_dev_oauth().get(connector_id).map(Value::to_string) }),
+            )
+        }
         Err(error) => return CommandResponse::err(error),
     };
     match entry.get_password() {
         Ok(raw) => CommandResponse::ok(json!({ "tokens": raw })),
-        Err(_) if dev_oauth_fallback() => CommandResponse::ok(json!({ "tokens": read_dev_oauth().get(connector_id).map(Value::to_string) })),
+        Err(_) if dev_oauth_fallback() => CommandResponse::ok(
+            json!({ "tokens": read_dev_oauth().get(connector_id).map(Value::to_string) }),
+        ),
         Err(keyring::Error::NoEntry) => CommandResponse::ok(json!({ "tokens": null })),
         Err(error) => CommandResponse::err(format!("keychain: {error}")),
     }
 }
 
 fn oauth_clear(payload: &Value) -> CommandResponse {
-    let Some(connector_id) = payload.get("connector_id").and_then(Value::as_str) else { return CommandResponse::err("missing connector_id"); };
+    let Some(connector_id) = payload.get("connector_id").and_then(Value::as_str) else {
+        return CommandResponse::err("missing connector_id");
+    };
     let entry = match oauth_entry(connector_id) {
         Ok(entry) => entry,
         Err(_) if dev_oauth_fallback() => {
             let mut map = read_dev_oauth();
             map.remove(connector_id);
-            return match write_dev_oauth(&map) { Ok(()) => CommandResponse::ok(json!({ "cleared": true, "fallback": true })), Err(error) => CommandResponse::err(format!("keychain fallback: {error}")) };
+            return match write_dev_oauth(&map) {
+                Ok(()) => CommandResponse::ok(json!({ "cleared": true, "fallback": true })),
+                Err(error) => CommandResponse::err(format!("keychain fallback: {error}")),
+            };
         }
         Err(error) => return CommandResponse::err(error),
     };
@@ -515,7 +637,10 @@ fn oauth_clear(payload: &Value) -> CommandResponse {
         Err(_) if dev_oauth_fallback() => {
             let mut map = read_dev_oauth();
             map.remove(connector_id);
-            match write_dev_oauth(&map) { Ok(()) => CommandResponse::ok(json!({ "cleared": true, "fallback": true })), Err(error) => CommandResponse::err(format!("keychain fallback: {error}")) }
+            match write_dev_oauth(&map) {
+                Ok(()) => CommandResponse::ok(json!({ "cleared": true, "fallback": true })),
+                Err(error) => CommandResponse::err(format!("keychain fallback: {error}")),
+            }
         }
         Err(keyring::Error::NoEntry) => CommandResponse::ok(json!({ "cleared": true })),
         Err(error) => CommandResponse::err(format!("keychain: {error}")),
@@ -529,7 +654,10 @@ fn remove_skill(payload: &Value) -> CommandResponse {
     if !safe_component(name) {
         return CommandResponse::err("SKILL_VALIDATION");
     }
-    let root = match skill_root() { Ok(root) => root, Err(error) => return CommandResponse::err(error) };
+    let root = match skill_root() {
+        Ok(root) => root,
+        Err(error) => return CommandResponse::err(error),
+    };
     let target = root.join(name);
     if target.exists() {
         if let Err(error) = std::fs::remove_dir_all(&target) {
@@ -540,15 +668,24 @@ fn remove_skill(payload: &Value) -> CommandResponse {
 }
 
 fn installed_skills() -> CommandResponse {
-    let root = match skill_root() { Ok(root) => root, Err(error) => return CommandResponse::err(error) };
+    let root = match skill_root() {
+        Ok(root) => root,
+        Err(error) => return CommandResponse::err(error),
+    };
     let mut items = Vec::new();
     if let Ok(names) = std::fs::read_dir(&root) {
         for name in names.filter_map(Result::ok) {
-            if !name.file_type().map(|kind| kind.is_dir()).unwrap_or(false) { continue; }
+            if !name.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+                continue;
+            }
             let name_value = name.file_name().to_string_lossy().to_string();
             if let Ok(versions) = std::fs::read_dir(name.path()) {
                 for version in versions.filter_map(Result::ok) {
-                    if version.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+                    if version
+                        .file_type()
+                        .map(|kind| kind.is_dir())
+                        .unwrap_or(false)
+                    {
                         items.push(json!({ "name": name_value, "version": version.file_name().to_string_lossy() }));
                     }
                 }
@@ -604,7 +741,9 @@ fn chat_send(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
         return CommandResponse::err("session/workspace-required: missing workspace_id");
     };
     let Some(conversation_id) = payload.get("conversation_id").and_then(Value::as_str) else {
-        return CommandResponse::err(format!("missing conversation_id in workspace {workspace_id}"));
+        return CommandResponse::err(format!(
+            "missing conversation_id in workspace {workspace_id}"
+        ));
     };
     let workspace_id = workspace_id.to_owned();
     let conversation_id = conversation_id.to_owned();
@@ -612,14 +751,20 @@ fn chat_send(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
         Ok(list) => list,
         Err(error) => return CommandResponse::err(error.to_string()),
     };
-    if !list.iter().any(|conversation| conversation.id == conversation_id) {
+    if !list
+        .iter()
+        .any(|conversation| conversation.id == conversation_id)
+    {
         return CommandResponse::err(format!("session/workspace-mismatch: {conversation_id}"));
     }
     let workspaces = match sessions.list_workspaces() {
         Ok(list) => list,
         Err(error) => return CommandResponse::err(error.to_string()),
     };
-    let Some(workspace) = workspaces.into_iter().find(|workspace| workspace.id == workspace_id) else {
+    let Some(workspace) = workspaces
+        .into_iter()
+        .find(|workspace| workspace.id == workspace_id)
+    else {
         return CommandResponse::err(format!("workspace/not-found: {workspace_id}"));
     };
     let workspace_root = (workspace_id.clone(), workspace.path);
@@ -654,8 +799,14 @@ fn chat_send(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
             sessions: state.runtime.sessions(),
             conversation_id: conversation_id_for_thread.clone(),
         });
-        let context = TurnContext { conversation_id: conversation_id_for_thread.clone(), workspace_id: workspace_root.0.clone(), workspace_root: workspace_root.1 };
-        let result = state.runtime.run_stream_in_shared(&context, &turn_id, &text, sink);
+        let context = TurnContext {
+            conversation_id: conversation_id_for_thread.clone(),
+            workspace_id: workspace_root.0.clone(),
+            workspace_root: workspace_root.1,
+        };
+        let result = state
+            .runtime
+            .run_stream_in_shared(&context, &turn_id, &text, sink);
         match result {
             Ok(reply) => {
                 let message = Message {
@@ -664,7 +815,12 @@ fn chat_send(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
                     role: "assistant".to_owned(),
                     content: reply.text,
                     created_at_ms: now_ms(),
-                    status: if cancelled.load(Ordering::SeqCst) { "cancelled" } else { "done" }.to_owned(),
+                    status: if cancelled.load(Ordering::SeqCst) {
+                        "cancelled"
+                    } else {
+                        "done"
+                    }
+                    .to_owned(),
                 };
                 let _ = state.runtime.sessions().append_message(&message);
             }
@@ -706,7 +862,13 @@ fn chat_cancel(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
     };
     flag.store(true, Ordering::SeqCst);
     state.runtime.cancel_agent();
-    emit_kind(&state.bus, stream_id, state.seq(), "agent", json!({ "type": "turn_cancelled" }));
+    emit_kind(
+        &state.bus,
+        stream_id,
+        state.seq(),
+        "agent",
+        json!({ "type": "turn_cancelled" }),
+    );
     CommandResponse::ok(json!({ "cancelled": true }))
 }
 
@@ -719,8 +881,11 @@ mod tests {
     fn zip_bytes(entries: &[(&str, &[u8], Option<u32>)]) -> Vec<u8> {
         let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
         for (name, content, mode) in entries {
-            let mut options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-            if let Some(mode) = mode { options = options.unix_permissions(*mode); }
+            let mut options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+            if let Some(mode) = mode {
+                options = options.unix_permissions(*mode);
+            }
             writer.start_file(*name, options).unwrap();
             writer.write_all(content).unwrap();
         }
@@ -752,7 +917,10 @@ mod tests {
         std::fs::create_dir_all(&home).unwrap();
         std::env::set_var("ZEOKEEL_HOME", &home);
 
-        let valid = zip_bytes(&[("SKILL.md", b"# demo\n", None), ("scripts/run.sh", b"echo ok\n", None)]);
+        let valid = zip_bytes(&[
+            ("SKILL.md", b"# demo\n", None),
+            ("scripts/run.sh", b"echo ok\n", None),
+        ]);
         let ok = install("demo-skill", "1.0.0", &valid);
         assert_eq!(ok["ok"], serde_json::Value::Bool(true), "{ok}");
         assert_eq!(ok["data"]["tree_sha256"].as_str().unwrap().len(), 64);
@@ -774,7 +942,10 @@ mod tests {
             let response = super::remove_skill(&serde_json::json!({ "name": hostile }));
             assert!(!response.ok, "{hostile}");
         }
-        assert!(home.join("skills/demo-skill/1.0.0/SKILL.md").is_file(), "hostile remove must not delete installed skills");
+        assert!(
+            home.join("skills/demo-skill/1.0.0/SKILL.md").is_file(),
+            "hostile remove must not delete installed skills"
+        );
 
         let removed = super::remove_skill(&serde_json::json!({ "name": "demo-skill" }));
         assert!(removed.ok);
