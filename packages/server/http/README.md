@@ -6,6 +6,7 @@
 - 构建 axum Router：`/healthz`（进程）、`/readyz`（PostgreSQL `SELECT 1`）、`/api/meta`。
 - `connect(database_url)`：PgPool；`run_migrations`：应用不可变 SQL 并写 `schema_migrations` 校验和。
 - 启动 fail-closed：数据库不可用/迁移失败则进程退出；SIGTERM 优雅关闭由 `apps/server` 负责。
+- 运维作业（M2 P2 部分）：hold 过期、pending usage 清扫、钱包对账；`/api/admin/jobs` 查看/触发。
 - 网关（M2 P2 部分）：仅 `/v1/responses`；未定价/余额不足拒绝；上游 key 只在服务端；SSE 逐块透传；准入 hold + 峰谷倍率；usage + 账本同事务结算。
 - 价格/模型目录（M2 P2 部分）：admin 峰谷倍率/单价 CRUD、client `/v1/models`。
 - 钱包（M2 P2 部分）：client `/wallet`/ledger、admin 充值/调账（幂等、行锁、账本派生余额）。

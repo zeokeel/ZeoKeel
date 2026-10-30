@@ -30,3 +30,9 @@
 - `deploy/docker-compose.yml`：postgres/server/caddy，6 键 env。
 - `deploy/caddy/Caddyfile`、`deploy/portal/index.html`、`deploy/scripts/{backup,restore}.sh`。
 - 本机无 Docker，**未执行镜像构建/compose up**；需在 CI/主机补验证。
+
+## P2 operational jobs (progress)
+
+- `POST /api/admin/jobs/{hold-expire|usage-pending|wallet-reconcile}/run`，`GET /api/admin/jobs`。
+- 后台 5 分钟循环；`job_runs` 记录幂等键/状态/详情。
+- 实测 `wallet-reconcile` 触发成功；月发放仍需配置/实现。

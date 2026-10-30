@@ -113,4 +113,6 @@ CODE=$(curl -sS -o /tmp/zk-gw-unpriced.json -w '%{http_code}' -X POST "$BASE/v1/
 [[ "$CODE" == "402" ]]
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/responses" -H 'content-type: application/json' -d '{"model":"deepseek-chat","input":"x"}')
 [[ "$CODE" == "401" ]]
+JOB=$(curl -fsS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/admin/jobs/wallet-reconcile/run")
+printf '%s' "$JOB" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["ok"] is True' 
 echo "auth ok: login/me/refresh/reuse/admin-csrf/users-auditor/wallet-ledger/pricing/gateway"
