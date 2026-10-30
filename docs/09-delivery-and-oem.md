@@ -215,7 +215,7 @@ Windows `…-windows-x64-setup.exe`；个人版 `zeokeel-personal-<ver>-<os>-<ar
 | 服务 | 镜像 | 端口 | 卷 | 职责 |
 | --- | --- | --- | --- | --- |
 | `caddy` | `caddy:2-alpine`@digest | 80/443，唯一对外入口 | `caddy_data`/`caddy_config` | TLS 终结 + 反代（`TLS_MODE=auto/manual/internal` 选 Caddyfile） |
-| `server` | `${SERVER_IMAGE}` | 仅 `expose 8080` | `/data` | 认证、AI 网关、门户、安装包、管理台；`stop_grace_period: 45s`（见 `24` §6） |
+| `server` | `${SERVER_IMAGE}` | 仅 `expose 8787` | `/data` | 认证、AI 网关、门户、安装包、管理台；`stop_grace_period: 45s`（见 `24` §6） |
 | `postgres` | `postgres:18-alpine`@digest | 不出宿主 | `pgdata` | 业务库 |
 
 导出 tar **必须含三张镜像**（含 caddy/postgres），否则"导入后 `compose up` 即用"在内网不成立；体积预算见 §9 09-Q2。客户侧：

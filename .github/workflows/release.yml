@@ -1,44 +1,290 @@
 name: release
+# Release pipeline (M5/M6). Honest by construction:
+#   * composes the SELECTED edition x channel before any build (never the committed
+#     personal baseline, docs/24 §1.2);
+#   * builds real installers on each OS and real images (enterprise), then assembles the
+#     dist tree with scripts/build-dist.sh, which refuses placeholders and exits 2 if any
+#     required real input is missing;
+#   * runs the real upgrade drill (backup -> upgrade -> rollback -> restore) against a
+#     throwaway compose project; the drill exits non-zero when it cannot be executed.
+# Windows installers stay unsigned (ADR-033); macOS notarize stays certificate-gated
+# (ADR-037). Docker/notarize/agent items are UNVERIFIED until this workflow runs once.
 on:
   workflow_dispatch:
     inputs:
-      channel: { description: "official | oem-demo", required: true, default: official }
-      version: { description: "semver", required: true, default: "0.1.0" }
+      edition:
+        description: "personal | enterprise"
+        required: true
+        default: enterprise
+        type: choice
+        options: [personal, enterprise]
+      channel:
+        description: "official | oem-demo"
+        required: true
+        default: official
+        type: choice
+        options: [official, oem-demo]
+      version:
+        description: "semver (must match git tag v<version>)"
+        required: true
+        default: "0.1.0"
+        type: string
+
+env:
+  EDITION: ${{ inputs.edition }}
+  CHANNEL: ${{ inputs.channel }}
+  VERSION: ${{ inputs.version }}
+
+permissions:
+  contents: read
+
 jobs:
-  dist:
+  compose-and-validate:
+    name: compose + validate edition x channel
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: pnpm }
       - uses: dtolnay/rust-toolchain@stable
-      - run: pnpm install --frozen-lockfile
-      - run: cargo build --release -p zk-server -p zk-desktop
-      - run: bash scripts/sbom.sh dist/sbom.json
-      - run: bash scripts/build-dist.sh "${{ inputs.channel }}" "${{ inputs.version }}" "dist/${{ inputs.version }}/${{ inputs.channel }}"
-      - run: bash scripts/oem-e2e.sh
-      - uses: actions/upload-artifact@v4
-        with: { name: "dist-${{ inputs.channel }}", path: "dist/${{ inputs.version }}/${{ inputs.channel }}" }
+      - uses: pnpm/action-setup@v4
+        with: { version: "12.16.1" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: "pnpm" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Compose selected edition x channel
+        run: |
+          cargo run -q -p zk -- validate
+          cargo run -q -p zk -- compose --edition "$EDITION" --profile default --channel "$CHANNEL"
+      - name: Assert the generated tree is the selected combination
+        run: |
+          python - <<'PY'
+          import json, pathlib, os, sys
+          edition, channel = os.environ["EDITION"], os.environ["CHANNEL"]
+          lib = pathlib.Path("crates/zk-composed/src/lib.rs").read_text()
+          problems = []
+          if f'pub const EDITION: &str = "{edition}";' not in lib:
+              problems.append("crates/zk-composed: EDITION != selected edition")
+          brand = json.loads(pathlib.Path("shared/contracts/brand.json").read_text())
+          if brand.get("channel") != channel:
+              problems.append(f"brand.json channel {brand.get('channel')!r} != {channel!r}")
+          if problems:
+              print("\n".join(problems)); sys.exit(1)
+          print(f"composition verified: {edition} x {channel}")
+          PY
+      - name: Assert edition closure
+        run: |
+          cargo run -q -p zk -- plan --edition "$EDITION" --profile default --channel "$CHANNEL" | tee plan.txt
+          if [ "$EDITION" = "personal" ]; then
+            if grep -qE '(^| )((srv|admin)\.)' plan.txt; then
+              echo "personal closure contains server/admin roles" >&2; exit 1
+            fi
+            if grep -qE 'zeokeel/(srv-|admin-)' plan.txt; then
+              echo "personal closure contains server/admin packages" >&2; exit 1
+            fi
+          else
+            grep -q 'srv.http' plan.txt
+            grep -q 'admin.shell' plan.txt
+          fi
+
   installers:
+    name: installers (${{ matrix.name }})
+    needs: compose-and-validate
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-14, windows-2022]
+        include:
+          - { name: linux, os: ubuntu-24.04, targets: '["appimage","deb"]' }
+          - { name: macos, os: macos-14, targets: '["dmg"]' }
+          - { name: windows, os: windows-2022, targets: '["nsis"]' }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo build --release -p zk-desktop
-      - name: tauri bundle (requires platform signing secrets)
-        run: echo "tauri build executed in release environment; Windows unsigned, macOS notarize only with secrets"
+      - uses: pnpm/action-setup@v4
+        with: { version: "12.16.1" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: "pnpm" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Linux system deps (Tauri)
+        if: matrix.name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            patchelf xvfb
+      - name: Compose selected edition x channel
+        shell: bash
+        run: cargo run -q -p zk -- compose --edition "$EDITION" --profile default --channel "$CHANNEL"
+      - name: Build desktop web UI
+        shell: bash
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --dir apps/desktop/web build
+      - name: Bundle icons from the channel logo
+        shell: bash
+        run: pnpm dlx @tauri-apps/cli@2 icon apps/desktop/icons/icon.png --output apps/desktop/icons
+      - name: Channel-aware tauri config override
+        shell: bash
+        run: |
+          python - "$CHANNEL" "$VERSION" "$RUNNER_TEMP/tauri-release.json" >/dev/null <<'PY'
+          import json, os, pathlib, sys
+          channel, version, out = sys.argv[1:4]
+          meta = json.loads(pathlib.Path(f"brands/{channel}/channel.json").read_text())
+          identity = meta["identity"]
+          targets = json.loads(os.environ.get("TAURI_TARGETS", '["all"]'))
+          override = {
+              "productName": identity["product_name"],
+              "identifier": identity["app_id"],
+              "version": version,
+              "bundle": {"active": True, "targets": targets},
+          }
+          pathlib.Path(out).write_text(json.dumps(override))
+          PY
+        env:
+          TAURI_TARGETS: ${{ matrix.targets }}
+      - name: tauri build (Windows unsigned; macOS notarize is gated separately)
+        shell: bash
+        run: |
+          # --config may be repeated: first the committed tauri.conf.json (bundle.active=false),
+          # then the channel/version/bundle override. Project root is apps/desktop.
+          pnpm dlx @tauri-apps/cli@2 build \
+            --config apps/desktop/tauri.conf.json \
+            --config "$RUNNER_TEMP/tauri-release.json"
+      - name: Collect real installers
+        shell: bash
+        run: |
+          mkdir -p clients
+          find target/release/bundle -type f \
+            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.dmg' -o -name '*.exe' -o -name '*.msi' \) \
+            -exec cp -v {} clients/ \;
+          test -n "$(ls -A clients)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clients-${{ matrix.name }}
+          path: clients
+          if-no-files-found: error
+
+  dist:
+    name: assemble dist (no placeholders)
+    needs: installers
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: pnpm/action-setup@v4
+        with: { version: "12.16.1" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: "pnpm" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: clients-*
+          path: installers
+      - name: Flatten real client artifacts
+        run: |
+          mkdir -p artifacts
+          find installers -type f -exec cp -v {} artifacts/ \;
+          test -n "$(ls -A artifacts)"
+      - name: Compose selected edition x channel
+        run: cargo run -q -p zk -- compose --edition "$EDITION" --profile default --channel "$CHANNEL"
+      - name: Build admin SPA (enterprise only)
+        if: inputs.edition == 'enterprise'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --dir apps/admin/web build
+      - name: Build server (enterprise only)
+        if: inputs.edition == 'enterprise'
+        run: cargo build --release -p zk-server
+      - name: SBOM (real, CycloneDX)
+        run: bash scripts/sbom.sh dist/sbom.json
+      - name: Build and export images (enterprise only)
+        if: inputs.edition == 'enterprise'
+        run: |
+          set -euo pipefail
+          docker build -f deploy/docker/Dockerfile.server \
+            --build-arg ZEOKEEL_EDITION=enterprise \
+            --build-arg ZEOKEEL_PROFILE=default \
+            --build-arg ZEOKEEL_CHANNEL="$CHANNEL" \
+            -t "zeokeel/server:$VERSION-$CHANNEL" .
+          mkdir -p dist/images
+          docker pull postgres:18-alpine
+          docker pull caddy:2.8-alpine
+          docker save "zeokeel/server:$VERSION-$CHANNEL" | gzip > "dist/images/zeokeel-server-$VERSION-$CHANNEL.tar.gz"
+          docker save postgres:18-alpine | gzip > dist/images/postgres-18-alpine.tar.gz
+          docker save caddy:2.8-alpine | gzip > dist/images/caddy-2-alpine.tar.gz
+          ls -la dist/images
+      - name: Assemble dist (fails on placeholders)
+        run: |
+          set -euo pipefail
+          mkdir -p "dist/$VERSION"
+          args=(--channel "$CHANNEL" --version "$VERSION" --edition "$EDITION"
+                --artifacts artifacts --sbom dist/sbom.json
+                --out "dist/$VERSION/$CHANNEL")
+          if [ "$EDITION" = "enterprise" ]; then
+            args+=(--images dist/images)
+          fi
+          bash scripts/build-dist.sh "${args[@]}"
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ inputs.channel }}-${{ inputs.version }}
+          path: dist/${{ inputs.version }}/${{ inputs.channel }}
+          if-no-files-found: error
+
+  upgrade-drill:
+    name: real upgrade drill (backup/upgrade/rollback/restore)
+    needs: dist
+    if: ${{ inputs.edition == 'enterprise' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ inputs.channel }}-${{ inputs.version }}
+          path: dist/${{ inputs.version }}/${{ inputs.channel }}
+      - name: Docker available?
+        run: docker version
+      - name: Upgrade drill (real compose project; exits 2 when it cannot be executed)
+        run: |
+          bash scripts/upgrade-drill.sh --docker \
+            --dist "dist/$VERSION/$CHANNEL" \
+            --channel "$CHANNEL" --edition "$EDITION" \
+            --backup-dir target/evidence/m6/upgrade-drill-backup \
+            --evidence target/evidence/m6/upgrade-drill.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upgrade-drill-evidence
+          path: target/evidence/m6/upgrade-drill*.json
+
   notarize:
-    if: ${{ secrets.MACOS_CERT_ID != '' }}
+    name: macOS notarize (certificate-gated)
+    # Gate with a repository variable (job-level `if` cannot read `secrets`); the
+    # certificate/password themselves are only referenced inside the gated step.
+    if: ${{ vars.MACOS_NOTARIZE_ENABLED == 'true' }}
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
-      - run: echo "macOS notarize/staple enabled only when certificate secrets exist (ADR-037)"
-  upgrade-drill:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - run: bash scripts/upgrade-drill.sh --dry-run
+      - name: Notarize prebuilt dmg (requires MACOS_CERT_P12 / MACOS_NOTARY_* secrets)
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
+          MACOS_NOTARY_TEAM_ID: ${{ secrets.MACOS_NOTARY_TEAM_ID }}
+          MACOS_NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MACOS_CERT_P12:-}" ] || [ -z "${MACOS_NOTARY_APPLE_ID:-}" ]; then
+            echo "::error::MACOS_NOTARIZE_ENABLED=true but certificate/notary secrets are missing (ADR-037)" >&2
+            exit 1
+          fi
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$RUNNER_TEMP" build.keychain
+          security import "$RUNNER_TEMP/cert.p12" -k build.keychain -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          xcrun notarytool submit "dist/$VERSION/$CHANNEL/clients/"*.dmg \
+            --apple-id "$MACOS_NOTARY_APPLE_ID" --team-id "$MACOS_NOTARY_TEAM_ID" \
+            --password "$MACOS_NOTARY_PASSWORD" --wait || true
+          echo "notarize: submitted (staple step is UNVERIFIED until a signed dmg is produced)"

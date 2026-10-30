@@ -1,38 +1,57 @@
-# ZeoKeel 部署（M2 P4 初版）
+# ZeoKeel 部署（单机 compose，M2/M5 初版）
 
-##  prerequisites
-- Linux x86_64，Docker 24+ / compose v2。
-- 6 个必填 `.env` 键：`DOMAIN`、`TLS_MODE`、`ADMIN_PASSWORD`、`PG_PASSWORD`、`SERVER_IMAGE`、`MASTER_KEY`（`docs/06` §5）。
-- `MASTER_KEY` 单独离线保管，不进入备份包。
+> 文档真源：`docs/06` §5（配置）、`docs/09` §5（交付物/镜像）、`docs/20` §2–§4（拓扑/备份/升级）。
+> 本目录只含**可执行**部署文件；镜像由 `deploy/docker/Dockerfile.server` 构建（Lead 维护）。
 
-## 启动
+## 1. 前置条件
+- Linux x86_64，Docker 24+ / Compose v2。
+- **6 个必填 `.env` 键**（`docs/06` §5）：`DOMAIN`、`TLS_MODE`、`ADMIN_PASSWORD`、`PG_PASSWORD`、`SERVER_IMAGE`、`MASTER_KEY`。
+  `docs/09` §5 把 `MASTER_KEY` 标为“推荐”，而 `docs/06` §5 与 `deploy/docker-compose.yml` 按必填处理（不静默降级）。
+- `MASTER_KEY` / `master.key` 单独离线保管，不进入备份包（`docs/20` §3）。
+
+## 2. 启动（在 `deploy/` 目录内执行；compose 默认读取 `deploy/.env`）
 ```bash
-cp deploy/.env.example .env && chmod 600 .env   # 填入 6 键
-docker compose -f deploy/docker-compose.yml up -d
-curl -fsS https://$DOMAIN/healthz
-curl -fsS https://$DOMAIN/readyz
+cd deploy
+cp .env.example .env && chmod 600 .env     # 填 6 键；SERVER_IMAGE 用 tag（交付时用 tag@digest）
+mkdir -p data updates caddy/certs          # /data 持久卷 + 可替换更新目录 + manual TLS 证书
+sudo chown -R 10001:10001 data             # 容器内 uid 10001
+docker compose config >/dev/null           # 先做一次配置校验
+docker compose up -d
+curl -kfsS https://$DOMAIN/healthz         # TLS_MODE=internal 时用 -k
+curl -kfsS https://$DOMAIN/readyz
 open https://$DOMAIN/admin/
 ```
+- 端口：只有 caddy 发布 `80/443`；server 仅内部 `8787`（`expose 8787`，与二进制一致；`docs/20` §2 的 8080 是历史写法）。
+- `/data`（`./data` bind）保存应用 SQLite/日志，**master.key 也应放这里并离线备份**；`./updates` 只读挂载为更新清单目录（`ZEOKEEL_UPDATE_DIR=/data/updates`）。
+- `TLS_MODE=auto|manual|internal` 由 `deploy/caddy/entrypoint.sh` 选择 `Caddyfile.auto|manual|internal`；`manual` 需要 `deploy/caddy/certs/{fullchain,privkey}.pem`。
 
-## 构建镜像
+## 3. 构建镜像
 ```bash
-docker build -f deploy/docker/Dockerfile.server -t zeokeel/server:0.1.0 .
+# 在仓库根目录执行（Dockerfile 内会 compose enterprise×official；OEM 渠道需先修正 Dockerfile 的 channel 参数）
+docker build -f deploy/docker/Dockerfile.server -t zeokeel/server:0.1.0-official .
 ```
-镜像内包含 `zk-server` 与 admin SPA；migrations 已嵌入二进制。
+镜像内含 `zk-server` + admin SPA；migrations 已嵌入二进制。OEM 镜像的品牌注入尚未在 Dockerfile 中接通（见 `target/evidence/audit/build.md` P1）。
 
-## 备份 / 恢复
+## 4. 备份 / 恢复（脚本自带 `cd deploy`，可直接从任意目录调用）
 ```bash
-bash deploy/scripts/backup.sh
-bash deploy/scripts/restore.sh ./backups/<stamp>
+cd deploy
+bash scripts/backup.sh                      # -> ./backups/<stamp>/{zeokeel.dump,data.tgz,env.redacted,README.txt}
+bash scripts/restore.sh ./backups/<stamp>   # 需先注入 MASTER_KEY 到 .env
 ```
-`master.key` 与 `.env` 的 `MASTER_KEY` 不进入备份包；恢复后手工注入。
+- 备份 = `pg_dump -Fc` + `/data`（排除 `master.key`）+ 脱敏 env；**PITR/WAL 归档仍是 UNVERIFIED**（`docs/20` §3 要求，脚本输出会显式标注）。
+- 恢复后自动等待 `/readyz`；`master.key` 不随备份恢复，必须手工放回（离线保管）。
 
-## 升级 / 回滚
-1. 备份；2. `docker load` 新镜像；3. 改 `SERVER_IMAGE`；4. `compose up -d`；5. 验证 `/readyz`。
-失败：回旧 `SERVER_IMAGE`，必要时恢复 PG 备份。
+## 5. 升级 / 回滚（人工，`ADR-041`）
+1. `bash scripts/backup.sh`；2. 下载并校验镜像 tar + `SHA256SUMS`；3. `docker load`；
+4. 修改 `.env` 的 `SERVER_IMAGE`（建议 `tag@digest`）；5. `docker compose up -d server caddy`；
+6. 验证 `/readyz`、门户、管理台；7. 失败：改回旧 `SERVER_IMAGE` 并 `compose up -d`，跨迁移回滚用备份恢复。
+- 真实演练：`bash scripts/upgrade-drill.sh --docker --dist dist/<ver>/<channel>`（仓库根目录执行；无 Docker 时明确 `exit 2 UNVERIFIED`）。
 
-## 已知限制（M2 初版）
-- Caddy 自动 HTTPS；内网/自定义 TLS 需按现场改 Caddyfile。
-- 管理台 SPA 目前由镜像 `ZEOKEEL_ADMIN_DIST` 提供，尚未 `include_dir!` 内嵌。
-- 备份脚本为冷备份，PITR/对象存储后置。
-- Docker 镜像未在 CI 构建；需补 `docker build` 门禁。
+## 6. 本地无 Docker 时的验证边界
+- `docker compose config`、镜像构建/运行、Caddy TLS、备份恢复实跑均标注 **UNVERIFIED**；本仓库只做语法/静态校验（见 task 报告）。
+- 已知限制：Dockerfile 目前只 compose enterprise×official；OEM 镜像品牌注入、三平台安装包、notarize 仍需发布环境完成。
+
+## 7. 已知限制（M2 初版）
+- 管理台 SPA 由镜像 `ZEOKEEL_ADMIN_DIST` 提供，尚未 `include_dir!` 内嵌。
+- 备份为冷备份（pg_dump + /data tar），PITR/对象存储后置。
+- 镜像 digest 尚未钉死（`docs/09` §4 要求交付时用 `tag@digest`）。

@@ -1,0 +1,21 @@
+# BuildKit uses <Dockerfile>.dockerignore when building with -f <Dockerfile>.
+# Keep the build context small and free of local runtime state/secrets.
+.git
+target
+**/target
+node_modules
+**/node_modules
+dist
+**/dist
+test-results
+target/evidence
+deploy/data
+deploy/backups
+deploy/.env
+deploy/caddy/certs/*
+deploy/caddy/certs/.gitkeep
+experiments
+research
+oem/fixtures/dist
+*.pem
+*.key

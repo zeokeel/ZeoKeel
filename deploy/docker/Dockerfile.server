@@ -6,6 +6,9 @@
 # build, never by committing enterprise generated files.
 FROM rust:1.99-bookworm AS server-build
 WORKDIR /src
+ARG ZEOKEEL_EDITION=enterprise
+ARG ZEOKEEL_PROFILE=default
+ARG ZEOKEEL_CHANNEL=official
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY packages ./packages
@@ -17,14 +20,17 @@ COPY brands ./brands
 COPY zk.toml ./
 COPY pnpm-workspace.yaml package.json ./
 RUN cargo build --release -p zk --locked
-RUN ./target/release/zk compose --edition enterprise --profile default --channel official
+RUN ./target/release/zk compose --edition "$ZEOKEEL_EDITION" --profile "$ZEOKEEL_PROFILE" --channel "$ZEOKEEL_CHANNEL"
 RUN cargo build --release -p zk-server
 
 FROM node:22-bookworm AS admin-build
 WORKDIR /src
+ARG ZEOKEEL_EDITION=enterprise
+ARG ZEOKEEL_PROFILE=default
+ARG ZEOKEEL_CHANNEL=official
 COPY --from=server-build /src/target/release/zk /usr/local/bin/zk
 COPY . .
-RUN zk compose --edition enterprise --profile default --channel official
+RUN zk compose --edition "$ZEOKEEL_EDITION" --profile "$ZEOKEEL_PROFILE" --channel "$ZEOKEEL_CHANNEL"
 RUN corepack enable && pnpm install --frozen-lockfile && pnpm --dir apps/admin/web build
 
 FROM debian:bookworm-slim AS runtime

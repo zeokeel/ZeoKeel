@@ -1,5 +1,9 @@
+# TLS_MODE=manual — customer-supplied certificate; no ACME.
+# Put fullchain.pem / privkey.pem under deploy/caddy/certs/ (mounted read-only at
+# /etc/caddy/certs). entrypoint.sh refuses to start if either file is missing.
 {$DOMAIN} {
 	encode zstd gzip
+	tls /etc/caddy/certs/fullchain.pem /etc/caddy/certs/privkey.pem
 	handle /admin/* {
 		reverse_proxy server:8787
 	}
@@ -7,6 +11,9 @@
 		reverse_proxy server:8787
 	}
 	handle /v1/* {
+		reverse_proxy server:8787
+	}
+	handle /portal* {
 		reverse_proxy server:8787
 	}
 	handle /healthz {

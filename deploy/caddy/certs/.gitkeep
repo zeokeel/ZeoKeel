@@ -1,0 +1,2 @@
+# Keep this directory so TLS_MODE=manual can mount deploy/caddy/certs read-only.
+# Place fullchain.pem and privkey.pem here (never commit certificates).

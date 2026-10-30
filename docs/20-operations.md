@@ -39,7 +39,7 @@
 | postgres | 2C/2GB + SSD | 单机默认；外部 PG 需同版本/同迁移 |
 | WASM 并发 | 每应用 1–2 实例 | 全局/每用户配额见 `24`/`07` |
 
-端口：仅 80/443 暴露；server 仅 `expose 8080`；PG 不出宿主。数据卷：`pgdata`、`/data`（含 `master.key`、应用 SQLite、日志）。
+端口：仅 80/443 暴露；server 仅 `expose 8787`；PG 不出宿主。数据卷：`pgdata`、`/data`（含 `master.key`、应用 SQLite、日志）。
 
 ## 3. 备份与恢复（必须可验证）
 

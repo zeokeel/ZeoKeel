@@ -1,0 +1,6 @@
+# Runtime state and secrets — never commit (deploy/ scope only).
+.env
+data/
+backups/
+caddy/certs/*
+!caddy/certs/.gitkeep

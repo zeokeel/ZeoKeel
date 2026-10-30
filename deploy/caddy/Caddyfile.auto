@@ -1,0 +1,36 @@
+# TLS_MODE=auto — Caddy obtains/renews a public certificate for DOMAIN automatically.
+# Selected by deploy/caddy/entrypoint.sh (docs/09 §5).
+{$DOMAIN} {
+	encode zstd gzip
+	tls {
+		issuer acme
+	}
+	handle /admin/* {
+		reverse_proxy server:8787
+	}
+	handle /api/* {
+		reverse_proxy server:8787
+	}
+	handle /v1/* {
+		reverse_proxy server:8787
+	}
+	handle /portal* {
+		reverse_proxy server:8787
+	}
+	handle /healthz {
+		reverse_proxy server:8787
+	}
+	handle /readyz {
+		reverse_proxy server:8787
+	}
+	handle {
+		root * /srv/portal
+		file_server
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+	}
+}
