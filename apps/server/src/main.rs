@@ -112,9 +112,10 @@ async fn main() -> Result<(), String> {
     if let Err(error) = zk_srv_jobs::run_job(&state.pool, "usage-pending", &startup_key).await {
         eprintln!("startup pending-usage compensation failed: {error}");
     }
-    // The job loop runs under kernel supervision; the package's loop handle stays
-    // host-aborted after the HTTP drain so shutdown ordering is unchanged.
-    let (jobs_tx, jobs_rx) = tokio::sync::oneshot::channel::<tokio::task::JoinHandle<()>>();
+    // The job loop runs under kernel supervision; the package's stop token is
+    // signalled after the HTTP drain so the in-flight tick can finish before the
+    // pool is closed.
+    let (jobs_tx, jobs_rx) = tokio::sync::oneshot::channel::<zk_srv_jobs::JobsLoop>();
     let jobs_pool = state.pool.clone();
     let _jobs_supervisor = bootstrap
         .spawn_task("srv.jobs", async move {
@@ -151,9 +152,10 @@ async fn main() -> Result<(), String> {
         .merge(zk_srv_settings::routes().with_state(state.clone()))
         .merge(zk_srv_jobs::routes().with_state(state.clone()));
     let result = serve(app).await;
-    // Stop cron and wait for the in-flight job tick to end (`docs/24` §6).
-    jobs.abort();
-    let _ = jobs.await;
+    // Stop cron and wait for the in-flight job tick to end (`docs/24` §6) before
+    // settlement/audit flush closes the pool; the stop token is idempotent.
+    jobs.stop();
+    jobs.wait().await;
     shutdown_sequence(&state).await;
     // Dispose kernel effects (server plugins/tasks) after the drain/settlement phase.
     if let Err(error) = bootstrap.shutdown() {

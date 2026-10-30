@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 //! M2 operational jobs: hold expiry, pending usage cleanup, reconciliation, monthly grant.
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::{Path, State};
@@ -284,27 +286,107 @@ async fn trigger(
 
 /// Start the background loop (5 min interval); returns the task handle so the
 /// composition root can stop cron on SIGTERM (`docs/24` §6).
-pub fn spawn_loop(pool: PgPool) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
+/// Cancellation token for the periodic job loop.
+///
+/// Set from the SIGTERM path; idempotent so repeated shutdown attempts are safe.
+#[derive(Debug, Clone, Default)]
+pub struct StopToken {
+    stop: Arc<AtomicBool>,
+}
+
+impl StopToken {
+    /// New, not-yet-stopped token.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Signal the loop to stop (idempotent).
+    pub fn stop(&self) {
+        self.stop.store(true, Ordering::SeqCst);
+    }
+
+    /// Whether [`Self::stop`] has been called.
+    #[must_use]
+    pub fn is_stopped(&self) -> bool {
+        self.stop.load(Ordering::SeqCst)
+    }
+}
+
+/// Handle to the kernel-owned periodic job loop.
+///
+/// Stop it and await [`Self::wait`] before closing the database pool, so an
+/// in-flight tick finishes against an open pool.
+pub struct JobsLoop {
+    stop: StopToken,
+    join: tokio::task::JoinHandle<()>,
+}
+
+impl JobsLoop {
+    /// Signal the loop to stop after the current tick (idempotent).
+    pub fn stop(&self) {
+        self.stop.stop();
+    }
+
+    /// Wait for the loop to exit (abort-safe).
+    pub async fn wait(self) {
+        let _ = self.join.await;
+    }
+
+    /// Whether the loop has been signalled to stop.
+    #[must_use]
+    pub fn is_stopped(&self) -> bool {
+        self.stop.is_stopped()
+    }
+}
+
+/// Spawn the periodic jobs loop.
+#[must_use]
+pub fn spawn_loop(pool: PgPool) -> JobsLoop {
+    spawn_loop_with_token(pool, StopToken::new())
+}
+
+fn spawn_loop_with_token(pool: PgPool, token: StopToken) -> JobsLoop {
+    let loop_token = token.clone();
+    let join = tokio::spawn(async move {
         let mut ticker = tokio::time::interval(Duration::from_secs(300));
         loop {
-            ticker.tick().await;
-            for job in [
-                "hold-expire",
-                "usage-pending",
-                "wallet-reconcile",
-                "wallet-grant",
-                "audit-retention",
-                "audit-verify",
-                "app-retire",
-            ] {
-                let key = format!("{job}:{}", chrono::Utc::now().format("%Y%m%d%H"));
-                if let Err(error) = run_job(&pool, job, &key).await {
-                    eprintln!("job {job} failed: {error}");
-                }
+            if loop_token.is_stopped() {
+                break;
+            }
+            tokio::select! {
+                biased;
+                () = wait_for_stop(&loop_token) => break,
+                _ = ticker.tick() => run_tick(&pool).await,
             }
         }
-    })
+    });
+    JobsLoop { stop: token, join }
+}
+
+/// Resolves once the token is set; polled so no extra runtime primitive is needed.
+async fn wait_for_stop(token: &StopToken) {
+    while !token.is_stopped() {
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
+/// One scan: every job once per tick with an hour-granularity idempotency key.
+async fn run_tick(pool: &PgPool) {
+    for job in [
+        "hold-expire",
+        "usage-pending",
+        "wallet-reconcile",
+        "wallet-grant",
+        "audit-retention",
+        "audit-verify",
+        "app-retire",
+    ] {
+        let key = format!("{job}:{}", chrono::Utc::now().format("%Y%m%d%H"));
+        if let Err(error) = run_job(pool, job, &key).await {
+            eprintln!("job {job} failed: {error}");
+        }
+    }
 }
 
 /// Admin job routes.
@@ -317,3 +399,33 @@ pub fn routes() -> Router<AppState> {
 /// Immutable migrations owned by this domain.
 pub const MIGRATIONS: &[(&str, &str)] =
     &[("0008_jobs", include_str!("../migrations/0008_jobs.sql"))];
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+    use super::{spawn_loop_with_token, StopToken};
+    use sqlx::postgres::PgPoolOptions;
+    use std::time::Duration;
+
+    #[test]
+    fn stop_token_is_idempotent() {
+        let token = StopToken::new();
+        assert!(!token.is_stopped());
+        token.stop();
+        token.stop();
+        assert!(token.is_stopped());
+    }
+
+    #[tokio::test]
+    async fn loop_exits_before_first_tick_when_stopped() {
+        let token = StopToken::new();
+        token.stop();
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://zeokeel:zeokeel@127.0.0.1:1/zeokeel")
+            .expect("lazy pool");
+        let jobs = spawn_loop_with_token(pool, token);
+        tokio::time::timeout(Duration::from_secs(2), jobs.wait())
+            .await
+            .expect("stopped loop must exit");
+    }
+}
