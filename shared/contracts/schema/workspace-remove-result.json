@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RemoveWorkspaceResult",
+  "description": "Result of removing a workspace.",
+  "type": "object",
+  "required": [
+    "moved_sessions",
+    "removed"
+  ],
+  "properties": {
+    "moved_sessions": {
+      "description": "Number of conversations moved to `reassign_to`.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "removed": {
+      "description": "Always true when the call succeeds.",
+      "type": "boolean"
+    }
+  }
+}

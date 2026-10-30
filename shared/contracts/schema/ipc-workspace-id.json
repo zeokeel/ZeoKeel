@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WorkspaceIdPayload",
+  "description": "Commands that address one workspace (`workspace.set_default`, `session.list`).",
+  "type": "object",
+  "required": [
+    "workspace_id"
+  ],
+  "properties": {
+    "workspace_id": {
+      "description": "Target workspace id.",
+      "type": "string"
+    }
+  }
+}

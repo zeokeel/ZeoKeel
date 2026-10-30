@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TurnContext",
+  "description": "Per-turn workspace context passed to tools.",
+  "type": "object",
+  "required": [
+    "conversation_id",
+    "workspace_id",
+    "workspace_root"
+  ],
+  "properties": {
+    "conversation_id": {
+      "description": "Conversation id (empty for legacy calls).",
+      "type": "string"
+    },
+    "workspace_id": {
+      "description": "Workspace id.",
+      "type": "string"
+    },
+    "workspace_root": {
+      "description": "Canonical workspace root; tools resolve relative paths against it.",
+      "type": "string"
+    }
+  }
+}

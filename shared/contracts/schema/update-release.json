@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ReleaseInfo",
+  "description": "Release feed payload (`latest.json`).",
+  "type": "object",
+  "required": [
+    "version"
+  ],
+  "properties": {
+    "assets": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ReleaseAsset"
+      }
+    },
+    "notes": {
+      "default": "",
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "ReleaseAsset": {
+      "description": "One downloadable release artifact.",
+      "type": "object",
+      "required": [
+        "platform",
+        "sha256",
+        "url"
+      ],
+      "properties": {
+        "platform": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

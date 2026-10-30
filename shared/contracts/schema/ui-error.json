@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "UiError",
+  "description": "Closed error set for UI contribution validation.",
+  "oneOf": [
+    {
+      "description": "Slot is not in the frozen slot set.",
+      "type": "object",
+      "required": [
+        "UnknownSlot"
+      ],
+      "properties": {
+        "UnknownSlot": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Component id duplicated.",
+      "type": "object",
+      "required": [
+        "DuplicateComponent"
+      ],
+      "properties": {
+        "DuplicateComponent": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  ]
+}

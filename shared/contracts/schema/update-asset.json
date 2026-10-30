@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ReleaseAsset",
+  "description": "One downloadable release artifact.",
+  "type": "object",
+  "required": [
+    "platform",
+    "sha256",
+    "url"
+  ],
+  "properties": {
+    "platform": {
+      "type": "string"
+    },
+    "sha256": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    }
+  }
+}

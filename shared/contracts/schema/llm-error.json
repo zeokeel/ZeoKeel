@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LlmError",
+  "description": "Closed error set for provider calls.",
+  "oneOf": [
+    {
+      "description": "Upstream/network failure.",
+      "type": "object",
+      "required": [
+        "Upstream"
+      ],
+      "properties": {
+        "Upstream": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Request rejected locally (bad config/input).",
+      "type": "object",
+      "required": [
+        "InvalidRequest"
+      ],
+      "properties": {
+        "InvalidRequest": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ToolSpec",
+  "description": "Human/model readable description of a tool.",
+  "type": "object",
+  "required": [
+    "description",
+    "name"
+  ],
+  "properties": {
+    "description": {
+      "description": "One-line description shown to the model and UI.",
+      "type": "string"
+    },
+    "mutating": {
+      "description": "Whether the tool may mutate the workspace/system.",
+      "default": false,
+      "type": "boolean"
+    },
+    "name": {
+      "description": "Stable tool name, e.g. `fs.read`.",
+      "type": "string"
+    },
+    "parameters": {
+      "description": "JSON Schema for the tool arguments (rig/OpenAI tools).",
+      "default": null
+    },
+    "requires_approval": {
+      "description": "Whether the tool needs explicit user approval before execution.",
+      "default": false,
+      "type": "boolean"
+    }
+  }
+}

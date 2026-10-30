@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CommandResponse",
+  "description": "One command response.",
+  "type": "object",
+  "required": [
+    "ok"
+  ],
+  "properties": {
+    "data": {
+      "description": "Success payload (if any)."
+    },
+    "error": {
+      "description": "Error message on failure.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ok": {
+      "description": "True on success.",
+      "type": "boolean"
+    }
+  }
+}

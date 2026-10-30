@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "UiContribution",
+  "description": "One static UI contribution declared by a UI package.",
+  "type": "object",
+  "required": [
+    "component",
+    "slot"
+  ],
+  "properties": {
+    "component": {
+      "description": "Component id, e.g. `chat.thread`.",
+      "type": "string"
+    },
+    "order": {
+      "description": "Order inside a multi-slot (lower first).",
+      "default": 0,
+      "type": "integer",
+      "format": "int32"
+    },
+    "slot": {
+      "description": "Slot id, e.g. `ui.chat`.",
+      "type": "string"
+    }
+  }
+}

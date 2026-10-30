@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Message",
+  "description": "One message inside a conversation.",
+  "type": "object",
+  "required": [
+    "content",
+    "conversation_id",
+    "created_at_ms",
+    "id",
+    "role"
+  ],
+  "properties": {
+    "content": {
+      "description": "Text content (tool records are JSON strings in M1).",
+      "type": "string"
+    },
+    "conversation_id": {
+      "description": "Parent conversation id.",
+      "type": "string"
+    },
+    "created_at_ms": {
+      "description": "Creation time (ms since epoch).",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "id": {
+      "description": "Stable id.",
+      "type": "string"
+    },
+    "role": {
+      "description": "Role: `user` | `assistant` | `tool` | `system`.",
+      "type": "string"
+    },
+    "status": {
+      "description": "Turn status: `done` | `cancelled` | `error` (M1 persistence for cancel markers).",
+      "default": "done",
+      "type": "string"
+    }
+  }
+}

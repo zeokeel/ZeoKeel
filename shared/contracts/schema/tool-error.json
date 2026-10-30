@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ToolError",
+  "description": "Closed error set for tool calls.",
+  "oneOf": [
+    {
+      "description": "Tool name is not registered.",
+      "type": "object",
+      "required": [
+        "NotFound"
+      ],
+      "properties": {
+        "NotFound": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Underlying IO failure.",
+      "type": "object",
+      "required": [
+        "Io"
+      ],
+      "properties": {
+        "Io": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Path/argument denied by policy.",
+      "type": "object",
+      "required": [
+        "Denied"
+      ],
+      "properties": {
+        "Denied": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Arguments are not valid for this tool.",
+      "type": "object",
+      "required": [
+        "InvalidArgs"
+      ],
+      "properties": {
+        "InvalidArgs": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "QuestionAnswerPayload",
+  "description": "`question.answer` payload.",
+  "type": "object",
+  "required": [
+    "answers",
+    "question_id"
+  ],
+  "properties": {
+    "answers": {
+      "description": "Answers keyed by question id (opaque JSON)."
+    },
+    "question_id": {
+      "description": "Pending question batch id.",
+      "type": "string"
+    }
+  }
+}

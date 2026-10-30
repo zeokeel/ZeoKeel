@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WorkspaceCreatePayload",
+  "description": "`workspace.create` payload.",
+  "type": "object",
+  "required": [
+    "path"
+  ],
+  "properties": {
+    "path": {
+      "description": "Local directory path (host canonicalizes it).",
+      "type": "string"
+    },
+    "title": {
+      "description": "Optional display title; empty means host default.",
+      "default": "",
+      "type": "string"
+    }
+  }
+}

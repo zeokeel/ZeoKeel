@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PackageDescriptor",
+  "description": "Stable identity of a composed package.",
+  "type": "object",
+  "required": [
+    "id",
+    "kind",
+    "roles",
+    "version"
+  ],
+  "properties": {
+    "id": {
+      "description": "Package id, e.g. `zeokeel/tool-fs`.",
+      "type": "string"
+    },
+    "kind": {
+      "description": "Package kind, e.g. `capability`.",
+      "type": "string"
+    },
+    "roles": {
+      "description": "Roles provided by this package.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "version": {
+      "description": "Package version (semver).",
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EmptyPayload",
+  "description": "Empty payload (`meta.get`, `settings.get`, `workspace.list`, ...).",
+  "type": "object"
+}

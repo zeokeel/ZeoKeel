@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CommandRequest",
+  "description": "One command request. `payload` is command-specific and schema-validated at the boundary.",
+  "type": "object",
+  "required": [
+    "name",
+    "payload"
+  ],
+  "properties": {
+    "name": {
+      "description": "Command name, e.g. `chat.send`.",
+      "type": "string"
+    },
+    "payload": {
+      "description": "Command payload (object)."
+    }
+  }
+}
