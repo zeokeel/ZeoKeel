@@ -1,0 +1,22 @@
+name: security
+on: [push, pull_request]
+jobs:
+  hardening:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-deny cargo-audit cargo-machete cargo-geiger --locked
+      - run: cargo deny check
+      - run: cargo audit
+      - run: cargo machete
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile && pnpm audit --prod
+      - run: ZEOKEEL_SECURITY_STRICT=1 bash scripts/security-audit.sh
+  a11y:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "axe matrix runs via scripts/admin-e2e.sh + login-e2e.sh in CI with PG"

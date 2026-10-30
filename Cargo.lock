@@ -7764,7 +7764,6 @@ dependencies = [
 name = "zk-composed"
 version = "0.1.0"
 dependencies = [
- "acme-brand",
  "serde_json",
  "zk-admin-admin-apps",
  "zk-admin-admin-audit",

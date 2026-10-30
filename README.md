@@ -116,3 +116,6 @@ ZeoKeel/
 先做 S0 的 6 个 spike（双 app 组合、WASM 运行时与每应用 DB、认证与 JWT、OEM submodule CI、
 迁移不可变、管理台包化），每个 ≤2 天并落 ADR；细节与"待你拍板"的问题见
 [`docs/15-open-questions.md`](docs/15-open-questions.md)。
+
+
+文档入口：[docs/README.md](docs/README.md) · [运维 Runbook](docs/34-operations-runbook.md) · [贡献](CONTRIBUTING.md)

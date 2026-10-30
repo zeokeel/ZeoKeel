@@ -1,6 +1,6 @@
 # 2026-10-30-hardening-release · 设计（M6）
 
-- 状态：`draft`
+- 状态：`approved`
 
 ## 1. 脚本/证据
 
@@ -13,7 +13,7 @@
 
 ## 2. 文档/CI
 
-- 新增 docs/29–32、CHANGELOG、CONTRIBUTING；根 README 更新；弱管控声明。
+- 新增 docs/34–32、CHANGELOG、CONTRIBUTING；根 README 更新；弱管控声明。
 - `.github/workflows/security.yml`：安装并强制 `cargo-deny`、`cargo-audit`、`cargo-machete`、`cargo-geiger`、`trivy`、`pnpm audit --prod`；security-audit/reproducible/axe；Docker/证书 job 条件化并标 UNVERIFIED。
 - 1.0 checklist 绑定 M0–M5 证据路径。
 

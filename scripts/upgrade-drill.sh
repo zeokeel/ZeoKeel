@@ -2,7 +2,12 @@
 # M5 upgrade drill: dry-run by default; Docker path is explicitly UNVERIFIED if unavailable.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-MODE="${1:---dry-run}"; TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+MODE="${1:---dry-run}";
+if [[ "$MODE" == "--full" ]]; then
+  bash scripts/backup-restore.sh
+  MODE=--dry-run
+fi
+TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 URL="${ZEOKEEL_DRILL_URL:-}"
 if [[ -n "$URL" ]] && curl -fsS "$URL/api/updates/manifest" -H 'X-ZeoKeel-Client: 0.1.0;official;linux-x64;drill' -o "$TMP/manifest.json"; then
   echo "1) manifest downloaded"

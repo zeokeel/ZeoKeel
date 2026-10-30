@@ -19,6 +19,18 @@
 | 9 | `python3 scripts/docs-check.py` / `spec-check.py` / `review-check.py` | 0 errors | 日志 |
 | 10 | 独立评审 | APPROVED | `docs/reviews/2026-10-30-m6-implementation.md` |
 
+## 1.1 实测证据（2026-10-30）
+
+- `security-audit.sh`：26 findings，high_fail=0；`target/evidence/m6/security.json`
+- `backup-restore.sh`：32 tables restore + login smoke；PITR/WAL UNVERIFIED
+- `upgrade-drill.sh --full`：backup + dry-run upgrade/readyz；Docker 真升级 UNVERIFIED
+- `fault-injection.sh`：DB down→readyz 非 200、audit 表缺失→用户创建非 200、kill -9 重启行数一致
+- `perf-budget.sh`：ready 976ms、health p95 0.95ms、admin 107895B、desktop 269444B gzip；pass
+- `reproducible-build.sh`：zk 两次 sha 一致；server/desktop/镜像 UNVERIFIED
+- `admin-e2e.sh`：11 passed（含 m6 a11y 全管理台 + M5 portal）
+- `login-e2e.sh`：4 passed；server/desktop 日志 grep token=0
+- `cargo test --workspace` / clippy：pass
+
 ## 2. UNVERIFIED（环境阻塞，不得写 complete）
 
 - Docker 镜像扫描/save/load/compose/PITR 实跑；三平台安装包；macOS 公证；镜像 tar 可复现；500 用户压测。

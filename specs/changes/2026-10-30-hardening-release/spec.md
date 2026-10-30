@@ -1,6 +1,6 @@
 # 2026-10-30-hardening-release · 规格（M6）
 
-- 状态：`draft`
+- 状态：`approved`
 - 依据：`docs/12` M6、`docs/21` §9–§10、`docs/20` §3/§4/§8/§9、`docs/11`、`docs/18`、`docs/09` SBOM、D60–D65
 
 ## 1. 安全门禁（docs/21 §10，13 项）
@@ -45,7 +45,7 @@
 
 - `scripts/reproducible-build.sh`：固定 rust/node/pnpm 版本、`--locked`、`SOURCE_DATE_EPOCH`、`--remap-path-prefix`、`-C build-id=none`；覆盖 `zk`/`zk-server`/`zk-desktop`/admin dist/镜像 tar；两次冷构建 sha 必须一致；非确定项必须 ADR 消除，不接受“记录即过”。
 - SBOM/license：CycloneDX 每产物；license allowlist/deny；deep OEM 包；`cargo deny licenses`。
-- 1.0：`CHANGELOG.md`、root README 10 秒入口、`docs/29-runbook`、`docs/30-api`（生成契约摘要）、`docs/31-troubleshooting`、`docs/32-release-checklist`、known limitations、版本决策 1.0.0。
+- 1.0：`CHANGELOG.md`、root README 10 秒入口、`docs/34-runbook`、`docs/35-api`（生成契约摘要）、`docs/36-troubleshooting`、`docs/37-release-checklist`、known limitations、版本决策 1.0.0。
 - 环境阻塞（Docker/证书/平台 runner）标 UNVERIFIED；不得写 complete。
 
 ## 5. 验收断言

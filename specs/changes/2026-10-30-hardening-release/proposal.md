@@ -1,6 +1,6 @@
 # 2026-10-30-hardening-release · 提案（M6）
 
-- 状态：`draft`
+- 状态：`approved`
 - 评审：`docs/reviews/2026-10-30-m6-spec.md`
 - 依据：`docs/12` M6、`docs/11`、`docs/18`、`docs/20`、`docs/21`、`docs/15` D60–D65、ADR-033/037/041/057
 

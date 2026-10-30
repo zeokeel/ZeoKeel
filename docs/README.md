@@ -171,3 +171,7 @@
 - 门禁：`python3 scripts/docs-check.py` + `python3 scripts/spec-check.py` + `python3 scripts/review-check.py` 都需 0 error（`spec-check` 只做结构检查；`review-check` 校验 C19 评审/结论/关联 spec）。
 
 - [威胁模型](33-threat-model.md)
+- [运维 Runbook](34-operations-runbook.md)
+- [API Reference](35-api-reference.md)
+- [故障排查](36-troubleshooting.md)
+- [1.0 发布清单](37-release-1.0-checklist.md)
