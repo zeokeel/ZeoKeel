@@ -132,3 +132,5 @@
 - [ ] 审计哈希链 + WORM 锚定验证；钱审计矩阵无缺项。
 - [ ] 依赖审计（cargo-deny/pnpm audit）、SBOM、镜像扫描无高危。
 - [ ] 隐私口径评审；材料不得声称"服务端不读取会话"除非网关不落库已验证。
+
+> M3 连接器仅支持无静态 secret 配置（ADR-060）；OAuth public client + PKCE 令牌只在客户端本地。MCP 静态 secret 加密/受控交付延后 M3.1。

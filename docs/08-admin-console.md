@@ -41,7 +41,7 @@
 页面注册是静态声明（ADR-017）：
 
 ```toml
-# packages/server/admin-users/zk.toml（管理台页面包：只声明页面/权限/消费的服务端 API，不实现域）
+# packages/admin/admin-users/zk.toml（管理台页面包：只声明页面/权限/消费的服务端 API，不实现域）
 [facets]
 rust = { crate = "zk-admin-users" }          # 声明 crate：页面/权限/消费的服务端 API；域路由由 zk-srv-users 提供
 ui   = { package = "@zeokeel/admin-users" }
@@ -61,7 +61,7 @@ permission = "users:read"
 
 ```
 packages/server/users/            # 域：路由 + 仓储 + 权限点（zk-srv-users）
-packages/server/admin-users/      # 管理台页面：UI（@zeokeel/admin-users）+ 声明 crate（zk-admin-users）
+packages/admin/admin-users/      # 管理台页面：UI（@zeokeel/admin-users）+ 声明 crate（zk-admin-users）
 ```
 
 - 管理台页面包**不实现域**：域路由/仓储由 `zk-srv-users` 提供；页面经 `ui.transport` 调 `/api/admin/*`（类型来自 `zk-contract-user` 生成的 TS），不直接 import Rust 契约 crate。

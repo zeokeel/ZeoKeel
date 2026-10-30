@@ -138,7 +138,7 @@
 
 | 表 | 关键列 |
 | --- | --- |
-| `connectors` | id, name, transport(stdio/http/sse), config(json, 密钥加密), enabled, updated_at |
+| `connectors` | id, name, transport(stdio/http/sse), config(json), enabled, updated_at；**M3 仅允许无静态 secret 配置（ADR-060）**；静态 secret 加密/受控交付在 M3.1 |
 | `connector_grants` | connector_id, grantee(user/all), can_enable |
 | `connector_oauth` | connector_id, client_id, scopes, redirect_uri（客户端固定）；**公共客户端 + PKCE，不下发 client_secret**（`21` §3） |
 
