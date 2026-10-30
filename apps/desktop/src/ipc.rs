@@ -166,6 +166,16 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 Err(error) => CommandResponse::err(error.to_string()),
             }
         }
+        commands::AUTH_CONFIGURE => {
+            let (Some(base_url), Some(access_token)) = (
+                payload.get("server_url").and_then(Value::as_str),
+                payload.get("access_token").and_then(Value::as_str),
+            ) else {
+                return CommandResponse::err("missing server_url/access_token");
+            };
+            zk_composed::configure_llm(base_url, access_token);
+            CommandResponse::ok(json!({ "configured": true }))
+        }
         commands::CHAT_SEND => chat_send(state, payload),
         commands::CHAT_CANCEL => chat_cancel(state, payload),
         commands::APPROVAL_DECIDE => {

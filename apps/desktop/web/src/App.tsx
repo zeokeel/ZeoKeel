@@ -83,7 +83,11 @@ export function App(props: { transport: Transport }) {
       setLoginLoading(true);
       setLoginError(null);
       void loginRequest(serverUrl, input.username, input.password, input.deviceName)
-        .then((next) => { saveSession(next); setSession(next); })
+        .then((next) => {
+          saveSession(next);
+          void props.transport.call("auth.configure", { server_url: serverUrl, access_token: next.access_token }).catch(() => {});
+          setSession(next);
+        })
         .catch((error: unknown) => { setLoginError(error instanceof Error ? error.message : "login failed"); })
         .finally(() => { setLoginLoading(false); });
     };

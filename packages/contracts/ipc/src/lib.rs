@@ -98,4 +98,6 @@ pub mod commands {
     pub const APPROVAL_DECIDE: &str = "approval.decide";
     /// Runtime metadata (edition/packages).
     pub const META_GET: &str = "meta.get";
+    /// Inject enterprise gateway server URL/access token after login.
+    pub const AUTH_CONFIGURE: &str = "auth.configure";
 }

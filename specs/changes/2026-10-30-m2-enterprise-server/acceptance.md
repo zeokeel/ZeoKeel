@@ -73,4 +73,4 @@
 ## Gateway provider
 
 - `packages/client/llm-gateway`（`llm.provider.default` enterprise）：只 POST `/v1/responses`，无上游 key；假 server 测试解析 output_text 通过。
-- 仍缺：登录 access token 注入 provider、bootstrap 模型目录接入 provider。
+- 登录成功后 desktop 调 `auth.configure` 注入 server_url/access_token；personal 构建为 no-op。仍缺：bootstrap 模型目录、refresh 后重注入。
