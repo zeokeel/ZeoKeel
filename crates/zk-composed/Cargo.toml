@@ -60,7 +60,16 @@ zk-srv-users = { path = "../../packages/server/users" }
 zk-srv-wallet = { path = "../../packages/server/wallet" }
 zk-store-session-sqlite = { path = "../../packages/client/store-session-sqlite" }
 zk-store-settings-json = { path = "../../packages/client/store-settings-json" }
+zk-tool-bash = { path = "../../packages/client/tool-bash" }
 zk-tool-fs = { path = "../../packages/client/tool-fs" }
+zk-tool-fs-edit = { path = "../../packages/client/tool-fs-edit" }
+zk-tool-fs-search = { path = "../../packages/client/tool-fs-search" }
+zk-tool-fs-write = { path = "../../packages/client/tool-fs-write" }
+zk-tool-present = { path = "../../packages/client/tool-present" }
+zk-tool-skill = { path = "../../packages/client/tool-skill" }
+zk-tool-todo = { path = "../../packages/client/tool-todo" }
+zk-tool-web-fetch = { path = "../../packages/client/tool-web-fetch" }
+zk-tool-working-directory = { path = "../../packages/client/tool-working-directory" }
 zk-ui-apps = { path = "../../packages/ui/ui-apps" }
 zk-ui-chat = { path = "../../packages/ui/ui-chat" }
 zk-ui-commands = { path = "../../packages/ui/ui-commands" }
@@ -73,6 +82,7 @@ zk-ui-settings = { path = "../../packages/ui/ui-settings" }
 zk-ui-shell = { path = "../../packages/ui/ui-shell" }
 zk-ui-skills = { path = "../../packages/ui/ui-skills" }
 serde_json = { workspace = true }
+rig-core = { workspace = true }
 
 [lints]
 workspace = true

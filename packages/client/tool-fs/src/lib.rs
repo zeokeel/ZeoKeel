@@ -56,6 +56,9 @@ impl Tool for FsTool {
         ToolSpec {
             name: TOOL_NAME.to_owned(),
             description: "只读读取 root 内的文本文件（相对路径，≤64KiB）".to_owned(),
+            parameters: serde_json::json!({"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false}),
+            mutating: false,
+            requires_approval: false,
         }
     }
 
@@ -68,6 +71,11 @@ impl Tool for FsTool {
             return Err(ToolError::Denied("workspace_root is empty".to_owned()));
         }
         read_confined(Path::new(&context.workspace_root), args)
+    }
+
+    fn call_json(&self, context: &TurnContext, args: serde_json::Value) -> Result<String, ToolError> {
+        let path = args.get("path").and_then(serde_json::Value::as_str).ok_or_else(|| ToolError::InvalidArgs("path".to_owned()))?;
+        self.call_in(context, path)
     }
 }
 

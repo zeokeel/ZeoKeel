@@ -175,3 +175,4 @@
 - [API Reference](35-api-reference.md)
 - [故障排查](36-troubleshooting.md)
 - [1.0 发布清单](37-release-1.0-checklist.md)
+- [Agent runtime（rig）](38-agent-runtime.md)

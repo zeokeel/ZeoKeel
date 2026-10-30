@@ -2,7 +2,7 @@
 
 # Package Index
 
-edition `enterprise` · channel `official` · 45 packages
+edition `enterprise` · channel `official` · 54 packages
 
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
@@ -39,7 +39,16 @@ edition `enterprise` · channel `official` · 45 packages
 | `srv.wallet` | `zeokeel/wallet` | `zk-srv-wallet` | `zk-contract-wallet` | singleton |
 | `store.session` | `zeokeel/store-session-sqlite` | `zk-store-session-sqlite` | `zk-contract-session` | singleton |
 | `store.settings` | `zeokeel/store-settings-json` | `zk-store-settings-json` | `zk-contract-config` | singleton |
+| `tool.bash` | `zeokeel/tool-bash` | `zk-tool-bash` | `zk-contract-tool` | singleton |
 | `tool.fs` | `zeokeel/tool-fs` | `zk-tool-fs` | `zk-contract-tool` | singleton |
+| `tool.fs.edit` | `zeokeel/tool-fs-edit` | `zk-tool-fs-edit` | `zk-contract-tool` | singleton |
+| `tool.fs.search` | `zeokeel/tool-fs-search` | `zk-tool-fs-search` | `zk-contract-tool` | singleton |
+| `tool.fs.write` | `zeokeel/tool-fs-write` | `zk-tool-fs-write` | `zk-contract-tool` | singleton |
+| `tool.present` | `zeokeel/tool-present` | `zk-tool-present` | `zk-contract-tool` | singleton |
+| `tool.skill` | `zeokeel/tool-skill` | `zk-tool-skill` | `zk-contract-tool` | singleton |
+| `tool.todo` | `zeokeel/tool-todo` | `zk-tool-todo` | `zk-contract-tool` | singleton |
+| `tool.web.fetch` | `zeokeel/tool-web-fetch` | `zk-tool-web-fetch` | `zk-contract-tool` | singleton |
+| `tool.working_directory` | `zeokeel/tool-working-directory` | `zk-tool-working-directory` | `zk-contract-tool` | singleton |
 | `ui.kit` | `zeokeel/ui-kit` | `zk-ui-kit` | `zk-contract-ui` | singleton |
 | `ui.shell` | `zeokeel/ui-shell` | `zk-ui-shell` | `zk-contract-ui` | singleton |
 | `ui.slot.apps` | `zeokeel/ui-apps` | `zk-ui-apps` | `zk-contract-ui` | singleton |

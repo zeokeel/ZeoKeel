@@ -1,0 +1,34 @@
+# 38 · Agent runtime（rig）
+
+> 真源：`agent.loop` = `packages/client/agent-rig`，模型 = `llm.provider.default`，工具 = `tool.*` 包。DSH 只作参考（`research/dsh-agent-inventory.md`），不运行 DSH。
+
+## 1. 内核
+
+- `rig-agent` AgentBuilder/Agent 是唯一循环：preamble、DynamicTool（JSON Schema）、max turns、hooks、extractor、memory/vector 由 rig 提供。
+- 每个工具是独立包（`zk-tool-*`），角色 `tool.<名>`；共享路径/进程/截断逻辑只在 `crates/zk-kit-tools`（C17）。
+- 工具通过 `TurnContext` 获得 workspace/conversation；DynamicTool 回调闭包捕获同一 context，禁止把工具绑定到全局 cwd。
+- 提示词：DSH identity + persona（`You are an AI agent powered by DeepSeek Harness.` / `You are a coding agent powered by the … model.`）+ 工作区 `AGENTS.md`/`CLAUDE.md`（≤64KB）+ 工具说明。来源见 `research/dsh-agent-inventory.md` §3。
+
+## 2. 审批
+
+- `ToolSpec.requires_approval` 的工具在 rig DynamicTool 回调内暂停：发 `ApprovalRequested` → `ApprovalGate.decide` 阻塞 → 发 `ApprovalResolved` → 继续/拒绝。
+- 默认 `DenyAll`（fail-closed）；桌面在 `AppState` 安装 `ApprovalBroker`，UI `approval.decide` 解除等待；超时/无通道 = 拒绝。
+- 这是 DSH `ask` 的等价语义；sandbox 升级不在弱管控范围。
+
+## 3. 事件/取消/上下文
+
+- `EventSink` 通过 `run_stream_in_shared(Arc<dyn EventSink>)` 传入，工具与审批可在执行中发事件；旧 `&dyn` 路径用缓冲 sink 兼容。
+- 每轮事件：TurnStarted → ApprovalRequested/Resolved → ToolCallStarted/Finished → TextDelta → TurnCompleted/Cancelled/Error。
+- 取消：当前 rig 运行是阻塞 future；取消需在下一轮把 `CancelToken` 传入 `Agent`（待实现，不得声称已完成）。工具执行前检查 cancellation。
+
+## 4. 工具矩阵
+
+- 已实现：`fs.read`、`fs.write`、`fs.edit`、`fs.search`、`bash`、`skill`、`web.fetch`、`working_directory`、`todo`、`present`。
+- 待实现（DSH 参考）：fs-search 完整、bash-persistent、pwsh、terminal、jobs、schedule、goal、ralph、subagent(+control)、workflow、worktree、session-query、call-timeout、workspace-dependencies、agent-team、tool-cordis。
+- 平台不支持必须返回明确错误，不得静默缺失。
+
+## 5. rig 能力释放
+
+- 已用：AgentBuilder、DynamicTool、preamble、max turns、run。
+- 待接：streaming（AgentRunner stream）、hooks（审批/观测）、memory（rig-memory）、extractor（structured output）、vector store、loaders、多 provider、图像/音频/转写/rerank。
+- 每项独立能力包/角色；未配置时 `CAPABILITY_UNAVAILABLE`。

@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-fs-edit"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "精确字符串替换编辑工作区文件"
+
+[role]
+name = "tool.fs.edit"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-fs-edit" }

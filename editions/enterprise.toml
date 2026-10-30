@@ -1,4 +1,15 @@
 [packages]
+"tool.web.fetch" = "zeokeel/tool-web-fetch"
+"tool.skill" = "zeokeel/tool-skill"
+"tool.working_directory" = "zeokeel/tool-working-directory"
+
+"tool.fs.write" = "zeokeel/tool-fs-write"
+"tool.fs.edit" = "zeokeel/tool-fs-edit"
+"tool.fs.search" = "zeokeel/tool-fs-search"
+"tool.bash" = "zeokeel/tool-bash"
+"tool.todo" = "zeokeel/tool-todo"
+"tool.present" = "zeokeel/tool-present"
+
 "srv.updates" = "zeokeel/updates"
 "ui.slot.apps" = "zeokeel/ui-apps"
 "admin.page.apps" = "zeokeel/admin-apps"

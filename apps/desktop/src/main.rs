@@ -5,6 +5,7 @@
 //! Playwright can exercise real UI flows headlessly.
 #![forbid(unsafe_code)]
 
+mod approval;
 mod events;
 mod ipc;
 mod serve;

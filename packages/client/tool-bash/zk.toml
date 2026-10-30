@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-bash"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "在工作区执行 bash 命令（超时/输出上限/审批）"
+
+[role]
+name = "tool.bash"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-bash" }

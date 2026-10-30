@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-fs-write"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "写入工作区文件（带路径边界/大小限制）"
+
+[role]
+name = "tool.fs.write"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-fs-write" }

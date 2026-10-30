@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/agent-rig"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "rig-agent based agent runtime (multi-step tools, streaming, hooks)"
+
+[role]
+name = "agent.loop"
+contract = "zk-contract-agent"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-agent-rig" }

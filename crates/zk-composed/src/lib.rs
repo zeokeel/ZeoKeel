@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 pub const EDITION: &str = "enterprise";
-pub const PACKAGES: &[&str] = &["zeokeel/admin-ui-kit","zeokeel/admin-apps","zeokeel/admin-audit","zeokeel/admin-connectors","zeokeel/admin-jobs","zeokeel/admin-pricing","zeokeel/admin-settings","zeokeel/admin-skills","zeokeel/admin-usage","zeokeel/admin-users","zeokeel/admin-wallet","zeokeel/admin-shell","zeokeel/agent-loop","zeokeel/client-auth","zeokeel/llm-gateway","zeokeel/app-db","zeokeel/app-runtime","zeokeel/apps","zeokeel/audit","zeokeel/auth","zeokeel/connectors","zeokeel/content","zeokeel/gateway","zeokeel/srv-http","zeokeel/jobs","zeokeel/pricing","zeokeel/settings","zeokeel/skills","zeokeel/updates","zeokeel/users","zeokeel/wallet","zeokeel/store-session-sqlite","zeokeel/store-settings-json","zeokeel/tool-fs","zeokeel/ui-kit","zeokeel/ui-shell","zeokeel/ui-apps","zeokeel/ui-chat","zeokeel/ui-commands","zeokeel/ui-connectors","zeokeel/ui-inspector","zeokeel/ui-login","zeokeel/ui-sessions","zeokeel/ui-settings","zeokeel/ui-skills",];
+pub const PACKAGES: &[&str] = &["zeokeel/admin-ui-kit","zeokeel/admin-apps","zeokeel/admin-audit","zeokeel/admin-connectors","zeokeel/admin-jobs","zeokeel/admin-pricing","zeokeel/admin-settings","zeokeel/admin-skills","zeokeel/admin-usage","zeokeel/admin-users","zeokeel/admin-wallet","zeokeel/admin-shell","zeokeel/agent-loop","zeokeel/client-auth","zeokeel/llm-gateway","zeokeel/app-db","zeokeel/app-runtime","zeokeel/apps","zeokeel/audit","zeokeel/auth","zeokeel/connectors","zeokeel/content","zeokeel/gateway","zeokeel/srv-http","zeokeel/jobs","zeokeel/pricing","zeokeel/settings","zeokeel/skills","zeokeel/updates","zeokeel/users","zeokeel/wallet","zeokeel/store-session-sqlite","zeokeel/store-settings-json","zeokeel/tool-bash","zeokeel/tool-fs","zeokeel/tool-fs-edit","zeokeel/tool-fs-search","zeokeel/tool-fs-write","zeokeel/tool-present","zeokeel/tool-skill","zeokeel/tool-todo","zeokeel/tool-web-fetch","zeokeel/tool-working-directory","zeokeel/ui-kit","zeokeel/ui-shell","zeokeel/ui-apps","zeokeel/ui-chat","zeokeel/ui-commands","zeokeel/ui-connectors","zeokeel/ui-inspector","zeokeel/ui-login","zeokeel/ui-sessions","zeokeel/ui-settings","zeokeel/ui-skills",];
 
 pub struct Runtime {
     agent: Arc<dyn zk_contract_agent::Agent>,
@@ -24,6 +24,10 @@ impl Runtime {
 
     pub fn run_stream_in(&self, context: &zk_contract_tool::TurnContext, turn_id: &str, input: &str, sink: &dyn zk_contract_agent::EventSink) -> Result<zk_contract_agent::AgentReply, zk_contract_agent::AgentError> {
         self.agent.run_stream_in(context, turn_id, input, sink)
+    }
+
+    pub fn run_stream_in_shared(&self, context: &zk_contract_tool::TurnContext, turn_id: &str, input: &str, sink: std::sync::Arc<dyn zk_contract_agent::EventSink>) -> Result<zk_contract_agent::AgentReply, zk_contract_agent::AgentError> {
+        self.agent.run_stream_in_shared(context, turn_id, input, sink)
     }
 
     pub fn sessions(&self) -> Arc<dyn zk_contract_session::SessionStore> {
@@ -50,7 +54,16 @@ pub fn gateway_credentials() -> Option<(String, String)> { zk_llm_gateway::crede
 
 pub fn build() -> Result<Runtime, String> {
     let tools: Vec<Arc<dyn zk_contract_tool::Tool>> = vec![
+        Arc::new(zk_tool_bash::tool()),
         Arc::new(zk_tool_fs::tool()),
+        Arc::new(zk_tool_fs_edit::tool()),
+        Arc::new(zk_tool_fs_search::tool()),
+        Arc::new(zk_tool_fs_write::tool()),
+        Arc::new(zk_tool_present::tool()),
+        Arc::new(zk_tool_skill::tool()),
+        Arc::new(zk_tool_todo::tool()),
+        Arc::new(zk_tool_web_fetch::tool()),
+        Arc::new(zk_tool_working_directory::tool()),
     ];
     let llm: Arc<dyn zk_contract_llm::LlmProvider> = Arc::new(zk_llm_gateway::provider());
     let agent: Arc<dyn zk_contract_agent::Agent> = Arc::new(zk_agent_loop::agent(tools, llm));

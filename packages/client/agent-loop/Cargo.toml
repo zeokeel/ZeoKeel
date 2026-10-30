@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+serde_json = { workspace = true }
 zk-contract-agent = { path = "../../contracts/agent" }
 zk-contract-llm = { path = "../../contracts/llm" }
 zk-contract-tool = { path = "../../contracts/tool" }

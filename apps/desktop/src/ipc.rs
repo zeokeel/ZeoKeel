@@ -12,6 +12,7 @@ use zk_contract_ipc::{commands, CommandResponse, UiEvent};
 use zk_contract_session::Message;
 use zk_contract_tool::TurnContext;
 
+use crate::approval::ApprovalBroker;
 use crate::events::{emit_kind, now_ms, BridgeSink, EVENT_BUFFER};
 
 /// Composed runtime + IPC/event state shared by all transports.
@@ -20,17 +21,23 @@ pub struct AppState {
     pub bus: broadcast::Sender<UiEvent>,
     seq: AtomicU64,
     streams: Mutex<HashMap<String, Arc<AtomicBool>>>,
+    approvals: Arc<ApprovalBroker>,
 }
 
 impl AppState {
     /// Build state around an already composed runtime.
     pub fn new(runtime: zk_composed::Runtime) -> Arc<Self> {
         let (bus, _) = broadcast::channel(EVENT_BUFFER);
+        let approvals = ApprovalBroker::new();
+        let concrete = Arc::clone(&approvals);
+        let gate: Arc<dyn zk_contract_tool::ApprovalGate> = concrete;
+        zk_kit_approval::set_global_gate(gate);
         Arc::new(Self {
             runtime: Arc::new(runtime),
             bus,
             seq: AtomicU64::new(1),
             streams: Mutex::new(HashMap::new()),
+            approvals,
         })
     }
 
@@ -209,7 +216,17 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
         commands::CHAT_SEND => chat_send(state, payload),
         commands::CHAT_CANCEL => chat_cancel(state, payload),
         commands::APPROVAL_DECIDE => {
-            CommandResponse::err("approval flow lands in the next increment")
+            let (Some(approval_id), Some(decision)) = (
+                payload.get("approval_id").and_then(Value::as_str),
+                payload.get("decision").and_then(Value::as_str),
+            ) else {
+                return CommandResponse::err("missing approval_id/decision");
+            };
+            if state.approvals.resolve(approval_id, decision == "approved") {
+                CommandResponse::ok(json!({ "resolved": true }))
+            } else {
+                CommandResponse::err("approval/pending-not-found")
+            }
         }
         other => CommandResponse::err(format!("unknown command: {other}")),
     }
@@ -606,16 +623,16 @@ fn chat_send(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
     let turn_id = stream_id.clone();
     std::thread::spawn(move || {
         let seq = Arc::new(AtomicU64::new(1));
-        let sink = BridgeSink {
+        let sink: Arc<dyn zk_contract_agent::EventSink> = Arc::new(BridgeSink {
             bus: state.bus.clone(),
             stream_id: turn_id.clone(),
             seq: Arc::clone(&seq),
             cancelled: Arc::clone(&cancelled),
             sessions: state.runtime.sessions(),
             conversation_id: conversation_id_for_thread.clone(),
-        };
+        });
         let context = TurnContext { conversation_id: conversation_id_for_thread.clone(), workspace_id: workspace_root.0.clone(), workspace_root: workspace_root.1 };
-        let result = state.runtime.run_stream_in(&context, &turn_id, &text, &sink);
+        let result = state.runtime.run_stream_in_shared(&context, &turn_id, &text, sink);
         match result {
             Ok(reply) => {
                 let message = Message {

@@ -45,6 +45,9 @@ impl Tool for FakeTool {
         ToolSpec {
             name: self.name.to_owned(),
             description: "test fixture".to_owned(),
+            parameters: serde_json::json!({"type":"object"}),
+            mutating: false,
+            requires_approval: false,
         }
     }
 

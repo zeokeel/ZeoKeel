@@ -3,6 +3,17 @@ name = "personal"
 targets = ["desktop"]
 
 [packages]
+"tool.web.fetch" = "zeokeel/tool-web-fetch"
+"tool.skill" = "zeokeel/tool-skill"
+"tool.working_directory" = "zeokeel/tool-working-directory"
+
+"tool.fs.write" = "zeokeel/tool-fs-write"
+"tool.fs.edit" = "zeokeel/tool-fs-edit"
+"tool.fs.search" = "zeokeel/tool-fs-search"
+"tool.bash" = "zeokeel/tool-bash"
+"tool.todo" = "zeokeel/tool-todo"
+"tool.present" = "zeokeel/tool-present"
+
 "ui.slot.settings-provider" = "zeokeel/ui-settings-provider"
 "update.client" = "zeokeel/client-update-github"
 "ui.slot.commands" = "zeokeel/ui-commands"

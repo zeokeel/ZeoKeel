@@ -1,0 +1,22 @@
+[package]
+name = "zk-agent-rig"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rig-agent = { workspace = true }
+rig-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+zk-contract-agent = { path = "../../contracts/agent" }
+zk-contract-tool = { path = "../../contracts/tool" }
+zk-contract-llm = { path = "../../contracts/llm" }
+zk-kit-approval = { path = "../../../crates/zk-kit-approval" }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+
+[lints]
+workspace = true
