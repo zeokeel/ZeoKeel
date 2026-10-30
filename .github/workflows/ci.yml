@@ -11,28 +11,50 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
             libjavascriptcoregtk-4.1-dev librsvg2-bin xvfb
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Compose + capability
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Baseline manifest + generation gates
         run: |
           cargo run -q -p zk -- validate
           cargo run -q -p zk -- compose --edition personal --profile default --channel official --check
           cargo run -q -p zk -- capability --check
+          cargo run -q -p zk -- db lock --check
+      - name: Generated bindings/schemas stable
+        run: |
+          cargo test --workspace export_bindings
+          cargo test --workspace export_schema
+          git diff --exit-code
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: Test
         run: cargo test --workspace
+      - name: Enterprise composition (client + server wiring)
+        run: |
+          cargo run -q -p zk -- compose --edition enterprise --profile default --channel official
+          cargo check -p zk-server -p zk-desktop -p zk-composed
   web:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: pnpm/action-setup@v4
         with: { version: "12.16.1" }
       - uses: actions/setup-node@v4
         with: { node-version: "22", cache: "pnpm" }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --dir apps/desktop/web build
-      - run: pnpm --dir apps/desktop/web test
-      - run: pnpm --dir apps/admin/web build
+      - name: Personal baseline UI
+        run: |
+          pnpm --dir apps/desktop/web build
+          pnpm --dir apps/desktop/web test
+      - name: Enterprise UI (admin SPA + enterprise client registry)
+        run: |
+          cargo run -q -p zk -- compose --edition enterprise --profile default --channel official
+          pnpm --dir apps/desktop/web build
+          pnpm --dir apps/admin/web build
   e2e:
     runs-on: ubuntu-24.04
     steps:

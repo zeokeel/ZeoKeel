@@ -1,5 +1,9 @@
 # syntax=docker/dockerfile:1.7
 # Multi-stage build for the ZeoKeel enterprise server + admin SPA.
+#
+# The committed repository baseline is personal×default×official (docs/24 §1.2).
+# Enterprise artifacts are produced by composing the enterprise edition inside the
+# build, never by committing enterprise generated files.
 FROM rust:1.99-bookworm AS server-build
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
@@ -12,11 +16,15 @@ COPY profiles ./profiles
 COPY brands ./brands
 COPY zk.toml ./
 COPY pnpm-workspace.yaml package.json ./
-RUN cargo build --release -p zk-server --locked
+RUN cargo build --release -p zk --locked
+RUN ./target/release/zk compose --edition enterprise --profile default --channel official
+RUN cargo build --release -p zk-server
 
 FROM node:22-bookworm AS admin-build
 WORKDIR /src
+COPY --from=server-build /src/target/release/zk /usr/local/bin/zk
 COPY . .
+RUN zk compose --edition enterprise --profile default --channel official
 RUN corepack enable && pnpm install --frozen-lockfile && pnpm --dir apps/admin/web build
 
 FROM debian:bookworm-slim AS runtime
