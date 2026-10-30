@@ -57,3 +57,7 @@
 ## Retention job
 
 - `audit-retention` 删除超过 180 天审计/365 天 usage（env 只能调高，不能低于下限）；`scripts/srv-auth-test.sh` 触发成功。
+
+## Audit integrity
+
+- `audit-verify` 重算哈希链并返回 checked/broken；`scripts/srv-auth-test.sh` 触发成功。

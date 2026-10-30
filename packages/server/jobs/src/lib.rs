@@ -48,6 +48,7 @@ pub async fn run_job(pool: &PgPool, job: &str, idempotency: &str) -> Result<Valu
         .map_err(|error| error.to_string()),
         "wallet-grant" => monthly_grant(pool).await.map_err(|error| error.to_string()),
         "audit-retention" => retention(pool).await.map_err(|error| error.to_string()),
+        "audit-verify" => verify_audit(pool).await.map_err(|error| error.to_string()),
         other => Err(format!("unknown job: {other}")),
     };
     match &result {
@@ -69,6 +70,29 @@ pub async fn run_job(pool: &PgPool, job: &str, idempotency: &str) -> Result<Valu
         }
     }
     result
+}
+
+async fn verify_audit(pool: &PgPool) -> Result<Value, sqlx::Error> {
+    let rows = sqlx::query("SELECT id, actor_id, action, target, detail, prev_hash, hash FROM audit_log ORDER BY id ASC")
+        .fetch_all(pool)
+        .await?;
+    let mut previous = String::new();
+    let mut checked = 0_i64;
+    let mut broken = 0_i64;
+    for row in rows {
+        let action: String = row.try_get("action")?;
+        let target: String = row.try_get("target")?;
+        let detail: Value = row.try_get("detail")?;
+        let stored_prev: String = row.try_get("prev_hash")?;
+        let stored_hash: String = row.try_get("hash")?;
+        let expected = zk_kit_server::sha256_hex(&format!("{previous}{action}{target}{detail}"));
+        if stored_prev != previous || stored_hash != expected {
+            broken = broken.saturating_add(1);
+        }
+        previous = stored_hash;
+        checked = checked.saturating_add(1);
+    }
+    Ok(json!({ "checked": checked, "broken": broken }))
 }
 
 async fn retention(pool: &PgPool) -> Result<Value, sqlx::Error> {
@@ -174,7 +198,7 @@ pub fn spawn_loop(pool: PgPool) {
         let mut ticker = tokio::time::interval(Duration::from_secs(300));
         loop {
             ticker.tick().await;
-            for job in ["hold-expire", "usage-pending", "wallet-reconcile", "wallet-grant", "audit-retention"] {
+            for job in ["hold-expire", "usage-pending", "wallet-reconcile", "wallet-grant", "audit-retention", "audit-verify"] {
                 let key = format!("{job}:{}", chrono::Utc::now().format("%Y%m%d%H"));
                 if let Err(error) = run_job(&pool, job, &key).await {
                     eprintln!("job {job} failed: {error}");
