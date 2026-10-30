@@ -152,10 +152,12 @@ async fn main() -> Result<(), String> {
         .merge(zk_srv_settings::routes().with_state(state.clone()))
         .merge(zk_srv_jobs::routes().with_state(state.clone()));
     let result = serve(app).await;
-    // Stop cron and wait for the in-flight job tick to end (`docs/24` §6) before
-    // settlement/audit flush closes the pool; the stop token is idempotent.
+    // Stop cron and wait (bounded, 10s) for the in-flight job tick before the
+    // settlement/audit-flush phase closes the pool (`docs/24` §6).
     jobs.stop();
-    jobs.wait().await;
+    if !jobs.wait().await {
+        eprintln!("zk-server: jobs loop exceeded the bounded wait; aborted before settlement");
+    }
     shutdown_sequence(&state).await;
     // Dispose kernel effects (server plugins/tasks) after the drain/settlement phase.
     if let Err(error) = bootstrap.shutdown() {

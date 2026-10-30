@@ -313,13 +313,21 @@ impl StopToken {
     }
 }
 
+/// Bounded shutdown wait for the periodic job loop.
+///
+/// SIGTERM has a 30s drain deadline (`docs/24` §6); 10s leaves room for the
+/// settlement/audit-flush phase after the loop exits or is aborted.
+const STOP_WAIT_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Handle to the kernel-owned periodic job loop.
 ///
 /// Stop it and await [`Self::wait`] before closing the database pool, so an
-/// in-flight tick finishes against an open pool.
+/// in-flight tick finishes against an open pool. Dropping the handle without
+/// waiting still stops the loop (it signals the token and aborts the task) so
+/// shutdown error paths cannot leak the loop past `pool.close()`.
 pub struct JobsLoop {
     stop: StopToken,
-    join: tokio::task::JoinHandle<()>,
+    join: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl JobsLoop {
@@ -328,15 +336,48 @@ impl JobsLoop {
         self.stop.stop();
     }
 
-    /// Wait for the loop to exit (abort-safe).
-    pub async fn wait(self) {
-        let _ = self.join.await;
+    /// Wait up to [`STOP_WAIT_TIMEOUT`] for the loop to exit; returns `true`
+    /// when it exited cleanly, `false` when it had to be aborted after the
+    /// timeout (the abort is awaited, so the task cannot outlive this call).
+    #[must_use]
+    pub async fn wait(mut self) -> bool {
+        self.wait_bounded(STOP_WAIT_TIMEOUT).await
+    }
+
+    async fn wait_bounded(&mut self, limit: Duration) -> bool {
+        self.stop();
+        let Some(mut join) = self.join.take() else {
+            return true;
+        };
+        match tokio::time::timeout(limit, &mut join).await {
+            Ok(result) => {
+                let _ = result;
+                true
+            }
+            Err(_) => {
+                eprintln!("zk-srv-jobs: job loop did not stop within {limit:?}; aborting task");
+                join.abort();
+                let _ = join.await;
+                false
+            }
+        }
     }
 
     /// Whether the loop has been signalled to stop.
     #[must_use]
     pub fn is_stopped(&self) -> bool {
         self.stop.is_stopped()
+    }
+}
+
+impl Drop for JobsLoop {
+    fn drop(&mut self) {
+        // Fallback for error paths that drop the handle without `wait()`: signal
+        // the loop and abort the task so it cannot touch the pool after close.
+        self.stop();
+        if let Some(join) = self.join.take() {
+            join.abort();
+        }
     }
 }
 
@@ -361,7 +402,10 @@ fn spawn_loop_with_token(pool: PgPool, token: StopToken) -> JobsLoop {
             }
         }
     });
-    JobsLoop { stop: token, join }
+    JobsLoop {
+        stop: token,
+        join: Some(join),
+    }
 }
 
 /// Resolves once the token is set; polled so no extra runtime primitive is needed.
@@ -403,9 +447,19 @@ pub const MIGRATIONS: &[(&str, &str)] =
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
-    use super::{spawn_loop_with_token, StopToken};
+    use super::{spawn_loop_with_token, JobsLoop, StopToken};
     use sqlx::postgres::PgPoolOptions;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
     use std::time::Duration;
+
+    struct DropFlag(Arc<AtomicBool>);
+
+    impl Drop for DropFlag {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
 
     #[test]
     fn stop_token_is_idempotent() {
@@ -424,8 +478,54 @@ mod tests {
             .connect_lazy("postgres://zeokeel:zeokeel@127.0.0.1:1/zeokeel")
             .expect("lazy pool");
         let jobs = spawn_loop_with_token(pool, token);
-        tokio::time::timeout(Duration::from_secs(2), jobs.wait())
+        let exited = tokio::time::timeout(Duration::from_secs(2), jobs.wait())
             .await
             .expect("stopped loop must exit");
+        assert!(exited);
+    }
+
+    #[tokio::test]
+    async fn bounded_wait_aborts_a_stuck_loop_and_reports_timeout() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let task_flag = Arc::clone(&flag);
+        let mut jobs = JobsLoop {
+            stop: StopToken::new(),
+            join: Some(tokio::spawn(async move {
+                let _guard = DropFlag(task_flag);
+                std::future::pending::<()>().await;
+            })),
+        };
+        tokio::task::yield_now().await;
+        let exited = jobs.wait_bounded(Duration::from_millis(20)).await;
+        assert!(!exited, "stuck loop must report timeout");
+        assert!(jobs.is_stopped());
+        assert!(
+            flag.load(Ordering::SeqCst),
+            "timed-out task must be aborted"
+        );
+    }
+
+    #[tokio::test]
+    async fn dropping_handle_stops_loop_and_aborts_task() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let task_flag = Arc::clone(&flag);
+        let token = StopToken::new();
+        let jobs = JobsLoop {
+            stop: token.clone(),
+            join: Some(tokio::spawn(async move {
+                let _guard = DropFlag(task_flag);
+                std::future::pending::<()>().await;
+            })),
+        };
+        tokio::task::yield_now().await;
+        drop(jobs);
+        assert!(token.is_stopped(), "drop must signal stop");
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !flag.load(Ordering::SeqCst) {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("drop must abort the task");
     }
 }
