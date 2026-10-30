@@ -92,6 +92,12 @@ pub const MAX_DEPTH: usize = 3;
 /// Maximum concurrently running async children per runner.
 pub const MAX_ASYNC_AGENTS: usize = 8;
 
+/// Maximum retained child records in the process-wide registry.
+///
+/// Running children are never evicted; completed/cancelled records are pruned
+/// oldest-first beyond this bound so long-lived sessions cannot grow unbounded.
+pub const MAX_AGENT_RECORDS: usize = 64;
+
 /// One subagent run visible to control tools.
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct AgentInfo {
@@ -112,6 +118,26 @@ fn agents() -> &'static Mutex<Vec<AgentInfo>> {
     AGENTS.get_or_init(|| Mutex::new(Vec::new()))
 }
 
+/// Drop the oldest finished records beyond [`MAX_AGENT_RECORDS`] (running kept).
+fn prune_agents(guard: &mut Vec<AgentInfo>) {
+    let mut excess = guard.len().saturating_sub(MAX_AGENT_RECORDS);
+    if excess == 0 {
+        return;
+    }
+    let mut index = 0;
+    while index < guard.len() && excess > 0 {
+        let Some(agent) = guard.get(index) else {
+            break;
+        };
+        if agent.status == "running" {
+            index = index.saturating_add(1);
+            continue;
+        }
+        guard.remove(index);
+        excess = excess.saturating_sub(1);
+    }
+}
+
 /// Register a started child.
 pub fn register(id: &str, parent: &str, depth: usize, prompt: &str) {
     if let Ok(mut guard) = agents().lock() {
@@ -122,6 +148,7 @@ pub fn register(id: &str, parent: &str, depth: usize, prompt: &str) {
             status: "running".to_owned(),
             prompt: prompt.chars().take(200).collect(),
         });
+        prune_agents(&mut guard);
     }
 }
 
@@ -135,6 +162,7 @@ pub fn finish(id: &str, ok: bool) {
                 "failed".to_owned()
             };
         }
+        prune_agents(&mut guard);
     }
 }
 
@@ -144,6 +172,7 @@ pub fn mark_cancelled(id: &str) {
         if let Some(agent) = guard.iter_mut().find(|agent| agent.id == id) {
             agent.status = "cancelled".to_owned();
         }
+        prune_agents(&mut guard);
     }
 }
 
@@ -255,6 +284,27 @@ mod tests {
         let value = serde_json::to_value(&status).unwrap();
         assert_eq!(value["id"], "subagent-1");
         assert_eq!(value["status"], "running");
+    }
+
+    #[test]
+    fn agent_registry_is_bounded_and_keeps_running_children() {
+        register("bounded-running", "c", 1, "still running");
+        for index in 0..(MAX_AGENT_RECORDS + 20) {
+            let id = format!("bounded-{index}");
+            register(&id, "c", 1, "x");
+            finish(&id, true);
+        }
+        let agents = list();
+        assert!(
+            agents.len() <= MAX_AGENT_RECORDS,
+            "registry must stay bounded: {}",
+            agents.len()
+        );
+        assert!(
+            agents.iter().any(|agent| agent.id == "bounded-running"),
+            "running child must not be evicted"
+        );
+        finish("bounded-running", true);
     }
 
     #[test]

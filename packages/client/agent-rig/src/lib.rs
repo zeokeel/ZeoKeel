@@ -12,7 +12,7 @@ pub use hooks::{HookEvent, HookSink, UsageSnapshot};
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use futures::StreamExt;
@@ -889,13 +889,116 @@ impl EventSink for BufferedSink {
 /// Maximum concurrently running async children per runner (`docs/38` §5.2).
 pub const MAX_ASYNC_SUBAGENTS: usize = zk_kit_subagent::MAX_ASYNC_AGENTS;
 
+/// Maximum retained child records per runner (oldest finished entries evicted).
+const MAX_CHILD_RECORDS: usize = 64;
+
+/// Async child lifecycle: `Running → Done | Failed | Cancelled` (terminal states
+/// are never overwritten; `Cancelled` always wins completion races).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ChildState {
+    Running,
+    Done,
+    Failed,
+    Cancelled,
+}
+
+impl ChildState {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Done => "done",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    fn is_finished(self) -> bool {
+        !matches!(self, Self::Running)
+    }
+}
+
 /// One async child tracked by [`RigSubagentRunner`].
 struct AsyncChild {
+    seq: u64,
     depth: usize,
     prompt: String,
-    status: String,
+    state: ChildState,
     result: Option<Result<String, String>>,
     flag: Arc<AtomicBool>,
+}
+
+/// Drop the oldest finished children beyond the retention bound.
+fn prune_children(children: &mut HashMap<String, AsyncChild>) {
+    while children.len() > MAX_CHILD_RECORDS {
+        let oldest = children
+            .iter()
+            .filter(|(_, child)| child.state.is_finished())
+            .min_by_key(|(_, child)| child.seq)
+            .map(|(id, _)| id.clone());
+        match oldest {
+            Some(id) => {
+                children.remove(&id);
+            }
+            None => break,
+        }
+    }
+}
+
+/// Test-only hooks to hold or panic a child deterministically.
+#[cfg(test)]
+#[derive(Default)]
+struct TestHooks {
+    hold: AtomicBool,
+    panic: AtomicBool,
+}
+
+#[cfg(test)]
+#[allow(clippy::panic)] // test-only injected panic for panic-safety coverage
+fn run_test_child_hooks(hooks: &TestHooks) {
+    while hooks.hold.load(Ordering::SeqCst) {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    if hooks.panic.load(Ordering::SeqCst) {
+        panic!("injected async child panic");
+    }
+}
+
+/// RAII slot/context guard: released exactly once when the thread exits, even on
+/// panic.
+struct ChildThreadGuard {
+    live_threads: Arc<AtomicUsize>,
+    child_conversation_id: String,
+}
+
+impl Drop for ChildThreadGuard {
+    fn drop(&mut self) {
+        self.live_threads.fetch_sub(1, Ordering::SeqCst);
+        zk_kit_subagent::clear_context_depth(&self.child_conversation_id);
+    }
+}
+
+/// Slot reservation guard used before the thread exists (spawn failures release).
+struct SlotLease {
+    live_threads: Arc<AtomicUsize>,
+    active: bool,
+}
+
+impl Drop for SlotLease {
+    fn drop(&mut self) {
+        if self.active {
+            self.live_threads.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+}
+
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_owned()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "unknown panic".to_owned()
+    }
 }
 
 /// Runner shared by `subagent` / `subagent_fork` / `subagent_start`.
@@ -903,6 +1006,10 @@ struct RigSubagentRunner {
     model: DynModel<Completion>,
     tools: Vec<Arc<dyn Tool>>,
     children: Arc<Mutex<HashMap<String, AsyncChild>>>,
+    /// Number of child threads that are actually alive (RAII counted, not status).
+    live_threads: Arc<AtomicUsize>,
+    #[cfg(test)]
+    test_hooks: Arc<TestHooks>,
 }
 
 impl RigSubagentRunner {
@@ -911,29 +1018,99 @@ impl RigSubagentRunner {
             model,
             tools,
             children: Arc::new(Mutex::new(HashMap::new())),
+            live_threads: Arc::new(AtomicUsize::new(0)),
+            #[cfg(test)]
+            test_hooks: Arc::new(TestHooks::default()),
         }
     }
 
-    fn next_child(
-        &self,
-        prompt: &str,
-        context: &TurnContext,
-        depth: usize,
-    ) -> Result<(String, usize), String> {
+    #[cfg(test)]
+    fn hooks(&self) -> Arc<TestHooks> {
+        Arc::clone(&self.test_hooks)
+    }
+
+    /// Live child threads (tests/diagnostics); the concurrency cap counts these.
+    #[cfg_attr(not(test), allow(dead_code))]
+    fn live_threads(&self) -> usize {
+        self.live_threads.load(Ordering::SeqCst)
+    }
+
+    fn check_depth(depth: usize) -> Result<usize, String> {
         if depth >= zk_kit_subagent::MAX_DEPTH {
             return Err("subagent depth limit reached".to_owned());
         }
-        let child_depth = depth.saturating_add(1);
+        Ok(depth.saturating_add(1))
+    }
+
+    fn next_id(prompt: &str, context: &TurnContext, child_depth: usize) -> (String, u64) {
         static SUBAGENT_SEQ: AtomicU64 = AtomicU64::new(1);
-        let id = format!("subagent-{}", SUBAGENT_SEQ.fetch_add(1, Ordering::SeqCst));
+        let seq = SUBAGENT_SEQ.fetch_add(1, Ordering::SeqCst);
+        let id = format!("subagent-{seq}");
         zk_kit_subagent::register(&id, &context.conversation_id, child_depth, prompt);
-        Ok((id, child_depth))
+        (id, seq)
+    }
+
+    fn take_slot(&self) -> Result<SlotLease, String> {
+        let previous = self.live_threads.fetch_add(1, Ordering::SeqCst);
+        if previous >= MAX_ASYNC_SUBAGENTS {
+            self.live_threads.fetch_sub(1, Ordering::SeqCst);
+            return Err(format!(
+                "async subagent concurrency limit reached ({MAX_ASYNC_SUBAGENTS})"
+            ));
+        }
+        Ok(SlotLease {
+            live_threads: Arc::clone(&self.live_threads),
+            active: true,
+        })
+    }
+
+    /// Transition one finished child; returns the terminal state actually kept.
+    fn complete_child(
+        children: &Mutex<HashMap<String, AsyncChild>>,
+        id: &str,
+        flag: &AtomicBool,
+        outcome: Result<String, String>,
+    ) -> ChildState {
+        let cancelled = || Err("subagent cancelled".to_owned());
+        let mut guard = match children.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let state = match guard.get_mut(id) {
+            Some(child) => match child.state {
+                ChildState::Running => {
+                    if flag.load(Ordering::SeqCst) {
+                        child.state = ChildState::Cancelled;
+                        child.result = Some(cancelled());
+                    } else if outcome.is_ok() {
+                        child.state = ChildState::Done;
+                        child.result = Some(outcome);
+                    } else {
+                        child.state = ChildState::Failed;
+                        child.result = Some(outcome);
+                    }
+                    child.state
+                }
+                ChildState::Cancelled => {
+                    // Interrupt won the race: keep the cancellation result.
+                    if child.result.is_none() {
+                        child.result = Some(cancelled());
+                    }
+                    ChildState::Cancelled
+                }
+                terminal => terminal,
+            },
+            None => ChildState::Failed,
+        };
+        prune_children(&mut guard);
+        state
     }
 }
 
 impl zk_kit_subagent::SubagentRunner for RigSubagentRunner {
     fn run(&self, prompt: &str, context: &TurnContext, depth: usize) -> Result<String, String> {
-        let (id, child_depth) = self.next_child(prompt, context, depth)?;
+        let child_depth = Self::check_depth(depth)?;
+        let (id, _seq) = Self::next_id(prompt, context, child_depth);
         // Keep the synchronous child conversation id stable (`<conv>-sub-<depth>`).
         let child_conversation_id = format!("{}-sub-{child_depth}", context.conversation_id);
         let model = self.model.clone();
@@ -963,97 +1140,112 @@ impl zk_kit_subagent::SubagentRunner for RigSubagentRunner {
     }
 
     fn start(&self, prompt: &str, context: &TurnContext, depth: usize) -> Result<String, String> {
+        let child_depth = Self::check_depth(depth)?;
+        let mut lease = self.take_slot()?;
+        let (id, seq) = Self::next_id(prompt, context, child_depth);
+        let child_conversation_id = format!("{}-sub-{child_depth}-{id}", context.conversation_id);
         let flag = Arc::new(AtomicBool::new(false));
-        let (id, child_depth, child_conversation_id) = {
-            let mut children = self
-                .children
-                .lock()
-                .map_err(|_| "subagent registry poisoned".to_owned())?;
-            let running = children
-                .values()
-                .filter(|child| child.status == "running")
-                .count();
-            if running >= MAX_ASYNC_SUBAGENTS {
-                return Err(format!(
-                    "async subagent concurrency limit reached ({MAX_ASYNC_SUBAGENTS})"
-                ));
-            }
-            let (id, child_depth) = self.next_child(prompt, context, depth)?;
-            let child_conversation_id =
-                format!("{}-sub-{child_depth}-{id}", context.conversation_id);
+        {
+            let mut children = match self.children.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            prune_children(&mut children);
             children.insert(
                 id.clone(),
                 AsyncChild {
+                    seq,
                     depth: child_depth,
                     prompt: prompt.chars().take(200).collect(),
-                    status: "running".to_owned(),
+                    state: ChildState::Running,
                     result: None,
                     flag: Arc::clone(&flag),
                 },
             );
-            (id, child_depth, child_conversation_id)
-        };
+            prune_children(&mut children);
+        }
         let mut child_context = context.clone();
         child_context.conversation_id = child_conversation_id.clone();
         zk_kit_subagent::set_context_depth(&child_conversation_id, child_depth);
         let model = self.model.clone();
         let tools = self.tools.clone();
         let children = Arc::clone(&self.children);
+        let live_threads = Arc::clone(&self.live_threads);
+        #[cfg(test)]
+        let hooks = Arc::clone(&self.test_hooks);
         let prompt = prompt.to_owned();
         let id_for_thread = id.clone();
-        std::thread::spawn(move || {
-            let agent = RigAgent::new(model, tools).map(|agent| {
-                agent
-                    .with_streaming(false)
-                    .with_cancel_flag(Arc::clone(&flag))
-            });
-            let outcome = match agent {
-                Ok(agent) => agent
-                    .run_in(&child_context, &prompt)
-                    .map(|reply| reply.text)
-                    .map_err(|error| error.to_string()),
-                Err(error) => Err(error.to_string()),
-            };
-            let cancelled = flag.load(Ordering::SeqCst);
-            let result = if cancelled {
-                Err("subagent cancelled".to_owned())
-            } else {
-                outcome
-            };
-            let status = if cancelled {
-                "cancelled"
-            } else if result.is_ok() {
-                "done"
-            } else {
-                "failed"
-            };
-            zk_kit_subagent::clear_context_depth(&child_conversation_id);
-            if cancelled {
-                zk_kit_subagent::mark_cancelled(&id_for_thread);
-            } else {
-                zk_kit_subagent::finish(&id_for_thread, result.is_ok());
-            }
-            if let Ok(mut children) = children.lock() {
-                if let Some(child) = children.get_mut(&id_for_thread) {
-                    child.status = status.to_owned();
-                    child.result = Some(result);
+        let flag_for_thread = Arc::clone(&flag);
+        let conversation_for_thread = child_conversation_id.clone();
+        let spawn = std::thread::Builder::new()
+            .name(format!("zk-subagent-{seq}"))
+            .spawn(move || {
+                let _slot_and_depth = ChildThreadGuard {
+                    live_threads,
+                    child_conversation_id: conversation_for_thread,
+                };
+                let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    #[cfg(test)]
+                    run_test_child_hooks(&hooks);
+                    let agent = RigAgent::new(model, tools)
+                        .map_err(|error| error.to_string())?
+                        .with_streaming(false)
+                        .with_cancel_flag(Arc::clone(&flag_for_thread));
+                    agent
+                        .run_in(&child_context, &prompt)
+                        .map(|reply| reply.text)
+                        .map_err(|error| error.to_string())
+                }));
+                let result = match outcome {
+                    Ok(result) => result,
+                    Err(payload) => {
+                        let message = panic_message(payload.as_ref());
+                        eprintln!(
+                            "zk-agent-rig: async subagent {id_for_thread} panicked: {message}"
+                        );
+                        Err(format!("subagent thread panicked: {message}"))
+                    }
+                };
+                let state = RigSubagentRunner::complete_child(
+                    &children,
+                    &id_for_thread,
+                    &flag_for_thread,
+                    result,
+                );
+                if state == ChildState::Cancelled {
+                    zk_kit_subagent::mark_cancelled(&id_for_thread);
+                } else {
+                    zk_kit_subagent::finish(&id_for_thread, state == ChildState::Done);
                 }
+            });
+        if let Err(error) = spawn {
+            lease.active = false;
+            self.live_threads.fetch_sub(1, Ordering::SeqCst);
+            zk_kit_subagent::clear_context_depth(&child_conversation_id);
+            zk_kit_subagent::finish(&id, false);
+            if let Ok(mut children) = self.children.lock() {
+                if let Some(child) = children.get_mut(&id) {
+                    child.state = ChildState::Failed;
+                    child.result = Some(Err(format!("spawn async subagent: {error}")));
+                }
+                prune_children(&mut children);
             }
-        });
+            return Err(format!("spawn async subagent: {error}"));
+        }
+        lease.active = false;
         Ok(id)
     }
 
     fn status(&self, id: &str) -> Option<zk_kit_subagent::AsyncAgentStatus> {
-        self.children.lock().ok().and_then(|children| {
-            children
-                .get(id)
-                .map(|child| zk_kit_subagent::AsyncAgentStatus {
-                    id: id.to_owned(),
-                    depth: child.depth,
-                    status: child.status.clone(),
-                    prompt: child.prompt.clone(),
-                })
-        })
+        let children = self.children.lock().ok()?;
+        children
+            .get(id)
+            .map(|child| zk_kit_subagent::AsyncAgentStatus {
+                id: id.to_owned(),
+                depth: child.depth,
+                status: child.state.as_str().to_owned(),
+                prompt: child.prompt.clone(),
+            })
     }
 
     fn result(&self, id: &str) -> Option<Result<String, String>> {
@@ -1064,18 +1256,21 @@ impl zk_kit_subagent::SubagentRunner for RigSubagentRunner {
     }
 
     fn interrupt(&self, id: &str) -> Result<(), String> {
-        let mut children = self
-            .children
-            .lock()
-            .map_err(|_| "subagent registry poisoned".to_owned())?;
+        let mut children = match self.children.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         let child = children
             .get_mut(id)
             .ok_or_else(|| format!("unknown subagent: {id}"))?;
-        if child.status != "running" {
+        // CAS-like transition under the registry lock: only Running -> Cancelled.
+        if child.state != ChildState::Running {
             return Err(format!("subagent {id} already finished"));
         }
         child.flag.store(true, Ordering::SeqCst);
-        child.status = "cancelled".to_owned();
+        child.state = ChildState::Cancelled;
+        child.result = Some(Err("subagent cancelled".to_owned()));
+        prune_children(&mut children);
         zk_kit_subagent::mark_cancelled(id);
         Ok(())
     }
@@ -1828,40 +2023,23 @@ mod tests {
             .any(|event| matches!(event, HookEvent::MemoryUnavailable { .. })));
     }
 
-    struct SlowTool;
-    impl Tool for SlowTool {
-        fn spec(&self) -> zk_contract_tool::ToolSpec {
-            zk_contract_tool::ToolSpec {
-                name: "slow.echo".to_owned(),
-                description: "slow".to_owned(),
-                parameters: serde_json::json!({"type":"object"}),
-                mutating: false,
-                requires_approval: false,
-            }
-        }
-        fn call(&self, _args: &str) -> Result<String, zk_contract_tool::ToolError> {
-            Ok("slow".to_owned())
-        }
-        fn call_json(
-            &self,
-            _context: &TurnContext,
-            _args: serde_json::Value,
-        ) -> Result<String, zk_contract_tool::ToolError> {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            Ok("slow".to_owned())
-        }
-    }
-
-    fn wait_until(
-        mut check: impl FnMut() -> Option<Result<String, String>>,
-    ) -> Result<String, String> {
-        for _ in 0..400 {
-            if let Some(result) = check() {
+    fn wait_result(runner: &RigSubagentRunner, id: &str) -> Result<String, String> {
+        for _ in 0..500 {
+            if let Some(result) = runner.result(id) {
                 return result;
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         Err("async subagent did not finish in time".to_owned())
+    }
+
+    fn wait_live_threads(runner: &RigSubagentRunner, expected: usize) {
+        for _ in 0..500 {
+            if runner.live_threads() == expected {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
     }
 
     #[test]
@@ -1875,7 +2053,7 @@ mod tests {
         assert_eq!(early.id, id);
         assert_eq!(early.depth, 1);
         assert_eq!(early.prompt, "inspect the repo");
-        let result = wait_until(|| runner.result(&id));
+        let result = wait_result(&runner, &id);
         assert_eq!(result, Ok("async child answer".to_owned()));
         let status = runner.status(&id).expect("status");
         assert_eq!(status.status, "done");
@@ -1883,43 +2061,145 @@ mod tests {
     }
 
     #[test]
-    fn async_interrupt_marks_cancelled() {
-        let model = MockCompletionModel::from_turns([
-            MockTurn::tool_call("slow-1", "slow.echo", serde_json::json!({})),
-            MockTurn::text("never returned"),
-        ]);
-        let runner = RigSubagentRunner::new(model.into(), vec![Arc::new(SlowTool)]);
-        let id = runner.start("slow child", &context(), 0).expect("start");
-        // The child blocks in the tool long enough for the interrupt to land.
-        runner.interrupt(&id).expect("interrupt");
-        let result = wait_until(|| runner.result(&id));
-        assert!(result.is_err(), "cancelled child must not report success");
-        let status = runner.status(&id).expect("status");
-        assert_eq!(status.status, "cancelled");
+    fn async_interrupt_wins_and_completion_never_overwrites() {
+        let hooks = {
+            let model = MockCompletionModel::from_turns([MockTurn::text("late answer")]);
+            let runner = RigSubagentRunner::new(model.into(), Vec::new());
+            let hooks = runner.hooks();
+            hooks.hold.store(true, Ordering::SeqCst);
+            let id = runner.start("slow child", &context(), 0).expect("start");
+            runner.interrupt(&id).expect("interrupt");
+            let status = runner.status(&id).expect("status");
+            assert_eq!(status.status, "cancelled");
+            assert!(
+                runner.result(&id).is_some(),
+                "interrupt stores cancellation"
+            );
+            // Release the thread: completion must not overwrite cancelled.
+            hooks.hold.store(false, Ordering::SeqCst);
+            wait_live_threads(&runner, 0);
+            assert_eq!(runner.status(&id).unwrap().status, "cancelled");
+            let result = wait_result(&runner, &id);
+            assert!(result.is_err(), "cancelled child keeps cancellation result");
+            assert!(
+                runner.interrupt(&id).is_err(),
+                "interrupt after finish is an error"
+            );
+            hooks
+        };
+        hooks.hold.store(false, Ordering::SeqCst);
     }
 
     #[test]
-    fn async_concurrency_cap_is_enforced() {
-        let model = MockCompletionModel::from_turns([MockTurn::text("x")]);
+    fn async_live_thread_cap_and_slot_release() {
+        let model = MockCompletionModel::from_turns(
+            (0..16).map(|_| MockTurn::text("x")).collect::<Vec<_>>(),
+        );
         let runner = RigSubagentRunner::new(model.into(), Vec::new());
-        {
-            let mut children = runner.children.lock().unwrap();
-            for index in 0..MAX_ASYNC_SUBAGENTS {
-                children.insert(
-                    format!("fake-{index}"),
-                    AsyncChild {
-                        depth: 1,
-                        prompt: "x".to_owned(),
-                        status: "running".to_owned(),
-                        result: None,
-                        flag: Arc::new(AtomicBool::new(false)),
-                    },
-                );
-            }
+        let hooks = runner.hooks();
+        hooks.hold.store(true, Ordering::SeqCst);
+        let mut ids = Vec::new();
+        for index in 0..MAX_ASYNC_SUBAGENTS {
+            ids.push(
+                runner
+                    .start(&format!("held child {index}"), &context(), 0)
+                    .expect("start"),
+            );
         }
+        assert_eq!(runner.live_threads(), MAX_ASYNC_SUBAGENTS);
         let error = runner.start("overflow", &context(), 0).unwrap_err();
         assert!(error.contains("concurrency limit"), "{error}");
-        runner.children.lock().unwrap().clear();
+        // Interrupting a child frees a status slot only when its live thread exits.
+        let first = ids.first().cloned().expect("first id");
+        runner.interrupt(&first).expect("interrupt");
+        assert_eq!(
+            runner.live_threads(),
+            MAX_ASYNC_SUBAGENTS,
+            "cancelled-but-alive child still occupies a live slot"
+        );
+        let overflow = runner.start("still overflow", &context(), 0).unwrap_err();
+        assert!(overflow.contains("concurrency limit"), "{overflow}");
+        hooks.hold.store(false, Ordering::SeqCst);
+        wait_live_threads(&runner, 0);
+        let id = runner.start("after release", &context(), 0).expect("start");
+        wait_live_threads(&runner, 0);
+        assert!(runner.status(&id).is_some());
+    }
+
+    #[test]
+    fn async_panic_child_marks_failed_and_releases_slot() {
+        let model = MockCompletionModel::from_turns([MockTurn::text("after panic")]);
+        let runner = RigSubagentRunner::new(model.into(), Vec::new());
+        let hooks = runner.hooks();
+        hooks.panic.store(true, Ordering::SeqCst);
+        let id = runner.start("panic child", &context(), 0).expect("start");
+        let result = wait_result(&runner, &id);
+        assert!(result.is_err(), "panicking child must fail");
+        assert!(result.unwrap_err().contains("panicked"));
+        assert_eq!(runner.status(&id).unwrap().status, "failed");
+        wait_live_threads(&runner, 0);
+        assert_eq!(runner.live_threads(), 0, "panic must release the live slot");
+        // Slot is reusable after a panic.
+        hooks.panic.store(false, Ordering::SeqCst);
+        let second = runner.start("healthy child", &context(), 0).expect("start");
+        let result = wait_result(&runner, &second);
+        assert_eq!(result, Ok("after panic".to_owned()));
+    }
+
+    #[test]
+    fn async_retention_is_bounded() {
+        let model = MockCompletionModel::from_turns([MockTurn::text("x")]);
+        let runner = RigSubagentRunner::new(model.into(), Vec::new());
+        let hooks = runner.hooks();
+        hooks.panic.store(true, Ordering::SeqCst);
+        for index in 0..(MAX_CHILD_RECORDS + 16) {
+            let id = runner
+                .start(&format!("retained {index}"), &context(), 0)
+                .expect("start");
+            let _ = wait_result(&runner, &id);
+        }
+        wait_live_threads(&runner, 0);
+        let children = runner.children.lock().unwrap();
+        assert!(
+            children.len() <= MAX_CHILD_RECORDS,
+            "children map must stay bounded: {}",
+            children.len()
+        );
+        drop(children);
+        assert!(
+            zk_kit_subagent::list().len() <= zk_kit_subagent::MAX_AGENT_RECORDS,
+            "kit registry must stay bounded"
+        );
+        hooks.panic.store(false, Ordering::SeqCst);
+    }
+
+    #[test]
+    fn async_interrupt_completion_race_iterations_stay_legal() {
+        let model = MockCompletionModel::from_turns(
+            (0..32).map(|_| MockTurn::text("x")).collect::<Vec<_>>(),
+        );
+        let runner = RigSubagentRunner::new(model.into(), Vec::new());
+        let hooks = runner.hooks();
+        for index in 0..32 {
+            hooks.hold.store(true, Ordering::SeqCst);
+            let id = runner
+                .start(&format!("race {index}"), &context(), 0)
+                .expect("start");
+            let interrupted = runner.interrupt(&id).is_ok();
+            hooks.hold.store(false, Ordering::SeqCst);
+            wait_live_threads(&runner, 0);
+            let status = runner.status(&id).expect("status");
+            assert!(
+                matches!(status.status.as_str(), "done" | "failed" | "cancelled"),
+                "illegal state: {}",
+                status.status
+            );
+            if interrupted {
+                assert_eq!(status.status, "cancelled");
+                assert!(runner.result(&id).is_some_and(|result| result.is_err()));
+            }
+        }
+        assert_eq!(runner.live_threads(), 0);
     }
 
     #[test]
