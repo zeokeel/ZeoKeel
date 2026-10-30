@@ -1,16 +1,16 @@
 # 2026-10-30-wasm-app-center · 验收（M4）
 
-- 状态：`in-progress`（仅 spec 阶段）
+- 状态：`in-progress`（spec 阶段）
 - 验收人：pending
 - 证据目录：`target/evidence/m4/`
 
 ## 检查
 
 - [ ] `bash scripts/apps-e2e.sh`
-- [ ] `admin-e2e.sh` apps spec
-- [ ] `login-e2e.sh` apps spec（如适用）
+- [ ] `bash scripts/admin-e2e.sh`（含 apps）
 - [ ] `cargo test --workspace`
-- [ ] `zk compose --check` / `schema-check` / `db lock --check`
+- [ ] `zk validate` / `zk compose --check` / `schema-check` / `db lock --check`
+- [ ] `docs-check` / `spec-check` / `review-check`
 - [ ] 独立评审 APPROVED
 
 ## 说明

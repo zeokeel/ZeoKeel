@@ -148,7 +148,7 @@
 
 ## 7. WASM 应用中心
 
-**口径**：✅ 服务端 wasmtime 执行；✅ 每应用一个 SQLite；✅ 应用 UI 编进 wasm，客户端按应用独立 origin 开窗；
+**口径**：✅ 服务端 wasmtime 执行；✅ 每应用一个 SQLite；✅ 应用 UI 为 release 内静态资源，客户端按应用独立 origin 开窗（ADR-062）；
 ✅ **应用不可调 AI**；✅ **员工可以上传应用**（管理员审核/上架）；✅ 管理员可上架/下架；
 ✅ 生命周期 App/Release/Deployment + 退役调度。
 **语言（已调研，`research/wasm-languages.md`）**：v1 Tier-1 = **Go(wasip1) + Rust(wasip1)**，共用 p1 core module；
@@ -160,7 +160,7 @@ TinyGo 预览；C/C++ 仅 vendor；wasip2 与其他语言暂缓。**M4 先 Go �
 **API**：`GET /api/client/v1/apps`（可见目录）、`POST /api/client/v1/apps/{app_id}/open`、
 `POST /api/client/v1/apps/{app_id}/request`（帧 ABI 信封）；管理面/上传面见 `04`。
 
-**运行**：Wasmtime LTS（候选 48/50，M4 实测定版；原型用 50；`15` §C T11）embedding；wasip1 core module；零 preopen；
+**运行**：Wasmtime LTS（候选 48/50，M4 实测定版；原型用 50；`15` §C T11）embedding；wasip1 core module；零 preopen；**客户端不执行应用 WASM，只执行 `app_request`**（ADR-062）；
 （原型验证见 `experiments/wasm-poc`：Go/Rust 双 guest + 帧 ABI + SQLite + fuel 已跑通）
 无网络、无文件；宿主提供 `db.exec/db.query/log/asset.read` 等扁平导入；帧协议 `RS<len>\n<JSON>`；
 epoch/fuel + StoreLimits 做超时/内存；内存/CPU/时间/并发限额；

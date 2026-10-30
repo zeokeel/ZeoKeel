@@ -2,44 +2,44 @@
 
 - 状态：`draft`
 
-## 1. 包/契约
+## 1. 包/契约/角色
 
-- `packages/contracts/app`：App/AppRelease/AppOpen/Frame envelope、错误码；schemars schema。
-- `packages/server/apps`（`zk-srv-apps`，role `srv.apps`）：迁移 `0012_apps`；管理/客户端路由；`runtime` 模块 wasmtime。
-- `packages/server/app-runtime` 是否拆包：M4 先合在 `srv.apps`，避免过早拆；若 >800 行再拆 `srv.app-runtime`（C3 四件套）。
-- `packages/admin/admin-apps`（`admin.page.apps`）。
-- `packages/ui/ui-apps`（`ui.slot.apps`）：目录/打开/错误页；桌面独立窗口用 `window.open`/Tauri `WebviewWindow`；serve 用 sandbox iframe。
-- 示例：`examples/wasm/forms-go`、`examples/wasm/data-go`（Go wasip1，复用 `experiments/wasm-poc/guest-go` 帧库）。
+- `packages/contracts/app`：App/Release/Open/Frame/Manifest；schemars 生成 `app.json`/`app-frame.json`/`app-manifest.json`；C10 前端 Ajv。
+- `packages/server/apps`（`zk-srv-apps`，role `srv.apps`）：管理/员工/客户端路由、发布内核、轮询/资产。
+- `packages/server/app-runtime`（`zk-srv-app-runtime`，role `srv.app.runtime`）：wasmtime 执行、限额、SQL 闸门、帧、asset。
+- `packages/server/app-db`（`zk-srv-app-db`，role `srv.app.db`）：每 app SQLite、schema version、表数/大小、pinned connection 接口。
+- `crates/zk-kit-wasm`：prototype runtime 抽公共实现（`@capability wasm.runtime`）；`srv.app-runtime` 与 prototype 共用，禁止复制。
+- `packages/admin/admin-apps`（`admin.page.apps`）；`packages/ui/ui-apps`（`ui.slot.apps`）；四件套齐全并注册 zk.toml/editions/docs16。
+- 迁移 `0012_apps`；全局编号追加。
 
-## 2. 运行时
+## 2. 运行时设计
 
-- 复用 prototype：`experiments/wasm-poc/host` 的 linker/帧/SQLite 实现先抽到 `crates/zk-kit-wasm`（C17），`srv.apps` 与 prototype 都调用 kit；禁止复制。
-- `zk-kit-wasm` 提供 `run(WasmInput) -> WasmOutput`、`limits`、`db` host；wasmtime 依赖只在 kit。
-- SQL 闸门：只允许单条 SELECT/INSERT/UPDATE/DELETE/DDL 白名单；拒绝 ATTACH/PRAGMA 危险语句；表数 query `sqlite_master`；DB 文件大小用 fs metadata。
-- 并发：每 app `tokio::sync::Semaphore(4)`；超时用 `tokio::time::timeout` + wasmtime epoch/fuel。
-- 内存：`StoreLimitsBuilder::memory_size(64MB)`；`ResourceLimiter`。
-- 审计：open/request/limits/delist 写 `audit_log`；DB/calls 只诊断。
+- `zk-kit-wasm::Runtime::run(input) -> output`：wasmtime Engine/Module 缓存（LRU 16）；单请求 Store；epoch ticker 100ms；fuel 10M；StoreLimits memory 64MB。
+- 执行前：校验 wasm magic/大小/sha256；模块编译；导入检查（只允许四个 host function）；`_start` 导出。
+- 帧：从 stdin 读完整请求；输出上限 8MiB；畸形/非 JSON → `APP_BAD_REQUEST`。
+- SQL 闸门：词法归一化 + 单语句 + 首关键字白名单 + 禁止关键字/`;`/注释；参数绑定；DDL 永不通过；SQL 5s 用 interrupt handle。
+- DB：`srv.app-db` 每连接 `rusqlite`/`sqlx` SQLite 文件；`db.exec/query` 不暴露路径；表数 `sqlite_master` 检查前后；文件大小 fs metadata；写前配额检查。
+- 并发：`tokio::sync::Semaphore` per-app/user/global + queue；超时含排队；429 + Retry-After。
+- 审计：upload/approve/list/delist/request/limit/purge；写失败 fail-closed。
 
-## 3. 迁移/版本
+## 3. 发布/生命周期
 
-- `0012_apps` 只新增表；不改 M3 迁移。
-- 上传 release 永久占位、sha256、wasm magic（`\0asm`）；同版本 409。
-- 上下架用 `content_deployments` + `contents.status`；退役 job 复用 `jobs` 模式（M4 先手动 `POST /api/admin/apps/{id}/purge`）。
+- 员工上传：multipart → manifest 校验（name/version/entry/ui 文件清单/大小）→ wasm magic/sha → pending；同 owner 同名版本 409。
+- 管理审批：approve → release approved；list → status approved + deployment；delist；rollback 切换 current_release（DB 策略：如 schema_version 不兼容则拒绝）。
+- DB schema：`app_databases.schema_version`；guest manifest 声明 `db_schema_version`；升级不允许降级；失败保留旧版本+旧 DB。
+- 退役：`app-retire` job 每小时；软删 content，保留 30 天后删除 release/DB/logs/calls；审计。
+- 迁移只追加，不改 M3 迁移。
 
-## 4. 客户端隔离
+## 4. 客户端
 
-- 桌面：Tauri `WebviewWindow` + 临时目录文件/自定义协议；URL 含 app id + session；窗口无 Node/preload 权限。
-- serve：`<iframe sandbox="allow-scripts">` + `srcdoc` 隔离页；不共享 localStorage/cookie；请求经 postMessage 到 host，host 调 API。
-- 下架/卸载：服务端 `open` 校验；已打开 host 轮询/收到 410 显示错误页。
+- 静态 UI 资源清单由 `GET /apps/{id}/assets` 提供（release ui zip 解包到服务端只读目录/对象）；客户端不执行 WASM。
+- 桌面：Tauri `WebviewWindow` + 自定义 scheme；channel 配置 `app_origin_scheme`；注册 privileged/partition/capability（仅 `app_request`）；导航闸门。
+- serve：sandbox iframe + CSP + postMessage nonce/origin/source 校验；仅 e2e。
+- 错误页：APP_DELISTED/APP_UNAVAILABLE/网络失败；重试。
 
-## 5. 测试
+## 5. 测试计划
 
-- Rust：frame golden（Go/Rust guest）、SQL 闸门、限额、DB 隔离、迁移不可变。
-- 集成：`scripts/apps-e2e.sh` 真 PG+server+guest 上传/运行/重启持久/下架。
-- UI：admin apps 页面创建/上传/审批/下架 + axe；client apps 面板打开/错误页 + axe；截图。
-- 独立评审：audit-arch 对 spec/实现 R1/R2 反证。
-
-## 6. 风险/回滚
-
-- wasmtime 编译/运行失败不影响其他域：srv.apps 独立包，可构建期 exclude/rollback 迁移只增不改。
-- 若 M4 未完成 100MB/16 表强制，不得标 done；降级为 `APP_DB_QUOTA` fail-closed。
+- Rust：kit golden（Go/Rust frame）、SQL 闸门表驱动、限额、DB 隔离、manifest、迁移。
+- 集成：`scripts/apps-e2e.sh` 真 PG+server+Go guest；上传/审批/打开/写/重启/下架/退役。
+- UI：admin apps 创建/上传/审批/上下架 + axe；client apps 打开/错误页 + axe。
+- 独立评审 audit-arch R1/R2。

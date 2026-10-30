@@ -572,3 +572,10 @@ S0 验证尚未完成（见 `12`），这不是“未决架构问题”，而是
 **决策**：服务端只校验 zip 归档结构（大小、条目数、条目名/类型、central directory、SKILL.md 存在），计算并下发 **归档 sha256**；不在服务端解压。整树 sha256 由客户端解压到受控临时目录后计算，写入本地 `installed.json` 并随安装回执上报（运营事实，不作合规证据）。强制更新比较版本 + 归档 sha256。
 **理由**：`docs/11`/`docs/21` 明确解压安全属于客户端；服务端解压会扩大攻击面且与“服务端不执行技能”边界冲突。原 `docs/04` “服务端计算整树 sha256”与 docs/11/21 冲突，按本 ADR 以 docs/11/21 为准修订。
 **后果**：`X-ZeoKeel-Skill-Sha256` 语义改为归档哈希（或新增 `X-ZeoKeel-Skill-Archive-Sha256`）；catalog 下发归档 sha；树哈希校验只在客户端；恶意 zip 解压用例在客户端测试层；服务端仍拒绝条目名穿越/链接/设备/超量元数据。
+
+
+### ADR-062 · M4 应用 UI 为服务端静态资源，客户端不执行应用 WASM `accepted`
+
+**决策**：M4 应用由服务端 wasmtime 执行 guest（数据/API）；客户端只通过 `app_request` 信封访问服务端，**不执行应用 WASM**。应用 UI 为发布时随 release 存储的静态 HTML/JS/CSS（`ui/` 资源清单），由服务端按 app/version 提供，客户端在每应用独立 origin/partition 的 WebView 中渲染，且该 WebView 只有 `app_request` 一个 IPC 权限。客户端不持有应用 DB、不缓存应用数据。
+**理由**：`docs/04` §2.6 已固定“客户端不执行应用、不持有应用 DB”；`docs/07` §7 的“UI 编进 wasm”与前者冲突。把 UI 作为静态资源并用独立 origin 渲染，既满足独立窗口/资产缓存，又把执行面留在服务端沙箱。
+**后果**：`docs/07` §7 的“UI 编进 wasm”改为“UI 静态资源 + 服务端 guest”；`open` 只返回版本票据/`ui` 清单，不返回 UI WASM；M4 不实现客户端 WASM 沙箱；若未来要客户端 UI WASM，需新 ADR 并改 docs/04/07。
