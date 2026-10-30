@@ -9,4 +9,4 @@
 | 5 | 设置 UI：agent completion/memory/hooks/max_steps + usage 展示 | pnpm 门禁 + vitest | done |
 | 6 | 媒体能力 cap-image/audio/transcription/rerank + llm-rig builders | 各 crate tests + docs/38 | done |
 | 7 | T22 桌面 Ajv 边界 + 负向测试 | vitest + build | done |
-| 8 | 全量门禁 + e2e 复评 + 证据 | fmt/clippy/test/zk/docs/web/e2e | pending |
+| 8 | 全量门禁 + e2e 复评 + 证据 | fmt/clippy/test/zk/docs/web/e2e | done |

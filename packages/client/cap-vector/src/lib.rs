@@ -258,9 +258,6 @@ fn embed(text: &str) -> Result<Vec<f64>, VectorError> {
 }
 
 /// Cosine similarity; `0.0` when either vector is empty or not the same width.
-// Float similarity math is bounded to [-1, 1]; there is no integer overflow
-// surface here, so the workspace arithmetic lint is relaxed locally only.
-#[allow(clippy::arithmetic_side_effects)]
 fn cosine(left: &[f64], right: &[f64]) -> f64 {
     if left.is_empty() || left.len() != right.len() {
         return 0.0;

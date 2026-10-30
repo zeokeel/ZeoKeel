@@ -1,6 +1,6 @@
 # 2026-10-31 round-2 独立评审记录（config/media/audit-hardening）
 
-- 评审对象：base commit `140a4e6` + round-2 提交 `e8137ef`（config 契约/usage/desktop 接线）、`57d2928`（media 能力）、`8eb2bca`（web agent settings/usage/Ajv）；最终评审 SHA **`8eb2bca`**。评审期间 HEAD 从 `140a4e6` 推进到 `8eb2bca`（评审内容与这三个提交一致；评审记录按最终 SHA 固化）。剩余未提交：`deny.toml`（untracked）、`docs/generated/AGENT-TOOL-MATRIX.md`、`scripts/agent-tool-matrix.py`、两份 `specs/changes/*/proposal.md`（评审引用）。
+- 评审对象：首次评审 base `140a4e6` + round-2 提交 `e8137ef`（config 契约/usage/desktop 接线）、`57d2928`（media 能力）、`8eb2bca`（web agent settings/usage/Ajv；首次评审 SHA）；复评对象为修复提交 `0e03e66`（media/embedding kit）、`c78f3b2`（boot 优先级/hooks/usage）、`7e5507d`（web usage 镜像）、`2cd690d`（deny/security pin + capability host wiring）、`9ed7d40`（Ajv strict），最终复评 SHA **`9ed7d40`**（工作树 clean）。评审期间 HEAD 从 `140a4e6` 推进到 `9ed7d40`（内容与上述提交一致，记录按最终 SHA 固化）。
   受影响路径：`packages/contracts/{agent,config,ipc}`、`apps/desktop/{src,web}`、`packages/ui/{ui-kit,ui-settings,ui-chat,ui-shell}`、`packages/client/{agent-rig,llm-rig,llm-gateway,cap-image,cap-audio,cap-transcription,cap-rerank}`、`shared/contracts/{schema,ts}`、`docs/38`、两份 change spec、`deny.toml`。
 - 评审者：auditor-rust（独立只读评审者；未参与 round-2 实现，仅在此前轮次承担 zk-bootstrap/desktop 基础设施修复，与本轮 config/media/Ajv 变更无实现关系）
 - 独立性：非实现者；本轮未修改产品代码，只写本记录。
@@ -8,7 +8,7 @@
   - `specs/changes/2026-10-31-config-and-media`（契约 agent/usage、桌面配置、设置 UI、Ajv、媒体能力）
   - `specs/changes/2026-10-31-audit-hardening`（上一轮加固；验收证据与剩余 backlog）
 - 结论：**CHANGES-REQUESTED**（P0 = 0；P1 = 7；P2 = 12）。latest conclusion 以本行为准。
-- 复评日期/结论：pending（Lead 修复后在同一记录复审；复审追加“复评结论”行，latest 结论为准）。
+- 复评日期/结论：2026-10-31，复评通过（详见 §6；最终以文末 latest 结论行为准）。
 
 ## 1. 可执行门禁（本机实跑，exit code）
 
@@ -104,3 +104,34 @@
 - 企业网关 media 端点：明确非目标；enterprise 媒体可用性按 P1-3 评估。
 - full e2e（agent 全 9 条、m1/admin/login）未在 round-2 提交后重跑；仅跑 agent-e2e 的 max-turns 子集（1 passed）。acceptance 若声明全绿需补证据。
 - 系统密钥库、真实上游 Responses、100 并发压测：沿用 audit-hardening §2 UNVERIFIED。
+
+## 6. 复评记录：round-2 P1 fixes（2026-10-31）
+
+- 复评对象：HEAD `9ed7d40`（`0e03e66` kit 重构、`c78f3b2` config 修复、`7e5507d` web usage 镜像、`2cd690d` deny/security pin+host wiring、`9ed7d40` Ajv strict）；工作树 clean，`zk compose --check` 0。
+- 复评门禁（本机实跑，exit code）：`cargo fmt` 0 · `cargo clippy --workspace --all-targets --all-features -D warnings` 0 · `cargo test --workspace` 0 · `cargo test --workspace export_schema` 0（随后 `git status` clean）· `scripts/schema-check.sh` 0 · `docs-check` 0 · `spec-check` 0 · `zk capability --check` 0（45 条）· `zk db lock --check` 0 · `zk docs --check` 0 · `zk compose personal --check` 0 · `pnpm -r typecheck/lint/test:unit/build` 0/0/0/0 · desktop web `typecheck`/`vitest` 0/0。`cargo deny check` 仍 **UNVERIFIED**（本机未安装 cargo-deny；CI 已 pin 版本，证据待归档）。
+- 并发说明：复评期间另一 agent 的 compose/e2e 曾短暂把 `apps/admin/web/src/generated/registry.ts` 写成 enterprise 内容，导致一次 `pnpm -r lint` 在 `apps/admin/web/src/app.tsx:10` 误报；工作树稳定后重跑为 0，最终 `git status` clean、`compose --check` 0，非 HEAD 缺陷。
+
+### 6.1 P1 关闭状态（全部关闭）
+
+| P1 | 修复证据（HEAD 9ed7d40） | 状态 |
+| --- | --- | --- |
+| P1-1 env 优先级 | `apps/desktop/src/ipc.rs:144-149`（仅 settings 文件存在且 agent≠默认才发布）、`:173-182`；回归测试 `ipc.rs:1115-1130`；fresh install 保留 `ZEOKEEL_AGENT_*` fallback（c78f3b2） | 关闭 |
+| P1-2 媒体宿主接线 | `crates/zk-composed/src/lib.rs:106` 生成 `configure_capabilities_from_env()`；generator 仅 personal 生成实际调用（`tools/zk/src/main.rs` compose）；`apps/desktop/src/main.rs:166-170` 仅 personal 调用；enterprise no-op（2cd690d） | 关闭 |
+| P1-3 企业媒体 C7 | ADR-067（`docs/13-risks-and-adr.md:613`）+ 构建期 enterprise no-op 闸门；`docs/38:69` 同步 | 关闭（构建期方案，ADR 已记录） |
+| P1-4 C4/ADR | 新增 `crates/zk-kit-media`（`@capability kit.media`，capability-index 45 条）；cap-* Cargo 仅 `thiserror`+kit，无 `rig-core`/`zk-llm-rig` import；ADR-067 扩展适配点 | 关闭 |
+| P1-5 docs/38 真源 | `docs/38:50-51`（契约已落地）、`:73-77`（§5.4 已实现/剩余 gap）更新；docs-check 0 | 关闭 |
+| P1-6 deny 策略 | `deny.toml` 已入库（2cd690d）；`security.yml` pin cargo-deny 0.20.2 / audit 0.22.2 / machete 0.9.2 / geiger 0.14.0 | 关闭（本地 UNVERIFIED，CI 证据待归档） |
+| P1-7 C16/C19 | tasks.md 任务 1–7 `done`；acceptance 已回填自动验证证据；矩阵脚本+生成物已入库；本记录复审后 review-check 转绿 | 关闭（task 8 全量 e2e 由 Lead 在归档前完成，见 §6.2） |
+
+### 6.2 复评后仍留 P2（不阻塞本轮 APPROVED，记录备查）
+
+1. `specs/changes/2026-10-31-config-and-media/design.md:18` 仍写 rig features `audio,image,pdf,epub`，实际只启用 `audio,image`（docs/38 §5.1 已正确）——建议改 design。
+2. `packages/client/cap-vector/src/lib.rs:263` 仍有产品代码 `#[allow(clippy::arithmetic_side_effects)]`（agent-rig 的 USD 换算已改为定点无 allow；cap-vector 建议同处理或登记例外）。
+3. 契约 crate 仍持有进程级 `AGENT_SETTINGS`/`AGENT_HOOK_SINK` 状态（`packages/contracts/agent/src/lib.rs:259-267`）；C4 边缘，建议后续迁 kit/host 并加 ADR。
+4. schema exporter 的 key 顺序仍依赖 invocation（workspace 与包级 `cargo test -p … export_schema` 因 serde_json feature 统一而顺序不同）；验收/CI 必须用 `cargo test --workspace export_schema`（本轮已用 workspace 且第二次运行零 diff）。
+5. usage 未持久化到 session `Message`（重启丢失），docs/38 §5.4 已标 gap；如需展示历史需后续持久化字段。
+6. enterprise 闭包仍编译 media caps/kit（ADR-067 接受“no-op 不接线”）；若未来企业版本需更硬边界，再走 personal-only 排除。
+7. `apps/desktop/src/ipc.rs:126-139` 的 `settings_file_path()` 与 `store-settings-json` 的默认路径约定重复，需保持同步（建议 store 提供 path API）。
+8. `cargo deny check` 本机 UNVERIFIED；acceptance 中 e2e/task 8 与真实媒体 provider 仍按 UNVERIFIED 记录，不得写成已验证。
+
+- 复评结论：**APPROVED**（2026-10-31；P0 = 0、剩余 P1 = 0；最终评审对象 HEAD `9ed7d40`；上述 P2 不阻塞本轮关闭）。
