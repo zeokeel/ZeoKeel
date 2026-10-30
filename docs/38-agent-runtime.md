@@ -23,12 +23,13 @@
 
 ## 4. 工具矩阵
 
-- 已实现：`fs.read`、`fs.write`、`fs.edit`、`fs.search`、`bash`、`bash_persistent`、`job_output/list/kill`、`glob`、`grep`、`skill`、`web.fetch`、`working_directory`、`todo`、`present`、`load_workspace_dependencies`、`create_worktree`、`terminal`、`goal`、`schedule`、`pwsh`、`read_image`、`subagent`、`workflow`、`ralph`。
+- 已实现：`fs.read`、`fs.write`、`fs.edit`、`fs.search`、`bash`、`bash_persistent`、`job_output/list/kill`、`glob`、`grep`、`skill`、`web.fetch`、`working_directory`、`todo`、`present`、`load_workspace_dependencies`、`create_worktree`、`terminal`、`goal`、`schedule`、`pwsh`、`read_image`、`subagent`、`workflow`、`ralph`、`ask_user_question`。
 - 待实现（DSH 参考）：fs-search 完整、bash-persistent、pwsh、terminal、jobs、schedule、goal、ralph、subagent(+control)、workflow、worktree、session-query、call-timeout、workspace-dependencies、agent-team、tool-cordis。
 - 平台不支持必须返回明确错误，不得静默缺失。
 
 ## 5. rig 能力释放
 
 - 已用：AgentBuilder、DynamicTool、preamble、max turns、streaming（text delta）、取消标志、审批阻塞、工具超时。
-- 待接：hooks 全面观测、memory（rig-memory）、extractor、vector store、loaders、多 provider、图像/音频/转写/rerank。
+- 已接：rig-memory（`ZEOKEEL_AGENT_MEMORY_DIR`）。
+- 待接：hooks 全面观测、extractor、vector store、loaders、多 provider、图像/音频/转写/rerank。
 - 每项独立能力包/角色；未配置时 `CAPABILITY_UNAVAILABLE`。

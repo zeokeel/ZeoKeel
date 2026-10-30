@@ -1,6 +1,7 @@
 //! rig-agent based runtime (`agent.loop`).
 #![forbid(unsafe_code)]
 
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -28,6 +29,7 @@ pub struct RigAgent {
     preamble: String,
     approval: Arc<dyn ApprovalGate>,
     streaming: bool,
+    memory_dir: Option<PathBuf>,
     cancelled: AtomicBool,
     runtime: tokio::runtime::Runtime,
 }
@@ -40,7 +42,14 @@ impl RigAgent {
             .enable_all()
             .build()
             .map_err(|error| AgentError::Invalid(format!("tokio runtime: {error}")))?;
-        Ok(Self { model, tools, preamble, approval: Arc::new(zk_kit_approval::GlobalGate), streaming: true, cancelled: AtomicBool::new(false), runtime })
+        Ok(Self { model, tools, preamble, approval: Arc::new(zk_kit_approval::GlobalGate), streaming: true, memory_dir: std::env::var_os("ZEOKEEL_AGENT_MEMORY_DIR").map(PathBuf::from), cancelled: AtomicBool::new(false), runtime })
+    }
+
+    /// Enable rig-memory conversation persistence in `dir`.
+    #[must_use]
+    pub fn with_memory_dir(mut self, dir: PathBuf) -> Self {
+        self.memory_dir = Some(dir);
+        self
     }
 
     /// Disable token streaming (tests/scripted providers).
@@ -132,13 +141,18 @@ impl RigAgent {
         let tools = self.dynamic_tools(context, &records, sink);
         self.cancelled.store(false, Ordering::SeqCst);
         let preamble = format!("{}\n\n{}", self.preamble, workspace_instructions(context));
-        let agent = AgentBuilder::new(self.model.clone())
+        let mut builder = AgentBuilder::new(self.model.clone())
             .name("zeokeel")
             .preamble(preamble)
             .context(format!("Workspace: {}\nConversation: {}", context.workspace_root, context.conversation_id))
             .default_max_turns(MAX_STEPS)
-            .dynamic_tools(tools)
-            .build();
+            .dynamic_tools(tools);
+        if let Some(dir) = &self.memory_dir {
+            std::fs::create_dir_all(dir).map_err(|error| AgentError::Invalid(format!("memory dir: {error}")))?;
+            let store = rig_memory::DirStore::open(dir).map_err(|error| AgentError::Invalid(format!("memory store: {error}")))?;
+            builder = builder.memory(store).conversation(context.conversation_id.clone());
+        }
+        let agent = builder.build();
         let response = if self.streaming {
             self.runtime.block_on(async {
                 let mut stream = agent.prompt(input).stream();

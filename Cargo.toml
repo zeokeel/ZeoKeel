@@ -40,6 +40,7 @@ futures = "0.3"
 regex = "1"
 rig-core = { version = "0.45", default-features = false, features = ["derive", "reqwest", "rustls"] }
 rig-agent = "0.45"
+rig-memory = { version = "0.45", features = ["fs"] }
 http = "1"
 reqwest = { version = "0.12", features = ["json", "blocking", "rustls-tls", "stream"] }
 
