@@ -8395,6 +8395,7 @@ dependencies = [
  "zk-tool-pwsh",
  "zk-tool-pwsh-persistent",
  "zk-tool-ralph",
+ "zk-tool-read-document",
  "zk-tool-read-image",
  "zk-tool-schedule",
  "zk-tool-session-query",
@@ -9232,6 +9233,16 @@ dependencies = [
  "serde_json",
  "zk-contract-tool",
  "zk-kit-subagent",
+]
+
+[[package]]
+name = "zk-tool-read-document"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zip",
+ "zk-contract-tool",
+ "zk-kit-tools",
 ]
 
 [[package]]

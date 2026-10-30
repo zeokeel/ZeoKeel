@@ -80,6 +80,7 @@ zk-tool-present = { path = "../../packages/client/tool-present" }
 zk-tool-pwsh = { path = "../../packages/client/tool-pwsh" }
 zk-tool-pwsh-persistent = { path = "../../packages/client/tool-pwsh-persistent" }
 zk-tool-ralph = { path = "../../packages/client/tool-ralph" }
+zk-tool-read-document = { path = "../../packages/client/tool-read-document" }
 zk-tool-read-image = { path = "../../packages/client/tool-read-image" }
 zk-tool-schedule = { path = "../../packages/client/tool-schedule" }
 zk-tool-session-query = { path = "../../packages/client/tool-session-query" }

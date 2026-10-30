@@ -28,6 +28,7 @@ DSH reference: `research/dsh-agent-inventory.md` §2. Status is honest: implemen
 | ralph | tool.ralph | zeokeel/tool-ralph | partial | bounded loop; no fresh context isolation |
 | working-directory | tool.working_directory | zeokeel/tool-working-directory | implemented |  |
 | workspace-dependencies | tool.workspace_dependencies | zeokeel/tool-workspace-dependencies | implemented |  |
+| read document (EPUB) | tool.read_document | zeokeel/tool-read-document | implemented (EPUB) | PDF needs offline deps |
 | worktree | tool.worktree | zeokeel/tool-worktree | implemented | argv, safe path |
 | call-timeout | - | agent-rig | implemented (exemption) | ZEOKEEL_TOOL_TIMEOUT_MS; agent-level policy, no separate package per C3 exemption |
 | tool-cordis | tool.cordis | zeokeel/tool-cordis | disabled | C2 forbids runtime plugin loading |

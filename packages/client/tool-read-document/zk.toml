@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-read-document"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Read EPUB text (PDF explicitly unsupported in this build)"
+
+[role]
+name = "tool.read_document"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-read-document" }

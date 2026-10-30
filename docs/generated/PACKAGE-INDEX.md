@@ -2,7 +2,7 @@
 
 # Package Index
 
-edition `enterprise` · channel `official` · 78 packages
+edition `enterprise` · channel `official` · 79 packages
 
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
@@ -59,6 +59,7 @@ edition `enterprise` · channel `official` · 78 packages
 | `tool.pwsh` | `zeokeel/tool-pwsh` | `zk-tool-pwsh` | `zk-contract-tool` | singleton |
 | `tool.pwsh_persistent` | `zeokeel/tool-pwsh-persistent` | `zk-tool-pwsh-persistent` | `zk-contract-tool` | singleton |
 | `tool.ralph` | `zeokeel/tool-ralph` | `zk-tool-ralph` | `zk-contract-tool` | singleton |
+| `tool.read_document` | `zeokeel/tool-read-document` | `zk-tool-read-document` | `zk-contract-tool` | singleton |
 | `tool.read_image` | `zeokeel/tool-read-image` | `zk-tool-read-image` | `zk-contract-tool` | singleton |
 | `tool.schedule` | `zeokeel/tool-schedule` | `zk-tool-schedule` | `zk-contract-tool` | singleton |
 | `tool.session_query` | `zeokeel/tool-session-query` | `zk-tool-session-query` | `zk-contract-tool` | singleton |

@@ -1,6 +1,6 @@
 # 2026-10-30-agent-dsh-parity · 验收
 
-- 状态：`implementation-in-progress`（R2 CHANGES-REQUESTED；不可标 completed）
+- 状态：`implementation-in-progress`（R3 CHANGES-REQUESTED；不可标 completed）
 - 验收人：pending
 - 证据：`target/evidence/agent-parity/`
 
@@ -16,7 +16,9 @@
 ## 仍未完成
 
 - rig hooks/extractor/vector/loaders/多 provider
-- agent-team（禁用）、call-timeout 策略包、schedule 执行器、workflow DAG、subagent fork/异步 control
+- agent-team（禁用）、schedule 执行器、subagent fork/异步 control
+- rig hooks/vector/PDF loader/媒体能力
+- Playwright max/unknown/provider 全矩阵
 - 工具参数/名称与 DSH 完全对齐
 - 逐工具 Playwright 全矩阵（当前 6 条 agent e2e）
 
