@@ -5209,9 +5209,12 @@ dependencies = [
  "zk-store-settings-json",
  "zk-tool-fs",
  "zk-ui-chat",
+ "zk-ui-commands",
+ "zk-ui-inspector",
  "zk-ui-kit",
  "zk-ui-sessions",
  "zk-ui-settings",
+ "zk-ui-shell",
 ]
 
 [[package]]
@@ -5371,6 +5374,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-ui-commands"
+version = "0.1.0"
+dependencies = [
+ "zk-contract-ui",
+]
+
+[[package]]
+name = "zk-ui-inspector"
+version = "0.1.0"
+dependencies = [
+ "zk-contract-ui",
+]
+
+[[package]]
 name = "zk-ui-kit"
 version = "0.1.0"
 dependencies = [
@@ -5386,6 +5403,13 @@ dependencies = [
 
 [[package]]
 name = "zk-ui-settings"
+version = "0.1.0"
+dependencies = [
+ "zk-contract-ui",
+]
+
+[[package]]
+name = "zk-ui-shell"
 version = "0.1.0"
 dependencies = [
  "zk-contract-ui",

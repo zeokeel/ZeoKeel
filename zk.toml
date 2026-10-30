@@ -37,6 +37,21 @@ contract = "zk-contract-config"
 cardinality = "singleton"
 editions = ["personal", "enterprise"]
 
+[roles."ui.shell"]
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."ui.slot.inspector"]
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."ui.slot.commands"]
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
 [roles."ui.kit"]
 contract = "zk-contract-ui"
 cardinality = "singleton"

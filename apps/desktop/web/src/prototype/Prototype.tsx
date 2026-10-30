@@ -233,9 +233,27 @@ function Header(props: { ui: UiValue }) {
   );
 }
 
+function parseScreen(value: string | null): Screen {
+  switch (value) {
+    case "workspace":
+    case "empty":
+    case "chat":
+    case "settings":
+    case "error":
+    case "loading":
+    case "offline":
+    case "narrow":
+    case "cancelled":
+    case "approval":
+      return value;
+    default:
+      return "empty";
+  }
+}
+
 export function Prototype() {
   const params = new URLSearchParams(window.location.search);
-  const screen = (params.get("screen") ?? "empty") as Screen;
+  const screen = parseScreen(params.get("screen"));
   const theme = params.get("theme") === "dark" ? "dark" : "light";
   const ui = useMemo(() => mockUi(screen, theme), [screen, theme]);
 

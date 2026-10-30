@@ -1,5 +1,5 @@
 //! Conformance + behavior tests for `zk-agent-loop` (role `agent.loop`).
-#![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)] // test-only
 
 use std::sync::{Arc, Mutex};
 

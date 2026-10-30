@@ -39,7 +39,7 @@ pub fn open_with_root(path: PathBuf, workspace_root: PathBuf) -> Result<SqliteSe
     conn.pragma_update(None, "journal_mode", "WAL").map_err(storage)?;
     conn.pragma_update(None, "foreign_keys", "ON").map_err(storage)?;
     let version = schema_version(&conn)?;
-    if version < 2 && path.exists() {
+    if version < 3 && path.exists() {
         backup(&conn, &path)?;
     }
     migrate(&mut conn, &workspace_root)?;
@@ -147,7 +147,8 @@ fn create_schema_v2(conn: &Connection) -> Result<(), SessionError> {
             conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
             role TEXT NOT NULL,
             content TEXT NOT NULL,
-            created_at_ms INTEGER NOT NULL
+            created_at_ms INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'done'
         );
         CREATE INDEX IF NOT EXISTS idx_messages_conversation
             ON messages(conversation_id, created_at_ms);",
@@ -209,7 +210,8 @@ fn migrate(conn: &mut Connection, workspace_root: &Path) -> Result<(), SessionEr
             CREATE TABLE messages_new (
                 id TEXT PRIMARY KEY,
                 conversation_id TEXT NOT NULL REFERENCES conversations_new(id) ON DELETE CASCADE,
-                role TEXT NOT NULL, content TEXT NOT NULL, created_at_ms INTEGER NOT NULL
+                role TEXT NOT NULL, content TEXT NOT NULL, created_at_ms INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'done'
             );",
         )
         .map_err(storage)?;
@@ -229,8 +231,15 @@ fn migrate(conn: &mut Connection, workspace_root: &Path) -> Result<(), SessionEr
             .map_err(storage)?;
         }
         if has_table(&tx, "messages")? {
-            tx.execute("INSERT INTO messages_new SELECT id, conversation_id, role, content, created_at_ms FROM messages", [])
-                .map_err(storage)?;
+            let has_status = has_column(&tx, "messages", "status")?;
+            let sql = if has_status {
+                "INSERT INTO messages_new (id, conversation_id, role, content, created_at_ms, status)
+                 SELECT id, conversation_id, role, content, created_at_ms, COALESCE(status, 'done') FROM messages"
+            } else {
+                "INSERT INTO messages_new (id, conversation_id, role, content, created_at_ms, status)
+                 SELECT id, conversation_id, role, content, created_at_ms, 'done' FROM messages"
+            };
+            tx.execute(sql, []).map_err(storage)?;
         }
         tx.execute_batch(
             "DROP TABLE IF EXISTS messages;
@@ -239,11 +248,15 @@ fn migrate(conn: &mut Connection, workspace_root: &Path) -> Result<(), SessionEr
              ALTER TABLE messages_new RENAME TO messages;
              CREATE INDEX idx_conversations_workspace ON conversations(workspace_id, updated_at_ms DESC);
              CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_ms);
-             PRAGMA user_version=2;",
+             PRAGMA user_version=3;",
         )
         .map_err(storage)?;
         tx.commit().map_err(storage)?;
         conn.execute_batch("PRAGMA foreign_keys=ON;").map_err(storage)?;
+    }
+    if !has_column(conn, "messages", "status")? {
+        conn.execute("ALTER TABLE messages ADD COLUMN status TEXT NOT NULL DEFAULT 'done'", []).map_err(storage)?;
+        conn.pragma_update(None, "user_version", 3).map_err(storage)?;
     }
     conn.execute(
         "UPDATE workspaces SET is_default = CASE WHEN id = (SELECT id FROM workspaces ORDER BY is_default DESC, created_at_ms ASC LIMIT 1) THEN 1 ELSE 0 END",
@@ -437,7 +450,13 @@ impl WorkspaceStore for SqliteSessionStore {
                 if target == workspace_id {
                     return Err(SessionError::WorkspaceReassignTargetInvalid("reassign_to must differ from removed workspace".to_owned()));
                 }
-                let target_workspace = SqliteSessionStore::get_workspace(conn, target)?;
+                let target_workspace = match SqliteSessionStore::get_workspace(conn, target) {
+                    Ok(workspace) => workspace,
+                    Err(SessionError::WorkspaceNotFound(_)) => {
+                        return Err(SessionError::WorkspaceReassignTargetInvalid(format!("target not found: {target}")));
+                    }
+                    Err(error) => return Err(error),
+                };
                 if !is_writable_dir(Path::new(&target_workspace.path)) {
                     return Err(SessionError::WorkspaceReassignTargetInvalid(format!("target path unavailable: {}", target_workspace.path)));
                 }
@@ -498,8 +517,8 @@ impl SessionStore for SqliteSessionStore {
         }
         self.with_conn(|conn| {
             conn.execute(
-                "INSERT INTO messages (id, conversation_id, role, content, created_at_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![message.id, message.conversation_id, message.role, message.content, i64::try_from(message.created_at_ms).unwrap_or(i64::MAX)],
+                "INSERT INTO messages (id, conversation_id, role, content, created_at_ms, status) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![message.id, message.conversation_id, message.role, message.content, i64::try_from(message.created_at_ms).unwrap_or(i64::MAX), message.status],
             )
             .map_err(storage)?;
             conn.execute(
@@ -526,7 +545,7 @@ impl SessionStore for SqliteSessionStore {
                 });
             }
             let mut stmt = conn
-                .prepare("SELECT id, conversation_id, role, content, created_at_ms FROM messages WHERE conversation_id=?1 ORDER BY created_at_ms ASC, id ASC")
+                .prepare("SELECT id, conversation_id, role, content, created_at_ms, status FROM messages WHERE conversation_id=?1 ORDER BY created_at_ms ASC, id ASC")
                 .map_err(storage)?;
             let rows = stmt.query_map(params![conversation_id], |row| {
                 Ok(Message {
@@ -535,6 +554,7 @@ impl SessionStore for SqliteSessionStore {
                     role: row.get(2)?,
                     content: row.get(3)?,
                     created_at_ms: row.get::<_, i64>(4)?.max(0).try_into().unwrap_or(0),
+                    status: row.get(5)?,
                 })
             })
             .map_err(storage)?;

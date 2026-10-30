@@ -87,7 +87,7 @@
 ```text
 ZeoKeel/
 ├─ AGENTS.md  README.md  Cargo.toml  zk.toml  pnpm-workspace.yaml
-├─ docs/                # 规划（00–27）+ PLAN + README(SSOT)
+├─ docs/                # 规划（00–28）+ PLAN + README(SSOT)
 ├─ specs/               # 变更规格（changes/templates/archive）
 ├─ editions/ profiles/ brands/
 ├─ crates/zk-composed/  # 生成 glue
@@ -270,7 +270,7 @@ cargo test --workspace export_schema && git diff --exit-code
 - 改行为必须同步改文档；新增 ADR 放 `docs/13`，决策变更先改 ADR 再改实现。
 - 生成物头部 `@generated`，禁止手改；`--check` 失败时改生成器或输入，不改产物。
 - **ADR 状态机**：决策被取代时，旧 ADR 必须标 `superseded-by-ADR-0xx` 并回写所有引用/重复表述；禁止两篇 `accepted` ADR 互相矛盾。
-- **唯一已定清单**：`docs/15`（D1–D67；实现细节待定索引见 §C）+ `docs/13`（ADR-001…058，其中 ADR-013 为显式 `open` 的非本期扩展点）+ `docs/19–27`（域内规范）是已定事项真源；PLAN/其它文档只引用编号，不手抄结论。
+- **唯一已定清单**：`docs/15`（D1–D67；实现细节待定索引见 §C）+ `docs/13`（ADR-001…058，其中 ADR-013 为显式 `open` 的非本期扩展点）+ `docs/19–28`（域内规范）是已定事项真源；PLAN/其它文档只引用编号，不手抄结论。
 - **变更规格**：`specs/changes/<id>/` 五件套；`spec-check` 门禁；耐久结论回写 `docs/`，spec 归档。
 - **Skills**：`.agents/skills/` 只写步骤/命令/判据，不复制规范；冲突时以本文件与 `docs/README.md` 为准。
 

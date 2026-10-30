@@ -28,6 +28,43 @@ function nextLocalId(prefix: string): string {
   return `${prefix}-${localIdCounter}`;
 }
 
+function friendlyError(error: unknown, locale: "zh-CN" | "en-US"): string {
+  const raw = errorMessage(error);
+  const code = raw.split(":", 1)[0]?.trim() ?? "";
+  const key = (() => {
+    switch (code) {
+      case "workspace/path-not-found":
+        return "workspaceErrorPathNotFound";
+      case "workspace/not-a-directory":
+        return "workspaceErrorNotDirectory";
+      case "workspace/not-writable":
+        return "workspaceErrorNotWritable";
+      case "workspace/duplicate-path":
+        return "workspaceErrorDuplicate";
+      case "workspace/has-sessions":
+        return "workspaceErrorHasSessions";
+      case "workspace/default":
+        return "workspaceErrorDefault";
+      case "workspace/reassign-target-invalid":
+        return "workspaceErrorReassign";
+      case "workspace/confirm-required":
+        return "workspaceErrorConfirm";
+      case "session/workspace-required":
+        return "sessionWorkspaceRequired";
+      case "session/workspace-mismatch":
+        return "sessionWorkspaceMismatch";
+      case "session/not-found":
+        return "sessionNotFound";
+      default:
+        return null;
+    }
+  })();
+  // Keep OS/backend detail in the console for diagnostics; known IPC codes are
+  // mapped to localized text, unknown transport errors remain readable.
+  console.warn(`[zk] command failed: ${raw}`);
+  return key === null ? raw : translate(locale, key);
+}
+
 function errorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
@@ -93,7 +130,7 @@ export function useAppController(transport: Transport): AppController {
           activeId: first === undefined ? null : first.id,
         });
       } catch (error: unknown) {
-        const message = errorMessage(error);
+        const message = friendlyError(error, stateRef.current.settings.locale);
         dispatch({ type: "workspace_error", message });
         showToast(message);
       }
@@ -162,7 +199,7 @@ export function useAppController(transport: Transport): AppController {
         });
       } catch (error: unknown) {
         if (!cancelled) {
-          dispatch({ type: "boot_failed", message: errorMessage(error) });
+          dispatch({ type: "boot_failed", message: friendlyError(error, stateRef.current.settings.locale) });
         }
       }
     })();
@@ -278,7 +315,7 @@ export function useAppController(transport: Transport): AppController {
         }
         dispatch({ type: "conversation_created", conversation });
       } catch (error: unknown) {
-        showToast(errorMessage(error));
+        showToast(friendlyError(error, stateRef.current.settings.locale));
       }
     })();
   }, [transport, showToast]);
@@ -508,7 +545,7 @@ export function useAppController(transport: Transport): AppController {
           });
           dispatch({ type: "send_accepted", streamId: parseStreamId(data) ?? "" });
         } catch (error: unknown) {
-          dispatch({ type: "send_failed", message: errorMessage(error) });
+          dispatch({ type: "send_failed", message: friendlyError(error, stateRef.current.settings.locale) });
         }
       })();
     },
@@ -541,7 +578,7 @@ export function useAppController(transport: Transport): AppController {
           stream_id: current.streamId,
         });
       } catch (error: unknown) {
-        showToast(errorMessage(error));
+        showToast(friendlyError(error, stateRef.current.settings.locale));
       }
     })();
   }, [transport, showToast]);
@@ -581,7 +618,7 @@ export function useAppController(transport: Transport): AppController {
           });
           dispatch({ type: "approval_decided", approvalId, decision });
         } catch (error: unknown) {
-          showToast(errorMessage(error));
+          showToast(friendlyError(error, stateRef.current.settings.locale));
         }
       })();
     },

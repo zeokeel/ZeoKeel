@@ -48,11 +48,35 @@
     ]
   },
   {
+    "id": "zeokeel/ui-shell",
+    "version": "0.1.0",
+    "kind": "ui",
+    "roles": [
+      "ui.shell"
+    ]
+  },
+  {
     "id": "zeokeel/ui-chat",
     "version": "0.1.0",
     "kind": "ui",
     "roles": [
       "ui.slot.chat"
+    ]
+  },
+  {
+    "id": "zeokeel/ui-commands",
+    "version": "0.1.0",
+    "kind": "ui",
+    "roles": [
+      "ui.slot.commands"
+    ]
+  },
+  {
+    "id": "zeokeel/ui-inspector",
+    "version": "0.1.0",
+    "kind": "ui",
+    "roles": [
+      "ui.slot.inspector"
     ]
   },
   {

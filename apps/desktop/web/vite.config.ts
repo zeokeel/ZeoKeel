@@ -10,13 +10,6 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: false,
-    rollupOptions: {
-      input: {
-        main: "index.html",
-        prototype: "prototype.html",
-        dense: "dense.html",
-      },
-    },
   },
   test: {
     environment: "jsdom",

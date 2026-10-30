@@ -120,13 +120,20 @@ export function createInitialState(): AppState {
   };
 }
 
+function statusOfMessage(message: Message): ChatMessage["status"] {
+  if (message.status === "cancelled" || message.status === "error" || message.status === "streaming") {
+    return message.status;
+  }
+  return "done";
+}
+
 function toChatMessage(message: Message): ChatMessage {
   return {
     id: message.id,
     role: message.role === "user" ? "user" : "assistant",
     content: message.content,
     created_at_ms: message.created_at_ms,
-    status: "done",
+    status: statusOfMessage(message),
     toolCalls: [],
     approvals: [],
     error: null,

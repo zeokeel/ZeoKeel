@@ -1,0 +1,98 @@
+# 28 · UI 模块地图与 UX 骨架
+
+> 目标：先摸清 DSH 的 UI 功能，再按**功能内聚**决定合并/拆分（不追求 1:1 包），
+> 给每个模块一个**空壳包 + 功能说明 + props/slot 契约**，后续按功能实现。
+> 视觉/包组合权威仍是 `27`；槽位机制 `16`；工作区规则 `26`。
+
+## 1. 合并/拆分原则
+
+- **按交互面拆**：导航、对话、输入、右栏、全局命令、设置是不同交互面；可独立变化/替换的拆包。
+- **按耦合合并**：DSH 的 chat/tool/approval/plan/goal 在 M1 共享“消息/turn”状态与渲染管线，**先合并为 `ui-chat`**；
+  当 tool/approval/plan 需要独立贡献/替换时再拆（预留 slot）。
+- **不拆不能替换的**：M1 的 composer 与 conversation 共享 runtime/焦点/键盘，**并入 `ui-chat`**，不单独建包。
+- **全局单例**：shell、commands、settings 各自单包。
+- **后置模块**：jobs/subagent/deliverables/plugins/market/automation/ browser/terminal 高级交互，先不建包；
+  对应入口可灰显/占位，避免空包膨胀。
+
+## 2. 模块地图（DSH → ZeoKeel）
+
+| 模块 | DSH 包（事实参考） | ZeoKeel 包/角色 | 合并/拆分 | M1 范围 |
+| --- | --- | --- | --- | --- |
+| 应用框架/三栏/顶栏/状态栏 | `dsh-client-ui-layout` | `ui-shell` / `ui.shell` | 拆（全局单例） | 框架、header、status、响应式 |
+| 导航（workspace/session/搜索/新建） | `dsh-client-ui-sidebar` + `-workspace` | `ui-sessions` / `ui.slot.sessions` | 合并（导航内聚） | 平铺 workspace + 缩进 sessions |
+| 对话/消息/流式/工具/计划/审批 | `-chat`+`-tool`+`-approval`+`-plan`+`-goal` | `ui-chat` / `ui.slot.chat` | **M1 合并**；工具/计划/审批预留子组件/slot | 消息、流式、工具行、计划卡、审批卡 |
+| 输入/composer | `-conversation` composer + `-input-trigger`+`-attachment` | 并入 `ui-chat` | **合并**（共享 runtime/焦点） | Enter/Shift+Enter/IME、/、@、模型、停止 |
+| 右栏（文件/变更/终端） | `-sidebar-right`+`-files`+`-terminal` | `ui-inspector` / `ui.slot.inspector` | 拆（独立面板） | 文件/变更/终端 tabs、折叠 |
+| 命令面板/快捷键 | `-commands`+`-shortcuts` | `ui-commands` / `ui.slot.commands` | 合并（全局 overlay） | ⌘K、命令列表、键盘提示 |
+| 设置 | `-settings*` | `ui-settings` / `ui.slot.settings` | 合并（单 dialog，分节内部） | provider/主题/语言/审批预设 |
+| 主题 | `-theme` | 并入 `ui-shell`（token/app.css） | 合并 | light/dark/system |
+| Jobs/子代理/deliverables/插件市场 | `-jobs`/`-subagent`/`-deliverables`/`-plugin-*` | 暂不建包（灰显入口） | 后置 | 不实现 |
+| 文件浏览器/终端高级交互 | `-sidebar-browser`/`-documentpreview` | 后续 `ui-inspector` 内面板 | 后置 | 只读占位 |
+| 自动化任务/计划页 | `-schedule`/`-plan` | 后置 | 后置 | 灰显 |
+
+## 3. 槽位与包骨架
+
+| slotId | 角色 | 包 | skeleton component | props（M1 约定） |
+| --- | --- | --- | --- | --- |
+| `ui.shell` | `ui.shell` | `@zeokeel/ui-shell` | `AppShell` | `navigation/conversation/composer/inspector/overlays` |
+| `ui.sessions` | `ui.slot.sessions` | `@zeokeel/ui-sessions` | `Sidebar` | 现有 |
+| `ui.chat` | `ui.slot.chat` | `@zeokeel/ui-chat` | `ChatView` | 现有 |
+| `ui.inspector` | `ui.slot.inspector` | `@zeokeel/ui-inspector` | `InspectorPanel` | `open/tab/onTab/onClose/files/changes` |
+| `ui.commands` | `ui.slot.commands` | `@zeokeel/ui-commands` | `CommandPalette` | `open/onClose/commands/onRun` |
+| `ui.settings` | `ui.slot.settings` | `@zeokeel/ui-settings` | `SettingsDialog` | 现有 |
+
+- 新包先只提供**空壳组件 + props 类型 + README 功能说明**；`zk compose` 生成 registry，app 可逐步接入。
+- ui-shell 是可选目标：M1 现有 app 薄壳继续工作；`ui-shell` 骨架用于后续把布局从 app 移入包。
+- 工具/计划/审批的独立 slot 预留（`ui.toolcall`/`ui.approval`/`ui.plan`），M1 不建独立包。
+
+## 4. 交互行为（UX 骨架目标）
+
+### Navigation
+- 平铺 Workspace；每行缩进其会话；默认 `~` 第一行；行可折叠；hover `⋯`（重命名/设默认/移除）。
+- 点击会话同步 active workspace；新建会话用 active workspace；无 workspace → 首用。
+- 搜索（会话/文件）；底部设置；窄窗抽屉 + Esc 关闭。
+
+### Conversation + Composer
+- 消息：用户右侧 low-contrast pill；助手无气泡；流式光标；取消保留内容 + “已取消”；错误内联。
+- 工具行：单行折叠（状态点/name/关键参数/耗时），点击展开 args/result；Shift 点击展开全部。
+- 计划卡：步骤状态 + 进度 + 可折叠；审批 inline takeover（允许一次/拒绝/超时）。
+- Composer：Enter 发送、Shift+Enter 换行、IME 安全；`/` 命令 popup、`@` 文件引用、附件、模型下拉、上下文占用、发送/停止。
+- 空态/加载/错误/离线/流式中/已取消六态。
+
+### Inspector
+- Tabs 文件/变更/终端；`⌘B` 折叠；窄窗自动收起；文件树懒加载（后续）、变更 diff 计数、终端 mock。
+- 状态：当前 tab/宽度/选中文件；只读占位，不调用后端。
+
+### Commands / Settings
+- ⌘K 打开/关闭；↑↓/Enter/Esc；命令项类型（navigation/action/settings）。
+- 设置 dialog：provider/base_url/model/key（掩码/留空保持）、主题、语言、自动批准只读；Esc 关闭、焦点陷阱。
+
+## 4.5 DSH 事实校正（来自三份模块摸排）
+
+- DSH 把 **conversation 装配层**（target-neutral event/view registry、session binding、composer shell）与 **chat 目标层**（消息节点/渲染）分开；
+  ZeoKeel M1 合并进 `ui-chat`，但内部按 `conversation/`、`composer/`、`tool/`、`approval/` 目录组织，post-M1 可拆包。
+- DSH **Composer 是 shell + takeover 链**：审批、plan chip、GoalBar、queue、附件各自 slot；ZeoKeel M1 先用单 composer + inline approval/plan 卡，slot 预留。
+- DSH **审批**是 allow-once/reject 的临时请求，持久策略/Host waterfall 不在 UI；ZeoKeel M1 同（bridge 占位）。
+- DSH **plan 是 plan mode + Markdown review**，步骤清单属于 Todo dock；ZeoKeel M1 的“计划卡”是简化版，后续拆 `ui-plan`/`ui-todo`。
+- DSH **Jobs/Subagent/Deliverables** 都在 header/turnTail/右栏，M1 不建包；右栏“变更”是 ZeoKeel 自有（DSH 无 changes tab）。
+- DSH **命令**：composer `/` 菜单 + `Mod+/` 快捷键参考；没有本组包可核实的全局 ⌘K 命令面板。
+  ZeoKeel 的 `ui-commands` 暂定“`/` 菜单 + 快捷键参考 + 可选全局面板”；全局 ⌘K 是产品增强，不是 DSH 复刻。
+- DSH **右栏是 per-session docking surface**（normal/fullscreen、tab 不销毁、宽度由 frame 管）；ZeoKeel M1 只做固定宽度单栏、折叠；
+  多 tab/拖拽/多 pane 后置。
+- DSH **设置**分 Account/General/Models + Plugins 子页；ZeoKeel M1 单 dialog 分节，分页/插件清单后置。
+- DSH **主题**是 Host bootstrap + token；ZeoKeel 沿用 app token/`data-theme`，不引入运行期主题包。
+- DSH **插件市场运行期装包**与 C2 冲突，ZeoKeel 不采用；Settings 插件仅只读清单（后续）。
+
+## 5. 骨架验收（本轮）
+
+- 每个新包有四件套（`zk.toml`/契约/README/空壳组件+props），`zk validate`/`compose --check` 绿。
+- `ux.html` 可用 mock 数据完整操作：切 workspace/session、折叠、tabs、右栏折叠、⌘K、设置、工具展开、审批、composer 发送/停止。
+- 截图 light/dark/narrow/empty/loading/error/cancelled；不接后端；**不实现真实功能**。
+- 后续按功能逐个把空壳替换为实现，并保持 slot/包边界。
+
+## 6. 模块摸排报告
+
+- `research/dsh-ui-modules/navigation.md`：sidebar/workspace/layout/commands/shortcuts/session。
+- `research/dsh-ui-modules/conversation.md`：conversation/chat/tool/approval/plan/goal/jobs/subagent/deliverables/input-trigger/attachment/feedback。
+- `research/dsh-ui-modules/inspector-settings.md`：sidebar-right/files/terminal/preview/browser/settings/commands/shortcuts/theme/plugins。
+这些报告只作事实参考（C15），不进入依赖/构建输入。

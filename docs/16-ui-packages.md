@@ -21,6 +21,9 @@
 | `@zeokeel/ui-sessions` | `ui.slot.sessions` | Sidebar（**平铺 Workspace 列表**/会话列表/新建/选中/设置入口/窄窗；规则见 `26` §6） | ui-kit |
 | `@zeokeel/ui-chat` | `ui.slot.chat` | ChatView + assistant-ui primitives + 工具卡/审批/空态 + ExternalStoreRuntime adapter | ui-kit + `@assistant-ui/*` |
 | `@zeokeel/ui-settings` | `ui.slot.settings` | SettingsDialog + 校验 | ui-kit + Radix dialog |
+| `@zeokeel/ui-shell` | `ui.shell` | AppShell 骨架（布局/header/status/overlay 挂载） | ui-kit |
+| `@zeokeel/ui-inspector` | `ui.slot.inspector` | 右栏文件/变更/终端骨架 | ui-kit |
+| `@zeokeel/ui-commands` | `ui.slot.commands` | ⌘K 命令面板骨架 | ui-kit |
 | `apps/desktop/web` | 薄壳 | transport/controller/reducer/i18n/theme/UiProvider/registry/boot/error/header/toast | registry 生成的包 |
 
 依赖方向：`ui-chat/ui-sessions/ui-settings → ui-kit`；app → `generated/registry` → UI 包；**包不得 import app，业务包不得互相 import**。
@@ -59,8 +62,11 @@ order = 10
 | `ui.sessions` | `ui.slot.sessions` | `sessions.sidebar` | 侧栏（**平铺 Workspace 列表**/会话列表） |
 | `ui.chat` | `ui.slot.chat` | `chat.thread` | 对话区（含 composer/工具卡/审批/空态） |
 | `ui.settings` | `ui.slot.settings` | `settings.dialog` | 设置弹窗 |
+| `ui.shell` | `ui.shell` | `shell.frame` | 应用框架（骨架，app 暂未接入） |
+| `ui.inspector` | `ui.slot.inspector` | `inspector.panel` | 右侧检查器（骨架） |
+| `ui.commands` | `ui.slot.commands` | `commands.palette` | 命令面板（骨架） |
 
-M1 生成器只支持以上三个 slot binding；新增 slot 必须同时改 `tools/zk` 的 `slot_binding` 与本文，否则 `registry.ts` 不生成。
+M1 生成器现在支持 `ui.sessions/chat/settings/shell/inspector/commands`；新增 slot 必须同时改 `tools/zk` 的 `slot_binding` 与本文，否则 `registry.ts` 不生成。
 
 ### 2.3 生成器行为（M1 实际）
 

@@ -2,7 +2,7 @@
 
 # Package Index
 
-edition `personal` · channel `official` · 9 packages
+edition `personal` · channel `official` · 12 packages
 
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
@@ -12,6 +12,9 @@ edition `personal` · channel `official` · 9 packages
 | `store.settings` | `zeokeel/store-settings-json` | `zk-store-settings-json` | `zk-contract-config` | singleton |
 | `tool.fs` | `zeokeel/tool-fs` | `zk-tool-fs` | `zk-contract-tool` | singleton |
 | `ui.kit` | `zeokeel/ui-kit` | `zk-ui-kit` | `zk-contract-ui` | singleton |
+| `ui.shell` | `zeokeel/ui-shell` | `zk-ui-shell` | `zk-contract-ui` | singleton |
 | `ui.slot.chat` | `zeokeel/ui-chat` | `zk-ui-chat` | `zk-contract-ui` | singleton |
+| `ui.slot.commands` | `zeokeel/ui-commands` | `zk-ui-commands` | `zk-contract-ui` | singleton |
+| `ui.slot.inspector` | `zeokeel/ui-inspector` | `zk-ui-inspector` | `zk-contract-ui` | singleton |
 | `ui.slot.sessions` | `zeokeel/ui-sessions` | `zk-ui-sessions` | `zk-contract-ui` | singleton |
 | `ui.slot.settings` | `zeokeel/ui-settings` | `zk-ui-settings` | `zk-contract-ui` | singleton |

@@ -20,7 +20,7 @@ export default defineConfig({
   webServer: [
     {
       command: "pnpm --dir apps/desktop/web build && pnpm --dir apps/desktop/web exec vite preview --host 127.0.0.1 --port 4173",
-      url: `${MOCK_URL}/prototype.html?screen=empty`,
+      url: `${MOCK_URL}/`,
       reuseExistingServer: true,
       timeout: 180_000,
     },

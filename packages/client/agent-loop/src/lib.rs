@@ -173,7 +173,7 @@ fn chunk_text(text: &str) -> Vec<String> {
     let mut count = 0usize;
     for ch in text.chars() {
         current.push(ch);
-        count += 1;
+        count = count.saturating_add(1);
         if count >= CHUNK_CHARS {
             out.push(std::mem::take(&mut current));
             count = 0;

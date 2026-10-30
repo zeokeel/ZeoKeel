@@ -64,7 +64,7 @@ M1 **默认拒绝**绝对路径/工作区外访问；post-M1 才由 `TurnContext
 ## 3. 数据模型（本文唯一 schema 来源；引擎不变量见 `24` §7）
 
 ```sql
--- schema v2；PRAGMA user_version
+-- schema v3；PRAGMA user_version
 CREATE TABLE workspaces (
   id TEXT PRIMARY KEY,
   path TEXT NOT NULL UNIQUE,          -- canonicalize 后的本地绝对路径
@@ -88,7 +88,8 @@ CREATE TABLE messages (
   conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   role TEXT NOT NULL,
   content TEXT NOT NULL,
-  created_at_ms INTEGER NOT NULL
+  created_at_ms INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'done'   -- done | cancelled | error
 );
 CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_ms);
 ```
@@ -99,7 +100,7 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_m
 - M1 不建 `archived/pinned/order` 字段；post-M1 迁移再 `ALTER TABLE`（数据兼容 `serde(default)`）。
 - `conversations.workspace_id` 必填；删除 Workspace 前必须 `reassign_to` 迁移其会话。
 
-### 3.1 schema v2 迁移（可执行，SQLite）
+### 3.1 schema v3 迁移（可执行，SQLite；v2 库补 status 列）
 
 1. **准备**：`PRAGMA wal_checkpoint(TRUNCATE)`；复制 `sessions.db`、`sessions.db-wal`、`sessions.db-shm`（存在则）到 `sessions.db.bak-v<old>`；失败保留备份。
 2. **默认 Workspace**：`default_id = uuid v4`；`default_path = canonicalize(dirs::home_dir())`（用户 home `~`；绝对路径；home 不可用 → 迁移失败，让用户选择目录，不猜）。
@@ -131,7 +132,7 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_m
    PRAGMA foreign_keys=ON;
    ```
 4. **校验**：`messages` 行数 = v1 行数；`conversations` 行数 = v1 行数；无孤儿 `workspace_id`；默认 Workspace 恰好 1 个。任一项失败 → 回滚事务、恢复备份、UI 只读并提示导出。
-5. **迁移测试**：v1 有会话+消息→v2 归属默认且消息不丢；失败注入→备份恢复；重复迁移幂等（user_version≥2 跳过）。
+5. **迁移测试**：v1 有会话+消息→v3 归属默认且消息不丢；失败注入→备份恢复；重复迁移幂等（user_version≥2 跳过）。
 
 ## 4. 契约 / 包 / 角色 / 生成物影响（C3/C4/C10）
 

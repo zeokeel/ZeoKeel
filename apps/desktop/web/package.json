@@ -20,7 +20,10 @@
     "@zeokeel/ui-kit": "workspace:*",
     "@zeokeel/ui-sessions": "workspace:*",
     "@zeokeel/ui-chat": "workspace:*",
-    "@zeokeel/ui-settings": "workspace:*"
+    "@zeokeel/ui-settings": "workspace:*",
+    "@zeokeel/ui-shell": "workspace:*",
+    "@zeokeel/ui-inspector": "workspace:*",
+    "@zeokeel/ui-commands": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

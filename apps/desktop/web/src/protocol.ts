@@ -147,7 +147,8 @@ function parseMessageRecord(value: Record<string, unknown>): Message | null {
   ) {
     return null;
   }
-  return { id, conversation_id: conversationId, role, content, created_at_ms: createdAt };
+  const status = readString(value, "status") ?? "done";
+  return { id, conversation_id: conversationId, role, content, created_at_ms: createdAt, status };
 }
 
 export function parseMessages(value: unknown): Message[] | null {

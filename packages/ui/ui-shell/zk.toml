@@ -1,0 +1,21 @@
+schema = 1
+id = "zeokeel/ui-shell"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "UI module skeleton: ui-shell"
+
+[role]
+name = "ui.shell"
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-ui-shell" }
+ui = { package = "@zeokeel/ui-shell" }
+
+[[ui.contributions]]
+slot = "ui.shell"
+component = "shell.frame"
+order = 10

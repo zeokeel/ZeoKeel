@@ -21,9 +21,12 @@ zk-store-session-sqlite = { path = "../../packages/client/store-session-sqlite" 
 zk-store-settings-json = { path = "../../packages/client/store-settings-json" }
 zk-tool-fs = { path = "../../packages/client/tool-fs" }
 zk-ui-chat = { path = "../../packages/ui/ui-chat" }
+zk-ui-commands = { path = "../../packages/ui/ui-commands" }
+zk-ui-inspector = { path = "../../packages/ui/ui-inspector" }
 zk-ui-kit = { path = "../../packages/ui/ui-kit" }
 zk-ui-sessions = { path = "../../packages/ui/ui-sessions" }
 zk-ui-settings = { path = "../../packages/ui/ui-settings" }
+zk-ui-shell = { path = "../../packages/ui/ui-shell" }
 serde_json = { workspace = true }
 
 [lints]

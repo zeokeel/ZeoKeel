@@ -60,6 +60,13 @@ pub struct Message {
     pub content: String,
     /// Creation time (ms since epoch).
     pub created_at_ms: u64,
+    /// Turn status: `done` | `cancelled` | `error` (M1 persistence for cancel markers).
+    #[serde(default = "done_status")]
+    pub status: String,
+}
+
+fn done_status() -> String {
+    "done".to_owned()
 }
 
 /// Closed error set for workspace/session storage.

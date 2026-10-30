@@ -140,13 +140,7 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             }
         }
         commands::SETTINGS_GET => match state.runtime.settings().load() {
-            Ok(settings) => {
-                let mut value = json!(settings);
-                if let Some(provider) = value.get_mut("provider").and_then(Value::as_object_mut) {
-                    provider.insert("api_key".to_owned(), Value::String(String::new()));
-                }
-                CommandResponse::ok(value)
-            }
+            Ok(settings) => CommandResponse::ok(masked_settings(&settings)),
             Err(error) => CommandResponse::err(error.to_string()),
         },
         commands::SETTINGS_SET => {
@@ -168,7 +162,7 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 return CommandResponse::err(error);
             }
             match state.runtime.settings().save(&settings) {
-                Ok(()) => CommandResponse::ok(json!(settings)),
+                Ok(()) => CommandResponse::ok(masked_settings(&settings)),
                 Err(error) => CommandResponse::err(error.to_string()),
             }
         }
@@ -179,6 +173,14 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
         }
         other => CommandResponse::err(format!("unknown command: {other}")),
     }
+}
+
+fn masked_settings(settings: &AppSettings) -> Value {
+    let mut value = json!(settings);
+    if let Some(provider) = value.get_mut("provider").and_then(Value::as_object_mut) {
+        provider.insert("api_key".to_owned(), Value::String(String::new()));
+    }
+    value
 }
 
 fn session_err(error: zk_contract_session::SessionError) -> CommandResponse {
@@ -244,6 +246,7 @@ fn chat_send(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
         role: "user".to_owned(),
         content: text.to_owned(),
         created_at_ms: now_ms(),
+        status: "done".to_owned(),
     };
     if let Err(error) = sessions.append_message(&user_message) {
         return session_err(error);
@@ -278,6 +281,7 @@ fn chat_send(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
                     role: "assistant".to_owned(),
                     content: reply.text,
                     created_at_ms: now_ms(),
+                    status: if cancelled.load(Ordering::SeqCst) { "cancelled" } else { "done" }.to_owned(),
                 };
                 let _ = state.runtime.sessions().append_message(&message);
             }
@@ -288,6 +292,7 @@ fn chat_send(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
                     role: "assistant".to_owned(),
                     content: format!("错误：{error}"),
                     created_at_ms: now_ms(),
+                    status: "error".to_owned(),
                 };
                 let _ = state.runtime.sessions().append_message(&message);
             }

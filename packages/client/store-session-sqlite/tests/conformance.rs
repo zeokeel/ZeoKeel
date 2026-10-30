@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)] // test-only
 
 use std::path::PathBuf;
 use zk_contract_session::{Message, SessionError, SessionStore, WorkspaceStore};
@@ -17,7 +17,7 @@ fn open_store(name: &str) -> (SqliteSessionStore, PathBuf) {
 }
 
 fn message(id: &str, conversation_id: &str, role: &str, content: &str) -> Message {
-    Message { id: id.to_owned(), conversation_id: conversation_id.to_owned(), role: role.to_owned(), content: content.to_owned(), created_at_ms: 1 }
+    Message { id: id.to_owned(), conversation_id: conversation_id.to_owned(), role: role.to_owned(), content: content.to_owned(), created_at_ms: 1, status: "done".to_owned() }
 }
 
 #[test]
@@ -115,4 +115,16 @@ fn reopens_persisted_workspace_and_conversation() {
     let reopened = open_with_root(db, base.join("default-workspace")).unwrap();
     assert_eq!(reopened.list_conversations_in(&ws.id).unwrap().len(), 1);
     assert_eq!(reopened.messages_in(&ws.id, &conv.id).unwrap().len(), 1);
+}
+
+#[test]
+fn persists_message_status_for_cancel_markers() {
+    let (store, _) = open_store("status");
+    let ws = store.list_workspaces().unwrap().into_iter().find(|w| w.is_default).unwrap();
+    let conv = store.create_conversation_in(&ws.id, "status").unwrap();
+    let mut cancelled = message("c1", &conv.id, "assistant", "部分输出");
+    cancelled.status = "cancelled".to_owned();
+    store.append_message(&cancelled).unwrap();
+    let loaded = store.messages_in(&ws.id, &conv.id).unwrap();
+    assert_eq!(loaded[0].status, "cancelled");
 }

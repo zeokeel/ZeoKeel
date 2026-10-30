@@ -1,0 +1,21 @@
+schema = 1
+id = "zeokeel/ui-inspector"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "UI module skeleton: ui-inspector"
+
+[role]
+name = "ui.slot.inspector"
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-ui-inspector" }
+ui = { package = "@zeokeel/ui-inspector" }
+
+[[ui.contributions]]
+slot = "ui.inspector"
+component = "inspector.panel"
+order = 10

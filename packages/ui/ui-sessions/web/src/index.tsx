@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   BrandLogo,
@@ -37,15 +37,51 @@ function Modal(props: {
   onClose: () => void;
   children: ReactNode;
 }) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const panel = panelRef.current;
+    const focusables = (): HTMLElement[] => {
+      if (panel === null) {
+        return [];
+      }
+      return Array.from(panel.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ));
+    };
+    const initial = panel?.querySelector<HTMLElement>('[data-autofocus]') ?? focusables()[0];
+    initial?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
         props.onClose();
+        return;
+      }
+      if (event.key !== "Tab") {
+        return;
+      }
+      const items = focusables();
+      if (items.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (first === undefined || last === undefined) {
+        return;
+      }
+      if (event.shiftKey && (document.activeElement === first || !panel?.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !panel?.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
+      previous?.focus();
     };
   }, [props]);
 
@@ -58,6 +94,7 @@ function Modal(props: {
         onClick={props.onClose}
       />
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={props.labelId}

@@ -58,6 +58,8 @@ export interface Message {
   role: string;
   content: string;
   created_at_ms: number;
+  /** `done` | `cancelled` | `error` (M1 status persistence). */
+  status?: string;
 }
 
 /** Payload subset used by the shell header. */

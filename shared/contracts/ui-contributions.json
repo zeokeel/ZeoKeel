@@ -7,6 +7,20 @@
     "slot": "ui.chat"
   },
   {
+    "component": "commands.palette",
+    "order": 10,
+    "package": "zeokeel/ui-commands",
+    "role": "ui.slot.commands",
+    "slot": "ui.commands"
+  },
+  {
+    "component": "inspector.panel",
+    "order": 10,
+    "package": "zeokeel/ui-inspector",
+    "role": "ui.slot.inspector",
+    "slot": "ui.inspector"
+  },
+  {
     "component": "sessions.sidebar",
     "order": 10,
     "package": "zeokeel/ui-sessions",
@@ -19,5 +33,12 @@
     "package": "zeokeel/ui-settings",
     "role": "ui.slot.settings",
     "slot": "ui.settings"
+  },
+  {
+    "component": "shell.frame",
+    "order": 10,
+    "package": "zeokeel/ui-shell",
+    "role": "ui.shell",
+    "slot": "ui.shell"
   }
 ]

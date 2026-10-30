@@ -1,0 +1,21 @@
+schema = 1
+id = "zeokeel/ui-commands"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "UI module skeleton: ui-commands"
+
+[role]
+name = "ui.slot.commands"
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-ui-commands" }
+ui = { package = "@zeokeel/ui-commands" }
+
+[[ui.contributions]]
+slot = "ui.commands"
+component = "commands.palette"
+order = 10

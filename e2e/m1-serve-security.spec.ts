@@ -27,12 +27,20 @@ test.describe("serve carrier security", () => {
       },
     });
     expect(set.ok()).toBeTruthy();
+    expect(JSON.stringify(await set.json())).not.toContain("sk-SECRET-TEST");
     const got = await request.post(`${SERVE}/ipc`, {
       data: { name: "settings.get", payload: {} },
     });
     const body = (await got.json()) as { data: { provider: { api_key: string } } };
     expect(body.data.provider.api_key).toBe("");
     expect(JSON.stringify(body)).not.toContain("sk-SECRET-TEST");
+  });
+
+  test("does not ship design prototypes in production", async ({ request }) => {
+    for (const path of ["/prototype.html", "/dense.html"]) {
+      const response = await request.get(`${SERVE}${path}`);
+      expect(response.status()).toBe(404);
+    }
   });
 
   test("does not reflect arbitrary cross-origin access", async ({ request }) => {

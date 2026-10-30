@@ -1,0 +1,11 @@
+[package]
+name = "zk-ui-inspector"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+zk-contract-ui = { path = "../../contracts/ui" }
+
+[lints]
+workspace = true

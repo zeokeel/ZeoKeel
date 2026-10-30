@@ -3,6 +3,9 @@ name = "personal"
 targets = ["desktop"]
 
 [packages]
+"ui.slot.commands" = "zeokeel/ui-commands"
+"ui.slot.inspector" = "zeokeel/ui-inspector"
+"ui.shell" = "zeokeel/ui-shell"
 "ui.kit" = "zeokeel/ui-kit"
 "ui.slot.sessions" = "zeokeel/ui-sessions"
 "ui.slot.chat" = "zeokeel/ui-chat"

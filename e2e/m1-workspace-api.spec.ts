@@ -67,6 +67,9 @@ test.describe("workspace IPC (serve carrier)", () => {
     const badTarget = await call(request, "workspace.remove", { workspace_id: ws.id, reassign_to: ws.id, confirm: true });
     expect(badTarget.ok).toBeFalsy();
     expect(badTarget.error).toContain("workspace/reassign-target-invalid");
+    const missingTarget = await call(request, "workspace.remove", { workspace_id: ws.id, reassign_to: "missing-ws", confirm: true });
+    expect(missingTarget.ok).toBeFalsy();
+    expect(missingTarget.error).toContain("workspace/reassign-target-invalid");
     const removed = await call(request, "workspace.remove", { workspace_id: ws.id, reassign_to: defaultWs?.id, confirm: true });
     expect(removed.ok, removed.error).toBeTruthy();
     expect((removed.data as { moved_sessions: number }).moved_sessions).toBe(1);
