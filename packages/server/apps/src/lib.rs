@@ -24,7 +24,10 @@ use zk_srv_app_db as app_db;
 use zk_srv_app_runtime as runtime;
 
 /// Migrations owned by this package.
-pub const MIGRATIONS: &[(&str, &str)] = &[("0012_apps", include_str!("../migrations/0012_apps.sql"))];
+pub const MIGRATIONS: &[(&str, &str)] = &[
+    ("0012_apps", include_str!("../migrations/0012_apps.sql")),
+    ("0013_app_logs", include_str!("../migrations/0013_app_logs.sql")),
+];
 
 const MAX_WASM: usize = 32 * 1024 * 1024;
 const MAX_UI: usize = 16 * 1024 * 1024;
@@ -39,9 +42,9 @@ fn user_sems() -> &'static Mutex<HashMap<Uuid, Arc<Semaphore>>> {
     VALUES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn semaphore(app: Uuid) -> Arc<Semaphore> {
+fn semaphore(app: Uuid, capacity: usize) -> Arc<Semaphore> {
     let Ok(mut map) = app_dbs().lock() else { return Arc::new(Semaphore::new(1)); };
-    map.entry(app).or_insert_with(|| Arc::new(Semaphore::new(4))).clone()
+    map.entry(app).or_insert_with(|| Arc::new(Semaphore::new(capacity.max(1)))).clone()
 }
 
 fn user_semaphore(user: Uuid) -> Arc<Semaphore> {
@@ -156,7 +159,7 @@ async fn open(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<
     let app = uuid_of(&id)?;
     let row = sqlx::query(
         "SELECT c.id, c.status, c.deleted_at, r.version, r.ui_manifest FROM contents c LEFT JOIN content_releases r ON r.id = c.current_release_id
-         WHERE c.id = $1 AND c.kind = 'app' AND (c.visibility = 'all' OR EXISTS (SELECT 1 FROM content_grants g WHERE g.content_id = c.id AND g.grantee = $2 AND g.can_install))",
+         WHERE c.id = $1 AND c.kind = 'app' AND EXISTS (SELECT 1 FROM content_grants g WHERE g.content_id = c.id AND g.grantee IN ('all', $2) AND g.can_install)",
     ).bind(app).bind(user.to_string()).fetch_optional(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?
         .ok_or_else(|| error(StatusCode::NOT_FOUND, "APP_NOT_FOUND"))?;
     let status: String = row.try_get("status").map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
@@ -180,7 +183,7 @@ async fn request(State(state): State<AppState>, headers: HeaderMap, Path(id): Pa
     let app = uuid_of(&id)?;
     let row = sqlx::query(
         "SELECT c.status, c.deleted_at, r.wasm, r.ui_archive, r.db_schema_version, r.db_migrations FROM contents c JOIN content_releases r ON r.id = c.current_release_id
-         WHERE c.id = $1 AND c.kind = 'app' AND (c.visibility = 'all' OR EXISTS (SELECT 1 FROM content_grants g WHERE g.content_id = c.id AND g.grantee = $2 AND g.can_install))",
+         WHERE c.id = $1 AND c.kind = 'app' AND EXISTS (SELECT 1 FROM content_grants g WHERE g.content_id = c.id AND g.grantee IN ('all', $2) AND g.can_install)",
     ).bind(app).bind(user.to_string()).fetch_optional(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?
         .ok_or_else(|| error(StatusCode::NOT_FOUND, "APP_NOT_FOUND"))?;
     if row.try_get::<String, _>("status").unwrap_or_default() != "approved" || row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("deleted_at").ok().flatten().is_some() { return Err(error(StatusCode::GONE, "APP_DELISTED")); }
@@ -210,10 +213,11 @@ async fn request(State(state): State<AppState>, headers: HeaderMap, Path(id): Pa
     if decoded.len() > 1024 * 1024 { return Err(error(StatusCode::PAYLOAD_TOO_LARGE, "APP_BAD_REQUEST")); }
     let guest_body: Value = serde_json::from_slice(&decoded).unwrap_or(Value::Null);
     let request = json!({ "abi": ABI, "app_id": app.to_string(), "method": body.method, "path": body.path, "query": body.query, "body": guest_body, "request_id": body.request_id });
-    let app_permit = semaphore(app).try_acquire_owned().map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_CONCURRENCY"))?;
-    let user_permit = user_semaphore(user).try_acquire_owned().map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_CONCURRENCY"))?;
-    let global_permit = global_semaphore().clone().try_acquire_owned().map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_CONCURRENCY"))?;
-    let fuel: i64 = sqlx::query_scalar("SELECT fuel FROM app_runtime_limits WHERE app_id=$1").bind(app).fetch_optional(&state.pool).await.ok().flatten().unwrap_or(10_000_000);
+    let limits: Option<(i64, i64, i64)> = sqlx::query_as("SELECT fuel, max_concurrency, max_memory_bytes FROM app_runtime_limits WHERE app_id=$1").bind(app).fetch_optional(&state.pool).await.ok().flatten();
+    let (fuel, max_concurrency, max_memory) = limits.unwrap_or((10_000_000, 4, 64 * 1024 * 1024));
+    let app_permit = tokio::time::timeout(std::time::Duration::from_secs(5), semaphore(app, usize::try_from(max_concurrency).unwrap_or(4)).acquire_owned()).await.map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_CONCURRENCY"))?.map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_CONCURRENCY"))?;
+    let user_permit = tokio::time::timeout(std::time::Duration::from_secs(5), user_semaphore(user).acquire_owned()).await.map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_CONCURRENCY"))?.map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_CONCURRENCY"))?;
+    let global_permit = tokio::time::timeout(std::time::Duration::from_secs(5), global_semaphore().clone().acquire_owned()).await.map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_CONCURRENCY"))?.map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_CONCURRENCY"))?;
     let _ = sqlx::query("INSERT INTO app_databases (app_id, schema_version, size_bytes) VALUES ($1,$2,$3) ON CONFLICT (app_id) DO UPDATE SET schema_version=EXCLUDED.schema_version, size_bytes=EXCLUDED.size_bytes, updated_at=now()")
         .bind(app).bind(schema_version).bind(i64::try_from(std::fs::metadata(&db_path).map(|meta| meta.len()).unwrap_or(0)).unwrap_or(0)).execute(&state.pool).await;
     let db_for_run = db_path.clone();
@@ -221,7 +225,7 @@ async fn request(State(state): State<AppState>, headers: HeaderMap, Path(id): Pa
         let _app = app_permit;
         let _user = user_permit;
         let _global = global_permit;
-        runtime::execute(&wasm, &db_for_run, request, u64::try_from(fuel).unwrap_or(10_000_000), &assets)
+        runtime::execute(&wasm, &db_for_run, request, u64::try_from(fuel).unwrap_or(10_000_000), usize::try_from(max_memory).unwrap_or(64 * 1024 * 1024), &assets)
     })).await.map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_LIMIT_TIME"))?.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "APP_UNAVAILABLE"))?;
     let output = result.map_err(|failure| {
         let code = runtime::error_code(&failure);
@@ -235,6 +239,8 @@ async fn request(State(state): State<AppState>, headers: HeaderMap, Path(id): Pa
     audit(&state, user, "app.request", &format!("{}:{}", app, body.request_id), &json!({ "status": output.response.get("status") })).await?;
     let _ = sqlx::query("UPDATE app_databases SET size_bytes=$1, updated_at=now() WHERE app_id=$2").bind(i64::try_from(std::fs::metadata(&db_path).map(|meta| meta.len()).unwrap_or(0)).unwrap_or(0)).bind(app).execute(&state.pool).await;
     if app_db::enforce_quota(&db_path, app_db::MAX_BYTES).is_err() { return Err(error(StatusCode::TOO_MANY_REQUESTS, "APP_DB_QUOTA")); }
+    let total: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(size_bytes),0)::bigint FROM app_databases").fetch_one(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    if total > 20 * 1024 * 1024 * 1024 { return Err(error(StatusCode::TOO_MANY_REQUESTS, "APP_DB_QUOTA")); }
     let response_body = output.response.get("body").cloned().unwrap_or(Value::Null);
     let encoded = base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&response_body).unwrap_or_default());
     if encoded.len() > 8 * 1024 * 1024 { return Err(error(StatusCode::PAYLOAD_TOO_LARGE, "APP_BAD_REQUEST")); }
@@ -246,7 +252,7 @@ async fn asset(State(state): State<AppState>, headers: HeaderMap, Path((id, path
     let user = uuid_of(&user_id)?;
     let app = uuid_of(&id)?;
     if path.contains("..") || path.contains(':') { return Err(error(StatusCode::BAD_REQUEST, "APP_BAD_REQUEST")); }
-    let row = sqlx::query("SELECT r.ui_archive, r.ui_manifest FROM contents c JOIN content_releases r ON r.id=c.current_release_id WHERE c.id=$1 AND c.status='approved' AND c.deleted_at IS NULL AND (c.visibility='all' OR EXISTS (SELECT 1 FROM content_grants g WHERE g.content_id=c.id AND g.grantee=$2 AND g.can_install))")
+    let row = sqlx::query("SELECT r.ui_archive, r.ui_manifest FROM contents c JOIN content_releases r ON r.id=c.current_release_id WHERE c.id=$1 AND c.status='approved' AND c.deleted_at IS NULL AND EXISTS (SELECT 1 FROM content_grants g WHERE g.content_id=c.id AND g.grantee IN ('all',$2) AND g.can_install)")
         .bind(app).bind(user.to_string()).fetch_optional(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let Some(row) = row else { return Err(error(StatusCode::NOT_FOUND, "APP_NOT_FOUND")); };
     let archive: Option<Vec<u8>> = row.try_get("ui_archive").ok();

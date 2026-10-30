@@ -49,6 +49,7 @@ pub async fn run_job(pool: &PgPool, job: &str, idempotency: &str) -> Result<Valu
         "wallet-grant" => monthly_grant(pool).await.map_err(|error| error.to_string()),
         "audit-retention" => retention(pool).await.map_err(|error| error.to_string()),
         "audit-verify" => verify_audit(pool).await.map_err(|error| error.to_string()),
+        "app-retire" => app_retire(pool).await.map_err(|error| error.to_string()),
         other => Err(format!("unknown job: {other}")),
     };
     match &result {
@@ -70,6 +71,20 @@ pub async fn run_job(pool: &PgPool, job: &str, idempotency: &str) -> Result<Valu
         }
     }
     result
+}
+
+async fn app_retire(pool: &PgPool) -> Result<Value, sqlx::Error> {
+    sqlx::query("DELETE FROM app_runtime_logs WHERE at < now() - interval '30 days'").execute(pool).await?;
+    sqlx::query("DELETE FROM app_calls WHERE at < now() - interval '30 days'").execute(pool).await?;
+    let expired: Vec<(uuid::Uuid,)> = sqlx::query_as("SELECT id FROM contents WHERE kind='app' AND deleted_at IS NOT NULL AND deleted_at < now() - interval '30 days'").fetch_all(pool).await?;
+    let root = std::env::var("ZEOKEEL_APP_DB_DIR").unwrap_or_else(|_| "target/app-db".to_owned());
+    for (app,) in &expired {
+        let _ = std::fs::remove_file(std::path::Path::new(&root).join(format!("{app}.sqlite")));
+    }
+    for (app,) in &expired {
+        sqlx::query("DELETE FROM contents WHERE id=$1").bind(app).execute(pool).await?;
+    }
+    Ok(json!({ "retired": expired.len() }))
 }
 
 async fn verify_audit(pool: &PgPool) -> Result<Value, sqlx::Error> {

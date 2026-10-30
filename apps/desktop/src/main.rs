@@ -36,7 +36,7 @@ fn valid_app_id(value: &str) -> bool {
 
 /// Open an isolated static-UI app window under `zk-app://<app_id>/`.
 #[tauri::command]
-async fn open_app_window(app: tauri::AppHandle, window: tauri::WebviewWindow, app_id: String) -> Result<(), String> {
+async fn open_app_window(app: tauri::AppHandle, window: tauri::WebviewWindow, app_id: String, entry: String) -> Result<(), String> {
     if window.label().starts_with("zk-app-") { return Err("APP_FORBIDDEN".to_owned()); }
     if !valid_app_id(&app_id) { return Err("APP_BAD_REQUEST".to_owned()); }
     let label = format!("zk-app-{app_id}");
@@ -44,7 +44,8 @@ async fn open_app_window(app: tauri::AppHandle, window: tauri::WebviewWindow, ap
         window.set_focus().map_err(|error| error.to_string())?;
         return Ok(());
     }
-    let url: tauri::Url = format!("zk-app://localhost/{app_id}/index.html").parse().map_err(|_| "APP_BAD_URL".to_owned())?;
+    if entry.is_empty() || entry.contains("..") || entry.contains(':') { return Err("APP_BAD_REQUEST".to_owned()); }
+    let url: tauri::Url = format!("zk-app://localhost/{app_id}/{entry}").parse().map_err(|_| "APP_BAD_URL".to_owned())?;
     let data_dir = std::env::var("ZEOKEEL_HOME").map(std::path::PathBuf::from).unwrap_or_else(|_| std::env::temp_dir().join("zeokeel")).join("app-webviews").join(&app_id);
     let args = app_id.clone();
     WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(url))
@@ -131,7 +132,8 @@ fn run_window(state: Arc<AppState>) -> Result<(), String> {
                 let injection = b"<script>window.zkAppRequest=function(payload){return window.__TAURI_INTERNALS__.invoke('app_request',{payload:payload}).then(function(r){if(!r.ok){return Promise.reject(r.error);}return r.data;});};</script>";
                 if let Some(position) = body.windows(5).position(|window| window.eq_ignore_ascii_case(b"</head")) {
                     body.splice(position..position, csp.iter().copied());
-                    body.splice(position + csp.len()..position + csp.len(), injection.iter().copied());
+                    let after_csp = position.saturating_add(csp.len());
+                    body.splice(after_csp..after_csp, injection.iter().copied());
                 } else {
                     let mut wrapped = b"<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'\">".to_vec();
                     wrapped.extend_from_slice(injection);

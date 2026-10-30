@@ -151,15 +151,24 @@ export async function fetchApps(session: AuthSession, serverUrl: string): Promis
   });
 }
 
-export async function openApp(session: AuthSession, serverUrl: string, item: AppItem): Promise<{ version: string }> {
+export async function openApp(session: AuthSession, serverUrl: string, item: AppItem): Promise<{ version: string; entry: string }> {
   const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/apps/${encodeURIComponent(item.appId)}/open`, { method: "POST", headers: { authorization: `Bearer ${session.access_token}` } });
   if (!response.ok) throw new Error(`open HTTP ${response.status}`);
   const version = response.headers.get("x-zeokeel-app-version") ?? item.version;
-  return { version };
+  let entry = "index.html";
+  try {
+    const body: unknown = await response.json();
+    const manifest = typeof body === "object" && body !== null ? (body as { ui_manifest?: unknown }).ui_manifest : undefined;
+    if (typeof manifest === "string") {
+      const parsed: unknown = JSON.parse(manifest);
+      if (Array.isArray(parsed) && typeof parsed[0] === "string") entry = parsed[0];
+    }
+  } catch { /* keep default */ }
+  return { version, entry };
 }
 
-export async function fetchAppHtml(session: AuthSession, serverUrl: string, item: AppItem): Promise<string> {
-  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/apps/${encodeURIComponent(item.appId)}/assets/index.html`, { headers: { authorization: `Bearer ${session.access_token}` } });
+export async function fetchAppHtml(session: AuthSession, serverUrl: string, item: AppItem, entry = "index.html"): Promise<string> {
+  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/apps/${encodeURIComponent(item.appId)}/assets/${encodeURIComponent(entry)}`, { headers: { authorization: `Bearer ${session.access_token}` } });
   if (!response.ok) throw new Error(`app asset HTTP ${response.status}`);
   return response.text();
 }

@@ -60,6 +60,11 @@
       "version": "0012_apps",
       "package": "packages/server/apps/migrations/0012_apps.sql",
       "checksum": "5a4c861530fd75ca4b5e7bd0cbc8641605aaf324757c2dec4c23d7f06d2426ae"
+    },
+    {
+      "version": "0013_app_logs",
+      "package": "packages/server/apps/migrations/0013_app_logs.sql",
+      "checksum": "190bff80a9e0071e8c124835500752e23febe55073aff111238df8586b6145eb"
     }
   ]
 }

@@ -252,10 +252,10 @@ export function App(props: { transport: Transport }) {
               setAppOpened(`已打开 ${item.name} v${result.version}`);
               const tauri = window.__TAURI__;
               if (tauri !== undefined) {
-                await tauri.core.invoke("open_app_window", { appId: item.appId });
+                await tauri.core.invoke("open_app_window", { appId: item.appId, entry: result.entry });
                 return;
               }
-              const html = await fetchAppHtml(session, url, item);
+              const html = await fetchAppHtml(session, url, item, result.entry);
               setAppSurface({ html, nonce: crypto.randomUUID(), appId: item.appId });
             })
             .catch((error: unknown) => setAppError(error instanceof Error ? error.message : "打开失败"));

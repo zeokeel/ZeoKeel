@@ -69,6 +69,8 @@ impl ResourceLimiter for StoreLimits {
     }
 }
 
+fn next_sql_deadline() -> Instant { Instant::now().checked_add(Duration::from_secs(5)).unwrap_or_else(Instant::now) }
+
 fn read_mem(caller: &mut Caller<'_, HostState>, ptr: u32, len: u32) -> Result<Vec<u8>, WasmError> {
     let memory = match caller.get_export("memory") { Some(Extern::Memory(memory)) => memory, _ => return Err(WasmError::BadWasm) };
     let mut buffer = vec![0_u8; usize::try_from(len).map_err(|_| WasmError::BadRequest)?];
@@ -129,7 +131,12 @@ pub fn run(input: RunInput<'_>) -> Result<RunOutput, WasmError> {
         .build_p1();
     let connection = Connection::open(input.db_path).map_err(|error| WasmError::Db(error.to_string()))?;
     connection.busy_timeout(Duration::from_secs(5)).map_err(|error| WasmError::Db(error.to_string()))?;
+    let sql_deadline = Arc::new(Mutex::new(next_sql_deadline()));
+    let progress_deadline = sql_deadline.clone();
+    connection.progress_handler(1_000, Some(move || Instant::now() > *progress_deadline.lock().unwrap_or_else(|poison| poison.into_inner())));
     let database = Arc::new(Mutex::new(connection));
+    let exec_deadline = sql_deadline.clone();
+    let query_deadline = sql_deadline.clone();
     let assets = Arc::new(Mutex::new(input.assets.clone()));
 
     let mut config = Config::new();
@@ -142,6 +149,7 @@ pub fn run(input: RunInput<'_>) -> Result<RunOutput, WasmError> {
 
     let db = database.clone();
     linker.func_wrap("zeokeel", "db_exec", move |mut caller: Caller<'_, HostState>, ptr: u32, len: u32| -> i32 {
+        if let Ok(mut deadline) = exec_deadline.lock() { *deadline = next_sql_deadline(); }
         let Ok(raw) = read_mem(&mut caller, ptr, len) else { return -1 };
         let Ok((sql, params)) = db_args(&raw) else { return -1 };
         let Ok(connection) = db.lock() else { return -1 };
@@ -150,6 +158,7 @@ pub fn run(input: RunInput<'_>) -> Result<RunOutput, WasmError> {
 
     let db = database.clone();
     linker.func_wrap("zeokeel", "db_query", move |mut caller: Caller<'_, HostState>, ptr: u32, len: u32, out: u32, cap: u32| -> i32 {
+        if let Ok(mut deadline) = query_deadline.lock() { *deadline = next_sql_deadline(); }
         let Ok(raw) = read_mem(&mut caller, ptr, len) else { return -1 };
         let Ok((sql, params)) = db_args(&raw) else { return -1 };
         let Ok(connection) = db.lock() else { return -1 };

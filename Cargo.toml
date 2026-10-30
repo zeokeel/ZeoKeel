@@ -25,7 +25,7 @@ tauri-build = "2.7"
 wasmtime = "50"
 wat = "1.262"
 wasmtime-wasi = "50"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.32", features = ["bundled", "hooks"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "chrono", "macros"] }
 sha2 = "0.10"
 argon2 = "0.5"
