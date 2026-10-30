@@ -413,8 +413,8 @@ pub fn routes() -> Router<AppState> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn jwt_roundtrip_and_tamper() {
+    #[tokio::test]
+    async fn jwt_roundtrip_and_tamper() {
         let state = AppState::new_for_test();
         let token = encode_token(&state, "u1", "employee", 1, "d1").unwrap();
         let claims = decode_token(&state, &token).unwrap();
