@@ -43,6 +43,7 @@ cargo build -q -p zk-server
 ZEOKEEL_DATABASE_URL="postgres://$ROLE:$ROLE@127.0.0.1:5432/$DB" \
 ZEOKEEL_SERVER_ADDR="127.0.0.1:$PORT" \
 ZEOKEEL_BOOTSTRAP_ADMIN_PASSWORD="admin-pass" \
+ZEOKEEL_MONTHLY_GRANT_MICROS="500000" \
 ZEOKEEL_UPSTREAM_BASE_URL="http://127.0.0.1:$UPSTREAM_PORT/v1" \
 ZEOKEEL_UPSTREAM_API_KEY="test-upstream-key" \
 ./target/debug/zk-server >/tmp/zk-auth-test.log 2>&1 &
@@ -113,6 +114,13 @@ CODE=$(curl -sS -o /tmp/zk-gw-unpriced.json -w '%{http_code}' -X POST "$BASE/v1/
 [[ "$CODE" == "402" ]]
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/responses" -H 'content-type: application/json' -d '{"model":"deepseek-chat","input":"x"}')
 [[ "$CODE" == "401" ]]
+GRANT=$(curl -fsS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/admin/jobs/wallet-grant/run")
+printf '%s' "$GRANT" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["ok"] is True'
+BALG=$(curl -fsS "$BASE/api/client/v1/wallet" -H "Authorization: Bearer $ALICE_JWT" | python3 -c 'import json,sys;print(json.load(sys.stdin)["balance_micros"])')
+[[ "$BALG" == "1499931" ]]
+GRANT2=$(curl -fsS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/admin/jobs/wallet-grant/run")
+BALG2=$(curl -fsS "$BASE/api/client/v1/wallet" -H "Authorization: Bearer $ALICE_JWT" | python3 -c 'import json,sys;print(json.load(sys.stdin)["balance_micros"])')
+[[ "$BALG2" == "1499931" ]]
 JOB=$(curl -fsS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/admin/jobs/wallet-reconcile/run")
 printf '%s' "$JOB" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["ok"] is True' 
 echo "auth ok: login/me/refresh/reuse/admin-csrf/users-auditor/wallet-ledger/pricing/gateway"

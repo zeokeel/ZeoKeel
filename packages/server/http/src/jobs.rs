@@ -45,7 +45,7 @@ pub async fn run_job(pool: &PgPool, job: &str, idempotency: &str) -> Result<Valu
         .await
         .map(|mismatches| json!({ "mismatches": mismatches }))
         .map_err(|error| error.to_string()),
-        "wallet-grant" => Ok(json!({ "granted": 0, "note": "configure via admin monthly grant (P3)" })),
+        "wallet-grant" => monthly_grant(pool).await.map_err(|error| error.to_string()),
         other => Err(format!("unknown job: {other}")),
     };
     match &result {
@@ -67,6 +67,56 @@ pub async fn run_job(pool: &PgPool, job: &str, idempotency: &str) -> Result<Valu
         }
     }
     result
+}
+
+async fn monthly_grant(pool: &PgPool) -> Result<Value, sqlx::Error> {
+    let amount = std::env::var("ZEOKEEL_MONTHLY_GRANT_MICROS").ok().and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
+    if amount <= 0 {
+        return Ok(json!({ "granted": 0, "note": "ZEOKEEL_MONTHLY_GRANT_MICROS unset" }));
+    }
+    let overwrite = std::env::var("ZEOKEEL_MONTHLY_GRANT_MODE").is_ok_and(|mode| mode == "overwrite");
+    let month = chrono::Utc::now().format("%Y-%m").to_string();
+    let mut tx = pool.begin().await?;
+    let rows = sqlx::query(
+        "SELECT w.user_id, w.balance_micros FROM wallet_accounts w JOIN users u ON u.id = w.user_id
+         WHERE u.status = 'active' AND u.deleted_at IS NULL",
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut granted = 0_i64;
+    for row in rows {
+        let user_id: uuid::Uuid = row.try_get("user_id")?;
+        let balance: i64 = row.try_get("balance_micros")?;
+        let key = format!("grant:{user_id}:{month}");
+        let exists: Option<uuid::Uuid> = sqlx::query_scalar("SELECT id FROM wallet_ledger WHERE idempotency_key = $1")
+            .bind(&key)
+            .fetch_optional(&mut *tx)
+            .await?;
+        if exists.is_some() {
+            continue;
+        }
+        let delta = if overwrite { amount.saturating_sub(balance) } else { amount };
+        let next = balance.saturating_add(delta);
+        if next < 0 {
+            continue;
+        }
+        sqlx::query("UPDATE wallet_accounts SET balance_micros = $1, updated_at = now() WHERE user_id = $2")
+            .bind(next)
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("INSERT INTO wallet_ledger (user_id, delta_micros, balance_after, reason, ref, idempotency_key) VALUES ($1, $2, $3, 'monthly grant', $4, $5)")
+            .bind(user_id)
+            .bind(delta)
+            .bind(next)
+            .bind(&month)
+            .bind(&key)
+            .execute(&mut *tx)
+            .await?;
+        granted = granted.saturating_add(1);
+    }
+    tx.commit().await?;
+    Ok(json!({ "granted": granted, "month": month, "mode": if overwrite { "overwrite" } else { "accumulate" } }))
 }
 
 async fn list(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<Value>, AuthError> {
@@ -106,7 +156,7 @@ pub fn spawn_loop(pool: PgPool) {
         let mut ticker = tokio::time::interval(Duration::from_secs(300));
         loop {
             ticker.tick().await;
-            for job in ["hold-expire", "usage-pending", "wallet-reconcile"] {
+            for job in ["hold-expire", "usage-pending", "wallet-reconcile", "wallet-grant"] {
                 let key = format!("{job}:{}", chrono::Utc::now().format("%Y%m%d%H"));
                 if let Err(error) = run_job(&pool, job, &key).await {
                     eprintln!("job {job} failed: {error}");

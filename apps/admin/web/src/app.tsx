@@ -17,15 +17,15 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export function AdminApp() {
   const [loggedIn, setLoggedIn] = useState(false);
-  const [page, setPage] = useState<"users" | "wallet" | "pricing" | "audit" | "usage">("users");
+  const [page, setPage] = useState<"users" | "wallet" | "pricing" | "audit" | "usage" | "jobs">("users");
   const [error, setError] = useState("");
   if (!loggedIn) return <Login onDone={() => { setLoggedIn(true); setError(""); }} />;
   return (
     <div className="admin">
       <aside>
         <h1>ZeoKeel <span>Admin</span></h1>
-        {(["users", "wallet", "pricing", "audit", "usage"] as const).map((item) => (
-          <button key={item} className={page === item ? "active" : ""} onClick={() => setPage(item)}>{item === "users" ? "用户/角色" : item === "wallet" ? "钱包" : item === "pricing" ? "价格" : item === "audit" ? "审计" : "用量"}</button>
+        {(["users", "wallet", "pricing", "audit", "usage", "jobs"] as const).map((item) => (
+          <button key={item} className={page === item ? "active" : ""} onClick={() => setPage(item)}>{item === "users" ? "用户/角色" : item === "wallet" ? "钱包" : item === "pricing" ? "价格" : item === "audit" ? "审计" : item === "usage" ? "用量" : "作业"}</button>
         ))}
         <button className="logout" onClick={() => { void api("/api/admin/auth/logout", { method: "POST" }).finally(() => { csrf = ""; setLoggedIn(false); }); }}>退出</button>
       </aside>
@@ -36,6 +36,7 @@ export function AdminApp() {
         {page === "pricing" ? <Pricing onError={setError} /> : null}
         {page === "audit" ? <AuditLog onError={setError} /> : null}
         {page === "usage" ? <Usage onError={setError} /> : null}
+        {page === "jobs" ? <Jobs onError={setError} /> : null}
       </main>
     </div>
   );
@@ -94,4 +95,14 @@ function Usage({ onError }: { onError: (message: string) => void }) {
   const [items, setItems] = useState<UsageItem[]>([]);
   useEffect(() => { void api<{ items: UsageItem[] }>("/api/admin/usage").then((r) => setItems(r.items)).catch((e: Error) => onError(e.message)); }, []);
   return <section><h2>用量</h2><table><thead><tr><th>用户</th><th>请求数</th><th>输入 tokens</th><th>输出 tokens</th><th>成本 micros</th></tr></thead><tbody>{items.map((item) => <tr key={item.username}><td>{item.username}</td><td>{item.requests}</td><td>{item.input_tokens}</td><td>{item.output_tokens}</td><td>{item.cost_micros}</td></tr>)}</tbody></table></section>;
+}
+
+
+interface JobItem { job: string; idempotency_key: string; status: string; detail: unknown }
+function Jobs({ onError }: { onError: (message: string) => void }) {
+  const [items, setItems] = useState<JobItem[]>([]);
+  const load = () => { void api<{ items: JobItem[] }>("/api/admin/jobs").then((r) => setItems(r.items)).catch((e: Error) => onError(e.message)); };
+  useEffect(load, []);
+  const run = async (job: string) => { try { await api(`/api/admin/jobs/${job}/run`, { method: "POST" }); load(); } catch (e) { onError((e as Error).message); } };
+  return <section><h2>作业</h2><p className="hint">hold 过期、pending usage 清扫、钱包对账、月发放。</p><div className="row">{([{id:"hold-expire",label:"hold 过期"},{id:"usage-pending",label:"pending 清扫"},{id:"wallet-reconcile",label:"对账"},{id:"wallet-grant",label:"月发放"}] as const).map((action) => <button key={action.id} onClick={() => void run(action.id)}>{action.label}</button>)}</div><table><thead><tr><th>作业</th><th>状态</th><th>幂等键</th></tr></thead><tbody>{items.map((item) => <tr key={item.idempotency_key}><td>{item.job}</td><td>{item.status}</td><td className="mono">{item.idempotency_key.slice(0, 18)}</td></tr>)}</tbody></table></section>;
 }

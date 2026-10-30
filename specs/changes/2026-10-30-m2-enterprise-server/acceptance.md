@@ -35,4 +35,4 @@
 
 - `POST /api/admin/jobs/{hold-expire|usage-pending|wallet-reconcile}/run`，`GET /api/admin/jobs`。
 - 后台 5 分钟循环；`job_runs` 记录幂等键/状态/详情。
-- 实测 `wallet-reconcile` 触发成功；月发放仍需配置/实现。
+- 实测 `wallet-reconcile`、`wallet-grant` 触发成功；月发放幂等（同月重复不重复发放）。

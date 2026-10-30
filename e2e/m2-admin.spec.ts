@@ -41,6 +41,13 @@ test.describe("M2 admin console (real server)", () => {
     await expect(page.getByRole("heading", { name: "用量" })).toBeVisible();
   });
 
+  test("jobs page can trigger reconcile", async ({ page }) => {
+    await page.getByRole("button", { name: "作业" }).click();
+    await expect(page.getByRole("heading", { name: "作业" })).toBeVisible();
+    await page.getByRole("button", { name: "对账" }).click();
+    await expect(page.locator("tbody tr").first()).toBeVisible();
+  });
+
   test("no serious/critical axe violations", async ({ page }) => {
     const results = await new AxeBuilder({ page }).analyze();
     const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
