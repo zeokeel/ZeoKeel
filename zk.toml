@@ -342,6 +342,36 @@ contract = "zk-contract-tool"
 cardinality = "singleton"
 editions = ["personal", "enterprise"]
 
+[roles."vector.store"]
+contract = "zk-contract-agent"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."media.image"]
+contract = "zk-contract-agent"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."media.audio"]
+contract = "zk-contract-agent"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."media.transcription"]
+contract = "zk-contract-agent"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."media.rerank"]
+contract = "zk-contract-agent"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."agent.hooks"]
+contract = "zk-contract-agent"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
 [roles."llm.provider.default"]
 contract = "zk-contract-llm"
 cardinality = "singleton"

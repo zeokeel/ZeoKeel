@@ -941,6 +941,8 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
             update = Some(pkg);
         } else if pkg.role.starts_with("srv.") || pkg.role.starts_with("admin.") || pkg.role == "auth.client" {
             // Server/admin packages are wired by their composition roots (M2).
+        } else if pkg.role.starts_with("vector.") || pkg.role.starts_with("media.") || pkg.role == "agent.hooks" {
+            // Capability placeholders: provider packages register themselves when configured.
         } else if pkg.role == "brand.mark" {
             // Deep OEM brand implementation is injected by generated brand constants; no Rust glue.
         } else if pkg.role == "ui.kit" || pkg.role == "ui.shell" || pkg.role.starts_with("ui.slot.") {
