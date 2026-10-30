@@ -6235,7 +6235,10 @@ dependencies = [
  "tokio",
  "tower-http",
  "zk-composed",
+ "zk-kit-server",
+ "zk-srv-auth-local",
  "zk-srv-http",
+ "zk-srv-users",
 ]
 
 [[package]]
@@ -6303,6 +6306,7 @@ dependencies = [
  "tower-http",
  "uuid",
  "zk-contract-server",
+ "zk-kit-server",
 ]
 
 [[package]]

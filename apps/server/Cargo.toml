@@ -11,6 +11,9 @@ tokio = { workspace = true }
 serde_json = { workspace = true }
 zk-composed = { path = "../../crates/zk-composed" }
 zk-srv-http = { path = "../../packages/server/http" }
+zk-srv-auth-local = { path = "../../packages/server/auth" }
+zk-srv-users = { path = "../../packages/server/users" }
+zk-kit-server = { path = "../../crates/zk-kit-server" }
 tower-http = { workspace = true }
 
 [lints]

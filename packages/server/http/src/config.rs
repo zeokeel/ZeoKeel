@@ -55,7 +55,7 @@ async fn admin_put(
     .execute(&state.pool)
     .await
     .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    crate::users::audit(&state, admin.user_id, "settings.update", &key, &json!({ "hot": request.hot })).await?;
+    zk_kit_server::audit(&state, admin.user_id, "settings.update", &key, &json!({ "hot": request.hot })).await?;
     Ok(Json(json!({ "ok": true })))
 }
 

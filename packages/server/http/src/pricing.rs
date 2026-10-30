@@ -83,7 +83,7 @@ async fn upsert(
     .execute(&state.pool)
     .await
     .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    crate::users::audit(&state, admin.user_id, "pricing.upsert", &model, &json!({ "enabled": request.enabled })).await?;
+    zk_kit_server::audit(&state, admin.user_id, "pricing.upsert", &model, &json!({ "enabled": request.enabled })).await?;
     Ok(Json(json!({ "ok": true })))
 }
 

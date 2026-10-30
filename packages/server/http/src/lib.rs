@@ -10,9 +10,22 @@ use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use zk_contract_server::ServerModule;
+pub use zk_kit_server::AppState;
 
-pub mod auth;
-pub mod users;
+/// Compatibility re-exports while domains migrate out of this package.
+pub mod auth {
+    pub use zk_kit_server::{
+        cookie, encode_token, error as auth_error, hash_password, random_token, require_admin,
+        sha256_hex, verify_password, ServerError as AuthError, AppState,
+    };
+    /// Current employee context (compat name).
+    pub async fn current_user_public(
+        state: &AppState,
+        headers: &axum::http::HeaderMap,
+    ) -> Result<(String, String, i32), AuthError> {
+        zk_kit_server::current_user(state, headers).await
+    }
+}
 pub mod wallet;
 pub mod pricing;
 pub mod audit;
@@ -53,30 +66,6 @@ pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
-/// Shared server state (P1: pool + JWT keys).
-#[derive(Clone)]
-pub struct AppState {
-    /// PostgreSQL pool.
-    pub pool: PgPool,
-    /// EdDSA signing/verification material.
-    pub jwt: auth::JwtKeys,
-}
-
-impl AppState {
-    /// Build state with a fresh ephemeral JWT key.
-    #[must_use]
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool, jwt: auth::JwtKeys::ephemeral() }
-    }
-
-    #[cfg(test)]
-    #[allow(clippy::expect_used)] // test-only
-    fn new_for_test() -> Self {
-        let pool = PgPoolOptions::new().connect_lazy("postgres://localhost/zk_never").expect("lazy pool");
-        Self::new(pool)
-    }
-}
-
 /// Build server state (fresh ephemeral JWT key).
 #[must_use]
 pub fn state(pool: PgPool) -> AppState {
@@ -89,8 +78,6 @@ pub fn router_from(state: AppState) -> Router {
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .route("/api/meta", get(meta))
-        .merge(auth::routes())
-        .merge(users::routes())
         .merge(wallet::routes())
         .merge(pricing::routes())
         .merge(audit::routes())

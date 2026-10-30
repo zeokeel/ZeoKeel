@@ -6,7 +6,8 @@
 
 use axum::Router;
 use tower_http::services::{ServeDir, ServeFile};
-use zk_srv_http::{auth::ensure_bootstrap_admin, connect, router_from, run_migrations, state};
+use zk_kit_server::ensure_bootstrap_admin;
+use zk_srv_http::{connect, router_from, run_migrations, state};
 
 const DEFAULT_ADDR: &str = "127.0.0.1:8787";
 
@@ -31,7 +32,10 @@ async fn main() -> Result<(), String> {
             println!("bootstrap admin created: {username}");
         }
     }
-    serve(router_from(state)).await
+    let app = router_from(state.clone())
+        .merge(zk_srv_auth_local::routes().with_state(state.clone()))
+        .merge(zk_srv_users::routes().with_state(state));
+    serve(app).await
 }
 
 async fn serve(app: Router) -> Result<(), String> {

@@ -21,6 +21,7 @@ base64 = { workspace = true }
 rand_core = { workspace = true }
 tower-http = { workspace = true }
 zk-contract-server = { path = "../../contracts/server" }
+zk-kit-server = { path = "../../../crates/zk-kit-server" }
 
 [lints]
 workspace = true
