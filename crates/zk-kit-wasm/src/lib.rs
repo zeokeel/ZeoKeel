@@ -128,6 +128,7 @@ pub fn run(input: RunInput<'_>) -> Result<RunOutput, WasmError> {
         .stderr(MemoryOutputPipe::new(64 * 1024))
         .build_p1();
     let connection = Connection::open(input.db_path).map_err(|error| WasmError::Db(error.to_string()))?;
+    connection.busy_timeout(Duration::from_secs(5)).map_err(|error| WasmError::Db(error.to_string()))?;
     let database = Arc::new(Mutex::new(connection));
     let assets = Arc::new(Mutex::new(input.assets.clone()));
 

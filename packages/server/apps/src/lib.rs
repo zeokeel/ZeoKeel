@@ -34,9 +34,24 @@ fn app_dbs() -> &'static Mutex<HashMap<Uuid, Arc<Semaphore>>> {
     VALUES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+fn user_sems() -> &'static Mutex<HashMap<Uuid, Arc<Semaphore>>> {
+    static VALUES: OnceLock<Mutex<HashMap<Uuid, Arc<Semaphore>>>> = OnceLock::new();
+    VALUES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
 fn semaphore(app: Uuid) -> Arc<Semaphore> {
     let Ok(mut map) = app_dbs().lock() else { return Arc::new(Semaphore::new(1)); };
     map.entry(app).or_insert_with(|| Arc::new(Semaphore::new(4))).clone()
+}
+
+fn user_semaphore(user: Uuid) -> Arc<Semaphore> {
+    let Ok(mut map) = user_sems().lock() else { return Arc::new(Semaphore::new(1)); };
+    map.entry(user).or_insert_with(|| Arc::new(Semaphore::new(8))).clone()
+}
+
+fn global_semaphore() -> &'static Arc<Semaphore> {
+    static VALUES: OnceLock<Arc<Semaphore>> = OnceLock::new();
+    VALUES.get_or_init(|| Arc::new(Semaphore::new(32)))
 }
 
 /// App routes.
@@ -44,11 +59,12 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/client/v1/apps", get(catalog).post(upload))
         .route("/api/client/v1/apps/{id}/open", post(open))
-        .route("/api/client/v1/apps/{id}/request", post(request))
+        .route("/api/client/v1/apps/{id}/request", post(request).layer(DefaultBodyLimit::max(1024 * 1024)))
         .route("/api/client/v1/apps/{id}/assets/{*path}", get(asset))
         .route("/api/admin/apps", get(admin_list))
         .route("/api/admin/apps/{id}/{action}", post(admin_action))
         .route("/api/admin/apps/{id}/grants", put(admin_grants))
+        .route("/api/admin/apps/{id}/transfer", post(admin_transfer))
         .layer(DefaultBodyLimit::max(MAX_WASM + MAX_UI + 1024 * 1024))
 }
 
@@ -61,7 +77,8 @@ fn sha256(bytes: &[u8]) -> String {
 fn uuid_of(value: &str) -> Result<Uuid, ServerError> { Uuid::parse_str(value).map_err(|_| error(StatusCode::BAD_REQUEST, "VALIDATION")) }
 
 async fn upload(State(state): State<AppState>, headers: HeaderMap, mut multipart: Multipart) -> Result<Json<Value>, ServerError> {
-    let (user_id, _role, _epoch) = current_user(&state, &headers).await?;
+    let (user_id, role, _epoch) = current_user(&state, &headers).await?;
+    if role == "auditor" { return Err(error(StatusCode::FORBIDDEN, "APP_FORBIDDEN")); }
     let owner = uuid_of(&user_id)?;
     let mut manifest_raw: Option<String> = None;
     let mut wasm: Option<Bytes> = None;
@@ -119,7 +136,7 @@ async fn catalog(State(state): State<AppState>, headers: HeaderMap) -> Result<Js
         "SELECT c.id, c.name, c.visibility, r.version, c.force_update, r.ui_manifest
          FROM contents c JOIN content_releases r ON r.id = c.current_release_id
          WHERE c.kind = 'app' AND c.status = 'approved' AND c.deleted_at IS NULL
-           AND (c.visibility = 'all' OR EXISTS (SELECT 1 FROM content_grants g WHERE g.content_id = c.id AND g.grantee = $1))
+           AND (c.visibility = 'all' OR EXISTS (SELECT 1 FROM content_grants g WHERE g.content_id = c.id AND g.grantee = $1 AND g.can_install))
          ORDER BY c.name",
     ).bind(user.to_string()).fetch_all(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let items: Vec<Value> = rows.into_iter().map(|row| json!({
@@ -139,7 +156,7 @@ async fn open(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<
     let app = uuid_of(&id)?;
     let row = sqlx::query(
         "SELECT c.id, c.status, c.deleted_at, r.version, r.ui_manifest FROM contents c LEFT JOIN content_releases r ON r.id = c.current_release_id
-         WHERE c.id = $1 AND c.kind = 'app' AND (c.visibility = 'all' OR EXISTS (SELECT 1 FROM content_grants g WHERE g.content_id = c.id AND g.grantee = $2))",
+         WHERE c.id = $1 AND c.kind = 'app' AND (c.visibility = 'all' OR EXISTS (SELECT 1 FROM content_grants g WHERE g.content_id = c.id AND g.grantee = $2 AND g.can_install))",
     ).bind(app).bind(user.to_string()).fetch_optional(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?
         .ok_or_else(|| error(StatusCode::NOT_FOUND, "APP_NOT_FOUND"))?;
     let status: String = row.try_get("status").map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
@@ -164,7 +181,7 @@ async fn request(State(state): State<AppState>, headers: HeaderMap, Path(id): Pa
     let app = uuid_of(&id)?;
     let row = sqlx::query(
         "SELECT c.status, c.deleted_at, r.wasm, r.db_schema_version, r.db_migrations FROM contents c JOIN content_releases r ON r.id = c.current_release_id
-         WHERE c.id = $1 AND c.kind = 'app' AND (c.visibility = 'all' OR EXISTS (SELECT 1 FROM content_grants g WHERE g.content_id = c.id AND g.grantee = $2))",
+         WHERE c.id = $1 AND c.kind = 'app' AND (c.visibility = 'all' OR EXISTS (SELECT 1 FROM content_grants g WHERE g.content_id = c.id AND g.grantee = $2 AND g.can_install))",
     ).bind(app).bind(user.to_string()).fetch_optional(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?
         .ok_or_else(|| error(StatusCode::NOT_FOUND, "APP_NOT_FOUND"))?;
     if row.try_get::<String, _>("status").unwrap_or_default() != "approved" || row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("deleted_at").ok().flatten().is_some() { return Err(error(StatusCode::GONE, "APP_DELISTED")); }
@@ -177,23 +194,39 @@ async fn request(State(state): State<AppState>, headers: HeaderMap, Path(id): Pa
     let db_path = app_db::db_path(std::path::Path::new(&db_root), &app.to_string());
     app_db::ensure_schema(&db_path, u32::try_from(schema_version).unwrap_or(0), &migrations).map_err(|code| error(StatusCode::INTERNAL_SERVER_ERROR, match code.as_str() { "APP_DB_TABLES" => "APP_DB_TABLES", _ => "APP_BAD_REQUEST" }))?;
     app_db::enforce_quota(&db_path, app_db::MAX_BYTES).map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_DB_QUOTA"))?;
-    let guest_body: Value = base64::engine::general_purpose::STANDARD.decode(&body.body_b64).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or(Value::Null);
+    let decoded = base64::engine::general_purpose::STANDARD.decode(&body.body_b64).map_err(|_| error(StatusCode::BAD_REQUEST, "APP_BAD_REQUEST"))?;
+    if decoded.len() > 1024 * 1024 { return Err(error(StatusCode::PAYLOAD_TOO_LARGE, "APP_BAD_REQUEST")); }
+    let guest_body: Value = serde_json::from_slice(&decoded).unwrap_or(Value::Null);
     let request = json!({ "abi": ABI, "app_id": app.to_string(), "method": body.method, "path": body.path, "query": body.query, "body": guest_body, "request_id": body.request_id });
-    let permit = semaphore(app).try_acquire_owned().map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_CONCURRENCY"))?;
-    let result = tokio::task::spawn_blocking(move || {
-        let _permit = permit;
-        runtime::execute(&wasm, &db_path, request, 10_000_000)
-    }).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "APP_UNAVAILABLE"))?;
+    let app_permit = semaphore(app).try_acquire_owned().map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_CONCURRENCY"))?;
+    let user_permit = user_semaphore(user).try_acquire_owned().map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_CONCURRENCY"))?;
+    let global_permit = global_semaphore().clone().try_acquire_owned().map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_CONCURRENCY"))?;
+    let fuel: i64 = sqlx::query_scalar("SELECT fuel FROM app_runtime_limits WHERE app_id=$1").bind(app).fetch_optional(&state.pool).await.ok().flatten().unwrap_or(10_000_000);
+    let _ = sqlx::query("INSERT INTO app_databases (app_id, schema_version, size_bytes) VALUES ($1,$2,$3) ON CONFLICT (app_id) DO UPDATE SET schema_version=EXCLUDED.schema_version, size_bytes=EXCLUDED.size_bytes, updated_at=now()")
+        .bind(app).bind(schema_version).bind(i64::try_from(std::fs::metadata(&db_path).map(|meta| meta.len()).unwrap_or(0)).unwrap_or(0)).execute(&state.pool).await;
+    let db_for_run = db_path.clone();
+    let result = tokio::time::timeout(std::time::Duration::from_secs(60), tokio::task::spawn_blocking(move || {
+        let _app = app_permit;
+        let _user = user_permit;
+        let _global = global_permit;
+        runtime::execute(&wasm, &db_for_run, request, u64::try_from(fuel).unwrap_or(10_000_000))
+    })).await.map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_LIMIT_TIME"))?.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "APP_UNAVAILABLE"))?;
     let output = result.map_err(|failure| {
         let code = runtime::error_code(&failure);
         let status = if code.starts_with("APP_LIMIT") { StatusCode::TOO_MANY_REQUESTS } else { StatusCode::BAD_REQUEST };
         error(status, code)
     })?;
-    let _ = sqlx::query("INSERT INTO app_calls (app_id, user_id, request_id, status, duration_ms, fuel) VALUES ($1,$2,$3,$4,$5,$6)")
+    sqlx::query("INSERT INTO app_calls (app_id, user_id, request_id, status, duration_ms, fuel) VALUES ($1,$2,$3,$4,$5,$6)")
         .bind(app).bind(user).bind(&body.request_id).bind(i64::try_from(output.response.get("status").and_then(Value::as_u64).unwrap_or(500)).unwrap_or(500))
-        .bind(i64::try_from(output.elapsed.as_millis()).unwrap_or(0)).bind(i64::try_from(output.fuel_used).unwrap_or(0)).execute(&state.pool).await;
+        .bind(i64::try_from(output.elapsed.as_millis()).unwrap_or(0)).bind(i64::try_from(output.fuel_used).unwrap_or(0)).execute(&state.pool).await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "AUDIT_FAILED"))?;
+    audit(&state, user, "app.request", &format!("{}:{}", app, body.request_id), &json!({ "status": output.response.get("status") })).await?;
+    let _ = sqlx::query("UPDATE app_databases SET size_bytes=$1, updated_at=now() WHERE app_id=$2").bind(i64::try_from(std::fs::metadata(&db_path).map(|meta| meta.len()).unwrap_or(0)).unwrap_or(0)).bind(app).execute(&state.pool).await;
+    if app_db::enforce_quota(&db_path, app_db::MAX_BYTES).is_err() { return Err(error(StatusCode::TOO_MANY_REQUESTS, "APP_DB_QUOTA")); }
     let response_body = output.response.get("body").cloned().unwrap_or(Value::Null);
-    Ok(Json(json!({ "status": output.response.get("status").and_then(Value::as_u64).unwrap_or(200), "headers": {}, "body_b64": base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&response_body).unwrap_or_default()) })))
+    let encoded = base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&response_body).unwrap_or_default());
+    if encoded.len() > 8 * 1024 * 1024 { return Err(error(StatusCode::PAYLOAD_TOO_LARGE, "APP_BAD_REQUEST")); }
+    Ok(Json(json!({ "status": output.response.get("status").and_then(Value::as_u64).unwrap_or(200), "headers": {}, "body_b64": encoded })))
 }
 
 async fn asset(State(state): State<AppState>, headers: HeaderMap, Path((id, path)): Path<(String, String)>) -> Result<Response, ServerError> {
@@ -201,17 +234,21 @@ async fn asset(State(state): State<AppState>, headers: HeaderMap, Path((id, path
     let user = uuid_of(&user_id)?;
     let app = uuid_of(&id)?;
     if path.contains("..") || path.contains(':') { return Err(error(StatusCode::BAD_REQUEST, "APP_BAD_REQUEST")); }
-    let row = sqlx::query("SELECT r.ui_archive FROM contents c JOIN content_releases r ON r.id=c.current_release_id WHERE c.id=$1 AND c.status='approved' AND c.deleted_at IS NULL AND (c.visibility='all' OR EXISTS (SELECT 1 FROM content_grants g WHERE g.content_id=c.id AND g.grantee=$2))")
+    let row = sqlx::query("SELECT r.ui_archive, r.ui_manifest FROM contents c JOIN content_releases r ON r.id=c.current_release_id WHERE c.id=$1 AND c.status='approved' AND c.deleted_at IS NULL AND (c.visibility='all' OR EXISTS (SELECT 1 FROM content_grants g WHERE g.content_id=c.id AND g.grantee=$2 AND g.can_install))")
         .bind(app).bind(user.to_string()).fetch_optional(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let Some(row) = row else { return Err(error(StatusCode::NOT_FOUND, "APP_NOT_FOUND")); };
     let archive: Option<Vec<u8>> = row.try_get("ui_archive").ok();
+    let manifest: Value = row.try_get("ui_manifest").unwrap_or(json!([]));
+    let allowed = manifest.as_array().map(|items| items.iter().any(|item| item.as_str() == Some(&path))).unwrap_or(false);
+    if !allowed { return Err(error(StatusCode::NOT_FOUND, "APP_NOT_FOUND")); }
     let Some(archive) = archive else { return Err(error(StatusCode::NOT_FOUND, "APP_NOT_FOUND")); };
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(archive)).map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let Ok(mut entry) = zip.by_name(&path) else { return Err(error(StatusCode::NOT_FOUND, "APP_NOT_FOUND")); };
     let mut bytes = Vec::new();
     entry.read_to_end(&mut bytes).map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let content_type = if path.ends_with(".js") { "text/javascript; charset=utf-8" } else if path.ends_with(".css") { "text/css; charset=utf-8" } else if path.ends_with(".svg") { "image/svg+xml" } else if path.ends_with(".json") { "application/json" } else { "text/html; charset=utf-8" };
     let mut response = bytes.into_response();
-    response.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));
+    response.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_str(content_type).map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?);
     Ok(response)
 }
 
@@ -233,18 +270,48 @@ async fn admin_list(State(state): State<AppState>, headers: HeaderMap) -> Result
 async fn admin_action(State(state): State<AppState>, headers: HeaderMap, Path((id, action)): Path<(String, String)>) -> Result<Json<Value>, ServerError> {
     let admin = require_admin(&state, &headers, true).await?;
     let app = uuid_of(&id)?;
-    let status = match action.as_str() {
-        "approve" => "approved",
-        "reject" => "rejected",
-        "delist" => "delisted",
-        "rollback" => "approved",
-        "delete" => "delisted",
-        _ => return Err(error(StatusCode::BAD_REQUEST, "VALIDATION")),
-    };
+    if !matches!(action.as_str(), "approve" | "reject" | "delist" | "rollback" | "delete" | "purge") {
+        return Err(error(StatusCode::BAD_REQUEST, "VALIDATION"));
+    }
+    if action == "purge" {
+        let file = std::path::Path::new(&std::env::var("ZEOKEEL_APP_DB_DIR").unwrap_or_else(|_| "target/app-db".to_owned())).join(format!("{app}.sqlite"));
+        let _ = std::fs::remove_file(file);
+        sqlx::query("DELETE FROM contents WHERE id=$1 AND kind='app'").bind(app).execute(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        audit(&state, admin.user_id, "app.purge", &app.to_string(), &json!({})).await?;
+        return Ok(Json(json!({ "ok": true })));
+    }
+    if action == "rollback" {
+        let target: Option<Uuid> = sqlx::query_scalar("SELECT id FROM content_releases WHERE content_id=$1 ORDER BY created_at DESC OFFSET 1 LIMIT 1").bind(app).fetch_optional(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        let Some(target) = target else { return Err(error(StatusCode::CONFLICT, "APP_NOT_FOUND")); };
+        sqlx::query("UPDATE contents SET current_release_id=$1, status='approved', updated_at=now() WHERE id=$2").bind(target).bind(app).execute(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        sqlx::query("INSERT INTO content_deployments (content_id, release_id, action, actor_id, reason) VALUES ($1,$2,'rollback',$3,'')").bind(app).bind(target).bind(admin.user_id).execute(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        audit(&state, admin.user_id, "app.rollback", &app.to_string(), &json!({ "release_id": target.to_string() })).await?;
+        return Ok(Json(json!({ "ok": true })));
+    }
+    if action == "delete" {
+        sqlx::query("UPDATE contents SET status='delisted', deleted_at=now(), updated_at=now() WHERE id=$1").bind(app).execute(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        sqlx::query("INSERT INTO content_deployments (content_id, release_id, action, actor_id, reason) VALUES ($1,NULL,'delete',$2,'')").bind(app).bind(admin.user_id).execute(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        audit(&state, admin.user_id, "app.delete", &app.to_string(), &json!({})).await?;
+        return Ok(Json(json!({ "ok": true })));
+    }
+    let status = match action.as_str() { "approve" => "approved", "reject" => "rejected", _ => "delisted" };
     let result = sqlx::query("UPDATE contents SET status=$1, updated_at=now() WHERE id=$2 AND kind='app' AND deleted_at IS NULL").bind(status).bind(app).execute(&state.pool).await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     if result.rows_affected() == 0 { return Err(error(StatusCode::NOT_FOUND, "APP_NOT_FOUND")); }
+    if action == "approve" { let _ = sqlx::query("INSERT INTO content_deployments (content_id, release_id, action, actor_id, reason) SELECT $1, current_release_id, 'publish', $2, '' FROM contents WHERE id=$1").bind(app).bind(admin.user_id).execute(&state.pool).await; }
     audit(&state, admin.user_id, &format!("app.{action}"), &app.to_string(), &json!({})).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Debug, Deserialize)]
+struct Transfer { user_id: String }
+
+async fn admin_transfer(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>, Json(body): Json<Transfer>) -> Result<Json<Value>, ServerError> {
+    let admin = require_admin(&state, &headers, true).await?;
+    let app = uuid_of(&id)?;
+    let owner = uuid_of(&body.user_id)?;
+    sqlx::query("UPDATE contents SET owner_id=$1, updated_at=now() WHERE id=$2 AND kind='app' AND deleted_at IS NULL").bind(owner).bind(app).execute(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    audit(&state, admin.user_id, "app.transfer", &app.to_string(), &json!({ "owner_id": owner.to_string() })).await?;
     Ok(Json(json!({ "ok": true })))
 }
 

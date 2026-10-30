@@ -54,7 +54,7 @@ export function AppSurface(props: AppSurfaceProps) {
         title="应用"
         sandbox="allow-scripts"
         className="flex-1 border-0 bg-background"
-        srcDoc={`<script>window.__zkNonce=${JSON.stringify(props.nonce)};window.zkAppRequest=function(payload){return new Promise(function(resolve){var id=Math.random().toString(36);function onMessage(event){if(event.data&&event.data.zkResponse===id){window.removeEventListener('message',onMessage);resolve(event.data.response);}}window.addEventListener('message',onMessage);window.parent.postMessage({zkRequest:id,nonce:window.__zkNonce,payload:payload},'*');});};</script>${props.html}`}
+        srcDoc={`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; frame-src 'none'"><script>window.__zkNonce=${JSON.stringify(props.nonce)};window.zkAppRequest=function(payload){return new Promise(function(resolve){var id=Math.random().toString(36);function onMessage(event){if(event.data&&event.data.zkResponse===id){window.removeEventListener('message',onMessage);resolve(event.data.response);}}window.addEventListener('message',onMessage);window.parent.postMessage({zkRequest:id,nonce:window.__zkNonce,payload:payload},'*');});};</script>${props.html}`}
         onLoad={(event) => {
           const frame = event.currentTarget;
           const listener = (message: MessageEvent) => {

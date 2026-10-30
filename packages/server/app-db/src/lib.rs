@@ -16,7 +16,11 @@ pub fn db_path(root: &Path, app_id: &str) -> PathBuf { root.join(format!("{app_i
 
 /// Open/create the app DB and enforce host-managed migrations.
 pub fn ensure_schema(path: &Path, target_version: u32, migrations: &[AppMigration]) -> Result<u32, String> {
+    if migrations.len() > 32 || migrations.iter().map(|migration| migration.sql.len()).sum::<usize>() > 65_536 {
+        return Err("DB_SCHEMA_SIZE".to_owned());
+    }
     let connection = Connection::open(path).map_err(|error| error.to_string())?;
+    connection.busy_timeout(std::time::Duration::from_secs(5)).map_err(|error| error.to_string())?;
     connection.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;").map_err(|error| error.to_string())?;
     let current: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0)).map_err(|error| error.to_string())?;
     let current = u32::try_from(current).map_err(|_| "bad schema version".to_owned())?;
