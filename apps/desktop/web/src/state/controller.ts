@@ -91,6 +91,7 @@ export interface AppController {
   removeWorkspace: (workspaceId: string, reassignTo?: string) => void;
   saveSettings: (settings: AppSettings) => Promise<void>;
   decideApproval: (approvalId: string, decision: "approved" | "rejected") => void;
+  answerQuestion: (questionId: string, answers: unknown) => void;
   setSettingsOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   dismissToast: () => void;
@@ -608,6 +609,20 @@ export function useAppController(transport: Transport): AppController {
     [transport, showToast],
   );
 
+  const answerQuestion = useCallback(
+    (questionId: string, answers: unknown) => {
+      void (async () => {
+        try {
+          await transport.call("question.answer", { question_id: questionId, answers });
+          dispatch({ type: "question_answered", questionId, answers });
+        } catch (error: unknown) {
+          showToast(friendlyError(error, stateRef.current.settings.locale));
+        }
+      })();
+    },
+    [transport, showToast],
+  );
+
   const decideApproval = useCallback(
     (approvalId: string, decision: "approved" | "rejected") => {
       void (async () => {
@@ -653,6 +668,7 @@ export function useAppController(transport: Transport): AppController {
     removeWorkspace,
     saveSettings,
     decideApproval,
+    answerQuestion,
     setSettingsOpen,
     toggleSidebar,
     dismissToast,

@@ -13,6 +13,7 @@ use zk_contract_session::Message;
 use zk_contract_tool::TurnContext;
 
 use crate::approval::ApprovalBroker;
+use zk_kit_questions::QuestionBroker;
 use crate::events::{emit_kind, now_ms, BridgeSink, EVENT_BUFFER};
 
 /// Composed runtime + IPC/event state shared by all transports.
@@ -22,6 +23,7 @@ pub struct AppState {
     seq: AtomicU64,
     streams: Mutex<HashMap<String, Arc<AtomicBool>>>,
     approvals: Arc<ApprovalBroker>,
+    questions: Arc<QuestionBroker>,
 }
 
 impl AppState {
@@ -29,6 +31,8 @@ impl AppState {
     pub fn new(runtime: zk_composed::Runtime) -> Arc<Self> {
         let (bus, _) = broadcast::channel(EVENT_BUFFER);
         let approvals = ApprovalBroker::new();
+        let questions = QuestionBroker::new();
+        zk_kit_questions::set_global(Arc::clone(&questions));
         let concrete = Arc::clone(&approvals);
         let gate: Arc<dyn zk_contract_tool::ApprovalGate> = concrete;
         zk_kit_approval::set_global_gate(gate);
@@ -38,6 +42,7 @@ impl AppState {
             seq: AtomicU64::new(1),
             streams: Mutex::new(HashMap::new()),
             approvals,
+            questions,
         })
     }
 
@@ -226,6 +231,19 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 CommandResponse::ok(json!({ "resolved": true }))
             } else {
                 CommandResponse::err("approval/pending-not-found")
+            }
+        }
+        commands::QUESTION_ANSWER => {
+            let (Some(question_id), Some(answers)) = (
+                payload.get("question_id").and_then(Value::as_str),
+                payload.get("answers").cloned(),
+            ) else {
+                return CommandResponse::err("missing question_id/answers");
+            };
+            if state.questions.answer(question_id, answers) {
+                CommandResponse::ok(json!({ "answered": true }))
+            } else {
+                CommandResponse::err("question/pending-not-found")
             }
         }
         other => CommandResponse::err(format!("unknown command: {other}")),

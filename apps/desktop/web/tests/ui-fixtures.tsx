@@ -82,6 +82,7 @@ export function testUi(overrides: TestUiOverrides = {}): UiValue {
       retryBoot: noop,
       retryMessages: noop,
       decideApproval: noop,
+      answerQuestion: noop,
     },
   };
   return {

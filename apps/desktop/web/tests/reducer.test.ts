@@ -155,6 +155,22 @@ describe("chat reducer", () => {
     expect(state.messages[1]?.approvals).toHaveLength(1);
   });
 
+  it("records question asked and answered", () => {
+    let state = startSend(loadedState());
+    state = appReducer(state, {
+      type: "agent_event",
+      event: { type: "question_asked", question_id: "q1", questions: [{ id: "name", question: "Name?" }] },
+      now: 11,
+    });
+    expect(state.messages[1]?.questions[0]?.answers).toBeNull();
+    state = appReducer(state, {
+      type: "question_answered",
+      questionId: "q1",
+      answers: { answers: [{ id: "name", custom: "Ada" }] },
+    });
+    expect(state.messages[1]?.questions[0]?.answers).not.toBeNull();
+  });
+
   it("starts loading messages for the boot conversation", () => {
     const state = appReducer(createInitialState(), {
       type: "boot_loaded",

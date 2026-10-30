@@ -60,6 +60,7 @@ zk-srv-users = { path = "../../packages/server/users" }
 zk-srv-wallet = { path = "../../packages/server/wallet" }
 zk-store-session-sqlite = { path = "../../packages/client/store-session-sqlite" }
 zk-store-settings-json = { path = "../../packages/client/store-settings-json" }
+zk-tool-ask-user = { path = "../../packages/client/tool-ask-user" }
 zk-tool-bash = { path = "../../packages/client/tool-bash" }
 zk-tool-bash-persistent = { path = "../../packages/client/tool-bash-persistent" }
 zk-tool-fs = { path = "../../packages/client/tool-fs" }

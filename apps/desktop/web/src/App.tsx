@@ -159,6 +159,7 @@ export function App(props: { transport: Transport }) {
       retryBoot: controller.retryBoot,
       retryMessages: controller.retryMessages,
       decideApproval: controller.decideApproval,
+      answerQuestion: controller.answerQuestion,
     },
   };
 

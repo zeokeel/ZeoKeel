@@ -8,6 +8,7 @@ import {
   type AppSettings,
   type ApprovalView,
   type ChatMessage,
+  type QuestionView,
   type Conversation,
   type Message,
   type Meta,
@@ -91,7 +92,8 @@ export type AppAction =
   | { type: "settings_saved"; settings: AppSettings }
   | { type: "toast"; message: string | null }
   | { type: "sidebar_toggled"; open: boolean }
-  | { type: "approval_decided"; approvalId: string; decision: "approved" | "rejected" };
+  | { type: "approval_decided"; approvalId: string; decision: "approved" | "rejected" }
+  | { type: "question_answered"; questionId: string; answers: unknown };
 
 export function createInitialState(): AppState {
   return {
@@ -136,6 +138,7 @@ function toChatMessage(message: Message): ChatMessage {
     status: statusOfMessage(message),
     toolCalls: [],
     approvals: [],
+    questions: [],
     error: null,
   };
 }
@@ -274,6 +277,18 @@ function applyAgentEvent(state: AppState, event: AgentEvent): AppState {
     return updateStreamingMessage(state, (message) =>
       applyToolFinished(message, event.name, event.result),
     );
+  }
+  if (event.type === "question_asked") {
+    const question: QuestionView = { id: event.question_id, questions: event.questions, answers: null };
+    return updateStreamingMessage(state, (message) => ({ ...message, questions: [...message.questions, question] }));
+  }
+  if (event.type === "question_answered") {
+    return updateStreamingMessage(state, (message) => ({
+      ...message,
+      questions: message.questions.map((question) =>
+        question.id === event.question_id ? { ...question, answers: event.answers } : question,
+      ),
+    }));
   }
   const approval: ApprovalView = {
     id: event.approval_id,
@@ -508,6 +523,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         status: "done",
         toolCalls: [],
         approvals: [],
+        questions: [],
         error: null,
       };
       const assistant: ChatMessage = {
@@ -518,6 +534,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         status: "streaming",
         toolCalls: [],
         approvals: [],
+        questions: [],
         error: null,
       };
       return {
@@ -560,6 +577,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
               status: "streaming" as const,
               toolCalls: [],
               approvals: [],
+              questions: [],
               error: null,
             }
           : message,
@@ -615,6 +633,20 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, toast: action.message };
     case "sidebar_toggled":
       return { ...state, sidebarOpen: action.open };
+    case "question_answered": {
+      let changed = false;
+      const messages = state.messages.map((message) => {
+        const questions = message.questions.map((question) => {
+          if (question.id !== action.questionId) {
+            return question;
+          }
+          changed = true;
+          return { ...question, answers: action.answers };
+        });
+        return changed && questions !== message.questions ? { ...message, questions } : message;
+      });
+      return changed ? { ...state, messages } : state;
+    }
     case "approval_decided": {
       let changed = false;
       const messages = state.messages.map((message) => {

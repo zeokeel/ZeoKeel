@@ -348,6 +348,14 @@ export function parseAgentEvent(value: unknown): AgentEvent | null {
       const result = readString(value, "result");
       return name === null || result === null ? null : { type, name, result };
     }
+    case "question_asked": {
+      const questionId = readString(value, "question_id");
+      return questionId === null ? null : { type, question_id: questionId, questions: value["questions"] ?? null };
+    }
+    case "question_answered": {
+      const questionId = readString(value, "question_id");
+      return questionId === null ? null : { type, question_id: questionId, answers: value["answers"] ?? null };
+    }
     case "approval_requested": {
       const approvalId = readString(value, "approval_id");
       const tool = readString(value, "tool");
