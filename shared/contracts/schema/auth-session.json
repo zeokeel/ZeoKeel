@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AuthSession",
+  "description": "Authenticated client session (tokens kept in memory; persistence is a client-store concern).",
+  "type": "object",
+  "required": [
+    "access_token",
+    "expires_in",
+    "refresh_token",
+    "role",
+    "user_id",
+    "username"
+  ],
+  "properties": {
+    "access_token": {
+      "type": "string"
+    },
+    "expires_in": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "refresh_token": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "user_id": {
+      "type": "string"
+    },
+    "username": {
+      "type": "string"
+    }
+  }
+}

@@ -1,9 +1,11 @@
 //! Update-check contract (`update.client`).
+//!
+//! @capability contract.update
 #![forbid(unsafe_code)]
 use serde::{Deserialize, Serialize};
 
 /// One downloadable release artifact.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ReleaseAsset {
     pub platform: String,
     pub url: String,
@@ -11,7 +13,7 @@ pub struct ReleaseAsset {
 }
 
 /// Release feed payload (`latest.json`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ReleaseInfo {
     pub version: String,
     #[serde(default)]

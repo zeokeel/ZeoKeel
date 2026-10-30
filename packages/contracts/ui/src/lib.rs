@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// One static UI contribution declared by a UI package.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct UiContribution {
     /// Slot id, e.g. `ui.chat`.
     pub slot: String,
@@ -19,7 +19,7 @@ pub struct UiContribution {
 }
 
 /// Closed error set for UI contribution validation.
-#[derive(Debug, Clone, PartialEq, Eq, Error, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Error, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum UiError {
     /// Slot is not in the frozen slot set.
     #[error("unknown slot: {0}")]

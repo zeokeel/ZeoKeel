@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Conversation",
+  "description": "One conversation (message thread), always owned by exactly one workspace.",
+  "type": "object",
+  "required": [
+    "created_at_ms",
+    "id",
+    "title",
+    "updated_at_ms",
+    "workspace_id"
+  ],
+  "properties": {
+    "created_at_ms": {
+      "description": "Creation time (ms since epoch).",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "id": {
+      "description": "Stable id (uuid/ulid string).",
+      "type": "string"
+    },
+    "title": {
+      "description": "Display title.",
+      "type": "string"
+    },
+    "updated_at_ms": {
+      "description": "Last update time (ms since epoch).",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "workspace_id": {
+      "description": "Owning workspace id (immutable except explicit remove reassign).",
+      "type": "string"
+    }
+  }
+}

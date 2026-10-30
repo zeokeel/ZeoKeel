@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgentReply",
+  "description": "Result of one agent turn.",
+  "type": "object",
+  "required": [
+    "text",
+    "tool_calls"
+  ],
+  "properties": {
+    "text": {
+      "description": "Final assistant text.",
+      "type": "string"
+    },
+    "tool_calls": {
+      "description": "Tool calls executed during the turn (empty when none).",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ToolCallRecord"
+      }
+    }
+  },
+  "definitions": {
+    "ToolCallRecord": {
+      "description": "One executed tool call, recorded for UI and diagnostics.",
+      "type": "object",
+      "required": [
+        "args",
+        "name",
+        "result"
+      ],
+      "properties": {
+        "args": {
+          "description": "Raw arguments passed to the tool.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Tool name, e.g. `fs.read`.",
+          "type": "string"
+        },
+        "result": {
+          "description": "Tool output (or error text).",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

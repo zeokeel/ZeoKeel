@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ApprovalRequest",
+  "description": "One approval request raised by a tool.",
+  "type": "object",
+  "required": [
+    "approval_id",
+    "args",
+    "reason",
+    "tool"
+  ],
+  "properties": {
+    "approval_id": {
+      "description": "Stable id for this decision.",
+      "type": "string"
+    },
+    "args": {
+      "description": "JSON arguments.",
+      "type": "string"
+    },
+    "reason": {
+      "description": "Why the tool needs approval.",
+      "type": "string"
+    },
+    "tool": {
+      "description": "Tool name.",
+      "type": "string"
+    }
+  }
+}

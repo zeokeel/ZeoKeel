@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// One workspace: a local directory that owns conversations and agent cwd.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Workspace {
     /// Stable id (uuid string).
     pub id: String,
@@ -24,7 +24,7 @@ pub struct Workspace {
 }
 
 /// Result of removing a workspace.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct RemoveWorkspaceResult {
     /// Always true when the call succeeds.
     pub removed: bool,
@@ -33,7 +33,7 @@ pub struct RemoveWorkspaceResult {
 }
 
 /// One conversation (message thread), always owned by exactly one workspace.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Conversation {
     /// Stable id (uuid/ulid string).
     pub id: String,
@@ -48,7 +48,7 @@ pub struct Conversation {
 }
 
 /// One message inside a conversation.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Message {
     /// Stable id.
     pub id: String,

@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ApprovalDecidePayload",
+  "description": "`approval.decide` payload.",
+  "type": "object",
+  "required": [
+    "approval_id",
+    "decision"
+  ],
+  "properties": {
+    "approval_id": {
+      "description": "Pending approval id.",
+      "type": "string"
+    },
+    "decision": {
+      "description": "User decision.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/ApprovalDecision"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "ApprovalDecision": {
+      "description": "Result of an approval request.",
+      "oneOf": [
+        {
+          "description": "Allow exactly this call.",
+          "type": "string",
+          "enum": [
+            "allow_once"
+          ]
+        },
+        {
+          "description": "Reject this call.",
+          "type": "string",
+          "enum": [
+            "reject"
+          ]
+        },
+        {
+          "description": "Cancel the turn.",
+          "type": "string",
+          "enum": [
+            "cancel"
+          ]
+        }
+      ]
+    }
+  }
+}

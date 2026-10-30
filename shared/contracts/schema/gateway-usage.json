@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "UsageTotals",
+  "description": "Token usage reported by the upstream Responses API (`docs/22` §4).\n\nSettlement reads the final `response.completed` usage block; `usage` rows and holds are settled in one transaction. Zero values are valid (unknown counts).",
+  "type": "object",
+  "properties": {
+    "cached_tokens": {
+      "description": "Cached input tokens.",
+      "default": 0,
+      "type": "integer",
+      "format": "int64"
+    },
+    "input_tokens": {
+      "description": "Fresh input tokens.",
+      "default": 0,
+      "type": "integer",
+      "format": "int64"
+    },
+    "output_tokens": {
+      "description": "Output tokens.",
+      "default": 0,
+      "type": "integer",
+      "format": "int64"
+    },
+    "reasoning_tokens": {
+      "description": "Reasoning tokens (subset of output).",
+      "default": 0,
+      "type": "integer",
+      "format": "int64"
+    }
+  }
+}

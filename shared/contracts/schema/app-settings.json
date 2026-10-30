@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AppSettings",
+  "description": "App settings persisted locally.",
+  "type": "object",
+  "required": [
+    "auto_approve_read_only",
+    "locale",
+    "provider",
+    "schema",
+    "theme"
+  ],
+  "properties": {
+    "auto_approve_read_only": {
+      "description": "Auto-approve read-only tools (M1 default true for fs.read).",
+      "type": "boolean"
+    },
+    "locale": {
+      "description": "Locale: `zh-CN` | `en-US`.",
+      "type": "string"
+    },
+    "provider": {
+      "description": "Provider config.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/ProviderConfig"
+        }
+      ]
+    },
+    "schema": {
+      "description": "Schema version.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "server_url": {
+      "description": "Enterprise login server URL (personal edition: empty).",
+      "default": "",
+      "type": "string"
+    },
+    "theme": {
+      "description": "Theme: `auto` | `light` | `dark`.",
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "ProviderConfig": {
+      "description": "Local provider configuration.",
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "api_key": {
+          "description": "API key reference (never the raw key in logs/DB; M1 stores locally).",
+          "default": "",
+          "type": "string"
+        },
+        "base_url": {
+          "description": "Base URL (required for non-mock).",
+          "default": "",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Provider kind.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ProviderKind"
+            }
+          ]
+        },
+        "model": {
+          "description": "Model name.",
+          "default": "",
+          "type": "string"
+        }
+      }
+    },
+    "ProviderKind": {
+      "description": "Provider kind (personal edition local providers).",
+      "oneOf": [
+        {
+          "description": "Deterministic offline mock.",
+          "type": "string",
+          "enum": [
+            "mock"
+          ]
+        },
+        {
+          "description": "OpenAI-compatible endpoint (DeepSeek/OpenAI/vLLM...).",
+          "type": "string",
+          "enum": [
+            "open_ai_compatible"
+          ]
+        },
+        {
+          "description": "Local Ollama daemon.",
+          "type": "string",
+          "enum": [
+            "ollama"
+          ]
+        }
+      ]
+    }
+  }
+}

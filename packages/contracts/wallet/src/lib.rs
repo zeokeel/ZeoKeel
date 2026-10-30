@@ -1,4 +1,6 @@
 //! `wallet` domain contract marker (roles depend on this crate only).
+//!
+//! @capability contract.wallet
 #![forbid(unsafe_code)]
 use serde::{Deserialize, Serialize};
 

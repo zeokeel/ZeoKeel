@@ -10,7 +10,7 @@ use thiserror::Error;
 use zk_contract_tool::TurnContext;
 
 /// One executed tool call, recorded for UI and diagnostics.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ToolCallRecord {
     /// Tool name, e.g. `fs.read`.
     pub name: String,
@@ -21,7 +21,7 @@ pub struct ToolCallRecord {
 }
 
 /// Result of one agent turn.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct AgentReply {
     /// Final assistant text.
     pub text: String,
@@ -44,7 +44,7 @@ pub enum AgentError {
 }
 
 /// Streaming events emitted during one agent turn.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentEvent {
     /// Turn accepted and started.
@@ -86,7 +86,7 @@ pub enum AgentEvent {
 }
 
 /// One approval request raised by a tool.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ApprovalRequest {
     /// Stable id for this decision.
     pub approval_id: String,
@@ -99,7 +99,7 @@ pub struct ApprovalRequest {
 }
 
 /// Result of an approval request.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ApprovalDecision {
     /// Allow exactly this call.

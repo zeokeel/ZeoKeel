@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ChatSendPayload",
+  "description": "`chat.send` payload (no auto-create; both ids are mandatory).",
+  "type": "object",
+  "required": [
+    "conversation_id",
+    "text",
+    "workspace_id"
+  ],
+  "properties": {
+    "conversation_id": {
+      "description": "Existing conversation id.",
+      "type": "string"
+    },
+    "text": {
+      "description": "User message text.",
+      "type": "string"
+    },
+    "workspace_id": {
+      "description": "Owning workspace id.",
+      "type": "string"
+    }
+  }
+}

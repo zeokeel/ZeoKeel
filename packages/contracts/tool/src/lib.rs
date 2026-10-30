@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Human/model readable description of a tool.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ToolSpec {
     /// Stable tool name, e.g. `fs.read`.
     pub name: String,
@@ -25,7 +25,7 @@ pub struct ToolSpec {
 }
 
 /// Per-turn workspace context passed to tools.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TurnContext {
     /// Conversation id (empty for legacy calls).
     pub conversation_id: String,
@@ -36,7 +36,7 @@ pub struct TurnContext {
 }
 
 /// Closed error set for tool calls.
-#[derive(Debug, Clone, PartialEq, Eq, Error, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Error, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum ToolError {
     /// Tool name is not registered.
     #[error("tool not found: {0}")]

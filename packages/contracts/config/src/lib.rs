@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Provider kind (personal edition local providers).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
     /// Deterministic offline mock.
@@ -19,7 +19,7 @@ pub enum ProviderKind {
 }
 
 /// Local provider configuration.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ProviderConfig {
     /// Provider kind.
     pub kind: ProviderKind,
@@ -46,7 +46,7 @@ impl Default for ProviderConfig {
 }
 
 /// App settings persisted locally.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct AppSettings {
     /// Schema version.
     pub schema: u32,

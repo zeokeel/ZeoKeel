@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Stable identity of a composed package.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PackageDescriptor {
     /// Package id, e.g. `zeokeel/tool-fs`.
     pub id: String,

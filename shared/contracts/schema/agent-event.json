@@ -1,0 +1,312 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgentEvent",
+  "description": "Streaming events emitted during one agent turn.",
+  "oneOf": [
+    {
+      "description": "Turn accepted and started.",
+      "type": "object",
+      "required": [
+        "turn_id",
+        "type"
+      ],
+      "properties": {
+        "turn_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "turn_started"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Incremental assistant text.",
+      "type": "object",
+      "required": [
+        "delta",
+        "type"
+      ],
+      "properties": {
+        "delta": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "text_delta"
+          ]
+        }
+      }
+    },
+    {
+      "description": "A tool call is about to run.",
+      "type": "object",
+      "required": [
+        "args",
+        "name",
+        "type"
+      ],
+      "properties": {
+        "args": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "tool_call_started"
+          ]
+        }
+      }
+    },
+    {
+      "description": "A tool call finished (success or error text in `result`).",
+      "type": "object",
+      "required": [
+        "name",
+        "result",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "result": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "tool_call_finished"
+          ]
+        }
+      }
+    },
+    {
+      "description": "The turn needs a user approval decision.",
+      "type": "object",
+      "required": [
+        "approval_id",
+        "args",
+        "reason",
+        "tool",
+        "type"
+      ],
+      "properties": {
+        "approval_id": {
+          "type": "string"
+        },
+        "args": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "approval_requested"
+          ]
+        }
+      }
+    },
+    {
+      "description": "An approval request was resolved (UI may render the outcome).",
+      "type": "object",
+      "required": [
+        "approval_id",
+        "decision",
+        "type"
+      ],
+      "properties": {
+        "approval_id": {
+          "type": "string"
+        },
+        "decision": {
+          "$ref": "#/definitions/ApprovalDecision"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "approval_resolved"
+          ]
+        }
+      }
+    },
+    {
+      "description": "The agent asks the user questions and pauses until answered.",
+      "type": "object",
+      "required": [
+        "question_id",
+        "questions",
+        "type"
+      ],
+      "properties": {
+        "question_id": {
+          "type": "string"
+        },
+        "questions": true,
+        "type": {
+          "type": "string",
+          "enum": [
+            "question_asked"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Questions were answered (or timed out with `null`).",
+      "type": "object",
+      "required": [
+        "answers",
+        "question_id",
+        "type"
+      ],
+      "properties": {
+        "answers": true,
+        "question_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "question_answered"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Turn finished successfully.",
+      "type": "object",
+      "required": [
+        "reply",
+        "type"
+      ],
+      "properties": {
+        "reply": {
+          "$ref": "#/definitions/AgentReply"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "turn_completed"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Turn was cancelled by the user.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "turn_cancelled"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Turn failed.",
+      "type": "object",
+      "required": [
+        "message",
+        "type"
+      ],
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "error"
+          ]
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "AgentReply": {
+      "description": "Result of one agent turn.",
+      "type": "object",
+      "required": [
+        "text",
+        "tool_calls"
+      ],
+      "properties": {
+        "text": {
+          "description": "Final assistant text.",
+          "type": "string"
+        },
+        "tool_calls": {
+          "description": "Tool calls executed during the turn (empty when none).",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ToolCallRecord"
+          }
+        }
+      }
+    },
+    "ApprovalDecision": {
+      "description": "Result of an approval request.",
+      "oneOf": [
+        {
+          "description": "Allow exactly this call.",
+          "type": "string",
+          "enum": [
+            "allow_once"
+          ]
+        },
+        {
+          "description": "Reject this call.",
+          "type": "string",
+          "enum": [
+            "reject"
+          ]
+        },
+        {
+          "description": "Cancel the turn.",
+          "type": "string",
+          "enum": [
+            "cancel"
+          ]
+        }
+      ]
+    },
+    "ToolCallRecord": {
+      "description": "One executed tool call, recorded for UI and diagnostics.",
+      "type": "object",
+      "required": [
+        "args",
+        "name",
+        "result"
+      ],
+      "properties": {
+        "args": {
+          "description": "Raw arguments passed to the tool.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Tool name, e.g. `fs.read`.",
+          "type": "string"
+        },
+        "result": {
+          "description": "Tool output (or error text).",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

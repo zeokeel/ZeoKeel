@@ -6,7 +6,7 @@
 use thiserror::Error;
 
 /// Closed error set for provider calls.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error, schemars::JsonSchema)]
 pub enum LlmError {
     /// Upstream/network failure.
     #[error("llm upstream error: {0}")]

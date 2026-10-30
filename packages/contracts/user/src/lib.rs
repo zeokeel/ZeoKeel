@@ -1,4 +1,6 @@
 //! `user` domain contract marker (roles depend on this crate only).
+//!
+//! @capability contract.user
 #![forbid(unsafe_code)]
 use serde::{Deserialize, Serialize};
 

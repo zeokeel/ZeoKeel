@@ -8,7 +8,7 @@ use serde_json::Value;
 use thiserror::Error;
 
 /// One command request. `payload` is command-specific and schema-validated at the boundary.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CommandRequest {
     /// Command name, e.g. `chat.send`.
     pub name: String,
@@ -17,7 +17,7 @@ pub struct CommandRequest {
 }
 
 /// One command response.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CommandResponse {
     /// True on success.
     pub ok: bool,
@@ -50,7 +50,7 @@ impl CommandResponse {
 }
 
 /// Streaming event envelope. `kind` must be a stable string (e.g. `agent`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct UiEvent {
     /// Stream id (one per turn/window).
     pub stream_id: String,
@@ -63,7 +63,7 @@ pub struct UiEvent {
 }
 
 /// Closed IPC error set.
-#[derive(Debug, Clone, PartialEq, Eq, Error, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Error, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum IpcError {
     /// Command name unknown.
     #[error("unknown command: {0}")]
@@ -130,4 +130,122 @@ pub mod commands {
     pub const AUTH_CONFIGURE: &str = "auth.configure";
     /// Clear enterprise gateway credentials after logout (local session is UI-owned).
     pub const AUTH_LOGOUT: &str = "auth.logout";
+}
+
+/// Typed command payloads (single source for `schemars` JSON Schema).
+///
+/// `CommandRequest::payload` stays an opaque [`serde_json::Value`] on the wire;
+/// these structs describe the documented shapes from `docs/26` §5 plus the
+/// settings/approval/question commands, so the boundary can be schema-validated
+/// (C10/T22) without a second hand-written definition.
+pub mod payloads {
+    use serde::{Deserialize, Serialize};
+
+    /// Empty payload (`meta.get`, `settings.get`, `workspace.list`, ...).
+    #[derive(
+        Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+    )]
+    pub struct EmptyPayload {}
+
+    /// `workspace.create` payload.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct WorkspaceCreatePayload {
+        /// Local directory path (host canonicalizes it).
+        pub path: String,
+        /// Optional display title; empty means host default.
+        #[serde(default)]
+        pub title: String,
+    }
+
+    /// Commands that address one workspace (`workspace.set_default`, `session.list`).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct WorkspaceIdPayload {
+        /// Target workspace id.
+        pub workspace_id: String,
+    }
+
+    /// `workspace.rename` payload.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct WorkspaceRenamePayload {
+        /// Target workspace id.
+        pub workspace_id: String,
+        /// New display title (must be non-empty after trim).
+        pub title: String,
+    }
+
+    /// `workspace.remove` payload (destructive; `confirm` must be `true`).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct WorkspaceRemovePayload {
+        /// Workspace to remove.
+        pub workspace_id: String,
+        /// Optional target workspace for conversations in the removed one.
+        #[serde(default)]
+        pub reassign_to: Option<String>,
+        /// Explicit user confirmation.
+        pub confirm: bool,
+    }
+
+    /// `session.create` payload.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct SessionCreatePayload {
+        /// Owning workspace id (mandatory; sessions never auto-create).
+        pub workspace_id: String,
+        /// Optional conversation title.
+        #[serde(default)]
+        pub title: String,
+    }
+
+    /// `session.messages` payload.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct SessionMessagesPayload {
+        /// Owning workspace id (ownership is verified).
+        pub workspace_id: String,
+        /// Conversation id.
+        pub conversation_id: String,
+    }
+
+    /// `chat.send` payload (no auto-create; both ids are mandatory).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ChatSendPayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Existing conversation id.
+        pub conversation_id: String,
+        /// User message text.
+        pub text: String,
+    }
+
+    /// `chat.cancel` payload (per-stream cancellation).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ChatCancelPayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Active stream id to cancel.
+        pub stream_id: String,
+    }
+
+    /// `settings.set` payload.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct SettingsSetPayload {
+        /// Full settings document (same schema as `zk-contract-config::AppSettings`).
+        pub settings: zk_contract_config::AppSettings,
+    }
+
+    /// `approval.decide` payload.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ApprovalDecidePayload {
+        /// Pending approval id.
+        pub approval_id: String,
+        /// User decision.
+        pub decision: zk_contract_agent::ApprovalDecision,
+    }
+
+    /// `question.answer` payload.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct QuestionAnswerPayload {
+        /// Pending question batch id.
+        pub question_id: String,
+        /// Answers keyed by question id (opaque JSON).
+        pub answers: serde_json::Value,
+    }
 }

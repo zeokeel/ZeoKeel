@@ -1,4 +1,6 @@
 //! WASM app contracts (M4): catalog/open/frame/manifest.
+//!
+//! @capability contract.app
 #![forbid(unsafe_code)]
 
 use schemars::JsonSchema;
