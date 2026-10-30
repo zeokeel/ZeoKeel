@@ -2,7 +2,7 @@
 
 | # | 任务 | 写作用域（文件/目录） | 依赖 | 验证 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | 威胁模型/13 项安全门禁 + security-audit | `docs/33-threat-model.md`, `scripts/security-audit.sh`, `docs/00/21` | — | `bash scripts/security-audit.sh` | ☐ |
+| 1 | 威胁模型/13 项安全门禁 + security-audit | `docs/33-threat-model.md`, `docs/README.md`, `scripts/security-audit.sh`, `docs/00/21` | — | `bash scripts/security-audit.sh` | ☐ |
 | 2 | 备份/恢复全链路 | `scripts/backup-restore.sh`, `docs/20` | — | `bash scripts/backup-restore.sh` | ☐ |
 | 3 | 升级/回滚/恢复演练 | `scripts/upgrade-drill.sh`, `docs/20` | 2 | `bash scripts/upgrade-drill.sh --full` | ☐ |
 | 4 | 故障注入矩阵 | `scripts/fault-injection.sh` | 2 | `bash scripts/fault-injection.sh` | ☐ |

@@ -29,7 +29,7 @@ M0–M5 已实现；M6 做加固与 1.0 发布：安全评审、备份恢复、�
 ## 5. 风险/边界
 
 - 无 Docker/证书/平台 runner：镜像/安装包/公证仍 UNVERIFIED（继承 M5）。
-- 可复现构建受时间戳/路径影响，需固定 `SOURCE_DATE_EPOCH`/路径；不能保证 Tauri 安装包。
+- 可复现构建必须固定工具链/锁/`SOURCE_DATE_EPOCH`/路径；两次 sha 必须一致，非确定项需 ADR 消除；Tauri 安装包/镜像无环境时 UNVERIFIED。
 
 ## 6. 需用户拍板
 
