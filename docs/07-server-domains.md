@@ -140,7 +140,7 @@
 | --- | --- |
 | `connectors` | id, name, transport(stdio/http/sse), config(json), enabled, updated_at；**M3 仅允许无静态 secret 配置（ADR-060）**；静态 secret 加密/受控交付在 M3.1 |
 | `connector_grants` | connector_id, grantee(user/all), can_enable |
-| `connector_oauth` | connector_id, client_id, scopes, redirect_uri（客户端固定）；**公共客户端 + PKCE，不下发 client_secret**（`21` §3） |
+| `connector_oauth` | connector_id, client_id, scopes, redirect_uri（客户端固定）；**公共客户端 + PKCE，不下发 client_secret**（`21` §3）；OAuth authorize/token endpoint 存 `connectors.config` 的非敏感 `authorize_url`/`token_url` |
 
 - 管理员配置 stdio 命令/参数/环境变量，或 http URL；员工只看到"启用/停用"与状态。
 - 员工启用后，客户端执行本地 stdio 或连接远程；OAuth 公共客户端 + PKCE，授权码在客户端完成，令牌本地保存；服务端只存连接器定义/公共客户端元数据（无 client_secret）。
