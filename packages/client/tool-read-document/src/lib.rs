@@ -16,16 +16,21 @@ fn strip_markup(html: &str) -> String {
 }
 
 impl Tool for ReadDocumentTool {
-    fn spec(&self) -> ToolSpec { ToolSpec { name: "read_document".to_owned(), description: "Read text from an EPUB file inside the workspace; PDF is unsupported in this build.".to_owned(), parameters: serde_json::json!({"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false}), mutating: false, requires_approval: false } }
+    fn spec(&self) -> ToolSpec { ToolSpec { name: "read_document".to_owned(), description: "Read text from a PDF or EPUB file inside the workspace (max 1MB).".to_owned(), parameters: serde_json::json!({"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false}), mutating: false, requires_approval: false } }
     fn call(&self, _args: &str) -> Result<String, ToolError> { Err(ToolError::InvalidArgs("read_document requires JSON".to_owned())) }
     fn call_json(&self, context: &TurnContext, args: serde_json::Value) -> Result<String, ToolError> {
         let relative = args.get("path").and_then(serde_json::Value::as_str).ok_or_else(|| ToolError::InvalidArgs("path".to_owned()))?;
         let path = zk_kit_tools::safe_path(context, relative)?;
         let extension = path.extension().and_then(std::ffi::OsStr::to_str).unwrap_or("").to_ascii_lowercase();
-        if extension == "pdf" { return Err(ToolError::Denied("DOCUMENT_FORMAT_UNSUPPORTED: pdf loader is not available offline".to_owned())); }
-        if extension != "epub" { return Err(ToolError::InvalidArgs("only .epub is supported".to_owned())); }
+        if extension != "pdf" && extension != "epub" { return Err(ToolError::InvalidArgs("only .pdf/.epub are supported".to_owned())); }
         let metadata = std::fs::metadata(&path).map_err(|error| ToolError::Io(error.to_string()))?;
         if metadata.len() > 1024 * 1024 { return Err(ToolError::Denied("document too large (max 1MB)".to_owned())); }
+        if extension == "pdf" {
+            let document = lopdf::Document::load(&path).map_err(|error| ToolError::InvalidArgs(error.to_string()))?;
+            let pages: Vec<u32> = document.get_pages().keys().copied().collect();
+            let text = document.extract_text(&pages).map_err(|error| ToolError::Io(error.to_string()))?;
+            return Ok(zk_kit_tools::truncate(text));
+        }
         let file = std::fs::File::open(&path).map_err(|error| ToolError::Io(error.to_string()))?;
         let mut archive = zip::ZipArchive::new(file).map_err(|error| ToolError::InvalidArgs(error.to_string()))?;
         let mut text = String::new();
