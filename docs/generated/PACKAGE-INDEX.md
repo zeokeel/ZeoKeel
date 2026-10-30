@@ -2,12 +2,13 @@
 
 # Package Index
 
-edition `enterprise` · channel `official` · 35 packages
+edition `enterprise` · channel `official` · 37 packages
 
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
 | `admin.kit` | `zeokeel/admin-ui-kit` | `zk-admin-ui-kit` | `zk-contract-admin-ui` | singleton |
 | `admin.page.audit` | `zeokeel/admin-audit` | `zk-admin-admin-audit` | `zk-contract-admin-ui` | singleton |
+| `admin.page.connectors` | `zeokeel/admin-connectors` | `zk-admin-admin-connectors` | `zk-contract-admin-ui` | singleton |
 | `admin.page.jobs` | `zeokeel/admin-jobs` | `zk-admin-admin-jobs` | `zk-contract-admin-ui` | singleton |
 | `admin.page.pricing` | `zeokeel/admin-pricing` | `zk-admin-admin-pricing` | `zk-contract-admin-ui` | singleton |
 | `admin.page.settings` | `zeokeel/admin-settings` | `zk-admin-admin-settings` | `zk-contract-admin-ui` | singleton |
@@ -21,6 +22,7 @@ edition `enterprise` · channel `official` · 35 packages
 | `llm.provider.default` | `zeokeel/llm-gateway` | `zk-llm-gateway` | `zk-contract-llm` | singleton |
 | `srv.audit` | `zeokeel/audit` | `zk-srv-audit` | `zk-contract-server` | singleton |
 | `srv.auth.session` | `zeokeel/auth` | `zk-srv-auth-local` | `zk-contract-auth` | singleton |
+| `srv.connectors` | `zeokeel/connectors` | `zk-srv-connectors` | `zk-contract-connector` | singleton |
 | `srv.content` | `zeokeel/content` | `zk-srv-content` | `zk-contract-content` | singleton |
 | `srv.gateway` | `zeokeel/gateway` | `zk-srv-gateway` | `zk-contract-gateway` | singleton |
 | `srv.http` | `zeokeel/srv-http` | `zk-srv-http` | `zk-contract-server` | singleton |

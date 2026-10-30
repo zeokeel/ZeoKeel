@@ -48,3 +48,15 @@ export async function apiForm<T>(path: string, form: FormData): Promise<T> {
   if (!response.ok || body.ok === false) throw new Error(body.error ?? `HTTP ${response.status}`);
   return body;
 }
+
+export interface ConnectorGrant { grantee: string; can_enable: boolean }
+export interface ConnectorAdmin {
+  id: string;
+  name: string;
+  transport: string;
+  force_update: boolean;
+  min_client_version: string;
+  grants: ConnectorGrant[];
+  oauth_client_id: string | null;
+  redirect_uri: string | null;
+}

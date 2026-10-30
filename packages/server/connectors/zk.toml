@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/connectors"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "MCP connector aggregate (definitions/grants/oauth metadata)"
+
+[role]
+name = "srv.connectors"
+contract = "zk-contract-connector"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-srv-connectors" }

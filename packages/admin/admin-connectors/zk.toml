@@ -1,0 +1,21 @@
+schema = 1
+id = "zeokeel/admin-connectors"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "Admin connectors page"
+
+[role]
+name = "admin.page.connectors"
+contract = "zk-contract-admin-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-admin-admin-connectors" }
+ui = { package = "@zeokeel/admin-connectors" }
+
+[[ui.contributions]]
+slot = "admin.page.connectors"
+component = "page.connectors"
+order = 10

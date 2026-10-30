@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 zk-admin-admin-audit = { path = "../../packages/admin/admin-audit" }
+zk-admin-admin-connectors = { path = "../../packages/admin/admin-connectors" }
 zk-admin-admin-jobs = { path = "../../packages/admin/admin-jobs" }
 zk-admin-admin-pricing = { path = "../../packages/admin/admin-pricing" }
 zk-admin-admin-settings = { path = "../../packages/admin/admin-settings" }
@@ -41,6 +42,7 @@ zk-contract-wallet = { path = "../../packages/contracts/wallet" }
 zk-llm-gateway = { path = "../../packages/client/llm-gateway" }
 zk-srv-audit = { path = "../../packages/server/audit" }
 zk-srv-auth-local = { path = "../../packages/server/auth" }
+zk-srv-connectors = { path = "../../packages/server/connectors" }
 zk-srv-content = { path = "../../packages/server/content" }
 zk-srv-gateway = { path = "../../packages/server/gateway" }
 zk-srv-http = { path = "../../packages/server/http" }

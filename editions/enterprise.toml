@@ -1,4 +1,6 @@
 [packages]
+"admin.page.connectors" = "zeokeel/admin-connectors"
+"srv.connectors" = "zeokeel/connectors"
 "admin.page.skills" = "zeokeel/admin-skills"
 "srv.skills" = "zeokeel/skills"
 "srv.content" = "zeokeel/content"
