@@ -23,6 +23,7 @@ const MAX_ENTRIES: usize = 256;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/admin/skills/{id}/versions", post(upload))
+        .route("/api/client/v1/skills", post(upload_client))
         .route("/api/client/v1/skills/{name}/{version}/archive", get(download))
         .route("/api/client/v1/skills/{name}/{version}/install", post(receipt))
         .route("/api/client/v1/skills/tombstones", get(tombstones))
@@ -68,6 +69,64 @@ fn validate_archive(bytes: &[u8]) -> Result<ArchiveMeta, ServerError> {
     hash.update(bytes);
     let size = u64::try_from(bytes.len()).map_err(|_| error(StatusCode::PAYLOAD_TOO_LARGE, "SKILL_ARCHIVE_TOO_LARGE"))?;
     Ok(ArchiveMeta { sha256: format!("{:x}", hash.finalize()), size })
+}
+
+async fn read_upload(mut multipart: Multipart) -> Result<(String, String, Bytes), ServerError> {
+    let mut name = String::new();
+    let mut version = String::new();
+    let mut bytes: Option<Bytes> = None;
+    while let Some(field) = multipart.next_field().await.map_err(|_| error(StatusCode::BAD_REQUEST, "VALIDATION"))? {
+        match field.name() {
+            Some("name") => name = field.text().await.map_err(|_| error(StatusCode::BAD_REQUEST, "VALIDATION"))?,
+            Some("version") => version = field.text().await.map_err(|_| error(StatusCode::BAD_REQUEST, "VALIDATION"))?,
+            Some("archive") => bytes = Some(field.bytes().await.map_err(|_| error(StatusCode::BAD_REQUEST, "VALIDATION"))?),
+            _ => {}
+        }
+    }
+    let Some(bytes) = bytes else { return Err(error(StatusCode::BAD_REQUEST, "VALIDATION")); };
+    Ok((name, version, bytes))
+}
+
+async fn upload_client(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    multipart: Multipart,
+) -> Result<Json<serde_json::Value>, ServerError> {
+    let (user_id, _role, _epoch) = current_user(&state, &headers).await?;
+    let actor = Uuid::parse_str(&user_id).map_err(|_| error(StatusCode::UNAUTHORIZED, "AUTH_EXPIRED"))?;
+    let (name, version, bytes) = read_upload(multipart).await?;
+    if name.trim().is_empty() || version.trim().is_empty() {
+        return Err(error(StatusCode::BAD_REQUEST, "VALIDATION"));
+    }
+    let meta = validate_archive(&bytes)?;
+    let existing: Option<(Uuid, Uuid)> = sqlx::query_as("SELECT id, owner_id FROM contents WHERE kind = 'skill' AND name = $1 AND deleted_at IS NULL")
+        .bind(name.trim()).fetch_optional(&state.pool).await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let (content, owner_id) = match existing {
+        Some((content, owner)) => {
+            if owner != actor { return Err(error(StatusCode::FORBIDDEN, "SKILL_FORBIDDEN")); }
+            (content, owner)
+        }
+        None => {
+            let content: Uuid = sqlx::query_scalar("INSERT INTO contents (kind, name, owner_id, status) VALUES ('skill', $1, $2, 'pending') RETURNING id")
+                .bind(name.trim()).bind(actor).fetch_one(&state.pool).await
+                .map_err(|_| error(StatusCode::CONFLICT, "CONFLICT"))?;
+            (content, actor)
+        }
+    };
+    let _ = owner_id;
+    let release: Uuid = sqlx::query_scalar(
+        "INSERT INTO content_releases (content_id, version, sha256, archive_size, archive, changelog, created_by)
+         VALUES ($1, $2, $3, $4, $5, '', $6) RETURNING id",
+    ).bind(content).bind(version.trim()).bind(&meta.sha256)
+        .bind(i64::try_from(meta.size).map_err(|_| error(StatusCode::PAYLOAD_TOO_LARGE, "SKILL_ARCHIVE_TOO_LARGE"))?)
+        .bind(bytes.as_ref()).bind(actor).fetch_one(&state.pool).await
+        .map_err(|_| error(StatusCode::CONFLICT, "CONFLICT"))?;
+    sqlx::query("UPDATE contents SET current_release_id = $1, status = 'pending', updated_at = now() WHERE id = $2")
+        .bind(release).bind(content).execute(&state.pool).await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    audit(&state, actor, "skill.upload", &content.to_string(), &json!({ "name": name.trim(), "version": version.trim(), "sha256": meta.sha256 })).await?;
+    Ok(Json(json!({ "ok": true, "id": content.to_string(), "release_id": release.to_string(), "status": "pending" })))
 }
 
 async fn upload(
