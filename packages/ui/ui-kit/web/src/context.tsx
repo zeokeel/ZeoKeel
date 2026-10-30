@@ -21,6 +21,14 @@ export interface BrandConfig {
   channel: string;
   logoLight: string;
   logoDark: string;
+  /** Channel default login server URL (non-empty = locked address, ADR-042). */
+  serverUrl?: string;
+  appId?: string;
+  deepLinkScheme?: string;
+  appOriginScheme?: string;
+  accent?: string;
+  dataDirName?: string;
+  productHomeDir?: string;
 }
 
 /** App actions exposed to UI packages (no package imports the controller). */

@@ -19,3 +19,8 @@ ui = { package = "@zeokeel/ui-apps" }
 slot = "ui.apps"
 component = "panel.apps"
 order = 10
+
+[[ui.contributions]]
+slot = "ui.app.surface"
+component = "surface.apps"
+order = 20

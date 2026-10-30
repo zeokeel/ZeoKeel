@@ -29,3 +29,4 @@ export function LoginSlot(_props: { serverUrl: string | null; channelLocked: boo
 export function SkillsSlot(_props: Record<string, unknown>) { return null; }
 export function ConnectorsSlot(_props: Record<string, unknown>) { return null; }
 export function AppsSlot(_props: Record<string, unknown>) { return null; }
+export function AppSurfaceSlot(_props: Record<string, unknown>) { return null; }

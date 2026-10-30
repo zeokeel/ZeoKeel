@@ -33,7 +33,9 @@ export function AppsPanel(props: AppsPanelProps) {
   );
 }
 
-export const components = { "panel.apps": AppsPanel } as const;
+export const components = { "panel.apps": AppsPanel, "surface.apps": AppSurface } as const;
+
+export const componentsWithSurface = components;
 
 export interface AppSurfaceProps {
   html: string;
@@ -83,4 +85,3 @@ export function AppSurface(props: AppSurfaceProps) {
   );
 }
 
-export const componentsWithSurface = { "panel.apps": AppsPanel, "surface.apps": AppSurface } as const;

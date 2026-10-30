@@ -3,6 +3,13 @@ export const BRAND = {
   name: "ZeoKeel",
   poweredBy: "show",
   channel: "official",
+  serverUrl: "",
+  appId: "dev.zeokeel.app",
+  deepLinkScheme: "zeokeel",
+  appOriginScheme: "zk-app",
+  accent: "#0F766E",
+  dataDirName: "ZeoKeel",
+  productHomeDir: ".zeokeel",
   logoLight: "./brand/logo.svg",
   logoDark: "./brand/logo-dark.svg",
 } as const;

@@ -1,9 +1,16 @@
 {
+  "accent": "#0F766E",
+  "app_id": "dev.zeokeel.app",
+  "app_origin_scheme": "zk-app",
   "channel": "official",
+  "data_dir_name": "ZeoKeel",
+  "deep_link_scheme": "zeokeel",
   "logo": {
     "dark": "brand/logo-dark.svg",
     "light": "brand/logo.svg"
   },
   "name": "ZeoKeel",
-  "powered_by": "show"
+  "powered_by": "show",
+  "product_home_dir": ".zeokeel",
+  "server_url": ""
 }
