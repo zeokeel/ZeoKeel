@@ -112,3 +112,95 @@ M5 的 channel validate/verify、OEM fixture、updates 端点、dist 脚本和 p
 
 - 关联 spec：`specs/changes/2026-10-30-oem-delivery`。
 - 评审结论：**CHANGES-REQUESTED**
+
+---
+
+## 8. 第二轮复评（R2，2026-10-30）
+
+> 对象：R1 修复后的 M5 实现。只读复跑；未改产品代码/spec（仅本记录）。
+> 仅列剩余 P0/P1；环境阻塞项单独标注。
+
+### 8.1 结论
+
+**CHANGES REQUIRED（CHANGES-REQUESTED）**
+
+- **P0：1**（deep OEM 仍不能 compose/plan，M5 退出条件未过；可本地修）。
+- **P1：3 组**（channel 校验缺口、产物/portal 完整性、升级/CI 证据）。
+- **环境阻塞未验证**：真实 Docker 镜像/load/compose、三平台安装包、macOS 公证、真实升级回滚；不因本机无 Docker/证书/runner 判 P0，但必须标记未验证。
+
+### 8.2 已关闭
+
+- **Portal OEM 品牌**：`updates/src/lib.rs:39-47` 读 `CHANNEL.json` 的 product_name/powered_by；hide 不输出 Powered by；updates-e2e 用 oem-demo fixture 断言 “Acme Keel” 且无 ZeoKeel。
+- **1:1 版本**：`manifest` 在 `client_version != current_client` 时 409 `CLIENT_VERSION_MISMATCH`；updates-e2e 加 0.0.9 负向。
+- **channel verify**：校验 dist CHANNEL/CLIENT channel、复算 SHA256SUMS、要求 SBOM/、hide 时扫描二进制 bytes；oem-e2e 加 binary leak 负向。
+- **deep fixture**：`[packages]` 非空（`brand.mark = acme/acme-brand`），validate 解析 oem.toml/包 zk.toml role/contract/four-piece。
+
+### 8.3 P0（可本地修）
+
+#### P0-1 · deep OEM 仍不能 compose/plan，M5 退出“deep conformance + 换包矩阵”未过
+
+- 实测：
+  ```text
+  $ ./target/debug/zk compose --edition enterprise --profile default --channel oem-deep --check
+  zk: channel oem-deep not found at /data/ZeoKeel/brands/oem-deep/channel.json
+  $ ./target/debug/zk plan ... --channel oem-deep
+  same
+  ```
+- `oem/fixtures/customers/oem-deep` 有 channel.json/oem.toml/packages，但 `zk compose` 只从主仓 `brands/<channel>` 加载，不从 `oem/fixtures` 加载；`oem-e2e` 也没跑 deep compose/plan/换包。
+- 修：让 `--oem-index`/fixture 渠道解析可把客户仓 channel 作为 channel 源（或生成临时 `brands/oem-deep`），并加 `zk plan`/`compose --check` + 换包断言；oem-e2e 覆盖 deep。
+
+### 8.4 P1（可本地修）
+
+1. **channel 校验缺口**：
+   - `tools/zk/src/main.rs:1026` pin 仍是 `sha256(channel.json)`，不是 fixture 目录内容 hash，也未校验 `.gitmodules`/gitlink；spec/09 要求三处一致。
+   - `channel_validate` 未校验 id 正则/长度、logo canonicalize/256KB/script/外链、`powered_by` enum、未知键；`load_channel` 只查文件存在。
+   - 修：fixture pin 用目录树 hash；校验 `.gitmodules`+gitlink；统一调用严格 channel schema 校验（未知键拒绝）。
+2. **产物/portal 完整性**：
+   - `build-dist` 的 `CLIENT-RELEASE.assets=[]`、`sha256=""`、客户端 24B 文本、SBOM/ deploy 占位；`channel verify` 只查存在，未要求 assets 非空/sha 匹配。
+   - portal 只链接 Linux AppImage；无 Windows/macOS；产品名含空格时 URL 未编码。
+   - 修：dry-run 也要基于真实/占位文件生成 assets sha；`channel verify` 强制 assets/sha；portal 按 `platforms` 渲染三平台并 URL encode。
+3. **升级/CI 证据**：
+   - `upgrade-drill.sh --dry-run` 在 manifest 不可用时仍 exit 0，`sha256sum` 不比较；`--docker` 分支只 echo，不执行 load/compose/backup。
+   - `release.yml` 只 `cargo build` + 假 dist；notarize job 只 echo；无三平台 bundle/公证命令。
+   - 修：dry-run 失败应非零或明确 `UNVERIFIED`；`--docker` 至少真实执行 load/compose/readyz 或标注 fake；release.yml 补三平台 bundle/notarize 模板（即使 `if` 跳过）。
+
+### 8.5 环境阻塞未验证（不是 P0，但不得标 complete）
+
+- 真实 Docker 镜像 save/load、compose up、PG 备份/PITR。
+- 三平台 Tauri 安装包（Windows/macOS/Linux）与 Windows SHA256 文档。
+- macOS notarize/staple（证书未配；CI job 未真实执行）。
+- 真实升级/回滚演练（当前 dry-run/模拟）。
+- 真实 CycloneDX SBOM（当前 README/占位）。
+- 真实 OEM 安装包/镜像的二进制残留扫描（当前 fixture 文本/二进制负向）。
+
+### 8.6 验证
+
+| 命令 | 结果 |
+| --- | --- |
+| `bash scripts/oem-e2e.sh` | **PASS**：2 channels/verify/compose official+brand/residue；deep 未 compose |
+| `bash scripts/updates-e2e.sh` | **PASS**：manifest/channel/version reject/artifact/oem-portal |
+| `bash scripts/admin-e2e.sh` | **PASS**：10 passed（M5 portal official） |
+| `bash scripts/build-dist.sh official 0.1.0 /tmp/zk-dist` | **PASS（dry-run）**：假客户端/assets 空/SBOM 占位 |
+| `bash scripts/upgrade-drill.sh --dry-run` | **PASS（dry-run）**：manifest 不可用仍 ok，docker 模拟 |
+| `cargo test --workspace` / `clippy` | **PASS** |
+| `zk validate` / `compose official --check` / `channel validate` / schema / db | **PASS** |
+| `zk compose/plan --channel oem-deep` | **FAIL**：channel not found（P0） |
+
+### 8.7 结论
+
+- **P0：1**（deep compose/plan/换包）。
+- **P1：3 组**（channel 校验、产物/portal、升级/CI）。
+- **环境阻塞未验证**：见 8.5；acceptance 必须标注未验证，不能写 complete。
+- **M5 实现仍不可 APPROVED**：修 P0/P1 后复评。
+
+- 关联 spec：`specs/changes/2026-10-30-oem-delivery`。
+- 复评结论（第二轮）：**CHANGES-REQUESTED**
+
+
+## 9. R2 后修复（Lead，2026-10-30）
+
+- P0 deep OEM：新增 `editions/oem-deep.toml`（base enterprise + brand.mark→acme/acme-brand）、`packages/oem/acme-brand` 四件套；`zk` 支持自定义 edition 继承 base 的包 editions，`brand.mark` glue 无 Rust 绑定；`oem-e2e.sh` 临时复制 fixture 到 brands/oem-deep，`zk plan` 断言 acme/acme-brand、`compose --check`、`cargo test -p acme-brand`，然后清理并恢复 official。
+- P1 channel verify：已校验 CHANNEL/CLIENT channel、SHA256SUMS 复算、SBOM、二进制 bytes 残留。
+- P1 portal：按 CHANNEL.json 品牌化，hide 无 ZeoKeel；updates-e2e OEM portal。
+- P1 manifest：版本不等 409 CLIENT_VERSION_MISMATCH。
+- 未修：pin 目录/gitlink、unknown-key schema、dist assets 空、dry-run 失败语义、三平台/公证/Docker 环境阻塞。

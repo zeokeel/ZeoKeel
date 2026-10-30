@@ -429,6 +429,20 @@ fn scan_manifests(root: &Path) -> Result<BTreeMap<String, Manifest>> {
     Ok(out)
 }
 
+fn edition_closure(root: &Path, name: &str) -> Result<BTreeSet<String>> {
+    let mut set = BTreeSet::new();
+    let mut current = name.to_owned();
+    loop {
+        if !set.insert(current.clone()) { break; }
+        let file = load_edition(root, &current)?;
+        match file.edition.base_edition {
+            Some(base) => current = base,
+            None => break,
+        }
+    }
+    Ok(set)
+}
+
 fn load_edition(root: &Path, name: &str) -> Result<EditionFile> {
     let path = root.join("editions").join(format!("{name}.toml"));
     let text = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
@@ -552,6 +566,7 @@ fn resolve(root: &Path, flags: &Flags) -> Result<Resolved> {
 
     let mut chain = Vec::new();
     let mut packages = resolve_edition(root, &flags.edition, &mut chain)?;
+    let allowed_editions = edition_closure(root, &flags.edition)?;
     let mut profile_chain = Vec::new();
     resolve_profile(root, &flags.profile, &mut packages, &mut profile_chain)?;
 
@@ -594,7 +609,7 @@ fn resolve(root: &Path, flags: &Flags) -> Result<Resolved> {
                     role_def.cardinality
                 );
             }
-            if !decl.editions.is_empty() && !decl.editions.iter().any(|e| e == &flags.edition) {
+            if !decl.editions.is_empty() && !decl.editions.iter().any(|e| allowed_editions.contains(e)) {
                 bail!(
                     "role {role}: package {id} not available for edition {}",
                     flags.edition
@@ -898,6 +913,8 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
             update = Some(pkg);
         } else if pkg.role.starts_with("srv.") || pkg.role.starts_with("admin.") || pkg.role == "auth.client" {
             // Server/admin packages are wired by their composition roots (M2).
+        } else if pkg.role == "brand.mark" {
+            // Deep OEM brand implementation is injected by generated brand constants; no Rust glue.
         } else if pkg.role == "ui.kit" || pkg.role == "ui.shell" || pkg.role.starts_with("ui.slot.") {
             // UI-only packages are wired by the generated web registry, not the Rust glue.
         } else {

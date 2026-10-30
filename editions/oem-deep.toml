@@ -1,0 +1,6 @@
+[packages]
+"brand.mark" = "acme/acme-brand"
+
+[edition]
+name = "oem-deep"
+base_edition = "enterprise"

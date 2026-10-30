@@ -9,6 +9,13 @@ cargo build -q -p zk
 ./target/debug/zk compose --edition enterprise --profile default --channel oem-demo --check >/dev/null
 grep -q 'Acme Keel' apps/desktop/web/src/generated/brand.ts
 grep -q 'oem-demo' apps/desktop/web/src/generated/brand.ts
+# deep OEM: fixture channel is copied to brands/ for build-time matrix, then removed.
+rm -rf brands/oem-deep; cp -r oem/fixtures/customers/oem-deep brands/oem-deep
+./target/debug/zk plan --edition oem-deep --profile default --channel oem-deep | grep -q 'acme/acme-brand'
+./target/debug/zk compose --edition oem-deep --profile default --channel oem-deep >/dev/null
+./target/debug/zk compose --edition oem-deep --profile default --channel oem-deep --check >/dev/null
+cargo test -q -p acme-brand >/dev/null
+rm -rf brands/oem-deep
 # residue negative: a product string must fail hide verification
 cp -r oem/fixtures/dist/oem-demo /tmp/zk-oem-loud
 printf 'ZeoKeel\n' > /tmp/zk-oem-loud/leak.txt

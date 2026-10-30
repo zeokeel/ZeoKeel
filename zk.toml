@@ -227,6 +227,11 @@ contract = "zk-contract-ui"
 cardinality = "singleton"
 editions = ["personal", "enterprise"]
 
+[roles."brand.mark"]
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
 [roles."ui.kit"]
 contract = "zk-contract-ui"
 cardinality = "singleton"
