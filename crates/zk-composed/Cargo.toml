@@ -10,6 +10,7 @@ zk-agent-loop = { path = "../../packages/client/agent-loop" }
 zk-contract-admin-ui = { path = "../../packages/contracts/admin-ui" }
 zk-contract-agent = { path = "../../packages/contracts/agent" }
 zk-contract-auth = { path = "../../packages/contracts/auth" }
+zk-contract-auth-client = { path = "../../packages/contracts/auth-client" }
 zk-contract-config = { path = "../../packages/contracts/config" }
 zk-contract-gateway = { path = "../../packages/contracts/gateway" }
 zk-contract-ipc = { path = "../../packages/contracts/ipc" }

@@ -1,4 +1,5 @@
 [packages]
+"auth.client" = "zeokeel/client-auth"
 "admin.page.settings" = "zeokeel/admin-settings"
 "admin.page.jobs" = "zeokeel/admin-jobs"
 "admin.page.usage" = "zeokeel/admin-usage"

@@ -1,0 +1,19 @@
+[package]
+name = "zk-client-auth"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+zk-contract-auth-client = { path = "../../contracts/auth-client" }
+
+[dev-dependencies]
+axum = { workspace = true }
+tokio = { workspace = true }
+zk-contract-auth = { path = "../../contracts/auth" }
+
+[lints]
+workspace = true

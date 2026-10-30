@@ -61,3 +61,7 @@
 ## Audit integrity
 
 - `audit-verify` 重算哈希链并返回 checked/broken；`scripts/srv-auth-test.sh` 触发成功。
+
+## Client auth package
+
+- `packages/client/auth`（`zk-client-auth` / `auth.client`）：login/refresh/me/logout；假 server 集成测试通过；UI/令牌持久化待接。

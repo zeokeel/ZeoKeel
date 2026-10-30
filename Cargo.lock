@@ -6096,6 +6096,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-client-auth"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tokio",
+ "zk-contract-auth",
+ "zk-contract-auth-client",
+]
+
+[[package]]
 name = "zk-composed"
 version = "0.1.0"
 dependencies = [
@@ -6104,6 +6117,7 @@ dependencies = [
  "zk-contract-admin-ui",
  "zk-contract-agent",
  "zk-contract-auth",
+ "zk-contract-auth-client",
  "zk-contract-config",
  "zk-contract-gateway",
  "zk-contract-ipc",
@@ -6153,6 +6167,13 @@ dependencies = [
  "schemars 0.8.22",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "zk-contract-auth-client"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

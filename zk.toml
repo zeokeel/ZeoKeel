@@ -97,6 +97,11 @@ contract = "zk-contract-admin-ui"
 cardinality = "singleton"
 editions = ["enterprise"]
 
+[roles."auth.client"]
+contract = "zk-contract-auth-client"
+cardinality = "singleton"
+editions = ["enterprise"]
+
 [roles."srv.http"]
 contract = "zk-contract-server"
 cardinality = "singleton"
@@ -174,6 +179,7 @@ editions = ["personal", "enterprise"]
 "zk.contract.ui" = "zk-contract-ui"
 "zk.contract.server" = "zk-contract-server"
 "zk.contract.admin-ui" = "zk-contract-admin-ui"
+"zk.contract.auth-client" = "zk-contract-auth-client"
 "zk.contract.gateway" = "zk-contract-gateway"
 "zk.contract.wallet" = "zk-contract-wallet"
 "zk.contract.user" = "zk-contract-user"

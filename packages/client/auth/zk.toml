@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/client-auth"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Enterprise client auth (login/refresh/me/logout)"
+
+[role]
+name = "auth.client"
+contract = "zk-contract-auth-client"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-client-auth" }
