@@ -251,6 +251,11 @@
 | `shared/contracts/schema/*.json` | schemars（`export_schema`） | 工具/配置校验、前端 Ajv 与 TS 生成 | `git diff --exit-code` |
 
 **实现状态（M2）**：`GET /api/meta/capabilities`（ETag）与 `/api/admin/meta` 已提供版本/特性/权限矩阵；
+`GET /config/bootstrap` 已下发身份/权限/模型目录/技能/连接器/应用目录/品牌/更新清单，`config_etag`+ETag/304，
+低于 `ZEOKEEL_MIN_CLIENT_VERSION` 返回 426 `CLIENT_TOO_OLD`，目录/模型加载失败返回 503 `CONFIG_UNAVAILABLE`；
+`GET /api/channel` 已提供渠道/品牌/资产基址/更新策略（ETag/304）。`/api/updates/manifest` 已提供 ETag/304、
+`min_supported`/`forced`（服务端设置或发布元数据）、签名状态（配置 ed25519 公钥时 fail-closed）、下载 Range/206/416；
+业务面全局 426 层与真实签名密钥/证书仍 UNVERIFIED（见 §9）。
 access JWT 含 iss/aud/uid/role/epoch/device/channel/jti 并在服务端校验；refresh 绑定 device+channel；
 admin 会话 TTL/idle 由设置键 `admin.session_ttl_secs`/`admin.session_idle_secs` 控制。
 

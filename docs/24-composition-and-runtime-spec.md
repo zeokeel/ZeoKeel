@@ -294,9 +294,10 @@ SIGTERM
 
 - 启动取 PG advisory lock；拿不到=拒启（防多实例重复发放/退役）。
 - pending 结算表 + 启动扫描：超时未结算 → 按最后 usage 结算或 void，差异进对账。
-- **实现状态（M2）**：与上面流程一致：drain 30s → `jobs.stop()/wait()` → pending 结算/审计链校验 →
-  `Bootstrap::shutdown()` 逆序回收插件 effects 与任务 → 退出 0；启动先取 PG advisory lock，拿不到即拒启。
-  关闭编排由 `crates/zk-bootstrap` 承载（apps 启动时 `boot()` 创建 cordis root）。
+- **实现状态（M2）**：单一总预算 `ZEOKEEL_SHUTDOWN_DEADLINE_SECS`（默认 30s，clamp 5..120）覆盖
+  drain → `jobs.stop()/wait()` → pending 结算 → 审计链校验 → 关池 → 有界 `Bootstrap::shutdown()`；任一步超时
+  记录日志并强制退出 1（实测：正常 197ms exit 0；DB 竞态/结算卡住 ~30s exit 1）。启动先取 PG advisory lock，
+  拿不到即拒启。关闭编排由 `crates/zk-bootstrap` 承载（apps 启动时 `boot()` 创建 cordis root）。
 
 ## 7. 客户端会话存储（冻结）
 

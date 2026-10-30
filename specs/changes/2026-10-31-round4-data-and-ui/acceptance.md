@@ -1,6 +1,6 @@
 # 2026-10-31-round4-data-and-ui · 验收
 
-- 状态：`in-progress`
+- 状态：`in-progress`（实现+P1 修复完成；C19 复评待）
 - 验收人：lead；C19：auditor-rig（或独立非实现者）
 
 ## 1. 待填
@@ -13,7 +13,18 @@
 | pnpm -r typecheck/lint/test:unit/build | 0 |
 | m1/agent/login/admin e2e + workspace.changes 场景 | 全绿 |
 | updates/oem/portal e2e | 0 或明确 UNVERIFIED |
-| usage/settings/changes 单测 | 通过 |
+| usage/settings/changes 单测 | 通过：store v4 跨实例/损坏降级、真实 IPC 优先级、changes fsmonitor 负向、usage UI 恢复 116 tests | 各 crate tests |
+| updates/OEM/portal e2e | updates 0、apps 0、oem 0、admin 11 passed；login 未重跑（脚本端口耦合），m1/agent 另行验证 | target/evidence/audit/round4-delivery.md |
+
+## 1.1 交付复核发现与修复
+
+- P1-A SIGTERM 总预算 30s（默认，可配 clamp 5..120）+ 有界 bootstrap shutdown；实测正常 197ms exit0、DB 竞态 ~30s exit1。
+- P1-B updates：ETag/304、forced/min_supported 可配、签名字段+配置密钥 fail-closed、Range/206/416、更新清单 426 CLIENT_TOO_OLD。
+- P1-C bootstrap：技能/连接器/应用目录、品牌、权限、config_etag/ETag/304、426/503。
+- P1-D portal：`/`（+`/portal`）读取 CLIENT-RELEASE 平台卡片、HTML 转义（OEM 注入测试）。
+- P1-E `/api/channel` public+ETag/304。
+- C19 P1 修复：usage UI 恢复、tools-only 不再压过 env（registry clear + precedence）、changes git fsmonitor/env 硬化、host DTO 契约序列化。
+- 保留 UNVERIFIED：全局业务面 426 层、真实签名密钥/证书、Docker/多平台、真实 OEM 私有索引/submodule（dir_hash 现状）、cargo-deny 本地。
 
 ## 2. UNVERIFIED
 
