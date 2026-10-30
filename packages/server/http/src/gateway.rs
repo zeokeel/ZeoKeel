@@ -69,12 +69,53 @@ async fn responses(
         .and_then(|value| value.to_str().ok())
         .unwrap_or("application/json")
         .to_owned();
+    let user_uuid = Uuid::parse_str(&user_id).map_err(|_| auth_error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
+    let wants_stream = body.get("stream").and_then(Value::as_bool) == Some(true);
+    if wants_stream && status.is_success() {
+        // Real SSE passthrough: stream chunks to the client while a background task
+        // accumulates usage and settles the ledger when the upstream ends.
+        let (tx, rx) = tokio::sync::mpsc::channel::<Result<axum::body::Bytes, std::io::Error>>(32);
+        let settlement = UsageSettlement { user_id: user_uuid, request_id: request_id.clone(), model: model.clone(), input_tokens: 0, output_tokens: 0, input_price, output_price };
+        let state_for_task = state.clone();
+        tokio::spawn(async move {
+            use futures::StreamExt;
+            let mut stream = upstream.bytes_stream();
+            let mut text = String::new();
+            while let Some(chunk) = stream.next().await {
+                match chunk {
+                    Ok(bytes) => {
+                        text.push_str(&String::from_utf8_lossy(&bytes));
+                        if tx.send(Ok(bytes)).await.is_err() {
+                            return;
+                        }
+                    }
+                    Err(error) => {
+                        let _ = tx.send(Err(std::io::Error::other(error))).await;
+                        return;
+                    }
+                }
+            }
+            let (input_tokens, output_tokens) = extract_usage(text.as_bytes(), "text/event-stream");
+            let mut settlement = settlement;
+            settlement.input_tokens = input_tokens;
+            settlement.output_tokens = output_tokens;
+            let _ = settle(&state_for_task, settlement).await;
+        });
+        let body_stream = futures::stream::unfold(rx, |mut receiver| async move {
+            receiver.recv().await.map(|item| (item, receiver))
+        });
+        let mut response = Response::new(Body::from_stream(body_stream));
+        *response.status_mut() = StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+        if let Ok(value) = HeaderValue::from_str(&content_type) {
+            response.headers_mut().insert(header::CONTENT_TYPE, value);
+        }
+        return Ok(response);
+    }
     let bytes = upstream.bytes().await.map_err(|_| auth_error(StatusCode::BAD_GATEWAY, "UPSTREAM"))?;
     let usage = extract_usage(&bytes, &content_type);
     let (input_tokens, output_tokens) = usage;
     if status.is_success() {
-        let user_id = Uuid::parse_str(&user_id).map_err(|_| auth_error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
-        settle(&state, UsageSettlement { user_id, request_id: &request_id, model: &model, input_tokens, output_tokens, input_price, output_price }).await?;
+        settle(&state, UsageSettlement { user_id: user_uuid, request_id: request_id.clone(), model: model.clone(), input_tokens, output_tokens, input_price, output_price }).await?;
     }
     let mut response = Response::new(Body::from(bytes));
     *response.status_mut() = StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
@@ -101,24 +142,24 @@ fn extract_usage(bytes: &[u8], content_type: &str) -> (i64, i64) {
      usage.and_then(|u| u.get("output_tokens")).and_then(Value::as_i64).unwrap_or(0))
 }
 
-struct UsageSettlement<'a> {
+struct UsageSettlement {
     user_id: Uuid,
-    request_id: &'a str,
-    model: &'a str,
+    request_id: String,
+    model: String,
     input_tokens: i64,
     output_tokens: i64,
     input_price: i64,
     output_price: i64,
 }
 
-async fn settle(state: &AppState, settlement: UsageSettlement<'_>) -> Result<(), AuthError> {
+async fn settle(state: &AppState, settlement: UsageSettlement) -> Result<(), AuthError> {
     let UsageSettlement { user_id, request_id, model, input_tokens, output_tokens, input_price, output_price } = settlement;
     let input_cost = input_tokens.saturating_mul(input_price).saturating_div(1000);
     let output_cost = output_tokens.saturating_mul(output_price).saturating_div(1000);
     let cost = input_cost.saturating_add(output_cost);
     let mut tx = state.pool.begin().await.map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let existing: Option<Uuid> = sqlx::query_scalar("SELECT id FROM usage WHERE request_id = $1")
-        .bind(request_id)
+        .bind(&request_id)
         .fetch_optional(&mut *tx)
         .await
         .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
@@ -129,9 +170,9 @@ async fn settle(state: &AppState, settlement: UsageSettlement<'_>) -> Result<(),
         "INSERT INTO usage (request_id, user_id, model, input_tokens, output_tokens, amount_micros, status)
          VALUES ($1, $2, $3, $4, $5, $6, 'success')",
     )
-    .bind(request_id)
+    .bind(&request_id)
     .bind(user_id)
-    .bind(model)
+    .bind(&model)
     .bind(input_tokens)
     .bind(output_tokens)
     .bind(cost)
@@ -155,7 +196,7 @@ async fn settle(state: &AppState, settlement: UsageSettlement<'_>) -> Result<(),
             .bind(user_id)
             .bind(0_i64.saturating_sub(cost))
             .bind(next)
-            .bind(request_id)
+            .bind(&request_id)
             .bind(format!("gw:{request_id}"))
             .execute(&mut *tx)
             .await

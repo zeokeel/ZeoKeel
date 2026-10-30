@@ -21,10 +21,15 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 class H(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("content-length", "0"))
-        self.rfile.read(length)
-        body = b'{"id":"resp_1","output":[{"type":"message","content":"hi"}],"usage":{"input_tokens":10,"output_tokens":20}}'
+        raw = self.rfile.read(length)
+        if b'"stream":true' in raw or b'"stream": true' in raw:
+            body = b'data: {"response":{"usage":{"input_tokens":5,"output_tokens":7}}}\n\ndata: [DONE]\n\n'
+            content_type = "text/event-stream"
+        else:
+            body = b'{"id":"resp_1","output":[{"type":"message","content":"hi"}],"usage":{"input_tokens":10,"output_tokens":20}}'
+            content_type = "application/json"
         self.send_response(200)
-        self.send_header("content-type", "application/json")
+        self.send_header("content-type", content_type)
         self.send_header("content-length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -99,6 +104,11 @@ GW=$(curl -sS -X POST "$BASE/v1/responses" -H "Authorization: Bearer $ALICE_JWT"
 [[ "$(printf '%s' "$GW" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')" == "resp_1" ]]
 BAL2=$(curl -fsS "$BASE/api/client/v1/wallet" -H "Authorization: Bearer $ALICE_JWT" | python3 -c 'import json,sys;print(json.load(sys.stdin)["balance_micros"])')
 [[ "$BAL2" == "999950" ]]
+SSE=$(curl -sS -N -X POST "$BASE/v1/responses" -H "Authorization: Bearer $ALICE_JWT" -H 'content-type: application/json' -d '{"model":"deepseek-chat","input":"hello","stream":true}')
+printf '%s' "$SSE" | grep -q "\[DONE\]"
+sleep 0.5
+BAL3=$(curl -fsS "$BASE/api/client/v1/wallet" -H "Authorization: Bearer $ALICE_JWT" | python3 -c 'import json,sys;print(json.load(sys.stdin)["balance_micros"])')
+[[ "$BAL3" == "999931" ]]
 CODE=$(curl -sS -o /tmp/zk-gw-unpriced.json -w '%{http_code}' -X POST "$BASE/v1/responses" -H "Authorization: Bearer $ALICE_JWT" -H 'content-type: application/json' -d '{"model":"unpriced","input":"x"}')
 [[ "$CODE" == "402" ]]
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/responses" -H 'content-type: application/json' -d '{"model":"deepseek-chat","input":"x"}')
