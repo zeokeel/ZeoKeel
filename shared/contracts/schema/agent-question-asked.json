@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "QuestionAskedPayload",
+  "description": "Typed payload of [`AgentEvent::QuestionAsked`].\n\nThe event keeps `questions: serde_json::Value` on the wire for backward compatibility; this DTO is the canonical typed shape for consumers that validate or map the event (C10/T22).",
+  "type": "object",
+  "required": [
+    "question_id",
+    "questions"
+  ],
+  "properties": {
+    "question_id": {
+      "description": "Pending question batch id (also the `question.answer` correlation id).",
+      "type": "string"
+    },
+    "questions": {
+      "description": "Questions in this batch (non-empty in practice).",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/QuestionDef"
+      }
+    }
+  },
+  "definitions": {
+    "QuestionDef": {
+      "description": "One question the agent asks before continuing (`ask_user_question` tool input).\n\nMirrors the tool's argument schema: `id`/`question` are required; `header`, `options`, `multi_select` are optional and default to empty/false.",
+      "type": "object",
+      "required": [
+        "id",
+        "question"
+      ],
+      "properties": {
+        "header": {
+          "description": "Optional short header/category.",
+          "default": "",
+          "type": "string"
+        },
+        "id": {
+          "description": "Stable question id (key in the answers map).",
+          "type": "string"
+        },
+        "multi_select": {
+          "description": "Whether multiple options may be selected.",
+          "default": false,
+          "type": "boolean"
+        },
+        "options": {
+          "description": "Selectable options (empty for free-text questions).",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/QuestionOption"
+          }
+        },
+        "question": {
+          "description": "Question text.",
+          "type": "string"
+        }
+      }
+    },
+    "QuestionOption": {
+      "description": "One selectable option of a user question (`ask_user_question` tool input).",
+      "type": "object",
+      "required": [
+        "label"
+      ],
+      "properties": {
+        "description": {
+          "description": "Optional secondary description shown under the label.",
+          "default": "",
+          "type": "string"
+        },
+        "label": {
+          "description": "Option label (the selected answer value).",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

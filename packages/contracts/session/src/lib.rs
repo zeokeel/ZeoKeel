@@ -69,6 +69,44 @@ fn done_status() -> String {
     "done".to_owned()
 }
 
+/// Kind of one workspace file-listing entry (`workspace.files`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FileKind {
+    /// Directory (may be expanded).
+    Dir,
+    /// Regular file.
+    File,
+}
+
+/// One bounded entry of a read-only workspace file listing (`workspace.files`).
+///
+/// Mirrors the host emission `{ "path", "depth", "kind" }` in
+/// `apps/desktop/src/ipc.rs::list_workspace_files`; `badge` is optional UI
+/// metadata for inspectors (absent on the current wire).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct FileEntry {
+    /// Path relative to the workspace root (forward slashes; depth-bounded).
+    pub path: String,
+    /// Depth relative to the workspace root (`0` = direct child).
+    pub depth: u32,
+    /// Entry kind.
+    pub kind: FileKind,
+    /// Optional inspector badge (empty/absent when the entry has none).
+    #[serde(default)]
+    pub badge: String,
+}
+
+/// `workspace.files` result: bounded read-only entries under one workspace root.
+///
+/// The host emits `{ "items": [...] }` (`list_workspace_files`); the field is
+/// named `items` to stay wire-compatible with the current desktop/web parsers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct WorkspaceFilesResult {
+    /// Entries sorted by path (bounded by the host).
+    pub items: Vec<FileEntry>,
+}
+
 /// Closed error set for workspace/session storage.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum SessionError {

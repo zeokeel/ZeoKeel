@@ -1,7 +1,9 @@
 //! Contract conformance: settings round-trip and defaults.
 #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
 
-use zk_contract_config::{AgentSettings, AppSettings, ProviderKind, ToolChoiceSetting};
+use zk_contract_config::{
+    AgentSettings, AppSettings, ProviderKind, ToolChoiceSetting, ToolSettings,
+};
 
 #[test]
 fn settings_round_trip_and_defaults() {
@@ -32,6 +34,48 @@ fn legacy_settings_without_agent_still_parse() {
     );
     assert!(settings.agent.memory.enabled);
     assert!(settings.agent.hooks.enabled);
+    assert_eq!(settings.tools, ToolSettings::default());
+    assert_eq!(settings.tools.tool_timeout_ms, 120_000);
+    assert_eq!(settings.tools.approval_timeout_ms, 300_000);
+    settings.tools.validate().unwrap();
+}
+
+#[test]
+fn tool_settings_validate_and_clamp() {
+    let settings = ToolSettings::default();
+    settings.validate().unwrap();
+    assert_eq!(settings.tool_timeout(), 120_000);
+    assert_eq!(settings.approval_timeout(), 300_000);
+
+    let mut bad = settings;
+    bad.tool_timeout_ms = 0;
+    assert!(bad.validate().is_err());
+    assert_eq!(bad.tool_timeout(), ToolSettings::MIN_TOOL_TIMEOUT_MS);
+    let mut bad = settings;
+    bad.tool_timeout_ms = 900_000;
+    assert!(bad.validate().is_err());
+    assert_eq!(bad.tool_timeout(), ToolSettings::MAX_TOOL_TIMEOUT_MS);
+    let mut bad = settings;
+    bad.approval_timeout_ms = 0;
+    assert!(bad.validate().is_err());
+    assert_eq!(
+        bad.approval_timeout(),
+        ToolSettings::MIN_APPROVAL_TIMEOUT_MS
+    );
+    let mut bad = settings;
+    bad.approval_timeout_ms = 2_000_000;
+    assert!(bad.validate().is_err());
+    assert_eq!(
+        bad.approval_timeout(),
+        ToolSettings::MAX_APPROVAL_TIMEOUT_MS
+    );
+
+    // Round-trips through serde.
+    let json = serde_json::to_string(&settings).unwrap();
+    assert_eq!(
+        settings,
+        serde_json::from_str::<ToolSettings>(&json).unwrap()
+    );
 }
 
 #[test]

@@ -252,3 +252,39 @@ pub mod payloads {
         pub answers: serde_json::Value,
     }
 }
+
+/// Typed command results (single source for `schemars` JSON Schema).
+///
+/// Command responses stay `{ ok, data, error }` and `data` remains an opaque
+/// [`serde_json::Value`] on the wire; these structs describe the documented
+/// `data` shapes so the boundary can be schema-validated (C10/T22).
+pub mod results {
+    use serde::{Deserialize, Serialize};
+
+    /// `meta.get` result.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct MetaInfo {
+        /// Edition (`personal` | `enterprise`) baked in by the composed build.
+        pub edition: String,
+        /// Composed app version.
+        pub version: String,
+        /// Composed package ids.
+        pub packages: Vec<String>,
+        /// Boot-time agent config error when the runtime fell back to defaults.
+        ///
+        /// The host serializes `null` when there is no error; absent is accepted too.
+        #[serde(default)]
+        pub agent_config_error: Option<String>,
+    }
+
+    /// `chat.send` result (one accepted turn).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ChatSendResult {
+        /// Stream id used to correlate `UiEvent`s for this turn.
+        pub stream_id: String,
+        /// Conversation that accepted the turn.
+        pub conversation_id: String,
+        /// Owning workspace id (ownership is verified before accepting).
+        pub workspace_id: String,
+    }
+}

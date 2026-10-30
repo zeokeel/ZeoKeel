@@ -73,6 +73,18 @@
     "theme": {
       "description": "Theme: `auto` | `light` | `dark`.",
       "type": "string"
+    },
+    "tools": {
+      "description": "Tool execution / approval timeouts (backward compatible default).",
+      "default": {
+        "tool_timeout_ms": 120000,
+        "approval_timeout_ms": 300000
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/ToolSettings"
+        }
+      ]
     }
   },
   "definitions": {
@@ -382,6 +394,26 @@
           }
         }
       ]
+    },
+    "ToolSettings": {
+      "description": "Tool execution and approval-wait timeouts for the local agent.",
+      "type": "object",
+      "properties": {
+        "approval_timeout_ms": {
+          "description": "Approval wait timeout in milliseconds (1000..=1800000).",
+          "default": 300000,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "tool_timeout_ms": {
+          "description": "Per-tool-call timeout in milliseconds (1000..=600000).",
+          "default": 120000,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
     }
   }
 }

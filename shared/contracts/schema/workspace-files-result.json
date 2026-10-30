@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WorkspaceFilesResult",
+  "description": "`workspace.files` result: bounded read-only entries under one workspace root.\n\nThe host emits `{ \"items\": [...] }` (`list_workspace_files`); the field is named `items` to stay wire-compatible with the current desktop/web parsers.",
+  "type": "object",
+  "required": [
+    "items"
+  ],
+  "properties": {
+    "items": {
+      "description": "Entries sorted by path (bounded by the host).",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/FileEntry"
+      }
+    }
+  },
+  "definitions": {
+    "FileEntry": {
+      "description": "One bounded entry of a read-only workspace file listing (`workspace.files`).\n\nMirrors the host emission `{ \"path\", \"depth\", \"kind\" }` in `apps/desktop/src/ipc.rs::list_workspace_files`; `badge` is optional UI metadata for inspectors (absent on the current wire).",
+      "type": "object",
+      "required": [
+        "depth",
+        "kind",
+        "path"
+      ],
+      "properties": {
+        "badge": {
+          "description": "Optional inspector badge (empty/absent when the entry has none).",
+          "default": "",
+          "type": "string"
+        },
+        "depth": {
+          "description": "Depth relative to the workspace root (`0` = direct child).",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "kind": {
+          "description": "Entry kind.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/FileKind"
+            }
+          ]
+        },
+        "path": {
+          "description": "Path relative to the workspace root (forward slashes; depth-bounded).",
+          "type": "string"
+        }
+      }
+    },
+    "FileKind": {
+      "description": "Kind of one workspace file-listing entry (`workspace.files`).",
+      "oneOf": [
+        {
+          "description": "Directory (may be expanded).",
+          "type": "string",
+          "enum": [
+            "dir"
+          ]
+        },
+        {
+          "description": "Regular file.",
+          "type": "string",
+          "enum": [
+            "file"
+          ]
+        }
+      ]
+    }
+  }
+}

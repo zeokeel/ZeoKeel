@@ -27,4 +27,8 @@ fn export_schema() {
         "agent-settings.json",
         &schemars::schema_for!(zk_contract_config::AgentSettings),
     );
+    write(
+        "tools-settings.json",
+        &schemars::schema_for!(zk_contract_config::ToolSettings),
+    );
 }

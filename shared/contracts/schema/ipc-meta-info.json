@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MetaInfo",
+  "description": "`meta.get` result.",
+  "type": "object",
+  "required": [
+    "edition",
+    "packages",
+    "version"
+  ],
+  "properties": {
+    "agent_config_error": {
+      "description": "Boot-time agent config error when the runtime fell back to defaults.\n\nThe host serializes `null` when there is no error; absent is accepted too.",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "edition": {
+      "description": "Edition (`personal` | `enterprise`) baked in by the composed build.",
+      "type": "string"
+    },
+    "packages": {
+      "description": "Composed package ids.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "version": {
+      "description": "Composed app version.",
+      "type": "string"
+    }
+  }
+}

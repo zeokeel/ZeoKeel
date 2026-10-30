@@ -27,4 +27,12 @@ fn export_schema() {
         "workspace-remove-result.json",
         &schemars::schema_for!(zk_contract_session::RemoveWorkspaceResult),
     );
+    write(
+        "file-entry.json",
+        &schemars::schema_for!(zk_contract_session::FileEntry),
+    );
+    write(
+        "workspace-files-result.json",
+        &schemars::schema_for!(zk_contract_session::WorkspaceFilesResult),
+    );
 }

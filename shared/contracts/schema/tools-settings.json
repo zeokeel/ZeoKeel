@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ToolSettings",
+  "description": "Tool execution and approval-wait timeouts for the local agent.",
+  "type": "object",
+  "properties": {
+    "approval_timeout_ms": {
+      "description": "Approval wait timeout in milliseconds (1000..=1800000).",
+      "default": 300000,
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "tool_timeout_ms": {
+      "description": "Per-tool-call timeout in milliseconds (1000..=600000).",
+      "default": 120000,
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    }
+  }
+}

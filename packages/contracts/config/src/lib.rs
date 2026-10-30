@@ -3,6 +3,8 @@
 //! @capability contract.config
 #![forbid(unsafe_code)]
 
+use std::sync::{Mutex, OnceLock};
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -118,6 +120,74 @@ impl Default for HookSettings {
         Self {
             enabled: true,
             log: String::new(),
+        }
+    }
+}
+
+/// Tool execution and approval-wait timeouts for the local agent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(default)]
+pub struct ToolSettings {
+    /// Per-tool-call timeout in milliseconds (1000..=600000).
+    pub tool_timeout_ms: u64,
+    /// Approval wait timeout in milliseconds (1000..=1800000).
+    pub approval_timeout_ms: u64,
+}
+
+impl ToolSettings {
+    /// Smallest accepted tool timeout.
+    pub const MIN_TOOL_TIMEOUT_MS: u64 = 1_000;
+    /// Largest accepted tool timeout.
+    pub const MAX_TOOL_TIMEOUT_MS: u64 = 600_000;
+    /// Smallest accepted approval timeout.
+    pub const MIN_APPROVAL_TIMEOUT_MS: u64 = 1_000;
+    /// Largest accepted approval timeout.
+    pub const MAX_APPROVAL_TIMEOUT_MS: u64 = 1_800_000;
+
+    /// Validate the configured ranges.
+    ///
+    /// # Errors
+    ///
+    /// [`ConfigError::Invalid`] naming the offending field.
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if !(Self::MIN_TOOL_TIMEOUT_MS..=Self::MAX_TOOL_TIMEOUT_MS).contains(&self.tool_timeout_ms)
+        {
+            return Err(ConfigError::Invalid(format!(
+                "tools.tool_timeout_ms must be within 1000..=600000 (got {})",
+                self.tool_timeout_ms
+            )));
+        }
+        if !(Self::MIN_APPROVAL_TIMEOUT_MS..=Self::MAX_APPROVAL_TIMEOUT_MS)
+            .contains(&self.approval_timeout_ms)
+        {
+            return Err(ConfigError::Invalid(format!(
+                "tools.approval_timeout_ms must be within 1000..=1800000 (got {})",
+                self.approval_timeout_ms
+            )));
+        }
+        Ok(())
+    }
+
+    /// The tool timeout clamped to the accepted range (runtime defense).
+    #[must_use]
+    pub fn tool_timeout(&self) -> u64 {
+        self.tool_timeout_ms
+            .clamp(Self::MIN_TOOL_TIMEOUT_MS, Self::MAX_TOOL_TIMEOUT_MS)
+    }
+
+    /// The approval timeout clamped to the accepted range (runtime defense).
+    #[must_use]
+    pub fn approval_timeout(&self) -> u64 {
+        self.approval_timeout_ms
+            .clamp(Self::MIN_APPROVAL_TIMEOUT_MS, Self::MAX_APPROVAL_TIMEOUT_MS)
+    }
+}
+
+impl Default for ToolSettings {
+    fn default() -> Self {
+        Self {
+            tool_timeout_ms: 120_000,
+            approval_timeout_ms: 300_000,
         }
     }
 }
@@ -247,6 +317,9 @@ pub struct AppSettings {
     /// Runtime-configurable local agent settings (backward compatible default).
     #[serde(default)]
     pub agent: AgentSettings,
+    /// Tool execution / approval timeouts (backward compatible default).
+    #[serde(default)]
+    pub tools: ToolSettings,
 }
 
 impl Default for AppSettings {
@@ -259,6 +332,7 @@ impl Default for AppSettings {
             auto_approve_read_only: true,
             server_url: String::new(),
             agent: AgentSettings::default(),
+            tools: ToolSettings::default(),
         }
     }
 }
@@ -280,4 +354,63 @@ pub trait SettingsStore: Send + Sync {
     fn load(&self) -> Result<AppSettings, ConfigError>;
     /// Persist settings.
     fn save(&self, settings: &AppSettings) -> Result<(), ConfigError>;
+}
+
+/// Host → runtime seam for the settings snapshot the local agent should use.
+///
+/// The desktop owns the persisted store and the agent runtime owns the turn
+/// loop; both depend on this contract, so the resolved `AppSettings` is
+/// published here (no package-to-package dependency). The runtime reads the
+/// last published snapshot on each turn. `None` means "never published" so
+/// the runtime keeps its `ZEOKEEL_*` environment fallbacks (boot precedence:
+/// explicitly saved settings > env > built-in default).
+///
+/// NOTE (architecture): this is mutable runtime state on a contract crate.
+/// A future `zk-kit-agent-config` host kit should own it; tracked as a
+/// follow-up for the Lead/ADR (same class as the contract-agent hook registry).
+static RUNTIME_SETTINGS: OnceLock<Mutex<Option<AppSettings>>> = OnceLock::new();
+
+fn runtime_slot() -> &'static Mutex<Option<AppSettings>> {
+    RUNTIME_SETTINGS.get_or_init(|| Mutex::new(None))
+}
+
+/// Publish the resolved settings snapshot for the local agent runtime.
+///
+/// # Errors
+///
+/// [`ConfigError::Invalid`] when the agent or tool sections fail validation;
+/// the previous snapshot is kept.
+pub fn set_runtime_settings(settings: &AppSettings) -> Result<(), ConfigError> {
+    settings.agent.validate()?;
+    settings.tools.validate()?;
+    let mut slot = runtime_slot()
+        .lock()
+        .map_err(|_| ConfigError::Storage("runtime settings registry poisoned".to_owned()))?;
+    *slot = Some(settings.clone());
+    Ok(())
+}
+
+/// The published settings snapshot, or `None` when never published.
+///
+/// # Errors
+///
+/// [`ConfigError::Storage`] when the registry lock is poisoned.
+pub fn runtime_settings() -> Result<Option<AppSettings>, ConfigError> {
+    runtime_slot()
+        .lock()
+        .map(|slot| slot.clone())
+        .map_err(|_| ConfigError::Storage("runtime settings registry poisoned".to_owned()))
+}
+
+/// Clear the published snapshot (logout/tests).
+///
+/// # Errors
+///
+/// [`ConfigError::Storage`] when the registry lock is poisoned.
+pub fn clear_runtime_settings() -> Result<(), ConfigError> {
+    let mut slot = runtime_slot()
+        .lock()
+        .map_err(|_| ConfigError::Storage("runtime settings registry poisoned".to_owned()))?;
+    *slot = None;
+    Ok(())
 }

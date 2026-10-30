@@ -153,7 +153,13 @@
         "question_id": {
           "type": "string"
         },
-        "questions": true,
+        "questions": {
+          "description": "Wire stays an opaque JSON value (backward compatible); the generated schema is the typed `Vec<QuestionDef>` shape for C10/T22 validation.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/QuestionDef"
+          }
+        },
         "type": {
           "type": "string",
           "enum": [
@@ -348,6 +354,60 @@
           ]
         }
       ]
+    },
+    "QuestionDef": {
+      "description": "One question the agent asks before continuing (`ask_user_question` tool input).\n\nMirrors the tool's argument schema: `id`/`question` are required; `header`, `options`, `multi_select` are optional and default to empty/false.",
+      "type": "object",
+      "required": [
+        "id",
+        "question"
+      ],
+      "properties": {
+        "header": {
+          "description": "Optional short header/category.",
+          "default": "",
+          "type": "string"
+        },
+        "id": {
+          "description": "Stable question id (key in the answers map).",
+          "type": "string"
+        },
+        "multi_select": {
+          "description": "Whether multiple options may be selected.",
+          "default": false,
+          "type": "boolean"
+        },
+        "options": {
+          "description": "Selectable options (empty for free-text questions).",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/QuestionOption"
+          }
+        },
+        "question": {
+          "description": "Question text.",
+          "type": "string"
+        }
+      }
+    },
+    "QuestionOption": {
+      "description": "One selectable option of a user question (`ask_user_question` tool input).",
+      "type": "object",
+      "required": [
+        "label"
+      ],
+      "properties": {
+        "description": {
+          "description": "Optional secondary description shown under the label.",
+          "default": "",
+          "type": "string"
+        },
+        "label": {
+          "description": "Option label (the selected answer value).",
+          "type": "string"
+        }
+      }
     },
     "ToolCallRecord": {
       "description": "One executed tool call, recorded for UI and diagnostics.",

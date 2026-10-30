@@ -75,4 +75,12 @@ fn export_schema() {
         "ipc-question-answer.json",
         &schemars::schema_for!(zk_contract_ipc::payloads::QuestionAnswerPayload),
     );
+    write(
+        "ipc-meta-info.json",
+        &schemars::schema_for!(zk_contract_ipc::results::MetaInfo),
+    );
+    write(
+        "ipc-chat-send-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::ChatSendResult),
+    );
 }

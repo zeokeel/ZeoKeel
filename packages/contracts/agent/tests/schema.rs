@@ -35,4 +35,12 @@ fn export_schema() {
         "agent-usage.json",
         &schemars::schema_for!(zk_contract_agent::AgentUsage),
     );
+    write(
+        "agent-question-def.json",
+        &schemars::schema_for!(zk_contract_agent::QuestionDef),
+    );
+    write(
+        "agent-question-asked.json",
+        &schemars::schema_for!(zk_contract_agent::QuestionAskedPayload),
+    );
 }

@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ChatSendResult",
+  "description": "`chat.send` result (one accepted turn).",
+  "type": "object",
+  "required": [
+    "conversation_id",
+    "stream_id",
+    "workspace_id"
+  ],
+  "properties": {
+    "conversation_id": {
+      "description": "Conversation that accepted the turn.",
+      "type": "string"
+    },
+    "stream_id": {
+      "description": "Stream id used to correlate `UiEvent`s for this turn.",
+      "type": "string"
+    },
+    "workspace_id": {
+      "description": "Owning workspace id (ownership is verified before accepting).",
+      "type": "string"
+    }
+  }
+}

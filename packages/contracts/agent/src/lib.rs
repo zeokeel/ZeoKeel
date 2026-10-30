@@ -99,6 +99,9 @@ pub enum AgentEvent {
     /// The agent asks the user questions and pauses until answered.
     QuestionAsked {
         question_id: String,
+        /// Wire stays an opaque JSON value (backward compatible); the generated
+        /// schema is the typed `Vec<QuestionDef>` shape for C10/T22 validation.
+        #[schemars(with = "Vec<QuestionDef>")]
         questions: serde_json::Value,
     },
     /// Questions were answered (or timed out with `null`).
@@ -137,6 +140,50 @@ pub enum ApprovalDecision {
     Reject,
     /// Cancel the turn.
     Cancel,
+}
+
+/// One selectable option of a user question (`ask_user_question` tool input).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct QuestionOption {
+    /// Option label (the selected answer value).
+    pub label: String,
+    /// Optional secondary description shown under the label.
+    #[serde(default)]
+    pub description: String,
+}
+
+/// One question the agent asks before continuing (`ask_user_question` tool input).
+///
+/// Mirrors the tool's argument schema: `id`/`question` are required; `header`,
+/// `options`, `multi_select` are optional and default to empty/false.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct QuestionDef {
+    /// Stable question id (key in the answers map).
+    pub id: String,
+    /// Question text.
+    pub question: String,
+    /// Optional short header/category.
+    #[serde(default)]
+    pub header: String,
+    /// Selectable options (empty for free-text questions).
+    #[serde(default)]
+    pub options: Vec<QuestionOption>,
+    /// Whether multiple options may be selected.
+    #[serde(default)]
+    pub multi_select: bool,
+}
+
+/// Typed payload of [`AgentEvent::QuestionAsked`].
+///
+/// The event keeps `questions: serde_json::Value` on the wire for backward
+/// compatibility; this DTO is the canonical typed shape for consumers that
+/// validate or map the event (C10/T22).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct QuestionAskedPayload {
+    /// Pending question batch id (also the `question.answer` correlation id).
+    pub question_id: String,
+    /// Questions in this batch (non-empty in practice).
+    pub questions: Vec<QuestionDef>,
 }
 
 /// Sink for streaming events (UI/bridge implements it).
