@@ -9,7 +9,6 @@ use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use serde::Deserialize;
 use serde_json::json;
 use sqlx::Row;
 
@@ -21,24 +20,7 @@ use zk_kit_server::{
 const ADMIN_TTL_SECS: u64 = 8 * 60 * 60;
 const ACCESS_TTL_SECS: u64 = 15 * 60;
 
-#[derive(Debug, Deserialize)]
-pub struct LoginRequest {
-    pub username: String,
-    pub password: String,
-    pub device_id: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RefreshRequest {
-    pub refresh_token: String,
-    pub device_id: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct AdminLoginRequest {
-    pub username: String,
-    pub password: String,
-}
+use zk_contract_auth::{AdminLoginRequest, LoginRequest, RefreshRequest};
 
 async fn methods() -> Json<serde_json::Value> {
     Json(json!({ "mode": "local", "providers": [], "min_client_version": "0.1.0" }))

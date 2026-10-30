@@ -5,3 +5,33 @@ use serde::{Deserialize, Serialize};
 /// Domain module descriptor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DomainModule { pub id: String }
+
+/// Client login payload (public endpoints).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+    pub device_id: String,
+}
+
+/// Refresh payload.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RefreshRequest {
+    pub refresh_token: String,
+    pub device_id: String,
+}
+
+/// Admin cookie login payload.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AdminLoginRequest {
+    pub username: String,
+    pub password: String,
+}
+
+/// Auth methods response.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AuthMethods {
+    pub mode: String,
+    pub providers: Vec<String>,
+    pub min_client_version: String,
+}

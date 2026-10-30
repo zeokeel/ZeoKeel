@@ -6,7 +6,6 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::Row;
 use uuid::Uuid;
@@ -14,12 +13,7 @@ use uuid::Uuid;
 use zk_kit_server::AppState;
 use zk_kit_server::{error as auth_error, require_admin, ServerError as AuthError};
 
-#[derive(Debug, Deserialize)]
-struct AdjustRequest {
-    delta_micros: i64,
-    reason: String,
-    idempotency_key: String,
-}
+use zk_contract_wallet::AdjustRequest;
 
 /// Create a wallet row if missing.
 pub(crate) async fn ensure_wallet(state: &AppState, user_id: Uuid) -> Result<(), AuthError> {

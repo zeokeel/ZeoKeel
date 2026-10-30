@@ -5,3 +5,11 @@ use serde::{Deserialize, Serialize};
 /// Domain module descriptor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DomainModule { pub id: String }
+
+/// Admin adjustment payload.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AdjustRequest {
+    pub delta_micros: i64,
+    pub reason: String,
+    pub idempotency_key: String,
+}

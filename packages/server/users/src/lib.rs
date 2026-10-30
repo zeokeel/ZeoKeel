@@ -5,7 +5,6 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, patch};
 use axum::{Json, Router};
-use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::Row;
 use uuid::Uuid;
@@ -14,21 +13,7 @@ use zk_kit_server::{error as auth_error, hash_password, require_admin, AppState,
 
 const ROLES: [&str; 3] = ["super_admin", "auditor", "employee"];
 
-#[derive(Debug, Deserialize)]
-struct CreateUser {
-    username: String,
-    password: String,
-    #[serde(default)]
-    display_name: String,
-    role: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct UpdateUser {
-    role: Option<String>,
-    status: Option<String>,
-    password: Option<String>,
-}
+use zk_contract_user::{CreateUser, UpdateUser};
 
 fn validate_role(role: &str) -> Result<(), AuthError> {
     if ROLES.contains(&role) {

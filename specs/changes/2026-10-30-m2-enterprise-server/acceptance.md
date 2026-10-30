@@ -44,3 +44,8 @@
 - 真实 PG：`scripts/srv-auth-test.sh` 全链路通过；`scripts/admin-e2e.sh` 6 Playwright tests 通过。
 - 管理台已拆包并由 `zk compose` 生成 registry；`apps/admin` 只保留 registry 组合。
 - 迁移 SQL 已按域归包；`apps/server` 按 core→auth→users→wallet→pricing→gateway→audit→settings→jobs 顺序执行。
+
+## Contract DTOs (progress)
+
+- `zk-contract-auth/user/wallet` 已承载登录/refresh/建用户/调账请求 DTO；服务端域包复用这些契约，不重复定义。
+- 仍未生成 JSON Schema/TS 类型（T22）。
