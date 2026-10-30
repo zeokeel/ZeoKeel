@@ -356,33 +356,69 @@ pub trait SettingsStore: Send + Sync {
     fn save(&self, settings: &AppSettings) -> Result<(), ConfigError>;
 }
 
+/// Non-secret settings snapshot published to the local agent runtime.
+///
+/// Deliberately contains no `ProviderConfig`: provider credentials/base URLs
+/// are host/secret-store concerns and must never be readable by every package
+/// linked against the config contract (review round-3 P2). Only the sections
+/// the runtime needs on each turn are published.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(default)]
+pub struct RuntimeSettings {
+    /// Runtime agent settings (completion/memory/hooks/max_steps).
+    pub agent: AgentSettings,
+    /// Tool execution / approval-wait timeouts.
+    pub tools: ToolSettings,
+}
+
+impl RuntimeSettings {
+    /// Validate both published sections.
+    ///
+    /// # Errors
+    ///
+    /// [`ConfigError::Invalid`] when agent or tool settings are out of range.
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        self.agent.validate()?;
+        self.tools.validate()
+    }
+}
+
+impl From<&AppSettings> for RuntimeSettings {
+    fn from(settings: &AppSettings) -> Self {
+        Self {
+            agent: settings.agent.clone(),
+            tools: settings.tools,
+        }
+    }
+}
+
 /// Host → runtime seam for the settings snapshot the local agent should use.
 ///
 /// The desktop owns the persisted store and the agent runtime owns the turn
-/// loop; both depend on this contract, so the resolved `AppSettings` is
-/// published here (no package-to-package dependency). The runtime reads the
-/// last published snapshot on each turn. `None` means "never published" so
-/// the runtime keeps its `ZEOKEEL_*` environment fallbacks (boot precedence:
-/// explicitly saved settings > env > built-in default).
+/// loop; both depend on this contract, so the resolved **non-secret**
+/// [`RuntimeSettings`] is published here (no package-to-package dependency).
+/// The runtime reads the last published snapshot on each turn. `None` means
+/// "never published" so the runtime keeps its `ZEOKEEL_*` environment
+/// fallbacks (precedence: explicitly saved settings > env > built-in default).
 ///
 /// NOTE (architecture): this is mutable runtime state on a contract crate.
 /// A future `zk-kit-agent-config` host kit should own it; tracked as a
 /// follow-up for the Lead/ADR (same class as the contract-agent hook registry).
-static RUNTIME_SETTINGS: OnceLock<Mutex<Option<AppSettings>>> = OnceLock::new();
+static RUNTIME_SETTINGS: OnceLock<Mutex<Option<RuntimeSettings>>> = OnceLock::new();
 
-fn runtime_slot() -> &'static Mutex<Option<AppSettings>> {
+fn runtime_slot() -> &'static Mutex<Option<RuntimeSettings>> {
     RUNTIME_SETTINGS.get_or_init(|| Mutex::new(None))
 }
 
-/// Publish the resolved settings snapshot for the local agent runtime.
+/// Publish the resolved **non-secret** settings snapshot for the local agent
+/// runtime (never the provider config / API key).
 ///
 /// # Errors
 ///
 /// [`ConfigError::Invalid`] when the agent or tool sections fail validation;
 /// the previous snapshot is kept.
-pub fn set_runtime_settings(settings: &AppSettings) -> Result<(), ConfigError> {
-    settings.agent.validate()?;
-    settings.tools.validate()?;
+pub fn set_runtime_settings(settings: &RuntimeSettings) -> Result<(), ConfigError> {
+    settings.validate()?;
     let mut slot = runtime_slot()
         .lock()
         .map_err(|_| ConfigError::Storage("runtime settings registry poisoned".to_owned()))?;
@@ -390,12 +426,12 @@ pub fn set_runtime_settings(settings: &AppSettings) -> Result<(), ConfigError> {
     Ok(())
 }
 
-/// The published settings snapshot, or `None` when never published.
+/// The published non-secret settings snapshot, or `None` when never published.
 ///
 /// # Errors
 ///
 /// [`ConfigError::Storage`] when the registry lock is poisoned.
-pub fn runtime_settings() -> Result<Option<AppSettings>, ConfigError> {
+pub fn runtime_settings() -> Result<Option<RuntimeSettings>, ConfigError> {
     runtime_slot()
         .lock()
         .map(|slot| slot.clone())

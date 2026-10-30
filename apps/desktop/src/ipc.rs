@@ -187,6 +187,14 @@ pub(crate) fn apply_agent_settings(settings: &AppSettings) -> Result<(), String>
     Ok(())
 }
 
+/// Publish the non-secret runtime snapshot (`agent` + `tools` only).
+///
+/// Provider config / `api_key` never enter the contract runtime registry.
+pub(crate) fn publish_runtime_settings(settings: &AppSettings) -> Result<(), String> {
+    zk_contract_config::set_runtime_settings(&zk_contract_config::RuntimeSettings::from(settings))
+        .map_err(|error| format!("settings publish: {error}"))
+}
+
 /// Boot path: load persisted settings and publish the agent section only when
 /// the settings file was explicitly saved with non-default agent settings.
 ///
@@ -204,8 +212,7 @@ pub(crate) fn apply_persisted_settings(
         apply_agent_settings(&settings)?;
     }
     if should_publish_tool_settings(&settings, file_exists) {
-        zk_contract_config::set_runtime_settings(&settings)
-            .map_err(|error| format!("settings publish: {error}"))?;
+        publish_runtime_settings(&settings)?;
         return Ok(Some(settings.tools));
     }
     Ok(None)
@@ -361,8 +368,8 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             if let Err(error) = apply_agent_settings(&settings) {
                 return CommandResponse::err(error);
             }
-            if let Err(error) = zk_contract_config::set_runtime_settings(&settings) {
-                return CommandResponse::err(format!("settings publish: {error}"));
+            if let Err(error) = publish_runtime_settings(&settings) {
+                return CommandResponse::err(error);
             }
             if let Err(error) = state.apply_tool_settings(&settings.tools) {
                 return CommandResponse::err(error);
@@ -1148,6 +1155,31 @@ mod tests {
         writer.write_all(b"# link\n").unwrap();
         writer.add_symlink("link", "target", options).unwrap();
         writer.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn published_runtime_snapshot_never_contains_provider_secrets() {
+        let mut settings = zk_contract_config::AppSettings::default();
+        settings.provider.api_key = "sk-desktop-super-secret".to_owned();
+        settings.provider.base_url = "https://upstream.example".to_owned();
+        settings.agent.max_steps = 7;
+        settings.tools.tool_timeout_ms = 5_000;
+        super::publish_runtime_settings(&settings).unwrap();
+
+        let published = zk_contract_config::runtime_settings().unwrap().unwrap();
+        assert_eq!(published.agent.max_steps, 7);
+        assert_eq!(published.tools.tool_timeout_ms, 5_000);
+        let json = serde_json::to_string(&published).unwrap();
+        assert!(!json.contains("api_key"), "snapshot leaked api_key: {json}");
+        assert!(
+            !json.contains("sk-desktop-super-secret"),
+            "snapshot leaked provider key value: {json}"
+        );
+        assert!(
+            !json.contains("upstream.example"),
+            "snapshot leaked base_url: {json}"
+        );
+        zk_contract_config::clear_runtime_settings().unwrap();
     }
 
     #[test]

@@ -31,4 +31,8 @@ fn export_schema() {
         "tools-settings.json",
         &schemars::schema_for!(zk_contract_config::ToolSettings),
     );
+    write(
+        "runtime-settings.json",
+        &schemars::schema_for!(zk_contract_config::RuntimeSettings),
+    );
 }

@@ -2,7 +2,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
 
 use zk_contract_config::{
-    AgentSettings, AppSettings, ProviderKind, ToolChoiceSetting, ToolSettings,
+    AgentSettings, AppSettings, ProviderKind, RuntimeSettings, ToolChoiceSetting, ToolSettings,
 };
 
 #[test]
@@ -109,4 +109,42 @@ fn agent_settings_defaults_validate_and_round_trip() {
     let mut bad = settings.clone();
     bad.completion.prompt_cache = Some("forever".to_owned());
     assert!(bad.validate().is_err());
+}
+
+#[test]
+fn runtime_settings_snapshot_excludes_provider_secrets() {
+    let mut settings = AppSettings::default();
+    settings.provider.api_key = "sk-live-super-secret".to_owned();
+    settings.provider.base_url = "https://upstream.example".to_owned();
+    settings.agent.completion.temperature = Some(0.3);
+    settings.tools.tool_timeout_ms = 2_000;
+
+    let snapshot = RuntimeSettings::from(&settings);
+    snapshot.validate().unwrap();
+    zk_contract_config::set_runtime_settings(&snapshot).unwrap();
+    let published = zk_contract_config::runtime_settings().unwrap().unwrap();
+    assert_eq!(published.agent.completion.temperature, Some(0.3));
+    assert_eq!(published.tools.tool_timeout_ms, 2_000);
+
+    // The whole published snapshot must be non-secret: no provider config at
+    // all, hence no plaintext api_key/base_url.
+    let json = serde_json::to_string(&published).unwrap();
+    assert!(
+        !json.contains("api_key"),
+        "snapshot leaked api_key field: {json}"
+    );
+    assert!(
+        !json.contains("sk-live-super-secret"),
+        "snapshot leaked api_key value: {json}"
+    );
+    assert!(
+        !json.contains("upstream.example"),
+        "snapshot leaked provider base_url: {json}"
+    );
+    assert!(
+        !json.contains("provider"),
+        "snapshot leaked provider section: {json}"
+    );
+
+    zk_contract_config::clear_runtime_settings().unwrap();
 }

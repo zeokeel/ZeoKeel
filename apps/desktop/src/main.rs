@@ -297,6 +297,8 @@ fn main() {
 
 fn run_window(state: Arc<AppState>, bootstrap: Arc<zk_bootstrap::Bootstrap>) -> Result<(), String> {
     let bus = state.bus.clone();
+    let setup_bootstrap_events = Arc::clone(&bootstrap);
+    let setup_bootstrap_open = Arc::clone(&bootstrap);
     let builder = tauri::Builder::default()
         .manage(Arc::clone(&state))
         .register_uri_scheme_protocol("zk-app", |_ctx, request| {
@@ -357,22 +359,37 @@ document.title='SELFTEST|'+JSON.stringify({appRequest,ipc,open,core});
         .setup(move |app| {
             let handle = app.handle().clone();
             let mut receiver = bus.subscribe();
+            // The long-lived event bridge must be kernel-owned: register it through
+            // spawn_task from a one-shot Tauri-runtime hop (spawn_task needs a runtime
+            // context). Kernel shutdown aborts/disposes it like every other task.
+            let event_bootstrap = Arc::clone(&setup_bootstrap_events);
             tauri::async_runtime::spawn(async move {
-                loop {
-                    match receiver.recv().await {
-                        Ok(event) => {
-                            let _ = handle.emit("zk://event", &event);
+                let task = event_bootstrap.spawn_task("zk.desktop.tauri-events", async move {
+                    loop {
+                        match receiver.recv().await {
+                            Ok(event) => {
+                                let _ = handle.emit("zk://event", &event);
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                         }
-                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                     }
+                });
+                if let Err(error) = task {
+                    eprintln!("zk-desktop: event bridge not kernel-owned: {error}");
                 }
             });
             if let Ok(app_id) = std::env::var("ZEOKEEL_OPEN_APP_ID") {
                 let handle = app.handle().clone();
+                let open_bootstrap = Arc::clone(&setup_bootstrap_open);
                 tauri::async_runtime::spawn(async move {
-                    if let Err(error) = open_app_window_impl(&handle, &app_id, "index.html") {
-                        eprintln!("zk-desktop: open app window failed: {error}");
+                    let task = open_bootstrap.spawn_task("zk.desktop.open-app", async move {
+                        if let Err(error) = open_app_window_impl(&handle, &app_id, "index.html") {
+                            eprintln!("zk-desktop: open app window failed: {error}");
+                        }
+                    });
+                    if let Err(error) = task {
+                        eprintln!("zk-desktop: open-app task not registered: {error}");
                     }
                 });
             }
