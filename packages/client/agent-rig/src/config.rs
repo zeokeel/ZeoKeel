@@ -20,7 +20,7 @@
 //! when a directory/log is configured.
 
 use serde::{Deserialize, Serialize};
-use zk_contract_config::{AgentSettings, ToolChoiceSetting};
+use zk_contract_config::{AgentSettings, ToolChoiceSetting, ToolSettings};
 
 /// Multi-turn memory via `rig-memory` conversation persistence.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -203,6 +203,8 @@ pub struct AgentRuntimeConfig {
     pub memory: MemoryConfig,
     /// Observable lifecycle hooks.
     pub hooks: HooksConfig,
+    /// Tool execution / approval-wait timeouts.
+    pub tools: ToolSettings,
     /// Maximum model/tool steps per turn (1..=200).
     pub max_steps: usize,
 }
@@ -213,6 +215,7 @@ impl Default for AgentRuntimeConfig {
             completion: CompletionConfig::default(),
             memory: MemoryConfig::default(),
             hooks: HooksConfig::default(),
+            tools: ToolSettings::default(),
             max_steps: crate::MAX_STEPS,
         }
     }
@@ -279,6 +282,16 @@ impl AgentRuntimeConfig {
         if let Ok(value) = std::env::var("ZEOKEEL_AGENT_HOOKS_LOG") {
             config.hooks.log = value;
         }
+        if let Ok(value) = std::env::var("ZEOKEEL_TOOL_TIMEOUT_MS") {
+            if let Ok(timeout) = value.parse::<u64>() {
+                config.tools.tool_timeout_ms = timeout;
+            }
+        }
+        if let Ok(value) = std::env::var("ZEOKEEL_APPROVAL_TIMEOUT_MS") {
+            if let Ok(timeout) = value.parse::<u64>() {
+                config.tools.approval_timeout_ms = timeout;
+            }
+        }
         config.max_steps = config.max_steps.clamp(1, 200);
         config
     }
@@ -311,6 +324,7 @@ impl AgentRuntimeConfig {
     /// A human-readable message naming the offending field.
     pub fn validate(&self) -> Result<(), String> {
         self.completion.validate()?;
+        self.tools.validate().map_err(|error| error.to_string())?;
         if !(1..=200).contains(&self.max_steps) {
             return Err(format!(
                 "agent.max_steps must be within 1..=200 (got {})",
@@ -344,19 +358,34 @@ fn env_parse<T: std::str::FromStr>(key: &str) -> Option<T> {
 /// As [`AgentRuntimeConfig::validate`].
 pub fn set_default_agent_config(config: AgentRuntimeConfig) -> Result<(), String> {
     config.validate()?;
-    zk_contract_agent::set_default_agent_settings(&config.to_contract())
+    zk_contract_agent::set_default_agent_settings(&config.to_contract())?;
+    let mut full = zk_contract_config::AppSettings {
+        tools: config.tools,
+        ..zk_contract_config::AppSettings::default()
+    };
+    full.agent = zk_contract_config::AgentSettings::default();
+    zk_contract_config::set_runtime_settings(&full).map_err(|error| error.to_string())
 }
 
 /// The process-wide default agent config: the published contract settings when
 /// present, else the `ZEOKEEL_AGENT_*` environment fallback.
 #[must_use]
 pub fn default_agent_config() -> AgentRuntimeConfig {
-    if let Some(settings) = zk_contract_agent::default_agent_settings() {
-        if let Ok(config) = AgentRuntimeConfig::from_contract(&settings) {
-            return config;
-        }
+    let published_agent = zk_contract_agent::default_agent_settings();
+    let published_tools = zk_contract_config::runtime_settings().ok().flatten();
+    let mut config = published_agent
+        .as_ref()
+        .and_then(|settings| AgentRuntimeConfig::from_contract(settings).ok())
+        .unwrap_or_else(AgentRuntimeConfig::from_env);
+    if let Some(full) = published_tools {
+        // Explicitly published tool settings win over env.
+        config.tools = full.tools;
+    } else if published_agent.is_some() {
+        // Agent settings were saved but tool settings were not explicitly
+        // published: keep the env/default fallback for timeouts.
+        config.tools = AgentRuntimeConfig::from_env().tools;
     }
-    AgentRuntimeConfig::from_env()
+    config
 }
 
 impl ReasoningEffort {
@@ -485,6 +514,7 @@ impl AgentRuntimeConfig {
                 enabled: settings.hooks.enabled,
                 log: settings.hooks.log.clone(),
             },
+            tools: AgentRuntimeConfig::from_env().tools,
             max_steps: settings.max_steps,
         })
     }
@@ -496,38 +526,55 @@ mod tests {
 
     use super::*;
 
-    fn custom_settings(temperature: f64) -> AgentSettings {
-        AgentSettings {
-            completion: zk_contract_config::CompletionSettings {
-                temperature: Some(temperature),
-                ..zk_contract_config::CompletionSettings::default()
-            },
-            ..AgentSettings::default()
-        }
-    }
-
     #[test]
-    fn env_applies_when_nothing_is_published_and_published_settings_win() {
-        // This lib test binary is the only writer of the contract registry, so
-        // it starts empty: the fresh-install / boot-precedence case.
-        assert!(zk_contract_agent::default_agent_settings().is_none());
+    fn env_fallback_and_published_settings_precedence() {
+        // One test keeps the process-global registries deterministic: env
+        // first, then the explicitly saved settings that desktop publishes.
+        zk_contract_config::clear_runtime_settings().unwrap();
         std::env::set_var("ZEOKEEL_AGENT_TEMPERATURE", "0.42");
-        assert_eq!(
-            default_agent_config().completion.temperature,
-            Some(0.42),
-            "no saved settings -> ZEOKEEL_AGENT_* env fallback applies"
-        );
+        std::env::set_var("ZEOKEEL_TOOL_TIMEOUT_MS", "5000");
+        std::env::set_var("ZEOKEEL_APPROVAL_TIMEOUT_MS", "9000");
+
+        // Fresh install: no published settings -> env fallbacks apply.
+        let env_config = AgentRuntimeConfig::from_env();
+        assert_eq!(env_config.completion.temperature, Some(0.42));
+        assert_eq!(env_config.tools.tool_timeout_ms, 5000);
+        assert_eq!(env_config.tools.approval_timeout_ms, 9000);
+        assert_eq!(env_config.tools.tool_timeout(), 5000);
 
         // Explicitly saved settings (desktop publishes them) win over env.
-        zk_contract_agent::set_default_agent_settings(&custom_settings(0.7)).unwrap();
-        assert_eq!(
-            default_agent_config().completion.temperature,
-            Some(0.7),
-            "published settings take precedence over env"
-        );
+        let saved = zk_contract_config::AgentSettings {
+            completion: zk_contract_config::CompletionSettings {
+                temperature: Some(0.7),
+                ..zk_contract_config::CompletionSettings::default()
+            },
+            ..zk_contract_config::AgentSettings::default()
+        };
+        zk_contract_agent::set_default_agent_settings(&saved).unwrap();
+        let mut full = zk_contract_config::AppSettings::default();
+        full.tools.tool_timeout_ms = 2_000;
+        full.tools.approval_timeout_ms = 4_000;
+        zk_contract_config::set_runtime_settings(&full).unwrap();
+        let effective = default_agent_config();
+        assert_eq!(effective.completion.temperature, Some(0.7));
+        assert_eq!(effective.tools.tool_timeout_ms, 2_000);
+        assert_eq!(effective.tools.approval_timeout_ms, 4_000);
+
+        // Out-of-range values are rejected at publish time (UI surfaces it);
+        // the runtime clamp is covered by the contract tests.
+        let mut invalid = full;
+        invalid.tools.tool_timeout_ms = 10;
+        assert!(zk_contract_config::set_runtime_settings(&invalid).is_err());
+        invalid.tools.tool_timeout_ms = 5_000;
+        invalid.tools.approval_timeout_ms = 9_000_000;
+        assert!(zk_contract_config::set_runtime_settings(&invalid).is_err());
 
         // Restore so sibling tests keep seeing built-in defaults.
-        zk_contract_agent::set_default_agent_settings(&AgentSettings::default()).unwrap();
+        zk_contract_config::clear_runtime_settings().unwrap();
+        zk_contract_agent::set_default_agent_settings(&zk_contract_config::AgentSettings::default())
+            .unwrap();
         std::env::remove_var("ZEOKEEL_AGENT_TEMPERATURE");
+        std::env::remove_var("ZEOKEEL_TOOL_TIMEOUT_MS");
+        std::env::remove_var("ZEOKEEL_APPROVAL_TIMEOUT_MS");
     }
 }

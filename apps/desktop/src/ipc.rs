@@ -9,7 +9,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use serde_json::{json, Value};
 use tokio::sync::broadcast;
 use zk_contract_agent::AgentHookSink;
-use zk_contract_config::{AppSettings, ProviderKind};
+use zk_contract_config::{AppSettings, ProviderKind, ToolSettings};
 use zk_contract_ipc::{commands, CommandResponse, UiEvent};
 use zk_contract_session::Message;
 use zk_contract_tool::TurnContext;
@@ -82,6 +82,19 @@ impl AppState {
         }
     }
 
+    /// Apply validated tool/approval timeouts to the live approval broker.
+    ///
+    /// # Errors
+    ///
+    /// [`ToolSettings::validate`] rejects out-of-range values (UI surfaces it).
+    pub fn apply_tool_settings(&self, tools: &ToolSettings) -> Result<(), String> {
+        tools
+            .validate()
+            .map_err(|error| format!("tool settings: {error}"))?;
+        self.approvals.set_timeout_ms(tools.approval_timeout());
+        Ok(())
+    }
+
     /// The agent-settings startup error, when the persisted settings could not
     /// be applied (the app still boots so the user can fix them).
     #[must_use]
@@ -148,6 +161,15 @@ pub(crate) fn should_publish_agent_settings(
     settings_file_exists && settings.agent != zk_contract_config::AgentSettings::default()
 }
 
+/// Same precedence rule as agent settings: a fresh install or default-only
+/// file must not override `ZEOKEEL_TOOL_TIMEOUT_MS`/`ZEOKEEL_APPROVAL_TIMEOUT_MS`.
+pub(crate) fn should_publish_tool_settings(
+    settings: &AppSettings,
+    settings_file_exists: bool,
+) -> bool {
+    settings_file_exists && settings.tools != ToolSettings::default()
+}
+
 /// Validate and publish `AppSettings.agent` to the contract registry the agent
 /// runtime reads each turn; install/remove the global hook sink accordingly.
 pub(crate) fn apply_agent_settings(settings: &AppSettings) -> Result<(), String> {
@@ -170,15 +192,23 @@ pub(crate) fn apply_agent_settings(settings: &AppSettings) -> Result<(), String>
 ///
 /// On a fresh install nothing is published, so `zk-agent-rig` keeps its
 /// `ZEOKEEL_AGENT_*` environment fallback (dev/e2e flows).
-pub(crate) fn apply_persisted_agent_settings(runtime: &zk_composed::Runtime) -> Result<(), String> {
+pub(crate) fn apply_persisted_settings(
+    runtime: &zk_composed::Runtime,
+) -> Result<Option<ToolSettings>, String> {
     let settings = runtime
         .settings()
         .load()
         .map_err(|error| format!("settings load: {error}"))?;
-    if !should_publish_agent_settings(&settings, settings_file_exists()) {
-        return Ok(());
+    let file_exists = settings_file_exists();
+    if should_publish_agent_settings(&settings, file_exists) {
+        apply_agent_settings(&settings)?;
     }
-    apply_agent_settings(&settings)
+    if should_publish_tool_settings(&settings, file_exists) {
+        zk_contract_config::set_runtime_settings(&settings)
+            .map_err(|error| format!("settings publish: {error}"))?;
+        return Ok(Some(settings.tools));
+    }
+    Ok(None)
 }
 
 /// Dispatch one command. Never panics; all failures become `CommandResponse::err`.
@@ -207,7 +237,7 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                     None => {
                         return CommandResponse::err(
                             "workspace/path-unavailable: home directory unavailable",
-                        )
+                        );
                     }
                 }
             } else {
@@ -325,9 +355,16 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             if let Err(error) = validate_settings(&settings) {
                 return CommandResponse::err(error);
             }
-            // Apply agent settings first: validation/runtime failures must reach
-            // the UI instead of persisting settings that never take effect.
+            // Apply agent + tool settings first: validation/runtime failures
+            // must reach the UI instead of persisting settings that never take
+            // effect.
             if let Err(error) = apply_agent_settings(&settings) {
+                return CommandResponse::err(error);
+            }
+            if let Err(error) = zk_contract_config::set_runtime_settings(&settings) {
+                return CommandResponse::err(format!("settings publish: {error}"));
+            }
+            if let Err(error) = state.apply_tool_settings(&settings.tools) {
                 return CommandResponse::err(error);
             }
             // Apply provider hot-swap: a configure failure must reach the UI
@@ -761,7 +798,7 @@ fn oauth_load(payload: &Value) -> CommandResponse {
         Err(_) if dev_oauth_fallback() => {
             return CommandResponse::ok(
                 json!({ "tokens": read_dev_oauth().get(connector_id).map(Value::to_string) }),
-            )
+            );
         }
         Err(error) => return CommandResponse::err(error),
     };
@@ -875,6 +912,9 @@ fn validate_settings(settings: &AppSettings) -> Result<(), String> {
     }
     if !matches!(settings.locale.as_str(), "zh-CN" | "en-US") {
         return Err(format!("invalid locale {}", settings.locale));
+    }
+    if let Err(error) = settings.tools.validate() {
+        return Err(error.to_string());
     }
     if settings.provider.kind != ProviderKind::Mock {
         let url = settings.provider.base_url.trim();
@@ -1108,6 +1148,32 @@ mod tests {
         writer.write_all(b"# link\n").unwrap();
         writer.add_symlink("link", "target", options).unwrap();
         writer.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn boot_publishes_only_explicitly_saved_non_default_tool_settings() {
+        let default_settings = zk_contract_config::AppSettings::default();
+        assert!(!super::should_publish_tool_settings(
+            &default_settings,
+            false
+        ));
+        assert!(!super::should_publish_tool_settings(
+            &default_settings,
+            true
+        ));
+
+        let mut custom = zk_contract_config::AppSettings::default();
+        custom.tools.tool_timeout_ms = 5_000;
+        assert!(!super::should_publish_tool_settings(&custom, false));
+        assert!(super::should_publish_tool_settings(&custom, true));
+
+        let mut invalid = zk_contract_config::AppSettings::default();
+        invalid.tools.tool_timeout_ms = 10;
+        assert!(super::validate_settings(&invalid).is_err());
+        invalid.tools.tool_timeout_ms = 120_000;
+        invalid.tools.approval_timeout_ms = 2_000_000;
+        assert!(super::validate_settings(&invalid).is_err());
+        assert!(super::validate_settings(&zk_contract_config::AppSettings::default()).is_ok());
     }
 
     #[test]

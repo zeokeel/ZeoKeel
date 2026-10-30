@@ -24,13 +24,13 @@
 
 - `EventSink` 通过 `run_stream_in_shared(Arc<dyn EventSink>)` 传入，工具与审批可在执行中发事件；旧 `&dyn` 路径用缓冲 sink 兼容。
 - 每轮事件：TurnStarted → ApprovalRequested/Resolved → ToolCallStarted/Finished → TextDelta → TurnCompleted/Cancelled/Error。
-- 取消：rig 流式循环每项检查 `RigAgent.cancel()`；工具执行前检查取消；桌面 `chat.cancel` 调用 `Runtime::cancel_agent()`。工具超时可由 `ZEOKEEL_TOOL_TIMEOUT_MS` 配置（默认 120s）。非流式 provider 通过 50ms 轮询取消标志也可中断；审批超时由 `ZEOKEEL_APPROVAL_TIMEOUT_MS` 配置（默认 300s）。
+- 取消：rig 流式循环每项检查 `RigAgent.cancel()`；工具执行前检查取消；桌面 `chat.cancel` 调用 `Runtime::cancel_agent()`。工具超时优先取设置 `AppSettings.tools.tool_timeout_ms`（默认 120s、范围 1000..600000），未保存设置时回退 `ZEOKEEL_TOOL_TIMEOUT_MS`。非流式 provider 通过 50ms 轮询取消标志也可中断；审批超时优先取设置 `AppSettings.tools.approval_timeout_ms`（默认 300s、范围 1000..1800000），未保存设置时回退 `ZEOKEEL_APPROVAL_TIMEOUT_MS`。
 - 委派：subagent/workflow/ralph 复用同一 model/tools，但子会话 id 隔离为 `<conversation>-sub-<depth>`；最大深度 3。深度按会话 id 传递（子代理在新线程执行，不能只依赖线程本地状态），工具执行闭包内恢复深度后 `MAX_DEPTH` 才真正生效。
 
 ## 4. 工具矩阵
 
 - 已实现：`fs.read`、`fs.write`、`fs.edit`、`fs.search`、`bash`、`bash_persistent`、`job_output/list/kill`、`glob`、`grep`、`skill`、`web.fetch`、`working_directory`、`todo`、`present`、`load_workspace_dependencies`、`create_worktree`、`terminal`、`goal`、`schedule`、`pwsh`、`read_image`、`subagent`、`subagent_fork`、`workflow`、`ralph`、`ask_user_question`、`extract_json`、`read_document`（PDF/EPUB）、`session_search`、`web_search`、`pwsh_persistent`、`subagent_control`、`cordis`（禁用）、`agent_team`（实验禁用）；UI 已有审批卡、问题卡、provider 流式/取消；每个工具包至少一条行为测试，`scripts/agent-e2e.sh` 覆盖 9 条人机流程（审批/拒绝/取消/ask-user/bash/present/多步；retries=0）。
-- 部分/未实现：`agent-team`（未启用）、`call-timeout`（固定 120s 策略）、workflow 并行（DAG 已支持）、subagent fork/异步 control、pwsh persistent 平台支持。`schedule` 执行器为 opt-in：仅当 `ZEOKEEL_ENABLE_SCHEDULE_AUTORUN=1` 时读取工作区 `.zeokeel/schedules.json` 并自动起 turn；条目必须带 `schedule` 工具写入的 `origin` 标记、按 `interval_seconds` 重复（cron 在创建时校验但不解释）。
+- 部分/未实现：`agent-team`（未启用）、`call-timeout`（agent 级策略，超时已可经 `AppSettings.tools` 配置）、workflow 并行（DAG 已支持）、subagent fork/异步 control、pwsh persistent 平台支持。`schedule` 执行器为 opt-in：仅当 `ZEOKEEL_ENABLE_SCHEDULE_AUTORUN=1` 时读取工作区 `.zeokeel/schedules.json` 并自动起 turn；条目必须带 `schedule` 工具写入的 `origin` 标记、按 `interval_seconds` 重复（cron 在创建时校验但不解释）。
 - 完整矩阵与测试状态以 `docs/generated/AGENT-TOOL-MATRIX.md` 为准。
 - 平台不支持必须返回明确错误，不得静默缺失。
 
@@ -51,8 +51,9 @@
 | Usage | 流式 `FinalResponse` 与非流式 `PromptResponse` 都取 rig `Usage`（input/output/total/cached/cache_creation/reasoning/cost） | `RigAgent::last_usage() -> Option<UsageSnapshot>`；hook `TurnCompleted{usage}`。`AgentReply.usage` 契约已落地（`AgentUsage`：input/output/total/cached/reasoning，未报告归一为 0），UI 已展示；**未持久化到 session `Message`（重启丢失，见 §5.4）**。 |
 | 多轮 memory | `rig-memory` DirStore + conversation 持久化；每轮自动回放该 conversation 历史 | `AgentRuntimeConfig.memory{enabled,dir}`；目录优先级 `dir` > `ZEOKEEL_AGENT_MEMORY_DIR` > `$ZEOKEEL_HOME/agent-memory`；无目录时发 `MemoryUnavailable` hook（不静默）。 |
 | Hooks | `HookSink` 结构化事件：TurnStarted/TurnCompleted(usage/cancelled)/ToolStarted/ToolFinished/ApprovalRequested/ApprovalResolved/MemoryUnavailable/TurnFailed；可选 JSONL 追加 | `RigAgent::with_hook_sink`；`AgentRuntimeConfig.hooks{enabled,log}` / `ZEOKEEL_AGENT_HOOKS_ENABLED/_LOG`；`cap-hooks` 动态 availability（host 可 `set_available` 覆盖）。 |
-| Vector/embeddings | `cap-vector`：OpenAI-compatible embedding model + 进程内 cosine 索引（insert/insert_many/search/clear/len）。rig 适配在共享 `crates/zk-kit-media`（`kit.media` 的 `EmbeddingConfig`/`EmbeddingModel`/`embed_text`），cap-vector 不再直接依赖 rig-core/llm-rig（ADR-067）。 | `configure(EmbeddingModel)`、`configure_from_env()`（`ZEOKEEL_EMBEDDING_BASE_URL/_API_KEY/_MODEL/_DIMS`）、`unconfigure()`；未配置时 `available()==false` + `unavailable_reason()` + `CAPABILITY_UNAVAILABLE`。personal boot 经 `zk_composed::configure_capabilities_from_env()` 自动配置；enterprise 不配置（C7/ADR-031，网关无 embeddings 路由）。 |
+| Vector/embeddings | `cap-vector`：OpenAI-compatible embedding model + cosine 索引（insert/insert_many/search/clear/len）。rig 适配在共享 `crates/zk-kit-media`（`kit.media` 的 `EmbeddingConfig`/`EmbeddingModel`/`embed_text`），cap-vector 不再直接依赖 rig-core/llm-rig（ADR-067）。**可选持久化**：配置 `ZEOKEEL_VECTOR_DIR`（或 `configure_with_dir`）后索引存 `vector-index.json`（versioned `{version, documents:[{id,text,embedding}]}`），insert/clear 原子写（temp `0600` → rename，目录 `0700`）；上限 10k docs / 16MB（`VectorError::Capacity`）；缺失/损坏/不可读/超限时降级为空索引并暴露 `persistence_reason()` + stderr 日志（不 panic），下次成功保存修复文件。 | `configure(EmbeddingModel)`（读 `ZEOKEEL_VECTOR_DIR`）、`configure_with_dir(model, dir)`、`configure_from_env()`（`ZEOKEEL_EMBEDDING_BASE_URL/_API_KEY/_MODEL/_DIMS` + `ZEOKEEL_VECTOR_DIR`）、`unconfigure()`、`persistence_dir()`/`persistence_reason()`；未配置时 `available()==false` + `unavailable_reason()` + `CAPABILITY_UNAVAILABLE`。personal boot 经 `zk_composed::configure_capabilities_from_env()` 自动配置；enterprise 不配置（C7/ADR-031，网关无 embeddings 路由）。 |
 | 媒体/rerank/转写 | round 3 为「诚实不可用」占位；round 4 已用 rig 媒体模型实现，见 §5.3 | `cap-audio/cap-image/cap-rerank/cap-transcription`；错误码 `CAPABILITY_UNAVAILABLE`。 |
+| 工具/审批超时 | `agent-rig` 每轮把已保存的 `tool_timeout_ms` 作为 DynamicTool 执行超时；桌面 `ApprovalBroker::set_timeout_ms` 在启动与 `settings.set` 后热更新审批等待超时（不再只读 env） | `AppSettings.tools`（`ToolSettings{tool_timeout_ms=120000 clamp 1000..600000, approval_timeout_ms=300000 clamp 1000..1800000}`）。优先级：显式 settings > `ZEOKEEL_TOOL_TIMEOUT_MS`/`ZEOKEEL_APPROVAL_TIMEOUT_MS` env > 默认；fresh install / 默认-only 文件不发布（env 生效，同 agent settings 的 boot 语义），保存后立即生效；越界值 `settings.set` 回传 UI 错误。 |
 
 ### 5.3 媒体能力（round 4，2026-10-31）
 
@@ -75,7 +76,7 @@
 - **契约与桌面接线（已落地）**：`AppSettings.agent`/`AgentSettings`、`AgentReply.usage`（`AgentUsage`，未报告计数器归一 0）、`Agent::configure_agent` 默认实现已入契约；桌面启动与 `settings.set` 后应用 agent 配置（失败回传 UI 错误）；media/vector 配置由 personal boot 调用生成 glue 的 `zk_composed::configure_capabilities_from_env()`（enterprise 生成/调用 no-op，C7/ADR-031）。**剩余**：usage 未持久化（session `Message` 无 usage 字段，重启丢失）；`AgentEvent` 无独立 usage 事件（随 `TurnCompleted.reply` 携带）；`Agent::configure_agent` 在 agent-rig 生效，其它实现仍为默认 no-op。
 - **真实历史回放 vs 会话 DB**：当前多轮靠 rig-memory 目录日志；`SessionStore::messages_in` 回放仍缺（需桌面把历史注入 prompt 或统一由 memory 承担）。
 - rig 的 run-state 序列化/`Recorder`/`observe`/`telemetry`/`effect`、`ModelCatalog` 上下文窗口/压缩仍未接；rig loaders 的 `pdf`/`epub` feature 均未启用（原因见 §5.1），`read_document` 仍用独立实现。
-- `cap-vector` 索引为进程内（重启丢失）；SQLite 持久化待后续。
+- `cap-vector` 可选 JSON 持久化已实现（`ZEOKEEL_VECTOR_DIR`，原子写/0600/0700、10k docs/16MB 上限、损坏降级 + reason）；**剩余**：无跨进程写锁/跨设备同步（本地文件，最后一写者胜），无 SQLite/FTS，enterprise 仍无 embeddings 路由（C7 不提供）。
 
 ### 5.5 能力可用性契约
 

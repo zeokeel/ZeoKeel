@@ -169,11 +169,20 @@ fn boot_desktop() -> Result<(Arc<AppState>, zk_bootstrap::Bootstrap), String> {
         zk_composed::configure_capabilities_from_env();
     }
     apply_persisted_provider(&runtime);
-    let agent_config_error = ipc::apply_persisted_agent_settings(&runtime).err();
+    let persisted_settings = ipc::apply_persisted_settings(&runtime);
     let state = AppState::new(runtime);
-    if let Some(error) = agent_config_error {
-        eprintln!("zk-desktop: agent settings from persisted settings not applied: {error}");
-        state.record_agent_config_error(error);
+    match persisted_settings {
+        Err(error) => {
+            eprintln!("zk-desktop: settings from persisted settings not applied: {error}");
+            state.record_agent_config_error(error);
+        }
+        Ok(Some(tools)) => {
+            if let Err(error) = state.apply_tool_settings(&tools) {
+                eprintln!("zk-desktop: tool/approval settings not applied: {error}");
+                state.record_agent_config_error(error);
+            }
+        }
+        Ok(None) => {}
     }
     bootstrap
         .provide(APP_STATE_SERVICE, Arc::clone(&state))
@@ -193,12 +202,13 @@ fn boot_desktop() -> Result<(Arc<AppState>, zk_bootstrap::Bootstrap), String> {
             serde_json::json!({ "edition": zk_composed::EDITION }),
         )
         .map_err(|error| format!("register composed runtime: {error}"))?;
-    // Schedule executor runs as a kernel-owned task (abort-on-dispose). Its inner
-    // worker thread is started and owns its own lifecycle until process exit.
+    // Schedule executor runs as a kernel-owned task (abort-on-dispose). The task
+    // holds the executor handle, so kernel cancellation/shutdown drops it, which
+    // signals the worker and joins the std thread (bounded by its stop poll).
     let schedule_state = Arc::clone(&state);
     bootstrap
         .spawn_task("zk.desktop.schedule", async move {
-            automation::start(schedule_state);
+            let _executor = automation::start(schedule_state);
             std::future::pending::<()>().await;
         })
         .map_err(|error| format!("start schedule executor: {error}"))?;
@@ -257,7 +267,9 @@ fn main() {
         Ok(built) => built,
         Err(error) => {
             eprintln!("zk-desktop: failed to build composed runtime: {error}");
-            eprintln!("zk-desktop: run `zk compose --edition personal --profile default --channel official` first");
+            eprintln!(
+                "zk-desktop: run `zk compose --edition personal --profile default --channel official` first"
+            );
             std::process::exit(1);
         }
     };

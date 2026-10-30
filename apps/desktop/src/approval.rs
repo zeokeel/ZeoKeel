@@ -11,7 +11,8 @@ use zk_contract_tool::ApprovalGate;
 pub struct ApprovalBroker {
     waiters: Mutex<HashMap<String, mpsc::Sender<bool>>>,
     seq: AtomicU64,
-    timeout: Duration,
+    /// Current approval wait timeout in milliseconds (settings hot-reloadable).
+    timeout_ms: AtomicU64,
 }
 
 impl Default for ApprovalBroker {
@@ -19,7 +20,7 @@ impl Default for ApprovalBroker {
         Self {
             waiters: Mutex::new(HashMap::new()),
             seq: AtomicU64::new(0),
-            timeout: Duration::from_millis(
+            timeout_ms: AtomicU64::new(
                 std::env::var("ZEOKEEL_APPROVAL_TIMEOUT_MS")
                     .ok()
                     .and_then(|value| value.parse::<u64>().ok())
@@ -44,8 +45,22 @@ impl ApprovalBroker {
         Arc::new(Self {
             waiters: Mutex::new(HashMap::new()),
             seq: AtomicU64::new(0),
-            timeout,
+            timeout_ms: AtomicU64::new(duration_millis(timeout)),
         })
+    }
+
+    /// Replace the approval wait timeout in milliseconds (settings hot-reload,
+    /// e.g. `AppSettings.tools.approval_timeout_ms`). Applies to subsequent
+    /// waits.
+    pub fn set_timeout_ms(&self, timeout_ms: u64) {
+        self.timeout_ms.store(timeout_ms, Ordering::SeqCst);
+    }
+
+    /// Current approval wait timeout in milliseconds (tests/diagnostics).
+    #[must_use]
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn timeout_ms(&self) -> u64 {
+        self.timeout_ms.load(Ordering::SeqCst)
     }
 
     /// Resolve a pending request; returns false if unknown/expired.
@@ -78,14 +93,35 @@ impl ApprovalGate for ApprovalBroker {
             guard.insert(approval_id.to_owned(), tx);
         }
         let _ = self.seq.fetch_add(1, Ordering::SeqCst);
-        rx.recv_timeout(self.timeout).unwrap_or(false)
+        rx.recv_timeout(Duration::from_millis(
+            self.timeout_ms.load(Ordering::SeqCst),
+        ))
+        .unwrap_or(false)
     }
+}
+
+/// Milliseconds of a duration, saturating at `u64::MAX`.
+fn duration_millis(timeout: Duration) -> u64 {
+    u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
     use super::*;
+
+    #[test]
+    fn set_timeout_applies_to_subsequent_waits() {
+        let broker = ApprovalBroker::with_timeout(Duration::from_millis(20));
+        assert_eq!(broker.timeout_ms(), 20);
+        broker.set_timeout_ms(5_000);
+        assert_eq!(broker.timeout_ms(), 5_000);
+        broker.set_timeout_ms(120_000);
+        assert_eq!(broker.timeout_ms(), 120_000);
+        // Still fail-closed (no decision arrives) under the updated timeout.
+        broker.set_timeout_ms(20);
+        assert!(!broker.decide("missing", "bash", &serde_json::json!({}), "mutating"));
+    }
 
     #[test]
     fn broker_times_out_fail_closed() {
