@@ -18,7 +18,6 @@
 - rig hooks / vector store / dynamic context / 图像/音频/转写/rerank
 - schedule 执行器；subagent fork/异步 control；agent-team（实验禁用）
 - Playwright max turns / unknown tool / provider 设置
-- PDF 正例测试（当前只有 EPUB 正例 + PDF 负例）
 - `call-timeout` 为 agent 级环境策略（已豁免独立包）
 - 工具名/参数与 DSH 完全对齐
 
