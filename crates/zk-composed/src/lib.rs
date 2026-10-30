@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
-pub const EDITION: &str = "personal";
-pub const PACKAGES: &[&str] = &["zeokeel/agent-loop","zeokeel/llm-mock","zeokeel/store-session-sqlite","zeokeel/store-settings-json","zeokeel/tool-fs","zeokeel/ui-kit","zeokeel/ui-shell","zeokeel/ui-chat","zeokeel/ui-commands","zeokeel/ui-inspector","zeokeel/ui-sessions","zeokeel/ui-settings","zeokeel/ui-settings-provider","zeokeel/client-update-github",];
+pub const EDITION: &str = "enterprise";
+pub const PACKAGES: &[&str] = &["zeokeel/admin-ui-kit","zeokeel/admin-audit","zeokeel/admin-connectors","zeokeel/admin-jobs","zeokeel/admin-pricing","zeokeel/admin-settings","zeokeel/admin-skills","zeokeel/admin-usage","zeokeel/admin-users","zeokeel/admin-wallet","zeokeel/admin-shell","zeokeel/agent-loop","zeokeel/client-auth","zeokeel/llm-gateway","zeokeel/audit","zeokeel/auth","zeokeel/connectors","zeokeel/content","zeokeel/gateway","zeokeel/srv-http","zeokeel/jobs","zeokeel/pricing","zeokeel/settings","zeokeel/skills","zeokeel/users","zeokeel/wallet","zeokeel/store-session-sqlite","zeokeel/store-settings-json","zeokeel/tool-fs","zeokeel/ui-kit","zeokeel/ui-shell","zeokeel/ui-chat","zeokeel/ui-commands","zeokeel/ui-connectors","zeokeel/ui-inspector","zeokeel/ui-login","zeokeel/ui-sessions","zeokeel/ui-settings","zeokeel/ui-skills",];
 
 pub struct Runtime {
     agent: Arc<dyn zk_contract_agent::Agent>,
@@ -39,17 +39,18 @@ impl Runtime {
     }
 }
 
-pub fn check_update(current: &str, platform: &str) -> Result<Option<zk_contract_update::ReleaseInfo>, String> {
-    zk_client_update_github::check(current, platform).map(|check| if check.available { check.release } else { None }).map_err(|error| error.to_string())
-}
+pub fn check_update(_current: &str, _platform: &str) -> Result<Option<zk_contract_update::ReleaseInfo>, String> { Ok(None) }
 
-pub fn configure_llm(_base_url: &str, _access_token: &str, _model: &str) {}
+pub fn configure_llm(base_url: &str, access_token: &str, model: &str) {
+    zk_llm_gateway::set_credentials(base_url, access_token);
+    zk_llm_gateway::set_model(model);
+}
 
 pub fn build() -> Result<Runtime, String> {
     let tools: Vec<Arc<dyn zk_contract_tool::Tool>> = vec![
         Arc::new(zk_tool_fs::tool()),
     ];
-    let llm: Arc<dyn zk_contract_llm::LlmProvider> = Arc::new(zk_llm_mock::provider());
+    let llm: Arc<dyn zk_contract_llm::LlmProvider> = Arc::new(zk_llm_gateway::provider());
     let agent: Arc<dyn zk_contract_agent::Agent> = Arc::new(zk_agent_loop::agent(tools, llm));
     let sessions: Arc<dyn zk_contract_session::SessionStore> = Arc::new(zk_store_session_sqlite::store().map_err(|e| e.to_string())?);
     let settings: Arc<dyn zk_contract_config::SettingsStore> = Arc::new(zk_store_settings_json::store());

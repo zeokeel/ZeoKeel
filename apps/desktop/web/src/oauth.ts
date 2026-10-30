@@ -82,46 +82,20 @@ export function tokenNeedsRefresh(tokens: OAuthTokens, now = Date.now()): boolea
 }
 
 
-const TOKEN_KEY = "zk.connector.oauth";
-const PENDING_KEY = "zk.connector.pkce";
-
-export function loadConnectorTokens(connectorId: string): OAuthTokens | null {
+/** Parse tokens returned by the host keychain (opaque JSON string). */
+export function parseOAuthTokens(raw: unknown): OAuthTokens | null {
+  if (typeof raw !== "string") return null;
   try {
-    const raw = localStorage.getItem(TOKEN_KEY);
-    if (raw === null) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return null;
-    const value = parsed as Record<string, OAuthTokens>;
-    const tokens = value[connectorId];
-    if (tokens === undefined) return null;
-    return typeof tokens.access_token === "string" && typeof tokens.refresh_token === "string" && typeof tokens.expires_at === "number" ? tokens : null;
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null) return null;
+    const record = value as Record<string, unknown>;
+    return typeof record["access_token"] === "string" && typeof record["refresh_token"] === "string" && typeof record["expires_at"] === "number"
+      ? { access_token: record["access_token"], refresh_token: record["refresh_token"], expires_at: record["expires_at"] }
+      : null;
   } catch { return null; }
 }
 
-export function saveConnectorTokens(connectorId: string, tokens: OAuthTokens): void {
-  const raw = localStorage.getItem(TOKEN_KEY);
-  let store: Record<string, OAuthTokens> = {};
-  if (raw !== null) {
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      if (typeof parsed === "object" && parsed !== null) store = parsed as Record<string, OAuthTokens>;
-    } catch { store = {}; }
-  }
-  store[connectorId] = tokens;
-  localStorage.setItem(TOKEN_KEY, JSON.stringify(store));
-}
-
-export function clearConnectorTokens(connectorId: string): void {
-  const raw = localStorage.getItem(TOKEN_KEY);
-  if (raw === null) return;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return;
-    const store = parsed as Record<string, OAuthTokens>;
-    delete store[connectorId];
-    localStorage.setItem(TOKEN_KEY, JSON.stringify(store));
-  } catch { /* ignore */ }
-}
+const PENDING_KEY = "zk.connector.pkce";
 
 interface PendingAuth { connectorId: string; verifier: string; state: string; metadata: OAuthMetadata }
 

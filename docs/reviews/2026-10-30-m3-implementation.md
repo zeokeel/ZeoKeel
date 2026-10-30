@@ -162,3 +162,85 @@ M3 的纵向链路已落地：contracts/kit/content/skills/connectors/admin/ui�
 - **P2**：admin crate 命名、conformance 浅、tree hash golden 弱、tombstone 全量名称、强制更新/回滚/配额 e2e 缺失、客户端 SKILL.md/条目数校验缺失。
 - **M3 实现不能 APPROVED**；先修 P0/P1，重新生成/提交 `zk compose` 产物，补独立 M3 e2e/安全负向，再由同一评审者复评。
 - 本报告只读；未修改产品代码/spec/docs。
+
+---
+
+## 8. 第二轮复评（R2，2026-10-30）
+
+> 对象：R1 修复后的实现。只读复跑；未改产品代码/spec/docs（仅本记录）。
+> 仅列剩余 P0/P1。
+
+### 8.1 结论
+
+**CHANGES REQUIRED（CHANGES-REQUESTED）**
+
+- **P0：0**。R1 P0-1/P0-2 已关闭。
+- **P1：3 组剩余**：enterprise compose check 仍红、admin-e2e 整体仍非 0、OAuth token 仍 localStorage（与 docs/21 冲突）。
+- **M3 实现仍不可 APPROVED**。
+
+### 8.2 已关闭
+
+- **P0-1 路径穿越：RESOLVED**：`apps/desktop/src/ipc.rs:258-266` 的 `safe_component` 现拒绝 `.`/`..`/前导点/`:`/斜杠；`:597-602` 增加 hostile-name 测试并断言 installed skills 未被删除；`cargo test -p zk-desktop` 通过。
+- **P0-2 安全测试假绿：RESOLVED**：`scripts/srv-store-test.sh:82,90,101` 改为直接把 JSON 管道给 `python3 -c`，断言失败会使脚本非 0；connector 检查改为只断言 `access_token`/`refresh_token`/`client_secret` 不存在，合法 `token_url` 不再误报；实测 `EXIT=0` 且无 traceback，`store ok`。
+- **P1 Windows drive/`: `RESOLVED`**：`crates/zk-kit-content/src/lib.rs:7-13` 增加 `path.contains(':')`；`:test` 覆盖 `C:/evil`、`C:evil`、`//server/share`；tree hash golden 已钉 `e38ea953...`。
+- **P1 浏览器归档 SHA：RESOLVED**：`apps/desktop/web/src/store.ts:93-104` 下载后 `crypto.subtle.digest("SHA-256")` 重算并与 catalog 比较，不再只信响应头。
+- **P1 `zk api` 不存在：RESOLVED（移除 gate）**：tasks/acceptance 已删除 `zk api --check` 依赖，改为 `zk validate`/`zk compose --check`；不再把不存在命令当验收。
+- **P1 login-e2e：RESOLVED**：实测 `EXIT=0`，3 passed（M2 login、M2 gateway、M3 client content）。
+
+### 8.3 剩余 P1
+
+#### P1-1 · `zk compose --edition enterprise --check` 仍失败
+
+实测（未改生成物）：
+
+```text
+$ ./target/debug/zk compose --edition enterprise --profile default --channel official --check
+zk: generated files differ: apps/desktop/src/generated/packages.rs, apps/desktop/web/src/generated/registry.ts,
+apps/server/src/generated/packages.rs, crates/zk-composed/Cargo.toml, crates/zk-composed/src/lib.rs,
+docs/generated/PACKAGE-INDEX.md, shared/contracts/{packages,roles,ui-contributions}.json
+EXIT=1
+```
+
+与“regenerated enterprise compose (check green)”声明不符。可能原因：`login-e2e.sh` cleanup 在结束时执行 `compose --edition personal`（`scripts/login-e2e.sh:13`），当前工作区生成物是 personal，随后 enterprise check 必然差异；若是此原因，需修 cleanup 不污染验收状态，或在验收前显式生成 enterprise 并检查。无论原因，**当前 exact 命令不绿**，C11/M3 gate 不能通过。
+
+#### P1-2 · `admin-e2e.sh` 整体仍 exit 1
+
+实测：
+
+```text
+$ bash scripts/admin-e2e.sh
+...
+7 passed (34.6s)
+1 failed: e2e/m2-admin.spec.ts:44 jobs page can trigger reconcile
+EXIT=1
+```
+
+M3 的 `m3-admin-skills.spec.ts`、`m3-admin-connectors.spec.ts` 均通过（含 axe）；但脚本整体非 0，acceptance 不能写“8 passed / admin-e2e ok”。失败为 M2 jobs 用例，可能是 trace/并发 flake，但仍需隔离 M3 或修复脚本使 M3 独立 gate 可靠。
+
+#### P1-3 · OAuth token 仍 `localStorage`，与 docs/21 冲突
+
+- `apps/desktop/web/src/oauth.ts:85-122`：`TOKEN_KEY="zk.connector.oauth"`；access/refresh token 明文存 `localStorage`。
+- `docs/21:13/76`：MCP OAuth token 存系统密钥库；`docs/21:85` 本地密钥系统密钥库。
+- 本轮明确“system keychain not yet available in this slice”未附 ADR/docs 降级记录，也没有替代受保护存储；仍属 P1 安全缺口，而非已接受设计。
+
+### 8.4 其他证据（PASS）
+
+| 命令 | 结果 |
+| --- | --- |
+| `cargo test --workspace --offline` | **PASS**：EXIT 0（干净重跑；此前一次失败是 login-e2e cleanup 并发改生成物导致，已复现说明是脚本隔离问题） |
+| `cargo test -p zk-kit-content -p zk-desktop --offline` | **PASS**：hostile remove/path/kit 测试通过 |
+| `bash scripts/srv-store-test.sh` | **PASS**：EXIT 0，无 traceback，`store ok` |
+| `bash scripts/login-e2e.sh` | **PASS**：EXIT 0，3 passed |
+| `pnpm --dir apps/desktop/web test` | **PASS**：44 passed |
+| `zk validate` | **PASS**：63 packages scanned |
+| `zk capability --check` | **PASS**：13 entries |
+| `bash scripts/schema-check.sh` | **PASS** |
+| `zk db lock --check` | **PASS**：11 migrations |
+| `zk api --check` | 已从 M3 gate 移除；命令仍不存在，但不再作为证据 |
+
+### 8.5 结论
+
+- **P0：0；P1：3（compose check、admin-e2e 非绿、OAuth localStorage）**。
+- **M3 实现仍不可 APPROVED**：修 P1-1/P1-2/P1-3 后复评。
+- 关联 spec：`specs/changes/2026-10-30-m3-content-platform`。
+- 复评结论（第二轮）：**CHANGES-REQUESTED**

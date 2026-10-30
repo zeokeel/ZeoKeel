@@ -74,6 +74,7 @@
   - 客户端解压：整树 sha256 校验；可执行位白名单；失败清理临时目录（服务端只审归档元数据，ADR-061）。
 - MCP：stdio 命令/参数/环境变量由管理员配置；客户端执行；禁止 shell 拼接；env 白名单；工作目录固定。
 - MCP OAuth：公共客户端 + PKCE；回调走本机 loopback/自定义 scheme；token 存系统密钥库；服务端不代理流量。
+- OAuth token 由 app 的 keychain IPC 读写；仅无 Secret Service 的 headless e2e 在显式 `ZEOKEEL_DEV_KEYCHAIN_FALLBACK=1` 下写 `$ZEOKEEL_HOME/oauth-dev.json`（0600），生产不启用该回退。
 - 上传：MIME/扩展名/大小校验；zip bomb 检测；病毒扫描暂不做（TODO，M3+；索引 [`15` §C](15-open-questions.md#c-待定清单)，不构成当前承诺）。
 
 ## 6. 客户端与本地载体

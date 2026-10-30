@@ -202,6 +202,9 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
         commands::SKILLS_INSTALL => install_skill(payload),
         commands::SKILLS_INSTALLED => installed_skills(),
         commands::SKILLS_REMOVE => remove_skill(payload),
+        commands::OAUTH_TOKEN_SAVE => oauth_save(payload),
+        commands::OAUTH_TOKEN_LOAD => oauth_load(payload),
+        commands::OAUTH_TOKEN_CLEAR => oauth_clear(payload),
         commands::CHAT_SEND => chat_send(state, payload),
         commands::CHAT_CANCEL => chat_cancel(state, payload),
         commands::APPROVAL_DECIDE => {
@@ -346,6 +349,111 @@ fn install_skill(payload: &Value) -> CommandResponse {
         return CommandResponse::err(format!("skills install: {error}"));
     }
     CommandResponse::ok(json!({ "installed": true, "tree_sha256": tree, "path": target.to_string_lossy() }))
+}
+
+fn dev_oauth_fallback() -> bool {
+    std::env::var("ZEOKEEL_DEV_KEYCHAIN_FALLBACK").map(|value| value == "1").unwrap_or(false)
+}
+
+fn dev_oauth_path() -> Result<std::path::PathBuf, String> {
+    let base = match std::env::var("ZEOKEEL_HOME") {
+        Ok(value) => std::path::PathBuf::from(value),
+        Err(_) => dirs::home_dir().ok_or_else(|| "home directory unavailable".to_owned())?.join(".zeokeel"),
+    };
+    Ok(base.join("oauth-dev.json"))
+}
+
+fn read_dev_oauth() -> serde_json::Map<String, Value> {
+    let Ok(path) = dev_oauth_path() else { return serde_json::Map::new() };
+    let Ok(raw) = std::fs::read_to_string(path) else { return serde_json::Map::new() };
+    match serde_json::from_str::<Value>(&raw) {
+        Ok(Value::Object(map)) => map,
+        _ => serde_json::Map::new(),
+    }
+}
+
+fn write_dev_oauth(map: &serde_json::Map<String, Value>) -> Result<(), String> {
+    let path = dev_oauth_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    std::fs::write(&path, Value::Object(map.clone()).to_string()).map_err(|error| error.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+fn oauth_entry(connector_id: &str) -> Result<keyring::Entry, String> {
+    if connector_id.is_empty() || connector_id.len() > 128 || !connector_id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')) {
+        return Err("OAUTH_VALIDATION".to_owned());
+    }
+    keyring::Entry::new("zeokeel-connector-oauth", connector_id).map_err(|error| format!("keychain: {error}"))
+}
+
+fn oauth_save(payload: &Value) -> CommandResponse {
+    let (Some(connector_id), Some(tokens)) = (payload.get("connector_id").and_then(Value::as_str), payload.get("tokens")) else {
+        return CommandResponse::err("missing connector_id/tokens");
+    };
+    if !tokens.is_object() { return CommandResponse::err("OAUTH_VALIDATION"); }
+    let entry = match oauth_entry(connector_id) {
+        Ok(entry) => entry,
+        Err(_) if dev_oauth_fallback() => {
+            let mut map = read_dev_oauth();
+            map.insert(connector_id.to_owned(), tokens.clone());
+            return match write_dev_oauth(&map) { Ok(()) => CommandResponse::ok(json!({ "saved": true, "fallback": true })), Err(error) => CommandResponse::err(format!("keychain fallback: {error}")) };
+        }
+        Err(error) => return CommandResponse::err(error),
+    };
+    match entry.set_password(&tokens.to_string()) {
+        Ok(()) => CommandResponse::ok(json!({ "saved": true })),
+        Err(_error) if dev_oauth_fallback() => {
+            let mut map = read_dev_oauth();
+            map.insert(connector_id.to_owned(), tokens.clone());
+            match write_dev_oauth(&map) { Ok(()) => CommandResponse::ok(json!({ "saved": true, "fallback": true })), Err(error) => CommandResponse::err(format!("keychain fallback: {error}")) }
+        }
+        Err(error) => CommandResponse::err(format!("keychain: {error}")),
+    }
+}
+
+fn oauth_load(payload: &Value) -> CommandResponse {
+    let Some(connector_id) = payload.get("connector_id").and_then(Value::as_str) else { return CommandResponse::err("missing connector_id"); };
+    let entry = match oauth_entry(connector_id) {
+        Ok(entry) => entry,
+        Err(_) if dev_oauth_fallback() => return CommandResponse::ok(json!({ "tokens": read_dev_oauth().get(connector_id).map(Value::to_string) })),
+        Err(error) => return CommandResponse::err(error),
+    };
+    match entry.get_password() {
+        Ok(raw) => CommandResponse::ok(json!({ "tokens": raw })),
+        Err(_) if dev_oauth_fallback() => CommandResponse::ok(json!({ "tokens": read_dev_oauth().get(connector_id).map(Value::to_string) })),
+        Err(keyring::Error::NoEntry) => CommandResponse::ok(json!({ "tokens": null })),
+        Err(error) => CommandResponse::err(format!("keychain: {error}")),
+    }
+}
+
+fn oauth_clear(payload: &Value) -> CommandResponse {
+    let Some(connector_id) = payload.get("connector_id").and_then(Value::as_str) else { return CommandResponse::err("missing connector_id"); };
+    let entry = match oauth_entry(connector_id) {
+        Ok(entry) => entry,
+        Err(_) if dev_oauth_fallback() => {
+            let mut map = read_dev_oauth();
+            map.remove(connector_id);
+            return match write_dev_oauth(&map) { Ok(()) => CommandResponse::ok(json!({ "cleared": true, "fallback": true })), Err(error) => CommandResponse::err(format!("keychain fallback: {error}")) };
+        }
+        Err(error) => return CommandResponse::err(error),
+    };
+    match entry.delete_credential() {
+        Ok(()) => CommandResponse::ok(json!({ "cleared": true })),
+        Err(_) if dev_oauth_fallback() => {
+            let mut map = read_dev_oauth();
+            map.remove(connector_id);
+            match write_dev_oauth(&map) { Ok(()) => CommandResponse::ok(json!({ "cleared": true, "fallback": true })), Err(error) => CommandResponse::err(format!("keychain fallback: {error}")) }
+        }
+        Err(keyring::Error::NoEntry) => CommandResponse::ok(json!({ "cleared": true })),
+        Err(error) => CommandResponse::err(format!("keychain: {error}")),
+    }
 }
 
 fn remove_skill(payload: &Value) -> CommandResponse {

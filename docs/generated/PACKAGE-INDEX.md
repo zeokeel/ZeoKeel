@@ -2,12 +2,36 @@
 
 # Package Index
 
-edition `personal` · channel `official` · 14 packages
+edition `enterprise` · channel `official` · 39 packages
 
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
+| `admin.kit` | `zeokeel/admin-ui-kit` | `zk-admin-ui-kit` | `zk-contract-admin-ui` | singleton |
+| `admin.page.audit` | `zeokeel/admin-audit` | `zk-admin-admin-audit` | `zk-contract-admin-ui` | singleton |
+| `admin.page.connectors` | `zeokeel/admin-connectors` | `zk-admin-admin-connectors` | `zk-contract-admin-ui` | singleton |
+| `admin.page.jobs` | `zeokeel/admin-jobs` | `zk-admin-admin-jobs` | `zk-contract-admin-ui` | singleton |
+| `admin.page.pricing` | `zeokeel/admin-pricing` | `zk-admin-admin-pricing` | `zk-contract-admin-ui` | singleton |
+| `admin.page.settings` | `zeokeel/admin-settings` | `zk-admin-admin-settings` | `zk-contract-admin-ui` | singleton |
+| `admin.page.skills` | `zeokeel/admin-skills` | `zk-admin-admin-skills` | `zk-contract-admin-ui` | singleton |
+| `admin.page.usage` | `zeokeel/admin-usage` | `zk-admin-admin-usage` | `zk-contract-admin-ui` | singleton |
+| `admin.page.users` | `zeokeel/admin-users` | `zk-admin-admin-users` | `zk-contract-admin-ui` | singleton |
+| `admin.page.wallet` | `zeokeel/admin-wallet` | `zk-admin-admin-wallet` | `zk-contract-admin-ui` | singleton |
+| `admin.shell` | `zeokeel/admin-shell` | `zk-admin-shell` | `zk-contract-admin-ui` | singleton |
 | `agent.loop` | `zeokeel/agent-loop` | `zk-agent-loop` | `zk-contract-agent` | singleton |
-| `llm.provider.default` | `zeokeel/llm-mock` | `zk-llm-mock` | `zk-contract-llm` | singleton |
+| `auth.client` | `zeokeel/client-auth` | `zk-client-auth` | `zk-contract-auth-client` | singleton |
+| `llm.provider.default` | `zeokeel/llm-gateway` | `zk-llm-gateway` | `zk-contract-llm` | singleton |
+| `srv.audit` | `zeokeel/audit` | `zk-srv-audit` | `zk-contract-server` | singleton |
+| `srv.auth.session` | `zeokeel/auth` | `zk-srv-auth-local` | `zk-contract-auth` | singleton |
+| `srv.connectors` | `zeokeel/connectors` | `zk-srv-connectors` | `zk-contract-connector` | singleton |
+| `srv.content` | `zeokeel/content` | `zk-srv-content` | `zk-contract-content` | singleton |
+| `srv.gateway` | `zeokeel/gateway` | `zk-srv-gateway` | `zk-contract-gateway` | singleton |
+| `srv.http` | `zeokeel/srv-http` | `zk-srv-http` | `zk-contract-server` | singleton |
+| `srv.jobs` | `zeokeel/jobs` | `zk-srv-jobs` | `zk-contract-server` | singleton |
+| `srv.pricing` | `zeokeel/pricing` | `zk-srv-pricing` | `zk-contract-wallet` | singleton |
+| `srv.settings` | `zeokeel/settings` | `zk-srv-settings` | `zk-contract-server` | singleton |
+| `srv.skills` | `zeokeel/skills` | `zk-srv-skills` | `zk-contract-skill` | singleton |
+| `srv.users` | `zeokeel/users` | `zk-srv-users` | `zk-contract-user` | singleton |
+| `srv.wallet` | `zeokeel/wallet` | `zk-srv-wallet` | `zk-contract-wallet` | singleton |
 | `store.session` | `zeokeel/store-session-sqlite` | `zk-store-session-sqlite` | `zk-contract-session` | singleton |
 | `store.settings` | `zeokeel/store-settings-json` | `zk-store-settings-json` | `zk-contract-config` | singleton |
 | `tool.fs` | `zeokeel/tool-fs` | `zk-tool-fs` | `zk-contract-tool` | singleton |
@@ -15,8 +39,9 @@ edition `personal` · channel `official` · 14 packages
 | `ui.shell` | `zeokeel/ui-shell` | `zk-ui-shell` | `zk-contract-ui` | singleton |
 | `ui.slot.chat` | `zeokeel/ui-chat` | `zk-ui-chat` | `zk-contract-ui` | singleton |
 | `ui.slot.commands` | `zeokeel/ui-commands` | `zk-ui-commands` | `zk-contract-ui` | singleton |
+| `ui.slot.connectors` | `zeokeel/ui-connectors` | `zk-ui-connectors` | `zk-contract-ui` | singleton |
 | `ui.slot.inspector` | `zeokeel/ui-inspector` | `zk-ui-inspector` | `zk-contract-ui` | singleton |
+| `ui.slot.login` | `zeokeel/ui-login` | `zk-ui-login` | `zk-contract-ui` | singleton |
 | `ui.slot.sessions` | `zeokeel/ui-sessions` | `zk-ui-sessions` | `zk-contract-ui` | singleton |
 | `ui.slot.settings` | `zeokeel/ui-settings` | `zk-ui-settings` | `zk-contract-ui` | singleton |
-| `ui.slot.settings-provider` | `zeokeel/ui-settings-provider` | `zk-ui-settings-provider` | `zk-contract-ui` | singleton |
-| `update.client` | `zeokeel/client-update-github` | `zk-client-update-github` | `zk-contract-update` | singleton |
+| `ui.slot.skills` | `zeokeel/ui-skills` | `zk-ui-skills` | `zk-contract-ui` | singleton |

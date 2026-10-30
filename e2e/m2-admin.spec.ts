@@ -44,8 +44,11 @@ test.describe("M2 admin console (real server)", () => {
   test("jobs page can trigger reconcile", async ({ page }) => {
     await page.getByRole("button", { name: "作业" }).click();
     await expect(page.getByRole("heading", { name: "作业" })).toBeVisible();
-    await page.getByRole("button", { name: "对账" }).click();
-    await expect(page.locator("tbody tr").first()).toBeVisible();
+    await Promise.all([
+      page.waitForResponse((response) => response.url().includes("/api/admin/jobs/wallet-reconcile/run") && response.ok()),
+      page.getByRole("button", { name: "对账" }).click(),
+    ]);
+    await expect(page.locator("tbody tr").first()).toBeVisible({ timeout: 10_000 });
   });
 
   test("save a system setting", async ({ page }) => {

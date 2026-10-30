@@ -6,8 +6,19 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+zk-admin-admin-audit = { path = "../../packages/admin/admin-audit" }
+zk-admin-admin-connectors = { path = "../../packages/admin/admin-connectors" }
+zk-admin-admin-jobs = { path = "../../packages/admin/admin-jobs" }
+zk-admin-admin-pricing = { path = "../../packages/admin/admin-pricing" }
+zk-admin-admin-settings = { path = "../../packages/admin/admin-settings" }
+zk-admin-admin-skills = { path = "../../packages/admin/admin-skills" }
+zk-admin-admin-usage = { path = "../../packages/admin/admin-usage" }
+zk-admin-admin-users = { path = "../../packages/admin/admin-users" }
+zk-admin-admin-wallet = { path = "../../packages/admin/admin-wallet" }
+zk-admin-shell = { path = "../../packages/admin/shell" }
+zk-admin-ui-kit = { path = "../../packages/admin/ui-kit" }
 zk-agent-loop = { path = "../../packages/client/agent-loop" }
-zk-client-update-github = { path = "../../packages/client/update" }
+zk-client-auth = { path = "../../packages/client/auth" }
 zk-contract-admin-ui = { path = "../../packages/contracts/admin-ui" }
 zk-contract-agent = { path = "../../packages/contracts/agent" }
 zk-contract-auth = { path = "../../packages/contracts/auth" }
@@ -28,18 +39,32 @@ zk-contract-ui = { path = "../../packages/contracts/ui" }
 zk-contract-update = { path = "../../packages/contracts/update" }
 zk-contract-user = { path = "../../packages/contracts/user" }
 zk-contract-wallet = { path = "../../packages/contracts/wallet" }
-zk-llm-mock = { path = "../../packages/client/llm-mock" }
+zk-llm-gateway = { path = "../../packages/client/llm-gateway" }
+zk-srv-audit = { path = "../../packages/server/audit" }
+zk-srv-auth-local = { path = "../../packages/server/auth" }
+zk-srv-connectors = { path = "../../packages/server/connectors" }
+zk-srv-content = { path = "../../packages/server/content" }
+zk-srv-gateway = { path = "../../packages/server/gateway" }
+zk-srv-http = { path = "../../packages/server/http" }
+zk-srv-jobs = { path = "../../packages/server/jobs" }
+zk-srv-pricing = { path = "../../packages/server/pricing" }
+zk-srv-settings = { path = "../../packages/server/settings" }
+zk-srv-skills = { path = "../../packages/server/skills" }
+zk-srv-users = { path = "../../packages/server/users" }
+zk-srv-wallet = { path = "../../packages/server/wallet" }
 zk-store-session-sqlite = { path = "../../packages/client/store-session-sqlite" }
 zk-store-settings-json = { path = "../../packages/client/store-settings-json" }
 zk-tool-fs = { path = "../../packages/client/tool-fs" }
 zk-ui-chat = { path = "../../packages/ui/ui-chat" }
 zk-ui-commands = { path = "../../packages/ui/ui-commands" }
+zk-ui-connectors = { path = "../../packages/ui/ui-connectors" }
 zk-ui-inspector = { path = "../../packages/ui/ui-inspector" }
 zk-ui-kit = { path = "../../packages/ui/ui-kit" }
+zk-ui-login = { path = "../../packages/ui/ui-login" }
 zk-ui-sessions = { path = "../../packages/ui/ui-sessions" }
 zk-ui-settings = { path = "../../packages/ui/ui-settings" }
-zk-ui-settings-provider = { path = "../../packages/ui/ui-settings-provider" }
 zk-ui-shell = { path = "../../packages/ui/ui-shell" }
+zk-ui-skills = { path = "../../packages/ui/ui-skills" }
 serde_json = { workspace = true }
 
 [lints]

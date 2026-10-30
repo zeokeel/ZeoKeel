@@ -13,6 +13,7 @@ cleanup() {
 trap cleanup EXIT
 sudo -u postgres psql -v ON_ERROR_STOP=1 -Atqc "CREATE ROLE $ROLE LOGIN PASSWORD '$ROLE';"
 sudo -u postgres createdb -O "$ROLE" "$DB"
+cargo run -q -p zk -- compose --edition enterprise --profile default --channel official >/dev/null
 cargo build -q -p zk-server
 pnpm --dir apps/admin/web build >/dev/null
 ZEOKEEL_DATABASE_URL="postgres://$ROLE:$ROLE@127.0.0.1:5432/$DB" \

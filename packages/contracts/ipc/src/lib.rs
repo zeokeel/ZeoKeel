@@ -102,6 +102,12 @@ pub mod commands {
     pub const UPDATE_CHECK: &str = "update.check";
     /// Install a downloaded skill archive (validated/extracted by host).
     pub const SKILLS_INSTALL: &str = "skills.install";
+    /// Save connector OAuth tokens in the OS keychain.
+    pub const OAUTH_TOKEN_SAVE: &str = "oauth.save";
+    /// Load connector OAuth tokens from the OS keychain.
+    pub const OAUTH_TOKEN_LOAD: &str = "oauth.load";
+    /// Clear connector OAuth tokens from the OS keychain.
+    pub const OAUTH_TOKEN_CLEAR: &str = "oauth.clear";
     /// Remove an installed skill (all versions).
     pub const SKILLS_REMOVE: &str = "skills.remove";
     /// List installed skills (host-managed).

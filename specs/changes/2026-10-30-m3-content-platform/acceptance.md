@@ -8,6 +8,12 @@
 
 ## 1. 自动验证（实现后填写真实结果）
 
+### M3 review R2 fixes (2026-10-30)
+
+- P1 compose：`login-e2e.sh` 验收后保持 enterprise 生成物；显式 `zk compose --edition enterprise ... --check` 绿。
+- P1 admin e2e：脚本先 compose enterprise；M2 jobs 测试等待 reconcile 响应；`admin-e2e.sh` 8 passed EXIT 0。
+- P1 OAuth token：改为 keychain IPC（`oauth.save/load/clear`）；生产走系统密钥库；仅 headless e2e 用 `ZEOKEEL_DEV_KEYCHAIN_FALLBACK=1` 的 0600 文件回退（docs/21 已记录）。OAuth fake-provider e2e 仍通过。
+
 ### M3 implementation review fixes (2026-10-30)
 
 - P0-1：`safe_component` 拒绝 `.`/`..`/前导点/`:`/斜杠；`skills.remove` 恶意 name 测试验证不删除已安装技能。

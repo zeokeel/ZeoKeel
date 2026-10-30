@@ -12,7 +12,7 @@ import { useResolvedTheme } from "./theme";
 import type { FileEntry, Transport } from "./types";
 import { parseFileEntries, parseUpdateRelease } from "./protocol";
 import { downloadSkillArchive, fetchConnectors, fetchSkills, fetchTombstones, sendInstallReceipt, toggleConnector, type ConnectorItem, type SkillItem } from "./store";
-import { buildAuthorizeUrl, createPkcePair, exchangeCode, loadConnectorTokens, refreshOAuthToken, saveConnectorTokens, savePendingAuth, takePendingAuth, tokenNeedsRefresh } from "./oauth";
+import { buildAuthorizeUrl, createPkcePair, exchangeCode, parseOAuthTokens, refreshOAuthToken, savePendingAuth, takePendingAuth, tokenNeedsRefresh } from "./oauth";
 import { clearSession, fetchBootstrapInfo, loadGatewayModel, loadServerUrl, loadSession, login as loginRequest, refreshSession, saveGatewayModel, saveServerUrl, saveSession, type AuthSession } from "./auth";
 
 
@@ -45,8 +45,8 @@ export function App(props: { transport: Transport }) {
     const pending = takePendingAuth();
     if (pending === null || pending.state !== stateValue) return;
     void exchangeCode(pending.metadata, code, pending.verifier)
-      .then((tokens) => {
-        saveConnectorTokens(pending.connectorId, tokens);
+      .then(async (tokens) => {
+        await props.transport.call("oauth.save", { connector_id: pending.connectorId, tokens }).catch((error: unknown) => console.log("oauth-save-failed", String(error)));
         setAuthorized((values) => values.includes(pending.connectorId) ? values : [...values, pending.connectorId]);
         window.history.replaceState({}, "", window.location.pathname);
       })
@@ -64,11 +64,13 @@ export function App(props: { transport: Transport }) {
         const oauthIds: string[] = [];
         for (const connector of connectorItems) {
           if (connector.oauth === null) continue;
-          let tokens = loadConnectorTokens(connector.id);
+          const stored = await props.transport.call("oauth.load", { connector_id: connector.id }).catch(() => null);
+          const raw = typeof stored === "object" && stored !== null ? (stored as { tokens?: unknown }).tokens : null;
+          let tokens = parseOAuthTokens(raw);
           if (tokens === null) continue;
           if (tokenNeedsRefresh(tokens)) {
             tokens = await refreshOAuthToken({ authorizeUrl: connector.oauth.authorizeUrl, tokenUrl: connector.oauth.tokenUrl, clientId: connector.oauth.clientId, redirectUri: connector.oauth.redirectUri, scopes: connector.oauth.scopes }, tokens).catch(() => null);
-            if (tokens !== null) saveConnectorTokens(connector.id, tokens);
+            if (tokens !== null) await props.transport.call("oauth.save", { connector_id: connector.id, tokens }).catch(() => undefined);
           }
           if (tokens !== null) oauthIds.push(connector.id);
         }

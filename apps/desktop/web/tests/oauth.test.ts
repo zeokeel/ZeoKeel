@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { buildAuthorizeUrl, clearConnectorTokens, createPkcePair, exchangeCode, loadConnectorTokens, refreshOAuthToken, saveConnectorTokens, savePendingAuth, takePendingAuth, tokenNeedsRefresh, type OAuthMetadata } from "../src/oauth";
+import { buildAuthorizeUrl, createPkcePair, exchangeCode, parseOAuthTokens, refreshOAuthToken, savePendingAuth, takePendingAuth, tokenNeedsRefresh, type OAuthMetadata } from "../src/oauth";
 
 const metadata: OAuthMetadata = {
   authorizeUrl: "https://auth.example/authorize",
@@ -34,12 +34,10 @@ describe("connector oauth", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("persists connector tokens locally and clears them", async () => {
-    localStorage.clear();
-    saveConnectorTokens("c1", { access_token: "a", refresh_token: "r", expires_at: 123 });
-    expect(loadConnectorTokens("c1")?.access_token).toBe("a");
-    clearConnectorTokens("c1");
-    expect(loadConnectorTokens("c1")).toBeNull();
+  it("parses keychain token payloads", () => {
+    expect(parseOAuthTokens(JSON.stringify({ access_token: "a", refresh_token: "r", expires_at: 1 }))?.access_token).toBe("a");
+    expect(parseOAuthTokens("not-json")).toBeNull();
+    expect(parseOAuthTokens(null)).toBeNull();
   });
 
   it("round-trips pending PKCE state", () => {
