@@ -1,0 +1,10 @@
+# Deterministic offline profile for M0/M1 e2e: demo agent loop + mock LLM.
+# The shipped default uses rig (docs/38); tests that assert deterministic single-turn
+# tool behavior compose this profile explicitly.
+[profile]
+name = "mock"
+base = "default"
+
+[packages]
+"agent.loop" = "zeokeel/agent-loop"
+"llm.provider.default" = "zeokeel/llm-mock"

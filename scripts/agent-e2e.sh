@@ -19,8 +19,11 @@ def respond(body):
     global UNKNOWN_SEEN
     global UNKNOWN_SEEN
     messages=body.get("messages",[])
-    user=" ".join(str(m.get("content") or "") for m in messages if m.get("role")=="user")
-    tool_count=len([m for m in messages if m.get("role")=="tool"])
+    user_indices=[i for i,m in enumerate(messages) if m.get("role")=="user"]
+    last_user_index=user_indices[-1] if user_indices else -1
+    user=str(messages[last_user_index].get("content") or "") if last_user_index >= 0 else ""
+    # Only tools executed in the current turn count; earlier turns are history.
+    tool_count=len([m for m in messages[last_user_index+1:] if m.get("role")=="tool"])
     if "unknown" in user:
         if not UNKNOWN_SEEN:
             UNKNOWN_SEEN = True

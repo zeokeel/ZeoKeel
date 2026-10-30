@@ -3,6 +3,9 @@ import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 
 async function newConversation(page: Page): Promise<void> {
+  // The turn's first events (e.g. approval_requested) are emitted immediately; never send
+  // before the SSE subscription is open, otherwise the event is lost with no replay.
+  await page.waitForFunction(() => document.documentElement.dataset["zkEventsReady"] === "1");
   await page.getByRole("button", { name: "新建会话" }).last().click();
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(150);

@@ -24,19 +24,21 @@ export function InspectorPanel(props: InspectorPanelProps) {
     tab === "files" ? t("inspectorTabFiles") : tab === "changes" ? t("inspectorTabChanges") : t("inspectorTabTerminal");
   return (
     <aside aria-label={t("inspectorTitle")} className="flex w-[288px] shrink-0 flex-col border-s border-border" data-slot="inspector">
-      <div role="tablist" aria-label={t("inspectorTitle")} className="flex h-9 items-center gap-1 border-b border-border px-2 text-[11px]">
-        {TABS.map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            role="tab"
-            aria-selected={props.tab === tab}
-            onClick={() => { props.onTab(tab); }}
-            className={`rounded-sm px-2 py-1 ${props.tab === tab ? "bg-muted" : ""}`}
-          >
-            {labelOf(tab)}
-          </button>
-        ))}
+      <div className="flex h-9 items-center gap-1 border-b border-border px-2 text-[11px]">
+        <div role="tablist" aria-label={t("inspectorTitle")} className="flex items-center gap-1">
+          {TABS.map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              aria-selected={props.tab === tab}
+              onClick={() => { props.onTab(tab); }}
+              className={`rounded-sm px-2 py-1 ${props.tab === tab ? "bg-muted" : ""}`}
+            >
+              {labelOf(tab)}
+            </button>
+          ))}
+        </div>
         <button type="button" onClick={props.onClose} className="ms-auto px-1 text-muted-foreground" aria-label={t("inspectorClose")}>×</button>
       </div>
       <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto p-2 text-[11px] text-muted-foreground">

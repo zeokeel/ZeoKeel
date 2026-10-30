@@ -5,7 +5,7 @@
   "packageManager": "pnpm@12.16.1",
   "scripts": {
     "compose": "cargo run -p zk -- compose --edition personal --profile default --channel official",
-    "e2e": "playwright test",
+    "e2e": "bash scripts/m1-e2e.sh",
     "e2e:report": "playwright show-report target/evidence/m1/playwright-report",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",

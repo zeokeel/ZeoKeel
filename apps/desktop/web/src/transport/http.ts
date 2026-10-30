@@ -34,6 +34,11 @@ export function createHttpTransport(): Transport {
         return () => undefined;
       }
       const source = new EventSource(EVENTS_PATH);
+      // Deterministic readiness signal for e2e/automation: early turn events must not be
+      // sent before the SSE subscription is open, otherwise they are lost (no replay).
+      source.onopen = () => {
+        document.documentElement.dataset["zkEventsReady"] = "1";
+      };
       source.onmessage = (event: MessageEvent) => {
         const raw: unknown = event.data;
         if (typeof raw !== "string") {
@@ -55,6 +60,7 @@ export function createHttpTransport(): Transport {
       };
       source.onerror = () => {
         // EventSource reconnects automatically; keep this log low-noise.
+        delete document.documentElement.dataset["zkEventsReady"];
         console.warn("[zk] SSE connection lost; reconnecting");
       };
       return () => {
