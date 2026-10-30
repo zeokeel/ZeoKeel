@@ -35,3 +35,14 @@ describe("settings integration", () => {
     });
   });
 });
+
+describe("update check", () => {
+  it("shows the available version from the update feed", async () => {
+    const transport = readyTransport([]);
+    transport.handle("update.check", () => ({ release: { version: "9.9.9", notes: "" } }));
+    render(<App transport={transport} />);
+    await userEvent.click(await screen.findByRole("button", { name: "打开设置" }));
+    await userEvent.click(await screen.findByRole("button", { name: "检查更新" }));
+    expect(await screen.findByText("发现新版本 9.9.9")).toBeTruthy();
+  });
+});

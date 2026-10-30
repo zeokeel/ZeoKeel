@@ -37,4 +37,5 @@
 ## Update check package
 
 - `zk-client-update-github`（`update.client`，personal）：读 GitHub `latest.json`、semver 比较、按平台选资产；企业版 exclude。
-- 仍缺：设置页“检查更新”入口、下载/校验/安装。
+- 设置页“检查更新”入口已接（personal edition）；仍缺下载/校验/安装。
+- `app-settings.test.tsx` 覆盖发现新版本文案。

@@ -40,6 +40,9 @@ export interface SettingsDialogProps {
   gatewayModels?: string[];
   gatewayModel?: string;
   onSelectGatewayModel?: (model: string) => void;
+  onCheckUpdate?: (() => void) | undefined;
+  updateText?: string | null;
+  updateBusy?: boolean;
 }
 
 /** `settings.dialog` slot: reads settings/open state and actions from useUi. */
@@ -282,7 +285,18 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
                 {saving ? t("settingsSaving") : t("settingsSave")}
               </Button>
             </div>
-            {models.length > 0 ? (
+            {props.onCheckUpdate !== undefined ? (
+            <section className="grid gap-2 border-t border-border pt-3">
+              <h3 className={labelClass}>{t("settingsUpdates")}</h3>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="default" size="sm" disabled={props.updateBusy === true} onClick={props.onCheckUpdate}>
+                  {props.updateBusy === true ? t("settingsCheckingUpdate") : t("settingsCheckUpdate")}
+                </Button>
+                {props.updateText !== null && props.updateText !== undefined ? <span className="text-[12px] text-muted-foreground">{props.updateText}</span> : null}
+              </div>
+            </section>
+          ) : null}
+          {models.length > 0 ? (
             <section className="grid gap-2 border-t border-border pt-3">
               <h3 className={labelClass}>{t("settingsGatewayModel")}</h3>
               <select

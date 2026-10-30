@@ -39,6 +39,10 @@ impl Runtime {
     }
 }
 
+pub fn check_update(current: &str, platform: &str) -> Result<Option<zk_contract_update::ReleaseInfo>, String> {
+    zk_client_update_github::check(current, platform).map(|check| if check.available { check.release } else { None }).map_err(|error| error.to_string())
+}
+
 pub fn configure_llm(_base_url: &str, _access_token: &str, _model: &str) {}
 
 pub fn build() -> Result<Runtime, String> {

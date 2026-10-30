@@ -10,7 +10,7 @@ import { translate } from "./i18n";
 import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
 import type { FileEntry, Transport } from "./types";
-import { parseFileEntries } from "./protocol";
+import { parseFileEntries, parseUpdateRelease } from "./protocol";
 import { clearSession, fetchBootstrapInfo, loadGatewayModel, loadServerUrl, loadSession, login as loginRequest, refreshSession, saveGatewayModel, saveServerUrl, saveSession, type AuthSession } from "./auth";
 
 
@@ -26,6 +26,8 @@ export function App(props: { transport: Transport }) {
   const [loginLoading, setLoginLoading] = useState(false);
   const [gatewayModels, setGatewayModels] = useState<string[]>([]);
   const [gatewayModel, setGatewayModel] = useState<string>(loadGatewayModel);
+  const [updateText, setUpdateText] = useState<string | null>(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
   const { state } = controller;
   useEffect(() => {
     if (state.meta.edition !== "enterprise" || session === null) return;
@@ -137,6 +139,19 @@ export function App(props: { transport: Transport }) {
         transport={props.transport}
         gatewayModels={gatewayModels}
         gatewayModel={gatewayModel}
+        updateText={updateText}
+        updateBusy={updateBusy}
+        onCheckUpdate={state.meta.edition === "personal" ? () => {
+          setUpdateBusy(true);
+          setUpdateText(null);
+          void props.transport.call("update.check", {})
+            .then((value) => {
+              const release = parseUpdateRelease(value);
+              setUpdateText(release === null ? t("settingsUpToDate") : t("settingsUpdateAvailable", { version: release.version }));
+            })
+            .catch(() => { setUpdateText(t("settingsUpdateCheckFailed")); })
+            .finally(() => { setUpdateBusy(false); });
+        } : undefined}
         onSelectGatewayModel={(model) => {
           setGatewayModel(model);
           saveGatewayModel(model);
@@ -150,8 +165,8 @@ export function App(props: { transport: Transport }) {
   );
 }
 
-function AppShell(props: { controller: AppController; ui: UiValue; transport: Transport; gatewayModels: string[]; gatewayModel: string; onSelectGatewayModel: (model: string) => void }) {
-  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel } = props;
+function AppShell(props: { controller: AppController; ui: UiValue; transport: Transport; gatewayModels: string[]; gatewayModel: string; onSelectGatewayModel: (model: string) => void; updateText: string | null; updateBusy: boolean; onCheckUpdate?: (() => void) | undefined }) {
+  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel, updateText, updateBusy, onCheckUpdate } = props;
   const t = ui.t;
   const state = controller.state;
   const [commandsOpen, setCommandsOpen] = useState(false);
@@ -223,7 +238,7 @@ function AppShell(props: { controller: AppController; ui: UiValue; transport: Tr
       workspaceError={ui.workspaceError}
       navigation={<SessionsSlot />}
       conversation={<ChatSlot key={ui.activeWorkspaceId === null ? "none" : ui.activeWorkspaceId} />}
-      settings={<SettingsSlot gatewayModels={gatewayModels} gatewayModel={gatewayModel} onSelectGatewayModel={onSelectGatewayModel} />}
+      settings={<SettingsSlot gatewayModels={gatewayModels} gatewayModel={gatewayModel} onSelectGatewayModel={onSelectGatewayModel} onCheckUpdate={onCheckUpdate} updateText={updateText} updateBusy={updateBusy} />}
       inspector={<InspectorSlot open={inspectorOpen} tab={inspectorTab} files={files} changes={[]} onTab={setInspectorTab} onClose={() => { setInspectorOpen(false); }} />}
       inspectorOpen={inspectorOpen}
       onToggleInspector={() => { setInspectorOpen((value) => !value); }}

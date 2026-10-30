@@ -841,6 +841,7 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
     let mut agent: Option<&Selected> = None;
     let mut sessions: Option<&Selected> = None;
     let mut settings: Option<&Selected> = None;
+    let mut update: Option<&Selected> = None;
     for pkg in &resolved.packages {
         if pkg.role.starts_with("tool.") {
             tools.push(pkg);
@@ -852,7 +853,9 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
             sessions = Some(pkg);
         } else if pkg.role == "store.settings" {
             settings = Some(pkg);
-        } else if pkg.role.starts_with("srv.") || pkg.role.starts_with("admin.") || pkg.role == "auth.client" || pkg.role == "update.client" {
+        } else if pkg.role == "update.client" {
+            update = Some(pkg);
+        } else if pkg.role.starts_with("srv.") || pkg.role.starts_with("admin.") || pkg.role == "auth.client" {
             // Server/admin packages are wired by their composition roots (M2).
         } else if pkg.role == "ui.kit" || pkg.role == "ui.shell" || pkg.role.starts_with("ui.slot.") {
             // UI-only packages are wired by the generated web registry, not the Rust glue.
@@ -880,6 +883,14 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
     out.push_str("];\n\n");
     out.push_str("pub struct Runtime {\n    agent: Arc<dyn zk_contract_agent::Agent>,\n    sessions: Arc<dyn zk_contract_session::SessionStore>,\n    settings: Arc<dyn zk_contract_config::SettingsStore>,\n}\n\n");
     out.push_str("impl Runtime {\n    pub fn run(&self, input: &str) -> Result<serde_json::Value, String> {\n        let reply = self.agent.run(input).map_err(|e| e.to_string())?;\n        serde_json::to_value(reply).map_err(|e| e.to_string())\n    }\n\n    pub fn run_stream(&self, turn_id: &str, input: &str, sink: &dyn zk_contract_agent::EventSink) -> Result<zk_contract_agent::AgentReply, zk_contract_agent::AgentError> {\n        self.agent.run_stream(turn_id, input, sink)\n    }\n\n    pub fn run_stream_in(&self, context: &zk_contract_tool::TurnContext, turn_id: &str, input: &str, sink: &dyn zk_contract_agent::EventSink) -> Result<zk_contract_agent::AgentReply, zk_contract_agent::AgentError> {\n        self.agent.run_stream_in(context, turn_id, input, sink)\n    }\n\n    pub fn sessions(&self) -> Arc<dyn zk_contract_session::SessionStore> {\n        Arc::clone(&self.sessions)\n    }\n\n    pub fn settings(&self) -> Arc<dyn zk_contract_config::SettingsStore> {\n        Arc::clone(&self.settings)\n    }\n\n    pub fn packages(&self) -> &'static [&'static str] {\n        PACKAGES\n    }\n}\n\n");
+    if let Some(update_pkg) = update {
+        out.push_str(&format!(
+            "pub fn check_update(current: &str, platform: &str) -> Result<Option<zk_contract_update::ReleaseInfo>, String> {{\n    {}::check(current, platform).map(|check| if check.available {{ check.release }} else {{ None }}).map_err(|error| error.to_string())\n}}\n\n",
+            update_pkg.crate_name.replace('-', "_")
+        ));
+    } else {
+        out.push_str("pub fn check_update(_current: &str, _platform: &str) -> Result<Option<zk_contract_update::ReleaseInfo>, String> { Ok(None) }\n\n");
+    }
     if llm.crate_name == "zk-llm-gateway" {
         out.push_str("pub fn configure_llm(base_url: &str, access_token: &str, model: &str) {\n    zk_llm_gateway::set_credentials(base_url, access_token);\n    zk_llm_gateway::set_model(model);\n}\n\n");
     } else {

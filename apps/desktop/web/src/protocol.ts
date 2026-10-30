@@ -113,6 +113,17 @@ export function parseFileEntries(value: unknown): FileEntry[] | null {
   return out;
 }
 
+export interface UpdateRelease { version: string; notes: string }
+
+export function parseUpdateRelease(value: unknown): UpdateRelease | null {
+  if (!isRecord(value)) return null;
+  const release = value["release"];
+  if (!isRecord(release)) return null;
+  const version = readString(release, "version");
+  if (version === null || version === "") return null;
+  return { version, notes: readString(release, "notes") ?? "" };
+}
+
 export function parseWorkspaces(value: unknown): Workspace[] | null {
   const items =
     readArrayOrNull(value) ??

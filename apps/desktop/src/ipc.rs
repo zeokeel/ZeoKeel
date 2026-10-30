@@ -192,6 +192,13 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             zk_composed::configure_llm(base_url, access_token, model);
             CommandResponse::ok(json!({ "configured": true }))
         }
+        commands::UPDATE_CHECK => {
+            let platform = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+            match zk_composed::check_update(env!("CARGO_PKG_VERSION"), &platform) {
+                Ok(release) => CommandResponse::ok(json!({ "release": release, "platform": platform })),
+                Err(error) => CommandResponse::err(format!("update/check: {error}")),
+            }
+        }
         commands::CHAT_SEND => chat_send(state, payload),
         commands::CHAT_CANCEL => chat_cancel(state, payload),
         commands::APPROVAL_DECIDE => {
