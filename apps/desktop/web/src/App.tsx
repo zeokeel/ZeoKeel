@@ -10,7 +10,7 @@ import { translate } from "./i18n";
 import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
 import type { Transport } from "./types";
-import { loadSession, login as loginRequest, saveSession, type AuthSession } from "./auth";
+import { clearSession, loadServerUrl, loadSession, login as loginRequest, refreshSession, saveServerUrl, saveSession, type AuthSession } from "./auth";
 
 
 function isMockMode(): boolean {
@@ -20,9 +20,27 @@ function isMockMode(): boolean {
 export function App(props: { transport: Transport }) {
   const controller = useAppController(props.transport);
   const [session, setSession] = useState<AuthSession | null>(loadSession);
+  const [serverUrl, setServerUrl] = useState<string>(loadServerUrl);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginLoading, setLoginLoading] = useState(false);
   const { state } = controller;
+  useEffect(() => {
+    if (state.meta.edition !== "enterprise" || session === null) return;
+    const url = serverUrl === "" ? state.settings.server_url : serverUrl;
+    if (url === "") return;
+    void props.transport.call("auth.configure", { server_url: url, access_token: session.access_token }).catch(() => {});
+    const refreshMs = Math.max(session.expires_in, 60) * 800;
+    const timer = window.setTimeout(() => {
+      void refreshSession(session, url)
+        .then((next) => {
+          saveSession(next);
+          setSession(next);
+          void props.transport.call("auth.configure", { server_url: url, access_token: next.access_token }).catch(() => {});
+        })
+        .catch(() => { clearSession(); setSession(null); });
+    }, refreshMs);
+    return () => { window.clearTimeout(timer); };
+  }, [state.meta.edition, session, serverUrl, state.settings.server_url, props.transport]);
   const theme = useResolvedTheme(state.settings.theme);
   const brand: BrandConfig = BRAND;
 
@@ -85,6 +103,8 @@ export function App(props: { transport: Transport }) {
       void loginRequest(serverUrl, input.username, input.password, input.deviceName)
         .then((next) => {
           saveSession(next);
+          saveServerUrl(serverUrl);
+          setServerUrl(serverUrl);
           void props.transport.call("auth.configure", { server_url: serverUrl, access_token: next.access_token }).catch(() => {});
           setSession(next);
         })

@@ -6,9 +6,11 @@ export interface AuthSession {
   user_id: string;
   role: string;
   username: string;
+  device_name: string;
 }
 
 const KEY = "zk.enterprise.session";
+const SERVER_KEY = "zk.enterprise.server";
 
 export function loadSession(): AuthSession | null {
   try {
@@ -25,6 +27,7 @@ export function loadSession(): AuthSession | null {
       user_id: typeof value["user_id"] === "string" ? value["user_id"] : "",
       role: typeof value["role"] === "string" ? value["role"] : "employee",
       username: typeof value["username"] === "string" ? value["username"] : "",
+      device_name: typeof value["device_name"] === "string" ? value["device_name"] : "",
     };
   } catch {
     return null;
@@ -37,6 +40,33 @@ export function saveSession(session: AuthSession): void {
 
 export function clearSession(): void {
   localStorage.removeItem(KEY);
+  localStorage.removeItem(SERVER_KEY);
+}
+
+export function loadServerUrl(): string {
+  return localStorage.getItem(SERVER_KEY) ?? "";
+}
+
+export function saveServerUrl(serverUrl: string): void {
+  localStorage.setItem(SERVER_KEY, serverUrl.replace(/\/$/, ""));
+}
+
+export async function refreshSession(session: AuthSession, serverUrl: string): Promise<AuthSession> {
+  const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/auth/refresh`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ refresh_token: session.refresh_token, device_id: session.device_name || "client" }),
+  });
+  const body = (await response.json()) as { ok?: boolean; error?: string; access_token?: string; refresh_token?: string; expires_in?: number };
+  if (!response.ok || body.ok === false || typeof body.access_token !== "string" || typeof body.refresh_token !== "string") {
+    throw new Error(body.error ?? `HTTP ${response.status}`);
+  }
+  return {
+    ...session,
+    access_token: body.access_token,
+    refresh_token: body.refresh_token,
+    expires_in: typeof body.expires_in === "number" ? body.expires_in : 900,
+  };
 }
 
 export async function login(serverUrl: string, username: string, password: string, deviceName: string): Promise<AuthSession> {
@@ -56,5 +86,6 @@ export async function login(serverUrl: string, username: string, password: strin
     user_id: body.user?.id ?? "",
     role: body.user?.role ?? "employee",
     username: body.user?.username ?? username,
+    device_name: deviceName,
   };
 }
