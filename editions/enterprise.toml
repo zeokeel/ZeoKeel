@@ -1,4 +1,5 @@
 [packages]
+"ui.slot.login" = "zeokeel/ui-login"
 "auth.client" = "zeokeel/client-auth"
 "admin.page.settings" = "zeokeel/admin-settings"
 "admin.page.jobs" = "zeokeel/admin-jobs"

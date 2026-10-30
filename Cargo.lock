@@ -6551,6 +6551,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-ui-login"
+version = "0.1.0"
+dependencies = [
+ "zk-contract-ui",
+]
+
+[[package]]
 name = "zk-ui-sessions"
 version = "0.1.0"
 dependencies = [

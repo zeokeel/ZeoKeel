@@ -1,0 +1,21 @@
+schema = 1
+id = "zeokeel/ui-login"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "Enterprise login / first-run server address UI"
+
+[role]
+name = "ui.slot.login"
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-ui-login" }
+ui = { package = "@zeokeel/ui-login" }
+
+[[ui.contributions]]
+slot = "ui.login"
+component = "login.page"
+order = 10

@@ -65,3 +65,7 @@
 ## Client auth package
 
 - `packages/client/auth`（`zk-client-auth` / `auth.client`）：login/refresh/me/logout；假 server 集成测试通过；UI/令牌持久化待接。
+
+## Login UI package
+
+- `@zeokeel/ui-login`（`ui.login`）：官方首配地址/OEM 锁定地址、账号密码、错误内联、loading/密码显隐；未接 app（下一步）。

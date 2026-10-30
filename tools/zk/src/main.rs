@@ -941,6 +941,7 @@ fn slot_binding(slot: &str) -> Option<&'static str> {
         "ui.shell" => Some("ShellSlot"),
         "ui.inspector" => Some("InspectorSlot"),
         "ui.commands" => Some("CommandsSlot"),
+        "ui.login" => Some("LoginSlot"),
         "ui.approval" => Some("ApprovalSlot"),
         "ui.toolcall" => Some("ToolSlot"),
         _ => None,

@@ -137,6 +137,11 @@ contract = "zk-contract-ui"
 cardinality = "singleton"
 editions = ["personal", "enterprise"]
 
+[roles."ui.slot.login"]
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
 [roles."ui.slot.inspector"]
 contract = "zk-contract-ui"
 cardinality = "singleton"
