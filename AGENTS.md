@@ -62,7 +62,7 @@
 - provider：个人版本地（DeepSeek/OpenAI 兼容/Ollama）；M1 key 暂存本地 JSON（0600），M2 接系统密钥库；企业版 `llm.provider.default`。
 - 前端组件是包：pnpm workspace + `[[ui.contributions]]` 静态声明 + 构建期生成 registry；shell 只认 componentId/slotId。
 - UI 基线：assistant-ui primitives + Radix 原语 + Tailwind 4；流式 Markdown 用 `@assistant-ui/react-markdown`；长列表后置 TanStack Virtual。视觉/包组合/品牌见 `27`。
-- 未登录（企业版）：`server_url` 非空（渠道预置，OEM 常见）→ 登录页只显示账号/密码；为空（官方企业版默认）→ **首配页（`ui.first-run`）** 显示地址输入并保存（设置可改，需重登），然后进登录页；登录页本身不显示地址输入。
+- 未登录（企业版）：`server_url` 非空（渠道预置，OEM 常见）→ 登录页只显示账号/密码；为空（官方企业版默认）→ **首配页（由 `ui.slot.login` 的首配变体渲染）** 显示地址输入并保存（设置可改，需重登），然后进登录页；登录页本身不显示地址输入。
 
 ### 3.2 服务端（弱管控）
 

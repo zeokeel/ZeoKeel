@@ -250,6 +250,10 @@
 | `events.json` + topic 注册表 | `zk-contract-events` | 双端 | 未注册 topic/type ⇒ CI 失败；缺 schema_version ⇒ 失败 |
 | `shared/contracts/schema/*.json` | schemars（`export_schema`） | 工具/配置校验、前端 Ajv 与 TS 生成 | `git diff --exit-code` |
 
+**实现状态（M2）**：`GET /api/meta/capabilities`（ETag）与 `/api/admin/meta` 已提供版本/特性/权限矩阵；
+access JWT 含 iss/aud/uid/role/epoch/device/channel/jti 并在服务端校验；refresh 绑定 device+channel；
+admin 会话 TTL/idle 由设置键 `admin.session_ttl_secs`/`admin.session_idle_secs` 控制。
+
 规则：DTO 只写在契约 crate（双端共用，禁止两侧各写一份）；网络 DTO 不加 `deny_unknown_fields`，保证旧客户端可解析新服务端；枚举增值客户端降级 Unknown 并保留原文；`errors.json` 由错误码枚举生成；契约 PR 必须附 `cargo public-api` diff 与两侧反序列化对拍样本。
 
 ## 11. 实现细节待定（索引 15 §C；编号 04-Q* 保留）

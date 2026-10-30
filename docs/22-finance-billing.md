@@ -87,6 +87,10 @@ active/suspended ──销户──► closed（余额按规则清零/转移，�
 | `usage.price_version` | 结算时快照版本；价格行不可改，改价=新版本 |
 | `price_snapshot` | JSON：version、model、period、multiplier、输入/输出/缓存价、舍入规则 |
 
+
+**实现状态（M2）**：峰谷窗口由热设置 `pricing.peak_window` 配置（weekday_mask/start/end，支持跨午夜；
+`GET/PUT /api/admin/pricing/peak-window`），网关逐请求读取；`price_versions/price_periods` 表仍未被结算路径使用，
+当前按 `pricing.peak_window` + `model_prices` 计算，后续版本化价格需迁移。
 规则：历史请求只能按快照复算；改价需公告期（默认 7 天）+ 审计；展示价缓存失效；禁止删除旧版本。
 
 ### 5.4 舍入

@@ -105,6 +105,11 @@
 **API**：`POST /v1/responses`（流式，`stream:true`；工具调用子树不改写）；`GET /v1/models`；
 管理面 `GET/POST/PATCH /api/admin/providers`、`GET/PUT /api/admin/models`、`GET /api/admin/usage*`。
 
+**实现状态（M2）**：上游路由来自 DB `models`→`providers`（priority/timeout_secs/max_retries，迁移 0015），
+按 provider 重试后跨 provider failover（5xx/超时），env 只作为 bootstrap fallback；管理面提供
+`GET/POST/PATCH /api/admin/providers`、`GET /api/admin/models`、`PUT /api/admin/models/{model}`（key 掩码、审计 fail-closed）。
+**未决**：上游 key 目前在 server 侧明文 `api_key_enc`（API 掩码），master-key 加密/轮换需要单独 ADR。
+
 **错误**：不向上游细节；`MODEL_NOT_FOUND`、`MODEL_NOT_PRICED`、`WALLET_EXHAUSTED`、`RATE_LIMITED`、
 `UPSTREAM`（可重试标记）。
 

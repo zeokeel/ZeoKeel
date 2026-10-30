@@ -595,3 +595,17 @@ S0 验证尚未完成（见 `12`），这不是“未决架构问题”，而是
 **决策**（2026-10-31，用户指令）：`editions/personal.toml` 把 `agent.loop` 映射为 `zeokeel/agent-rig`、`llm.provider.default` 映射为 `zeokeel/llm-rig`；enterprise 继承该映射（网关包提供自己的 rig 适配）。`packages/client/agent-loop` 只保留为最小演示与契约 conformance 对拍实现。`docs/38` 是 agent 运行时唯一权威；`docs/05` §5 原口径（“M1 只依赖 rig-core / agent-rig 为 M5 可选”）被本 ADR 取代。rig 依赖仍只出现在 `zk-llm-rig`/`zk-agent-rig` 适配层，`zk-contract-*` 与 `zk-tool-*` 不依赖 rig（`docs/05` §5.1 铁律不变）。
 **理由**：用户 2026-10-31 指令要求 agent 功能完备、rig 能力全支持；M0 的 `agent-loop` 只实现了单轮 `TOOL fs.read` 文本协议，无法承载 `docs/38` 的工具、审批、取消、委派语义。继续以 `agent-loop` 作为 shipped 默认会让 `scripts/agent-e2e.sh` 的 dev-live 组合与用户实际构建分叉。
 **后果**：① 默认构建需要 rig model：`llm-rig` 在未配置 provider 时返回占位模型使桌面可启动，启动后从 settings 热切换，失败写诊断日志；`settings.set` 的 configure 失败回传 UI 错误（不再静默丢弃）。② enterprise 构建要求 `zk-llm-gateway` 提供 `model()`/`model_from_config()` rig 适配（由网关包任务交付），否则 enterprise 组合不编译。③ 新增 agent 能力只改 `agent-rig`/工具包并同步 `docs/38` 与 `docs/generated/AGENT-TOOL-MATRIX.md`。④ `profiles/dev-live.toml` 的覆盖与 default 等价，保留为本地 env 联调入口。
+
+### ADR-065 · 两端 boot/shutdown 统一经 zk-bootstrap（zeokeel-cordis 宿主）`accepted`
+
+**背景**：docs/02/05/06/10/24 从 M0 起就要求 `zeokeel-cordis` 作为宿主、`crates/zk-bootstrap` 作为引导 crate（ADR-009），但实现长期没有依赖内核：desktop/server 各自 `main()` plus 裸 `tokio::spawn`，任务无法被统一回收。
+**决策**：新增 `crates/zk-bootstrap`，封装 `Context::root()`；提供插件注册、服务注入、`spawn_task`（以 cordis effect 形式持有并在 dispose 时 abort）、幂等 `shutdown()`，并用既有 `zk-contract-kernel::{Clock,ConfigStore,TaskScheduler}` 暴露宿主服务。desktop/server 均先 boot 内核再构建 runtime；server SIGTERM 顺序（drain → pending → audit verify → pool close）之后调用 `Bootstrap::shutdown()`；周期任务（jobs/schedule）注册为内核任务。
+**理由**：内核是"资源可回收"的承诺；不用它则 effect/生命周期语义是假的，也无法防任务泄漏。静态链接、无动态加载（C2）不变。
+**后果**：新增依赖 `zeokeel-cordis = "=0.6.0"`（精确 patch）；模板 `app_{desktop,server}.Cargo.toml` 增加 zk-bootstrap 边；后续新增后台任务必须走 `spawn_task`。剩余：desktop schedule 内层 std 线程尚不可 abort、Tauri setup 事件转发仍用 tauri async runtime（见 TODO）。
+
+### ADR-066 · rig 生成参数/usage/memory/hooks 可配置 + 能力可用性诚实化（修订 ADR-007）`accepted`
+
+**背景**：用户 2026-10-31 指令要求"rig 所有能力都支持、所有项目可配置"。原 ADR-007 只允许 `zk-llm-rig` 一个 rig 适配层；实际又出现 `zk-agent-rig` 与 `zk-llm-gateway`（rig Responses 适配）两个适配点，且 cap-* 能力长期 `available()==false` 的永久占位。
+**决策**：① rig 适配只允许在 `zk-llm-rig`、`zk-agent-rig`、`zk-llm-gateway`（企业 Responses）三处，契约与工具包仍不得依赖 rig（ADR-007 铁律不变）；② `agent-rig` 暴露 `AgentRuntimeConfig`（completion/memory/hooks/max_steps），优先级 显式配置 > `ZEOKEEL_AGENT_*` env > 内置默认，并在每轮应用到 rig；③ 记录 rig usage 到 `last_usage`/hook 事件；④ rig-memory 多轮历史按 conversation 持久化；⑤ cap-hooks/cap-vector 动态可用并实现 embeddings+向量检索，其余 media 能力必须给出 `unavailable_reason()`，不得静默。
+**理由**：把 rig 的真实能力暴露给 agent，而不是用占位符假装支持；同时保持契约层无 rig 类型。
+**后果**：设置 UI/契约字段（AppSettings.agent、AgentReply.usage）是后续接线项；企业向量/媒体仍受网关能力限制，须在 docs/38 矩阵标注。详见 `docs/38` §5。
