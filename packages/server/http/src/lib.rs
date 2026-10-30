@@ -15,6 +15,7 @@ pub mod auth;
 pub mod users;
 pub mod wallet;
 pub mod pricing;
+pub mod gateway;
 
 /// Stable module descriptor.
 #[must_use]
@@ -89,6 +90,7 @@ pub fn router_from(state: AppState) -> Router {
         .merge(users::routes())
         .merge(wallet::routes())
         .merge(pricing::routes())
+        .merge(gateway::routes())
         .with_state(state)
 }
 
