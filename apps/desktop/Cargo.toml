@@ -24,6 +24,7 @@ tower-http = { workspace = true }
 futures = { workspace = true }
 uuid = { workspace = true }
 dirs = { workspace = true }
+http = { workspace = true }
 reqwest = { workspace = true }
 keyring = { workspace = true }
 zk-kit-content = { path = "../../crates/zk-kit-content" }

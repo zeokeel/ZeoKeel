@@ -140,3 +140,11 @@
 - P0-5 静态 UI：asset 按 manifest 白名单与扩展名 content-type；AppSurface 注入 CSP（default-src none/connect-src none）。
 - P1：SQL busy_timeout 5s；host migration 32 条/64KB 校验；上传拒绝 auditor；新增 admin transfer。
 - 仍未修：P0-1 Tauri 独立窗口/capability/partition；P1 剩余（AST SQL、app_runtime_logs、asset.read、M4 client e2e、golden ignored 等）。
+
+
+## 7. R1 修复（Lead，2026-10-30）
+
+- P0-1：新增 Tauri `open_app_window`（`zk-app://localhost/<app_id>/index.html`、per-app `data_directory`、incognito、导航只允许本 app）、`register_uri_scheme_protocol("zk-app")`（服务端带 Bearer 拉静态资源、注入 CSP/`zkAppRequest`）；`ipc_call`/`open_app_window` 拒绝 `zk-app-*` 窗口，`app_request` 拒绝非 app 窗口（窗口标签门禁）。
+- P0-2/P0-3/P0-4/P0-5 见上一节。
+- P1：request 改用 `zk-contract-app::AppRequest` DTO；`asset.read` 注入 UI 资源；SQL busy_timeout 5s；host migration 32/64KB；上传拒绝 auditor；transfer。
+- 仍未做：Tauri capability 文件（权限 ACL）、真实 Tauri 窗口 e2e（无显示环境）、app-retire job、app_runtime_logs、并发/队列全量、golden 未去 ignored。

@@ -250,6 +250,11 @@ export function App(props: { transport: Transport }) {
           void openApp(session, url, item)
             .then(async (result) => {
               setAppOpened(`已打开 ${item.name} v${result.version}`);
+              const tauri = window.__TAURI__;
+              if (tauri !== undefined) {
+                await tauri.core.invoke("open_app_window", { appId: item.appId });
+                return;
+              }
               const html = await fetchAppHtml(session, url, item);
               setAppSurface({ html, nonce: crypto.randomUUID(), appId: item.appId });
             })

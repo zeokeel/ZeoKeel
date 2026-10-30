@@ -18,7 +18,7 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use tokio::sync::Semaphore;
 use uuid::Uuid;
-use zk_contract_app::{AppManifest, AppOpen, ABI};
+use zk_contract_app::{AppManifest, AppOpen, AppRequest, ABI};
 use zk_kit_server::{audit, current_user, error, require_admin, AppState, ServerError};
 use zk_srv_app_db as app_db;
 use zk_srv_app_runtime as runtime;
@@ -172,15 +172,14 @@ async fn open(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<
     Ok(response)
 }
 
-#[derive(Debug, Deserialize)]
-struct FrameBody { #[serde(default)] body_b64: String, #[serde(default)] method: String, #[serde(default)] path: String, #[serde(default)] query: String, #[serde(default)] request_id: String, #[serde(default)] abi: String }
 
-async fn request(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>, Json(body): Json<FrameBody>) -> Result<Json<Value>, ServerError> {
+async fn request(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>, Json(body): Json<AppRequest>) -> Result<Json<Value>, ServerError> {
+    if body.app_id != id { return Err(error(StatusCode::BAD_REQUEST, "APP_BAD_REQUEST")); }
     let (user_id, _role, _epoch) = current_user(&state, &headers).await?;
     let user = uuid_of(&user_id)?;
     let app = uuid_of(&id)?;
     let row = sqlx::query(
-        "SELECT c.status, c.deleted_at, r.wasm, r.db_schema_version, r.db_migrations FROM contents c JOIN content_releases r ON r.id = c.current_release_id
+        "SELECT c.status, c.deleted_at, r.wasm, r.ui_archive, r.db_schema_version, r.db_migrations FROM contents c JOIN content_releases r ON r.id = c.current_release_id
          WHERE c.id = $1 AND c.kind = 'app' AND (c.visibility = 'all' OR EXISTS (SELECT 1 FROM content_grants g WHERE g.content_id = c.id AND g.grantee = $2 AND g.can_install))",
     ).bind(app).bind(user.to_string()).fetch_optional(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?
         .ok_or_else(|| error(StatusCode::NOT_FOUND, "APP_NOT_FOUND"))?;
@@ -189,6 +188,19 @@ async fn request(State(state): State<AppState>, headers: HeaderMap, Path(id): Pa
     let wasm: Vec<u8> = row.try_get("wasm").map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let schema_version: i32 = row.try_get("db_schema_version").unwrap_or(0);
     let migrations: Vec<zk_contract_app::AppMigration> = serde_json::from_value(row.try_get("db_migrations").unwrap_or(json!([]))).unwrap_or_default();
+    let ui_archive: Option<Vec<u8>> = row.try_get("ui_archive").ok();
+    let mut assets: HashMap<String, Vec<u8>> = HashMap::new();
+    if let Some(archive) = ui_archive {
+        if let Ok(mut zip) = zip::ZipArchive::new(std::io::Cursor::new(archive)) {
+            for index in 0..zip.len() {
+                if let Ok(mut entry) = zip.by_index(index) {
+                    let name = entry.name().to_owned();
+                    let mut bytes = Vec::new();
+                    if entry.read_to_end(&mut bytes).is_ok() { assets.insert(name, bytes); }
+                }
+            }
+        }
+    }
     let db_root = std::env::var("ZEOKEEL_APP_DB_DIR").unwrap_or_else(|_| "target/app-db".to_owned());
     std::fs::create_dir_all(&db_root).map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let db_path = app_db::db_path(std::path::Path::new(&db_root), &app.to_string());
@@ -209,7 +221,7 @@ async fn request(State(state): State<AppState>, headers: HeaderMap, Path(id): Pa
         let _app = app_permit;
         let _user = user_permit;
         let _global = global_permit;
-        runtime::execute(&wasm, &db_for_run, request, u64::try_from(fuel).unwrap_or(10_000_000))
+        runtime::execute(&wasm, &db_for_run, request, u64::try_from(fuel).unwrap_or(10_000_000), &assets)
     })).await.map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_LIMIT_TIME"))?.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "APP_UNAVAILABLE"))?;
     let output = result.map_err(|failure| {
         let code = runtime::error_code(&failure);
