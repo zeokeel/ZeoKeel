@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Provision a throwaway PostgreSQL + real server, build admin SPA, run M2 admin Playwright.
 set -euo pipefail
+CLIENT_HDR="X-ZeoKeel-Client: 0.1.0;official;linux;e2e"
 DB="zk_admin_e2e_$$"
 ROLE="zk_admin_e2e_$$"
 PORT="${ZEOKEEL_ADMIN_TEST_PORT:-8794}"
@@ -40,10 +41,10 @@ with zipfile.ZipFile('/tmp/zk-admin-skill.zip', 'w', zipfile.ZIP_DEFLATED) as z:
     z.writestr('SKILL.md', '# admin e2e skill\n')
 PYZIP
 # Seed one pending app for M4 admin page (dummy wasm; no execution in this test).
-ADMIN_JWT=$(curl -fsS -X POST "$BASE/api/client/v1/auth/login" -H 'content-type: application/json' -d '{"username":"admin","password":"admin-pass","device_id":"admin-e2e"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
+ADMIN_JWT=$(curl -fsS -H "$CLIENT_HDR" -X POST "$BASE/api/client/v1/auth/login" -H 'content-type: application/json' -d '{"username":"admin","password":"admin-pass","device_id":"admin-e2e"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
 printf '\0asm\1\0\0\0' > /tmp/zk-admin-app.wasm
 printf '{"name":"admin-app","version":"1.0.0","description":"admin","icon":"","db_schema_version":0,"db_migrations":[],"ui":[]}' > /tmp/zk-admin-app.json
-curl -fsS -X POST "$BASE/api/client/v1/apps" -H "Authorization: Bearer $ADMIN_JWT" -F "manifest=</tmp/zk-admin-app.json" -F "wasm=@/tmp/zk-admin-app.wasm" >/dev/null
+curl -fsS -H "$CLIENT_HDR" -X POST "$BASE/api/client/v1/apps" -H "Authorization: Bearer $ADMIN_JWT" -F "manifest=</tmp/zk-admin-app.json" -F "wasm=@/tmp/zk-admin-app.wasm" >/dev/null
 mkdir -p target/evidence/m2/admin target/evidence/m3
 export ZEOKEEL_SKILL_ZIP=/tmp/zk-admin-skill.zip
 ZEOKEEL_ADMIN_URL="$BASE/admin" ZEOKEEL_PORTAL_URL="$BASE/portal" ZEOKEEL_ADMIN_PASSWORD="admin-pass" \

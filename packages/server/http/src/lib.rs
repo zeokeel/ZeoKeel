@@ -2,8 +2,9 @@
 #![forbid(unsafe_code)]
 
 use axum::body::Body;
-use axum::extract::State;
+use axum::extract::{Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
@@ -14,12 +15,76 @@ use sqlx::PgPool;
 use zk_contract_server::ServerModule;
 pub use zk_kit_server::AppState;
 use zk_kit_server::{
-    brand_snapshot, content_etag, if_none_match, min_client_version, permissions_for_role,
-    require_admin, ServerError,
+    brand_snapshot, client_version, content_etag, if_none_match, min_client_version, parse_semver,
+    permissions_for_role, require_admin, ServerError,
 };
 
 /// Stable API version for the cross-major `/api/meta/*` surface (`docs/04` §2).
 pub const API_VERSION: &str = "v1";
+
+/// Whether `path` belongs to the version-gated business surface.
+///
+/// Stable surfaces (`/api/meta/*`, `/api/channel`, `/api/updates/*`) are outside
+/// `/api/client/v1/*`; login/refresh and bootstrap stay reachable so an old
+/// client can authenticate and discover the upgrade path.
+fn is_client_business_path(path: &str) -> bool {
+    if path != "/api/client/v1" && !path.starts_with("/api/client/v1/") {
+        return false;
+    }
+    !matches!(
+        path,
+        "/api/client/v1/auth/login"
+            | "/api/client/v1/auth/refresh"
+            | "/api/client/v1/config/bootstrap"
+    )
+}
+
+fn upgrade_required(current: Option<&str>, reason: &str) -> Response {
+    let body = json!({
+        "error": {
+            "code": "CLIENT_TOO_OLD",
+            "message": reason,
+            "current": current,
+            "minimum": min_client_version(),
+            "portal_url": "/portal",
+        }
+    });
+    (StatusCode::UPGRADE_REQUIRED, Json(body)).into_response()
+}
+
+/// Gate `/api/client/v1/*` on the `X-ZeoKeel-Client` semver.
+///
+/// Missing or malformed headers fail closed with 426 so the client can show the
+/// forced-upgrade surface; login/refresh/bootstrap and stable surfaces pass.
+/// A client without the header cannot prove it is new enough for business calls.
+pub async fn client_version_gate(request: Request, next: Next) -> Response {
+    // CORS preflights never carry custom request headers; let the CORS layer
+    // answer them, otherwise a browser client cannot reach the business surface.
+    if request.method() == axum::http::Method::OPTIONS
+        || !is_client_business_path(request.uri().path())
+    {
+        return next.run(request).await;
+    }
+    let current = client_version(request.headers());
+    let Some(version) = current.as_deref().and_then(parse_semver) else {
+        return upgrade_required(
+            current.as_deref(),
+            "X-ZeoKeel-Client header is missing or invalid",
+        );
+    };
+    let minimum = min_client_version();
+    let Some(minimum_version) = parse_semver(&minimum) else {
+        // The kit helper validates env overrides and falls back to 0.1.0.
+        return next.run(request).await;
+    };
+    if version < minimum_version {
+        return upgrade_required(
+            current.as_deref(),
+            "client version is below the minimum supported version",
+        );
+    }
+    next.run(request).await
+}
 
 /// Stable module descriptor.
 #[must_use]
@@ -242,9 +307,123 @@ async fn admin_meta(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used)] // test-only
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)] // test-only
 mod tests {
     use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    fn gate_router() -> Router {
+        Router::new()
+            .route("/api/client/v1/workspaces", get(|| async { "ok" }))
+            .route("/api/client/v1/auth/login", get(|| async { "login" }))
+            .route("/api/client/v1/auth/refresh", get(|| async { "refresh" }))
+            .route(
+                "/api/client/v1/config/bootstrap",
+                get(|| async { "bootstrap" }),
+            )
+            .route("/api/meta/capabilities", get(|| async { "meta" }))
+            .route("/api/channel", get(|| async { "channel" }))
+            .route("/api/updates/manifest", get(|| async { "updates" }))
+            .layer(axum::middleware::from_fn(client_version_gate))
+    }
+
+    async fn call(app: Router, path: &str, header: Option<&str>) -> (StatusCode, Vec<u8>) {
+        let mut builder = Request::builder().uri(path);
+        if let Some(value) = header {
+            builder = builder.header("x-zeokeel-client", value);
+        }
+        let request = builder.body(Body::empty()).expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        (status, bytes.to_vec())
+    }
+
+    #[tokio::test]
+    async fn preflight_is_not_gated() {
+        let request = Request::builder()
+            .method("OPTIONS")
+            .uri("/api/client/v1/workspaces")
+            .body(Body::empty())
+            .expect("request");
+        let response = gate_router().oneshot(request).await.expect("response");
+        assert_ne!(response.status(), StatusCode::UPGRADE_REQUIRED);
+    }
+
+    fn error_code(body: &[u8]) -> String {
+        let value: Value = serde_json::from_slice(body).expect("json error body");
+        value["error"]["code"]
+            .as_str()
+            .expect("error code")
+            .to_owned()
+    }
+
+    #[tokio::test]
+    async fn old_client_is_rejected_on_business_surface_with_json_426() {
+        let minimum = min_client_version();
+        assert_ne!(minimum, "0.0.0", "test assumes a positive minimum");
+        let (status, body) = call(
+            gate_router(),
+            "/api/client/v1/workspaces",
+            Some("0.0.0;official;linux-x64;test"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UPGRADE_REQUIRED);
+        assert_eq!(error_code(&body), "CLIENT_TOO_OLD");
+        let value: Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(value["error"]["current"], "0.0.0");
+        assert_eq!(value["error"]["minimum"], minimum);
+        assert_eq!(value["error"]["portal_url"], "/portal");
+    }
+
+    #[tokio::test]
+    async fn current_client_passes_business_surface() {
+        let minimum = min_client_version();
+        let header = format!("{minimum};official;linux-x64;test");
+        let (status, _body) = call(gate_router(), "/api/client/v1/workspaces", Some(&header)).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn missing_or_invalid_header_fails_closed_with_426() {
+        for header in [None, Some("not-semver;official;linux-x64;test")] {
+            let (status, body) = call(gate_router(), "/api/client/v1/workspaces", header).await;
+            assert_eq!(status, StatusCode::UPGRADE_REQUIRED, "{header:?}");
+            assert_eq!(error_code(&body), "CLIENT_TOO_OLD", "{header:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn login_refresh_and_bootstrap_are_exempt() {
+        for path in [
+            "/api/client/v1/auth/login",
+            "/api/client/v1/auth/refresh",
+            "/api/client/v1/config/bootstrap",
+        ] {
+            for header in [None, Some("0.0.0;official;linux-x64;test")] {
+                let (status, _body) = call(gate_router(), path, header).await;
+                assert_eq!(status, StatusCode::OK, "{path} {header:?}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn stable_surfaces_are_not_version_gated() {
+        for path in [
+            "/api/meta/capabilities",
+            "/api/channel",
+            "/api/updates/manifest",
+        ] {
+            for header in [None, Some("0.0.0;official;linux-x64;test")] {
+                let (status, _body) = call(gate_router(), path, header).await;
+                assert_eq!(status, StatusCode::OK, "{path} {header:?}");
+            }
+        }
+    }
 
     #[test]
     fn module_is_namespaced() {

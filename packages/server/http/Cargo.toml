@@ -25,3 +25,6 @@ zk-kit-server = { path = "../../../crates/zk-kit-server" }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tower = "0.5"

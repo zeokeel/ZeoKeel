@@ -34,6 +34,25 @@ test.describe("serve carrier security", () => {
     const body = (await got.json()) as { data: { provider: { api_key: string } } };
     expect(body.data.provider.api_key).toBe("");
     expect(JSON.stringify(body)).not.toContain("sk-SECRET-TEST");
+
+    // Restore a provider that does not hot-swap away the env fake upstream: later suites in
+    // this shared serve process must not inherit the example.com provider persisted here.
+    const restore = await request.post(`${SERVE}/ipc`, {
+      data: {
+        name: "settings.set",
+        payload: {
+          settings: {
+            schema: 1,
+            // Point back at the deterministic fake upstream started by e2e/serve-m1.sh.
+            provider: { kind: "open_ai_compatible", base_url: "http://127.0.0.1:8998/v1", model: "test-model", api_key: "test" },
+            theme: "light",
+            locale: "zh-CN",
+            auto_approve_read_only: true,
+          },
+        },
+      },
+    });
+    expect(restore.ok()).toBeTruthy();
   });
 
   test("does not ship design prototypes in production", async ({ request }) => {

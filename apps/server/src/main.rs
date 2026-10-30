@@ -193,7 +193,8 @@ async fn main() -> Result<(), String> {
         .merge(zk_srv_gateway::routes().with_state(state.clone()))
         .merge(zk_srv_audit::routes().with_state(state.clone()))
         .merge(zk_srv_settings::routes().with_state(state.clone()))
-        .merge(zk_srv_jobs::routes().with_state(state.clone()));
+        .merge(zk_srv_jobs::routes().with_state(state.clone()))
+        .layer(axum::middleware::from_fn(zk_srv_http::client_version_gate));
     let outcome = serve(app)
         .await
         .map_err(|error| format!("zk-server: {error}"))?;
@@ -275,6 +276,7 @@ async fn serve(app: Router) -> Result<ServeOutcome, String> {
                 .allow_headers([
                     axum::http::header::CONTENT_TYPE,
                     axum::http::header::AUTHORIZATION,
+                    axum::http::header::HeaderName::from_static("x-zeokeel-client"),
                 ]),
         )
     } else {

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Enterprise login e2e: enterprise compose + real auth server + serve UI.
 set -euo pipefail
+CLIENT_HDR="X-ZeoKeel-Client: 0.1.0;official;linux;e2e"
 DB="zk_login_e2e_$$"; ROLE="zk_login_role_$$"
 SERVER_PORT="${ZEOKEEL_LOGIN_SERVER_PORT:-8795}"; UI_PORT="${ZEOKEEL_LOGIN_UI_PORT:-8789}"; UPSTREAM_PORT="${ZEOKEEL_LOGIN_UPSTREAM_PORT:-8796}"
 # SIGTERM then bounded wait, fallback SIGKILL; DB/role are dropped only after exit.
@@ -111,7 +112,7 @@ CONN_ID=$(printf '%s' "$CONN" | python3 -c 'import json,sys;print(json.load(sys.
 curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X PUT "http://127.0.0.1:$SERVER_PORT/api/admin/connectors/$CONN_ID/grants" -H 'content-type: application/json' -d '{"grants":[{"grantee":"all","can_enable":true}]}' >/dev/null
 curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/connectors/$CONN_ID/oauth" -H 'content-type: application/json' -d '{"client_id":"public-client","scopes":["mcp"],"redirect_uri":"http://127.0.0.1:8789/"}' >/dev/null
 # Seed one approved app for the client apps panel.
-ADMIN_JWT=$(curl -fsS -X POST "http://127.0.0.1:$SERVER_PORT/api/client/v1/auth/login" -H 'content-type: application/json' -d '{"username":"admin","password":"admin-pass","device_id":"seed-app"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
+ADMIN_JWT=$(curl -fsS -H "$CLIENT_HDR" -X POST "http://127.0.0.1:$SERVER_PORT/api/client/v1/auth/login" -H 'content-type: application/json' -d '{"username":"admin","password":"admin-pass","device_id":"seed-app"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
 cp experiments/wasm-poc/guest-go/guest-go.wasm /tmp/zk-client-app.wasm
 python3 - <<'PYUI'
 import json,zipfile
@@ -121,7 +122,7 @@ html = """<!doctype html><html><body><h1>client app</h1><pre id=out>waiting</pre
 </script></body></html>"""
 with zipfile.ZipFile('/tmp/zk-client-app-ui.zip','w') as z: z.writestr('index.html',html)
 PYUI
-APP=$(curl -fsS -X POST "http://127.0.0.1:$SERVER_PORT/api/client/v1/apps" -H "Authorization: Bearer $ADMIN_JWT" -F "manifest=</tmp/zk-client-app.json" -F "wasm=@/tmp/zk-client-app.wasm" -F "ui=@/tmp/zk-client-app-ui.zip")
+APP=$(curl -fsS -H "$CLIENT_HDR" -X POST "http://127.0.0.1:$SERVER_PORT/api/client/v1/apps" -H "Authorization: Bearer $ADMIN_JWT" -F "manifest=</tmp/zk-client-app.json" -F "wasm=@/tmp/zk-client-app.wasm" -F "ui=@/tmp/zk-client-app-ui.zip")
 APP_ID=$(printf '%s' "$APP" | python3 -c 'import json,sys;print(json.load(sys.stdin)["app_id"])')
 curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/apps/$APP_ID/approve" >/dev/null
 curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X PUT "http://127.0.0.1:$SERVER_PORT/api/admin/apps/$APP_ID/grants" -H 'content-type: application/json' -d '{"grants":[{"grantee":"all","can_open":true}]}' >/dev/null
