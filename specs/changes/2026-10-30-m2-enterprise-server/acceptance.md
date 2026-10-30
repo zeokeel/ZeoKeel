@@ -48,4 +48,4 @@
 ## Contract DTOs (progress)
 
 - `zk-contract-auth/user/wallet` 已承载登录/refresh/建用户/调账请求 DTO；服务端域包复用这些契约，不重复定义。
-- 仍未生成 JSON Schema/TS 类型（T22）。
+- 已生成 `shared/contracts/schema/{auth-login,user-create,wallet-adjust}.json`；TS 类型/Ajv 校验仍未接（T22 后续）。

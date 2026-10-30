@@ -6150,7 +6150,9 @@ dependencies = [
 name = "zk-contract-auth"
 version = "0.1.0"
 dependencies = [
+ "schemars 0.8.22",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -6235,14 +6237,18 @@ dependencies = [
 name = "zk-contract-user"
 version = "0.1.0"
 dependencies = [
+ "schemars 0.8.22",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "zk-contract-wallet"
 version = "0.1.0"
 dependencies = [
+ "schemars 0.8.22",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

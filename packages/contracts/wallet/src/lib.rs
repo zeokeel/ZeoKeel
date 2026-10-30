@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 pub struct DomainModule { pub id: String }
 
 /// Admin adjustment payload.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct AdjustRequest {
     pub delta_micros: i64,
     pub reason: String,

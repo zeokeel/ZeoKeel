@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 pub struct DomainModule { pub id: String }
 
 /// Create-user payload.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct CreateUser {
     pub username: String,
     pub password: String,
@@ -17,7 +17,7 @@ pub struct CreateUser {
 }
 
 /// Patch-user payload.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct UpdateUser {
     pub role: Option<String>,
     pub status: Option<String>,

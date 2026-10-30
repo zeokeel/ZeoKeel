@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LoginRequest",
+  "description": "Client login payload (public endpoints).",
+  "type": "object",
+  "required": [
+    "device_id",
+    "password",
+    "username"
+  ],
+  "properties": {
+    "device_id": {
+      "type": "string"
+    },
+    "password": {
+      "type": "string"
+    },
+    "username": {
+      "type": "string"
+    }
+  }
+}
