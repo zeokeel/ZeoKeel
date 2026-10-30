@@ -1,6 +1,6 @@
 # 2026-10-30-agent-dsh-parity · 规格
 
-- 状态：`draft`
+- 状态：`approved`
 - 提示词来源：DSH `/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/*`；仅 MIT 文本/语义，不依赖运行时。
 
 ## 0. 内核

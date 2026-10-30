@@ -2,7 +2,7 @@
 
 | # | 任务 | 写作用域 | 依赖 | 验证 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | DSH 清单 + prompt 提取文档 | `research/dsh-agent-inventory.md`, `docs/33-agent-prompts.md`, `docs/generated/agent-tool-matrix.md` | — | inventory diff；docs-check | ☐ |
+| 1 | DSH 清单 + prompt 提取文档 | `research/dsh-agent-inventory.md`, `docs/39-agent-prompts.md`, `docs/generated/agent-tool-matrix.md` | — | inventory diff；docs-check | ☐ |
 | 2 | rig 依赖/契约/模型 provider（OpenAI-compatible + fake model） | `Cargo.toml`, `packages/contracts/rig`, `packages/client/llm-rig` | 1 | cargo tests；fake model tools | ☐ |
 | 3 | Tool 契约 JSON Schema/ToolResult + kit | `packages/contracts/tool`, `crates/zk-kit-tools` | 1 | conformance/负向 | ☐ |
 | 4 | rig Agent runtime/提示词/事件/取消/最大步数/hooks | `packages/client/agent-rig`, `packages/contracts/agent` | 2,3 | rig mock multi-step e2e | ☐ |
