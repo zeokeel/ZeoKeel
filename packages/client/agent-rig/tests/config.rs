@@ -87,9 +87,9 @@ fn contract_settings_apply_to_the_next_rig_request() {
 
     let reply = agent.run_in(&context(), "hi").unwrap();
     let contract_usage = reply.usage.expect("usage");
-    assert_eq!(contract_usage.input_tokens, Some(7));
-    assert_eq!(contract_usage.output_tokens, Some(3));
-    assert_eq!(contract_usage.total_tokens, Some(10));
+    assert_eq!(contract_usage.input_tokens, 7);
+    assert_eq!(contract_usage.output_tokens, 3);
+    assert_eq!(contract_usage.total_tokens, 10);
 
     let request = model.requests().first().cloned().expect("request captured");
     assert_eq!(request.temperature, Some(0.4));
@@ -142,4 +142,23 @@ fn global_default_is_reread_every_turn() {
     assert_eq!(requests[1].temperature, Some(0.6));
     // Restore the process-wide default so sibling tests see the built-in one.
     set_default_agent_config(previous).unwrap();
+}
+
+#[test]
+fn usage_aggregates_across_all_model_hops() {
+    // rig 0.45's PromptResponse::usage() is the aggregate across the whole run
+    // (documented in rig-agent), so a multi-step tool loop must sum both hops.
+    let model = MockCompletionModel::from_turns([
+        MockTurn::tool_call("call-1", "fs.read", serde_json::json!({"path": "a"}))
+            .with_usage(usage(3, 2)),
+        MockTurn::text("done").with_usage(usage(5, 4)),
+    ]);
+    let agent = RigAgent::new(model.into(), vec![Arc::new(ReadTool)])
+        .unwrap()
+        .with_streaming(false);
+    let reply = agent.run_in(&context(), "read").unwrap();
+    let usage = reply.usage.expect("usage");
+    assert_eq!(usage.input_tokens, 8, "sum over both model hops");
+    assert_eq!(usage.output_tokens, 6, "sum over both model hops");
+    assert_eq!(usage.total_tokens, 14);
 }

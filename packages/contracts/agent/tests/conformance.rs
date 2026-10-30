@@ -39,11 +39,11 @@ fn agent_usage_round_trips_and_defaults_absent() {
         text: "hi".to_owned(),
         tool_calls: Vec::new(),
         usage: Some(AgentUsage {
-            input_tokens: Some(11),
-            output_tokens: Some(5),
-            total_tokens: Some(16),
-            cached_tokens: Some(4),
-            reasoning_tokens: Some(2),
+            input_tokens: 11,
+            output_tokens: 5,
+            total_tokens: 16,
+            cached_tokens: 4,
+            reasoning_tokens: 2,
             cost_micros: Some(42),
         }),
     };

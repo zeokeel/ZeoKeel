@@ -272,22 +272,24 @@
       }
     },
     "AgentUsage": {
-      "description": "Token usage reported by the provider for one agent turn.",
+      "description": "Token usage reported by the provider for one agent turn.\n\nThe counters are required (a `usage` object is only present when the provider reported usage; unreported counters are normalized to `0` by the runtime), matching `specs/changes/2026-10-31-config-and-media/spec.md`. `cost_micros` stays optional because most providers do not report cost.",
       "type": "object",
+      "required": [
+        "cached_tokens",
+        "input_tokens",
+        "output_tokens",
+        "reasoning_tokens",
+        "total_tokens"
+      ],
       "properties": {
         "cached_tokens": {
           "description": "The part of `input_tokens` read from a provider-managed cache.",
-          "default": null,
-          "type": [
-            "integer",
-            "null"
-          ],
+          "type": "integer",
           "format": "uint64",
           "minimum": 0.0
         },
         "cost_micros": {
           "description": "Provider-reported cost in micro-USD (1e-6 USD), when known.",
-          "default": null,
           "type": [
             "integer",
             "null"
@@ -297,41 +299,25 @@
         },
         "input_tokens": {
           "description": "Every input token (cached + uncached).",
-          "default": null,
-          "type": [
-            "integer",
-            "null"
-          ],
+          "type": "integer",
           "format": "uint64",
           "minimum": 0.0
         },
         "output_tokens": {
           "description": "Every output token, reasoning included.",
-          "default": null,
-          "type": [
-            "integer",
-            "null"
-          ],
+          "type": "integer",
           "format": "uint64",
           "minimum": 0.0
         },
         "reasoning_tokens": {
           "description": "The part of `output_tokens` spent on internal reasoning.",
-          "default": null,
-          "type": [
-            "integer",
-            "null"
-          ],
+          "type": "integer",
           "format": "uint64",
           "minimum": 0.0
         },
         "total_tokens": {
-          "description": "`input_tokens + output_tokens`, when both were reported.",
-          "default": null,
-          "type": [
-            "integer",
-            "null"
-          ],
+          "description": "`input_tokens + output_tokens`.",
+          "type": "integer",
           "format": "uint64",
           "minimum": 0.0
         }

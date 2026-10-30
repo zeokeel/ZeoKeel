@@ -559,26 +559,44 @@ impl RigAgent {
 }
 
 /// Map the runtime usage snapshot into the contract `AgentUsage`.
+///
+/// `PromptResponse::usage()` is rig's **aggregate across the whole run**
+/// (all model calls/hops), so this snapshot already sums a multi-step tool
+/// loop; unreported counters normalize to `0` because the contract fields are
+/// required when `usage` is present.
 fn agent_usage(snapshot: Option<UsageSnapshot>) -> Option<AgentUsage> {
-    snapshot.map(|usage| AgentUsage {
-        input_tokens: usage.input_tokens,
-        output_tokens: usage.output_tokens,
-        total_tokens: usage.total_tokens,
-        cached_tokens: usage.cached_input_tokens,
-        reasoning_tokens: usage.reasoning_tokens,
-        cost_micros: usage.cost_usd.and_then(usd_to_micros),
+    snapshot.map(|usage| {
+        let input_tokens = usage.input_tokens.unwrap_or(0);
+        let output_tokens = usage.output_tokens.unwrap_or(0);
+        AgentUsage {
+            input_tokens,
+            output_tokens,
+            total_tokens: usage
+                .total_tokens
+                .unwrap_or_else(|| input_tokens.saturating_add(output_tokens)),
+            cached_tokens: usage.cached_input_tokens.unwrap_or(0),
+            reasoning_tokens: usage.reasoning_tokens.unwrap_or(0),
+            cost_micros: usage.cost_usd.and_then(usd_to_micros),
+        }
     })
 }
 
-/// Convert provider-reported USD cost to integer micro-USD.
-// Float -> integer conversion only for the optional cost field; finite,
-// non-negative values are rounded and reparsed so no `as` cast is needed.
-#[allow(clippy::arithmetic_side_effects)]
+/// Convert provider-reported USD cost to integer micro-USD without float
+/// arithmetic: format the amount as fixed-point micro-USD and parse the two
+/// integer halves with checked arithmetic (docs/18: no raw arithmetic in
+/// product code, no `as` conversions).
 fn usd_to_micros(usd: f64) -> Option<u64> {
     if !usd.is_finite() || usd < 0.0 {
         return None;
     }
-    format!("{:.0}", (usd * 1_000_000.0).round()).parse().ok()
+    let formatted = format!("{usd:.6}");
+    let (whole, fraction) = formatted
+        .split_once('.')
+        .unwrap_or((formatted.as_str(), ""));
+    let whole_micros = whole.trim().parse::<u64>().ok()?.checked_mul(1_000_000)?;
+    let fraction = format!("{fraction:0<6}");
+    let fraction_micros = fraction.get(..6)?.parse::<u64>().ok()?;
+    whole_micros.checked_add(fraction_micros)
 }
 
 /// Apply configurable completion parameters to the rig agent builder.
@@ -1381,6 +1399,16 @@ mod tests {
     }
 
     #[test]
+    fn usd_cost_converts_to_micro_usd_without_float_math() {
+        assert_eq!(usd_to_micros(0.000042), Some(42));
+        assert_eq!(usd_to_micros(1.5), Some(1_500_000));
+        assert_eq!(usd_to_micros(0.0), Some(0));
+        assert_eq!(usd_to_micros(-1.0), None);
+        assert_eq!(usd_to_micros(f64::NAN), None);
+        assert_eq!(usd_to_micros(f64::INFINITY), None);
+    }
+
+    #[test]
     fn completion_config_reaches_the_rig_request() {
         let model = MockCompletionModel::from_turns([MockTurn::text("done")]);
         let config = AgentRuntimeConfig {
@@ -1455,9 +1483,9 @@ mod tests {
         assert_eq!(usage.output_tokens, Some(5));
         assert_eq!(usage.total_tokens, Some(16));
         let contract_usage = reply.usage.expect("AgentReply carries usage");
-        assert_eq!(contract_usage.input_tokens, Some(11));
-        assert_eq!(contract_usage.output_tokens, Some(5));
-        assert_eq!(contract_usage.total_tokens, Some(16));
+        assert_eq!(contract_usage.input_tokens, 11);
+        assert_eq!(contract_usage.output_tokens, 5);
+        assert_eq!(contract_usage.total_tokens, 16);
         let events = hooks.0.lock().unwrap();
         assert!(events.iter().any(|event| matches!(
             event,

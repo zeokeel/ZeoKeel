@@ -163,6 +163,11 @@ fn boot_desktop() -> Result<(Arc<AppState>, zk_bootstrap::Bootstrap), String> {
     let bootstrap =
         zk_bootstrap::boot("zk-desktop").map_err(|error| format!("boot kernel: {error}"))?;
     let runtime = zk_composed::build()?;
+    // Personal edition may configure local media/embedding providers from env; the
+    // enterprise client never does (AI only through the gateway, C7/ADR-031).
+    if zk_composed::EDITION == "personal" {
+        zk_composed::configure_capabilities_from_env();
+    }
     apply_persisted_provider(&runtime);
     let agent_config_error = ipc::apply_persisted_agent_settings(&runtime).err();
     let state = AppState::new(runtime);

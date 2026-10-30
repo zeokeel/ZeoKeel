@@ -22,20 +22,27 @@ pub struct ToolCallRecord {
 }
 
 /// Token usage reported by the provider for one agent turn.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(default)]
+///
+/// The counters are required (a `usage` object is only present when the
+/// provider reported usage; unreported counters are normalized to `0` by the
+/// runtime), matching `specs/changes/2026-10-31-config-and-media/spec.md`.
+/// `cost_micros` stays optional because most providers do not report cost.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, schemars::JsonSchema,
+)]
 pub struct AgentUsage {
     /// Every input token (cached + uncached).
-    pub input_tokens: Option<u64>,
+    pub input_tokens: u64,
     /// Every output token, reasoning included.
-    pub output_tokens: Option<u64>,
-    /// `input_tokens + output_tokens`, when both were reported.
-    pub total_tokens: Option<u64>,
+    pub output_tokens: u64,
+    /// `input_tokens + output_tokens`.
+    pub total_tokens: u64,
     /// The part of `input_tokens` read from a provider-managed cache.
-    pub cached_tokens: Option<u64>,
+    pub cached_tokens: u64,
     /// The part of `output_tokens` spent on internal reasoning.
-    pub reasoning_tokens: Option<u64>,
+    pub reasoning_tokens: u64,
     /// Provider-reported cost in micro-USD (1e-6 USD), when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost_micros: Option<u64>,
 }
 

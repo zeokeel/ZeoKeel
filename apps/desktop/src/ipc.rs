@@ -2,6 +2,7 @@
 //! Shared command dispatch used by both the Tauri shell and the HTTP serve carrier.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 
@@ -95,15 +96,56 @@ impl AppState {
 /// Desktop hook logger: every lifecycle event (including usage) is echoed as
 /// JSON to stderr; `agent.hooks.log` additionally writes JSONL inside
 /// `zk-agent-rig`. Hosts without a UI bridge still get observable hooks.
+///
+/// Defense in depth: raw tool arguments are stripped here as well, even though
+/// the agent hook layer already redacts them before external sinks.
 struct DesktopHookSink;
 
 impl AgentHookSink for DesktopHookSink {
     fn on_agent_hook(&self, event: &Value) {
-        match serde_json::to_string(event) {
+        let redacted = redact_hook_event(event);
+        match serde_json::to_string(&redacted) {
             Ok(line) => eprintln!("zk-desktop agent hook: {line}"),
             Err(error) => eprintln!("zk-desktop agent hook: serialize failed: {error}"),
         }
     }
+}
+
+/// Strip sensitive payloads from a hook event before logging it.
+pub(crate) fn redact_hook_event(event: &Value) -> Value {
+    let mut value = event.clone();
+    if value.get("hook").and_then(Value::as_str) == Some("tool_started") {
+        if let Some(object) = value.as_object_mut() {
+            object.insert("args".to_owned(), Value::String("[redacted]".to_owned()));
+        }
+    }
+    value
+}
+
+/// Same settings-file resolution as `zk-store-settings-json`.
+fn settings_file_path() -> Option<PathBuf> {
+    if let Ok(home) = std::env::var("ZEOKEEL_HOME") {
+        if !home.trim().is_empty() {
+            return Some(PathBuf::from(home).join("settings.json"));
+        }
+    }
+    dirs::data_local_dir().map(|base| base.join("zeokeel").join("settings.json"))
+}
+
+fn settings_file_exists() -> bool {
+    settings_file_path()
+        .map(|path| path.is_file())
+        .unwrap_or(false)
+}
+
+/// Publish persisted agent settings only when they were explicitly saved and
+/// differ from the built-in defaults, so a fresh install (or default-only
+/// settings) cannot override `ZEOKEEL_AGENT_*` env fallbacks.
+pub(crate) fn should_publish_agent_settings(
+    settings: &AppSettings,
+    settings_file_exists: bool,
+) -> bool {
+    settings_file_exists && settings.agent != zk_contract_config::AgentSettings::default()
 }
 
 /// Validate and publish `AppSettings.agent` to the contract registry the agent
@@ -123,12 +165,19 @@ pub(crate) fn apply_agent_settings(settings: &AppSettings) -> Result<(), String>
     Ok(())
 }
 
-/// Boot path: load persisted settings and publish the agent section.
+/// Boot path: load persisted settings and publish the agent section only when
+/// the settings file was explicitly saved with non-default agent settings.
+///
+/// On a fresh install nothing is published, so `zk-agent-rig` keeps its
+/// `ZEOKEEL_AGENT_*` environment fallback (dev/e2e flows).
 pub(crate) fn apply_persisted_agent_settings(runtime: &zk_composed::Runtime) -> Result<(), String> {
     let settings = runtime
         .settings()
         .load()
         .map_err(|error| format!("settings load: {error}"))?;
+    if !should_publish_agent_settings(&settings, settings_file_exists()) {
+        return Ok(());
+    }
     apply_agent_settings(&settings)
 }
 
@@ -1059,6 +1108,43 @@ mod tests {
         writer.write_all(b"# link\n").unwrap();
         writer.add_symlink("link", "target", options).unwrap();
         writer.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn boot_publishes_only_explicitly_saved_non_default_agent_settings() {
+        let default_settings = zk_contract_config::AppSettings::default();
+        // Fresh install / default-only: env fallback must win (nothing published).
+        assert!(!super::should_publish_agent_settings(
+            &default_settings,
+            false
+        ));
+        assert!(!super::should_publish_agent_settings(
+            &default_settings,
+            true
+        ));
+
+        let mut custom = zk_contract_config::AppSettings::default();
+        custom.agent.max_steps = 12;
+        // Custom settings only count once the settings file exists.
+        assert!(!super::should_publish_agent_settings(&custom, false));
+        assert!(super::should_publish_agent_settings(&custom, true));
+    }
+
+    #[test]
+    fn hook_events_are_redacted_before_logging() {
+        let redacted = super::redact_hook_event(&serde_json::json!({
+            "hook": "tool_started",
+            "turn_id": "t",
+            "tool": "bash",
+            "args": "{\"command\":\"echo SECRET\"}"
+        }));
+        assert_eq!(redacted["args"], "[redacted]");
+        assert!(!serde_json::to_string(&redacted).unwrap().contains("SECRET"));
+        let usage = super::redact_hook_event(&serde_json::json!({
+            "hook": "turn_completed",
+            "usage": {"input_tokens": 3}
+        }));
+        assert_eq!(usage["usage"]["input_tokens"], 3);
     }
 
     #[test]

@@ -489,3 +489,45 @@ impl AgentRuntimeConfig {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+
+    use super::*;
+
+    fn custom_settings(temperature: f64) -> AgentSettings {
+        AgentSettings {
+            completion: zk_contract_config::CompletionSettings {
+                temperature: Some(temperature),
+                ..zk_contract_config::CompletionSettings::default()
+            },
+            ..AgentSettings::default()
+        }
+    }
+
+    #[test]
+    fn env_applies_when_nothing_is_published_and_published_settings_win() {
+        // This lib test binary is the only writer of the contract registry, so
+        // it starts empty: the fresh-install / boot-precedence case.
+        assert!(zk_contract_agent::default_agent_settings().is_none());
+        std::env::set_var("ZEOKEEL_AGENT_TEMPERATURE", "0.42");
+        assert_eq!(
+            default_agent_config().completion.temperature,
+            Some(0.42),
+            "no saved settings -> ZEOKEEL_AGENT_* env fallback applies"
+        );
+
+        // Explicitly saved settings (desktop publishes them) win over env.
+        zk_contract_agent::set_default_agent_settings(&custom_settings(0.7)).unwrap();
+        assert_eq!(
+            default_agent_config().completion.temperature,
+            Some(0.7),
+            "published settings take precedence over env"
+        );
+
+        // Restore so sibling tests keep seeing built-in defaults.
+        zk_contract_agent::set_default_agent_settings(&AgentSettings::default()).unwrap();
+        std::env::remove_var("ZEOKEEL_AGENT_TEMPERATURE");
+    }
+}
