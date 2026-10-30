@@ -2,7 +2,7 @@
 
 # Profile Matrix
 
-_3 editions × 3 profiles × 2 channels. Committed baseline is personal×default×official (docs/24 §1.2); `excluded_from_personal` compares the row with personal×default×<channel>._
+_3 editions × 4 profiles × 2 channels. Committed baseline is personal×default×official (docs/24 §1.2); `excluded_from_personal` compares the row with personal×default×<channel>._
 
 | edition | profile | channel | status | packages | generated EDITION | personal_only_hits | excluded_from_personal |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -12,15 +12,21 @@ _3 editions × 3 profiles × 2 channels. Committed baseline is personal×default
 | `enterprise` | `default` | `official` | ok | 86 | `enterprise` | 0 | 3 |
 | `enterprise` | `dev-live` | `oem-demo` | ok | 86 | `enterprise` | 0 | 2 |
 | `enterprise` | `dev-live` | `official` | ok | 86 | `enterprise` | 0 | 2 |
+| `enterprise` | `mock` | `oem-demo` | ok | 86 | `enterprise` | 0 | 4 |
+| `enterprise` | `mock` | `official` | ok | 86 | `enterprise` | 0 | 4 |
 | `oem-deep` | `base` | `oem-demo` | ok | 87 | `oem-deep` | 0 | 3 |
 | `oem-deep` | `base` | `official` | ok | 87 | `oem-deep` | 0 | 3 |
 | `oem-deep` | `default` | `oem-demo` | ok | 87 | `oem-deep` | 0 | 3 |
 | `oem-deep` | `default` | `official` | ok | 87 | `oem-deep` | 0 | 3 |
 | `oem-deep` | `dev-live` | `oem-demo` | ok | 87 | `oem-deep` | 0 | 2 |
 | `oem-deep` | `dev-live` | `official` | ok | 87 | `oem-deep` | 0 | 2 |
+| `oem-deep` | `mock` | `oem-demo` | ok | 87 | `oem-deep` | 0 | 4 |
+| `oem-deep` | `mock` | `official` | ok | 87 | `oem-deep` | 0 | 4 |
 | `personal` | `base` | `oem-demo` | ok | 55 | `personal` | 2 | 0 |
 | `personal` | `base` | `official` | ok | 55 | `personal` | 2 | 0 |
 | `personal` | `default` | `oem-demo` | ok | 55 | `personal` | 2 | 0 |
 | `personal` | `default` | `official` | ok | 55 | `personal` | 2 | 0 |
 | `personal` | `dev-live` | `oem-demo` | ok | 55 | `personal` | 2 | 0 |
 | `personal` | `dev-live` | `official` | ok | 55 | `personal` | 2 | 0 |
+| `personal` | `mock` | `oem-demo` | ok | 55 | `personal` | 2 | 2 |
+| `personal` | `mock` | `official` | ok | 55 | `personal` | 2 | 2 |
