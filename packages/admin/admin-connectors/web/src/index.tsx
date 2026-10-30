@@ -28,8 +28,8 @@ export function Connectors({ onError }: { onError: (message: string) => void }) 
       load();
     })().catch(fail);
   };
-  const act = (id: string, path: string, body: unknown): void => {
-    void api(`/api/admin/connectors/${id}/${path}`, { method: "POST", body: JSON.stringify(body) }).then(load).catch(fail);
+  const act = (id: string, path: string, method: "POST" | "PUT", body: unknown): void => {
+    void api(`/api/admin/connectors/${id}/${path}`, { method, body: JSON.stringify(body) }).then(load).catch(fail);
   };
   const remove = (id: string): void => { void api(`/api/admin/connectors/${id}`, { method: "DELETE" }).then(load).catch(fail); };
   return (
@@ -54,7 +54,7 @@ export function Connectors({ onError }: { onError: (message: string) => void }) 
               <td>{item.oauth_client_id ?? adminT("common.none")}</td>
               <td>
                 <button type="button" onClick={() => { setSelected(item.id); }}>{adminT("common.manage")}</button>
-                <button type="button" onClick={() => { act(item.id, "grants", { grants: [{ grantee: "all", can_enable: true }] }); }}>{adminT("common.grantAll")}</button>
+                <button type="button" onClick={() => { act(item.id, "grants", "PUT", { grants: [{ grantee: "all", can_enable: true }] }); }}>{adminT("common.grantAll")}</button>
                 <button type="button" onClick={() => { remove(item.id); }}>{adminT("common.delete")}</button>
               </td>
             </tr>
@@ -68,7 +68,7 @@ export function Connectors({ onError }: { onError: (message: string) => void }) 
           <button type="button" onClick={() => { void api(`/api/admin/connectors/${selected}/oauth`, { method: "POST", body: JSON.stringify({ client_id: clientId, scopes: ["mcp"], redirect_uri: redirect }) }).then(load).catch(fail); }}>{adminT("common.saveOAuth")}</button>
           <input aria-label="authorize_url" value={authorizeUrl} onChange={(event) => { setAuthorizeUrl(event.target.value); }} />
           <input aria-label="token_url" value={tokenUrl} onChange={(event) => { setTokenUrl(event.target.value); }} />
-          <button type="button" onClick={() => { act(selected, "force-update", { force: true, min_client_version: "0.1.0" }); }}>{adminT("common.forceUpdate")}</button>
+          <button type="button" onClick={() => { act(selected, "force-update", "POST", { force: true, min_client_version: "0.1.0" }); }}>{adminT("common.forceUpdate")}</button>
         </div>
       ) : null}
     </section>
