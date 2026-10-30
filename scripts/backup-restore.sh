@@ -23,4 +23,5 @@ for _ in $(seq 1 40); do curl -fsS "http://127.0.0.1:$PORT/readyz" >/dev/null 2>
 curl -fsS "http://127.0.0.1:$PORT/readyz" >/dev/null
 curl -fsS -X POST "http://127.0.0.1:$PORT/api/client/v1/auth/login" -H 'content-type: application/json' -d '{"username":"admin","password":"admin-pass","device_id":"restore"}' | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["ok"]'
 [[ "$TABLES" -ge 10 ]]
-echo "backup restore ok: $TABLES tables; /data bundled; env sanitized; PITR/WAL UNVERIFIED"
+echo "backup restore PARTIAL: $TABLES tables; /data/env bundled; PITR/WAL/master.key restore UNVERIFIED"
+exit 2

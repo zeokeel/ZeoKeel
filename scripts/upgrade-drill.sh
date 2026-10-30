@@ -33,4 +33,5 @@ if [[ "$MODE" == "--docker" ]]; then
 else
   echo "4) docker load skipped (dry-run)"; echo "5) readyz simulated"; echo '{"ok":true,"status":"ready"}'
 fi
-echo "upgrade drill ok (dry-run/unverified boundary noted): $MODE"
+echo "upgrade drill UNVERIFIED (no real docker/upgrade/rollback/restore): $MODE"
+exit 2

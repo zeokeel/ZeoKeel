@@ -1,6 +1,7 @@
 # 2026-10-30-hardening-release · 验收（M6）
 
-- 状态：`in-progress`
+- 状态：`blocked`（环境阻塞；脚本不再 false-green）
+- 具体阻塞：本机无 Docker/trivy/证书/三平台 runner，cargo deny/audit/pnpm audit 不可用/无网络；13 项安全门禁与交付物无法验证。
 - 验收人：pending
 - 证据目录：`target/evidence/m6/`
 

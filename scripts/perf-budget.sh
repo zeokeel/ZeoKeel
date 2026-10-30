@@ -17,7 +17,7 @@ ADMIN_GZ=$(gzip -c "$ADMIN_JS" 2>/dev/null | wc -c); DESKTOP_GZ=$(gzip -c "$DESK
 python3 - "$READY_MS" "$HEALTH" "${ADMIN_GZ:-0}" "${DESKTOP_GZ:-0}" "$OUT" <<'PY'
 import json,sys,pathlib
 ready,health,admin,desktop=map(float,sys.argv[1:5])
-result={"server_ready_ms":ready,"health_p95_ms":health,"admin_js_bytes":int(admin),"desktop_js_bytes":int(desktop),"gateway_p50_ms":None,"gateway_p95_ms":None,"image_size_bytes":None,"budget":{"server_ready_ms":2000,"health_p95_ms":50,"admin_gzip_kb":400,"desktop_gzip_kb":500,"mock_first_token_ms":300},"status":"pass" if ready<=2000 and health<=50 and admin<=400*1024 and desktop<=500*1024 else "fail"}
+result={"server_ready_ms":ready,"health_p95_ms":health,"admin_js_bytes":int(admin),"desktop_js_bytes":int(desktop),"gateway_p50_ms":None,"gateway_p95_ms":None,"image_size_bytes":None,"unverified":["image_size","gateway_latency","mock_first_token"],"budget":{"server_ready_ms":2000,"health_p95_ms":50,"admin_gzip_kb":400,"desktop_gzip_kb":500,"mock_first_token_ms":300},"status":"unverified"}
 pathlib.Path(sys.argv[5]).write_text(json.dumps(result,indent=2)+"\n")
 print(json.dumps(result))
 sys.exit(0 if result["status"]=="pass" else 1)

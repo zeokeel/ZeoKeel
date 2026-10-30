@@ -33,8 +33,10 @@ for tool,args,probe in [('cargo',['deny','check'],['deny','--version']),('cargo'
         if network and not strict: add('dependency-audit:'+tool+':'+args[0],'unverified','-',0,'unverified')
         else: add('dependency-audit:'+tool+':'+args[0],'high','-',0,'fail')
 high=[f for f in findings if f['severity']=='high' and f['status']=='fail']
-result={"schema":1,"checks":len(findings),"high_fail":len(high),"findings":findings,"status":"pass" if not high else "fail"}
+unverified=[f for f in findings if f['status']=='unverified']
+status="fail" if high else ("unverified" if unverified else "pass")
+result={"schema":1,"checks":len(findings),"high_fail":len(high),"unverified":len(unverified),"findings":findings,"status":status}
 pathlib.Path(sys.argv[1]).write_text(json.dumps(result,indent=2)+"\n")
 print(f"security audit: {len(findings)} findings, high_fail={len(high)}")
-sys.exit(1 if high else 0)
+sys.exit(1 if high else (2 if unverified else 0))
 PY
