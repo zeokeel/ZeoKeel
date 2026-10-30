@@ -83,4 +83,12 @@ fn export_schema() {
         "ipc-chat-send-result.json",
         &schemars::schema_for!(zk_contract_ipc::results::ChatSendResult),
     );
+    write(
+        "workspace-change.json",
+        &schemars::schema_for!(zk_contract_ipc::results::WorkspaceChange),
+    );
+    write(
+        "workspace-changes-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::WorkspaceChangesResult),
+    );
 }

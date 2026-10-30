@@ -338,6 +338,22 @@ pub fn default_agent_settings() -> Option<AgentSettings> {
         .and_then(|slot| slot.clone())
 }
 
+/// Clear the published agent settings (save-non-default then reset-to-default).
+///
+/// After clearing, runtimes fall back to their env/default merge instead of a
+/// stale default-valued registry entry.
+///
+/// # Errors
+///
+/// [`String`] when the registry lock is poisoned.
+pub fn clear_default_agent_settings() -> Result<(), String> {
+    let mut slot = agent_settings_slot()
+        .lock()
+        .map_err(|_| "agent settings registry poisoned".to_owned())?;
+    *slot = None;
+    Ok(())
+}
+
 /// One serialized lifecycle hook event (the JSON form of the runtime's
 /// `HookEvent`), so hosts observe hooks without depending on agent-rig types.
 pub trait AgentHookSink: Send + Sync {

@@ -108,6 +108,8 @@ pub mod commands {
     pub const QUESTION_ANSWER: &str = "question.answer";
     /// List workspace files (bounded, read-only).
     pub const WORKSPACE_FILES: &str = "workspace.files";
+    /// List read-only git working-tree changes for one workspace.
+    pub const WORKSPACE_CHANGES: &str = "workspace.changes";
     /// Check personal update feed.
     pub const UPDATE_CHECK: &str = "update.check";
     /// Forward one app request envelope to the server (Bearer injected by host).
@@ -286,5 +288,30 @@ pub mod results {
         pub conversation_id: String,
         /// Owning workspace id (ownership is verified before accepting).
         pub workspace_id: String,
+    }
+
+    /// One changed path from `workspace.changes`.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct WorkspaceChange {
+        /// Path relative to the workspace root (forward slashes when git reports them).
+        pub path: String,
+        /// Coarse added/untracked/modified marker (`1` when this path is not a deletion).
+        pub add: u32,
+        /// Coarse deleted marker (`1` when git reports a deletion).
+        pub del: u32,
+    }
+
+    /// `workspace.changes` result: bounded, read-only git working-tree summary.
+    ///
+    /// `warning` is present when git is unavailable / the workspace is not a
+    /// repository / the output was truncated; `items` is empty in those cases
+    /// where no reliable listing is available.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct WorkspaceChangesResult {
+        /// Changed paths, sorted by path (bounded by the host).
+        pub items: Vec<WorkspaceChange>,
+        /// Human-readable non-fatal warning (omitted when the scan was clean).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub warning: Option<String>,
     }
 }

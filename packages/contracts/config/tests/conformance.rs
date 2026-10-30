@@ -119,12 +119,18 @@ fn runtime_settings_snapshot_excludes_provider_secrets() {
     settings.agent.completion.temperature = Some(0.3);
     settings.tools.tool_timeout_ms = 2_000;
 
-    let snapshot = RuntimeSettings::from(&settings);
+    let snapshot = RuntimeSettings {
+        agent: Some(settings.agent.clone()),
+        tools: Some(settings.tools),
+    };
     snapshot.validate().unwrap();
     zk_contract_config::set_runtime_settings(&snapshot).unwrap();
     let published = zk_contract_config::runtime_settings().unwrap().unwrap();
-    assert_eq!(published.agent.completion.temperature, Some(0.3));
-    assert_eq!(published.tools.tool_timeout_ms, 2_000);
+    assert_eq!(
+        published.agent.as_ref().unwrap().completion.temperature,
+        Some(0.3)
+    );
+    assert_eq!(published.tools.unwrap().tool_timeout_ms, 2_000);
 
     // The whole published snapshot must be non-secret: no provider config at
     // all, hence no plaintext api_key/base_url.
@@ -147,4 +153,50 @@ fn runtime_settings_snapshot_excludes_provider_secrets() {
     );
 
     zk_contract_config::clear_runtime_settings().unwrap();
+}
+
+#[test]
+fn runtime_settings_sections_are_optional_and_legacy_snapshots_parse() {
+    // Per-section publishing: tools-only saves must not publish agent defaults.
+    let tools_only = RuntimeSettings {
+        agent: None,
+        tools: Some(ToolSettings {
+            tool_timeout_ms: 2_000,
+            ..ToolSettings::default()
+        }),
+    };
+    tools_only.validate().unwrap();
+    let json = serde_json::to_string(&tools_only).unwrap();
+    assert!(!json.contains("\"agent\""), "None section omitted: {json}");
+    let parsed: RuntimeSettings = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed, tools_only);
+
+    let agent_only = RuntimeSettings {
+        agent: Some(zk_contract_config::AgentSettings {
+            max_steps: 12,
+            ..zk_contract_config::AgentSettings::default()
+        }),
+        tools: None,
+    };
+    agent_only.validate().unwrap();
+    assert!(RuntimeSettings::default().validate().is_ok());
+
+    // Old full snapshots (both objects, no Options on the wire) still parse.
+    let legacy = serde_json::json!({
+        "agent": {"max_steps": 12},
+        "tools": {"tool_timeout_ms": 2000, "approval_timeout_ms": 300000}
+    });
+    let restored: RuntimeSettings = serde_json::from_value(legacy).unwrap();
+    assert_eq!(restored.agent.as_ref().unwrap().max_steps, 12);
+    assert_eq!(restored.tools.unwrap().tool_timeout_ms, 2_000);
+
+    // Validation still rejects bad values inside a present section.
+    let bad = RuntimeSettings {
+        tools: Some(ToolSettings {
+            tool_timeout_ms: 10,
+            ..ToolSettings::default()
+        }),
+        ..RuntimeSettings::default()
+    };
+    assert!(bad.validate().is_err());
 }

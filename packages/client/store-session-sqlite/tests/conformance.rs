@@ -6,6 +6,7 @@
 )] // test-only
 
 use std::path::PathBuf;
+use zk_contract_agent::AgentUsage;
 use zk_contract_session::{Message, SessionError, SessionStore, WorkspaceStore};
 use zk_store_session_sqlite::{open_with_root, SqliteSessionStore};
 
@@ -37,6 +38,7 @@ fn message(id: &str, conversation_id: &str, role: &str, content: &str) -> Messag
         content: content.to_owned(),
         created_at_ms: 1,
         status: "done".to_owned(),
+        usage: None,
     }
 }
 
@@ -207,4 +209,102 @@ fn persists_message_status_for_cancel_markers() {
     store.append_message(&cancelled).unwrap();
     let loaded = store.messages_in(&ws.id, &conv.id).unwrap();
     assert_eq!(loaded[0].status, "cancelled");
+}
+
+#[test]
+fn persists_message_usage_across_reopen() {
+    let (store, base) = open_store("usage");
+    let ws = store.list_workspaces().unwrap().into_iter().next().unwrap();
+    let conv = store.create_conversation_in(&ws.id, "usage").unwrap();
+    let usage = AgentUsage {
+        input_tokens: 11,
+        output_tokens: 5,
+        total_tokens: 16,
+        cached_tokens: 4,
+        reasoning_tokens: 2,
+        cost_micros: Some(42),
+    };
+    let mut assistant = message("m-a", &conv.id, "assistant", "answer");
+    assistant.usage = Some(usage);
+    store.append_message(&assistant).unwrap();
+    store
+        .append_message(&message("m-u", &conv.id, "user", "question"))
+        .unwrap();
+    drop(store);
+
+    let reopened =
+        open_with_root(base.join("sessions.db"), base.join("default-workspace")).unwrap();
+    let messages = reopened.messages_in(&ws.id, &conv.id).unwrap();
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].usage, Some(usage));
+    assert!(messages[1].usage.is_none());
+
+    // Schema is v4 and legacy NULL rows read back as None.
+    let conn = rusqlite::Connection::open(base.join("sessions.db")).unwrap();
+    let version: i64 = conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, 4);
+    drop(conn);
+    drop(reopened);
+}
+
+#[test]
+fn corrupt_usage_json_degrades_to_none_without_panicking() {
+    let (store, base) = open_store("usage-corrupt");
+    let ws = store.list_workspaces().unwrap().into_iter().next().unwrap();
+    let conv = store.create_conversation_in(&ws.id, "corrupt").unwrap();
+    store
+        .append_message(&message("m1", &conv.id, "assistant", "answer"))
+        .unwrap();
+    drop(store);
+
+    let db = base.join("sessions.db");
+    let conn = rusqlite::Connection::open(&db).unwrap();
+    conn.execute(
+        "UPDATE messages SET usage_json='{\"input_tokens\": ' WHERE id='m1'",
+        [],
+    )
+    .unwrap();
+    drop(conn);
+
+    let reopened = open_with_root(db, base.join("default-workspace")).unwrap();
+    let messages = reopened.messages_in(&ws.id, &conv.id).unwrap();
+    assert_eq!(messages.len(), 1);
+    assert!(
+        messages[0].usage.is_none(),
+        "corrupt usage must degrade to None"
+    );
+}
+
+#[test]
+fn legacy_v3_database_upgrades_to_v4_with_usage_null() {
+    let base = std::env::temp_dir().join(format!("zeokeel-v3-{}", unique("v4")));
+    std::fs::create_dir_all(&base).unwrap();
+    let db = base.join("sessions.db");
+    {
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE workspaces (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, title TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, created_at_ms INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL);
+             CREATE TABLE conversations (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id), title TEXT NOT NULL, created_at_ms INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL);
+             CREATE TABLE messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE, role TEXT NOT NULL, content TEXT NOT NULL, created_at_ms INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'done');
+             INSERT INTO workspaces VALUES ('w1', 'ROOT', 'ws', 1, 1, 1);
+             INSERT INTO conversations VALUES ('c1', 'w1', 't', 1, 1);
+             INSERT INTO messages VALUES ('m1', 'c1', 'assistant', 'old', 1, 'done');
+             PRAGMA user_version=3;",
+        )
+        .unwrap();
+    }
+    let root = base.join("root");
+    std::fs::create_dir_all(&root).unwrap();
+    let store = open_with_root(db.clone(), root.clone()).unwrap();
+    let messages = store.messages_in("w1", "c1").unwrap();
+    assert_eq!(messages.len(), 1);
+    assert!(messages[0].usage.is_none());
+    drop(store);
+    let conn = rusqlite::Connection::open(&db).unwrap();
+    let version: i64 = conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, 4, "v3 -> v4 upgrade path");
 }

@@ -63,6 +63,12 @@ pub struct Message {
     /// Turn status: `done` | `cancelled` | `error` (M1 persistence for cancel markers).
     #[serde(default = "done_status")]
     pub status: String,
+    /// Provider token usage for an assistant turn, when reported.
+    ///
+    /// Persisted so usage survives restarts (round-4); legacy rows parse as
+    /// `None`.
+    #[serde(default)]
+    pub usage: Option<zk_contract_agent::AgentUsage>,
 }
 
 fn done_status() -> String {

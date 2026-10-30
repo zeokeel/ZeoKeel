@@ -26,6 +26,7 @@ fn searches_session_history() {
             content: "needle".to_owned(),
             created_at_ms: 1,
             status: "done".to_owned(),
+            usage: None,
         })
         .unwrap();
     zk_kit_session::set_global(Arc::new(store));

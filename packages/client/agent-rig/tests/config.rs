@@ -216,3 +216,64 @@ fn configured_tool_timeout_is_enforced_per_turn() {
         "configured 1000ms tool timeout must abort the 1300ms tool: {result}"
     );
 }
+
+#[test]
+fn desktop_ipc_apply_sequence_keeps_env_authoritative() {
+    use zk_contract_config::{AgentSettings, AppSettings, RuntimeSettings, ToolSettings};
+
+    // Emulates `apps/desktop/src/ipc.rs` apply path: the legacy registry is only
+    // written for a non-default agent section (cleared otherwise), and the
+    // runtime snapshot carries only explicitly non-default sections.
+    fn desktop_apply_ipc(settings: &AppSettings) {
+        if settings.agent == AgentSettings::default() {
+            zk_contract_agent::clear_default_agent_settings().unwrap();
+        } else {
+            zk_contract_agent::set_default_agent_settings(&settings.agent).unwrap();
+        }
+        zk_contract_config::set_runtime_settings(&RuntimeSettings {
+            agent: (settings.agent != AgentSettings::default()).then(|| settings.agent.clone()),
+            tools: (settings.tools != ToolSettings::default()).then_some(settings.tools),
+        })
+        .unwrap();
+    }
+
+    zk_contract_config::clear_runtime_settings().unwrap();
+    zk_contract_agent::clear_default_agent_settings().unwrap();
+    std::env::set_var("ZEOKEEL_AGENT_MAX_STEPS", "21");
+    std::env::set_var("ZEOKEEL_AGENT_TEMPERATURE", "0.31");
+
+    // Tools-only save: registry cleared + snapshot agent None -> env wins.
+    let mut tools_only = AppSettings::default();
+    tools_only.tools.tool_timeout_ms = 2_000;
+    desktop_apply_ipc(&tools_only);
+    assert!(zk_contract_agent::default_agent_settings().is_none());
+    let config = default_agent_config();
+    assert_eq!(config.max_steps, 21, "env agent survives a tools-only save");
+    assert_eq!(config.completion.temperature, Some(0.31));
+    assert_eq!(config.tools.tool_timeout_ms, 2_000);
+
+    // Non-default agent save wins over env...
+    let mut custom = tools_only.clone();
+    custom.agent.max_steps = 7;
+    desktop_apply_ipc(&custom);
+    let config = default_agent_config();
+    assert_eq!(config.max_steps, 7);
+    assert_eq!(config.tools.tool_timeout_ms, 2_000);
+
+    // ...and reset-to-default returns to the env fallback.
+    desktop_apply_ipc(&AppSettings::default());
+    assert!(zk_contract_agent::default_agent_settings().is_none());
+    let config = default_agent_config();
+    assert_eq!(config.max_steps, 21);
+    assert_eq!(config.completion.temperature, Some(0.31));
+    assert_eq!(
+        config.tools.tool_timeout_ms,
+        ToolSettings::default().tool_timeout_ms,
+        "reset-to-default returns to default timeouts"
+    );
+
+    zk_contract_config::clear_runtime_settings().unwrap();
+    zk_contract_agent::clear_default_agent_settings().unwrap();
+    std::env::remove_var("ZEOKEEL_AGENT_MAX_STEPS");
+    std::env::remove_var("ZEOKEEL_AGENT_TEMPERATURE");
+}

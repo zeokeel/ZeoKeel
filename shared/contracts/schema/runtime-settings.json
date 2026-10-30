@@ -5,46 +5,24 @@
   "type": "object",
   "properties": {
     "agent": {
-      "description": "Runtime agent settings (completion/memory/hooks/max_steps).",
-      "default": {
-        "max_steps": 50,
-        "completion": {
-          "temperature": null,
-          "max_tokens": null,
-          "top_p": null,
-          "seed": null,
-          "stop": [],
-          "tool_choice": {
-            "mode": "auto"
-          },
-          "parallel_tool_calls": null,
-          "reasoning_effort": null,
-          "prompt_cache": null
-        },
-        "memory": {
-          "enabled": true,
-          "dir": ""
-        },
-        "hooks": {
-          "enabled": true,
-          "log": ""
-        }
-      },
-      "allOf": [
+      "description": "Runtime agent settings, when explicitly saved (non-default).\n\n`None` means \"not published\": the runtime keeps the env/default fallback for the agent section instead of overriding it.",
+      "anyOf": [
         {
           "$ref": "#/definitions/AgentSettings"
+        },
+        {
+          "type": "null"
         }
       ]
     },
     "tools": {
-      "description": "Tool execution / approval-wait timeouts.",
-      "default": {
-        "tool_timeout_ms": 120000,
-        "approval_timeout_ms": 300000
-      },
-      "allOf": [
+      "description": "Tool execution / approval-wait timeouts, when explicitly saved.\n\n`None` means \"not published\": the runtime keeps the env/default fallback for the tools section.",
+      "anyOf": [
         {
           "$ref": "#/definitions/ToolSettings"
+        },
+        {
+          "type": "null"
         }
       ]
     }

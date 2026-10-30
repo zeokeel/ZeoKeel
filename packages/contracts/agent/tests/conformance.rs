@@ -62,3 +62,20 @@ fn configure_agent_default_is_noop() {
     let settings = zk_contract_config::AgentSettings::default();
     agent.configure_agent(&settings).unwrap();
 }
+
+#[test]
+fn agent_registry_can_be_cleared_for_reset_to_default() {
+    let settings = zk_contract_config::AgentSettings {
+        max_steps: 12,
+        ..zk_contract_config::AgentSettings::default()
+    };
+    zk_contract_agent::set_default_agent_settings(&settings).unwrap();
+    assert_eq!(
+        zk_contract_agent::default_agent_settings()
+            .unwrap()
+            .max_steps,
+        12
+    );
+    zk_contract_agent::clear_default_agent_settings().unwrap();
+    assert!(zk_contract_agent::default_agent_settings().is_none());
+}

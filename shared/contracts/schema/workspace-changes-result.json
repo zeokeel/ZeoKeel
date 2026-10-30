@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WorkspaceChangesResult",
+  "description": "`workspace.changes` result: bounded, read-only git working-tree summary.\n\n`warning` is present when git is unavailable / the workspace is not a repository / the output was truncated; `items` is empty in those cases where no reliable listing is available.",
+  "type": "object",
+  "required": [
+    "items"
+  ],
+  "properties": {
+    "items": {
+      "description": "Changed paths, sorted by path (bounded by the host).",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/WorkspaceChange"
+      }
+    },
+    "warning": {
+      "description": "Human-readable non-fatal warning (omitted when the scan was clean).",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "definitions": {
+    "WorkspaceChange": {
+      "description": "One changed path from `workspace.changes`.",
+      "type": "object",
+      "required": [
+        "add",
+        "del",
+        "path"
+      ],
+      "properties": {
+        "add": {
+          "description": "Coarse added/untracked/modified marker (`1` when this path is not a deletion).",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "del": {
+          "description": "Coarse deleted marker (`1` when git reports a deletion).",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "path": {
+          "description": "Path relative to the workspace root (forward slashes when git reports them).",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

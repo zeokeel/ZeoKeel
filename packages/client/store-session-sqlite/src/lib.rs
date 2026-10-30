@@ -88,6 +88,19 @@ fn now_ms() -> u64 {
         .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
+/// Parse persisted usage JSON; corrupt/absent values become `None` (warning,
+/// never a panic) so a bad row cannot break conversation replay.
+fn parse_usage(raw: Option<&str>) -> Option<zk_contract_agent::AgentUsage> {
+    let raw = raw?;
+    match serde_json::from_str::<zk_contract_agent::AgentUsage>(raw) {
+        Ok(usage) => Some(usage),
+        Err(error) => {
+            eprintln!("zk-store-session-sqlite: ignoring corrupt usage_json: {error}");
+            None
+        }
+    }
+}
+
 fn schema_version(conn: &Connection) -> Result<i64, SessionError> {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(storage)
@@ -161,7 +174,8 @@ fn create_schema_v2(conn: &Connection) -> Result<(), SessionError> {
             role TEXT NOT NULL,
             content TEXT NOT NULL,
             created_at_ms INTEGER NOT NULL,
-            status TEXT NOT NULL DEFAULT 'done'
+            status TEXT NOT NULL DEFAULT 'done',
+            usage_json TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_messages_conversation
             ON messages(conversation_id, created_at_ms);",
@@ -191,7 +205,8 @@ fn migrate(conn: &mut Connection, workspace_root: &Path) -> Result<(), SessionEr
             params![default_id, default_path.to_string_lossy(), "默认工作区", now],
         )
         .map_err(storage)?;
-        conn.pragma_update(None, "user_version", 2)
+        // Fresh installs start at the current schema (v4) with usage_json.
+        conn.pragma_update(None, "user_version", 4)
             .map_err(storage)?;
         return Ok(());
     }
@@ -226,7 +241,7 @@ fn migrate(conn: &mut Connection, workspace_root: &Path) -> Result<(), SessionEr
                 id TEXT PRIMARY KEY,
                 conversation_id TEXT NOT NULL REFERENCES conversations_new(id) ON DELETE CASCADE,
                 role TEXT NOT NULL, content TEXT NOT NULL, created_at_ms INTEGER NOT NULL,
-                status TEXT NOT NULL DEFAULT 'done'
+                status TEXT NOT NULL DEFAULT 'done', usage_json TEXT
             );",
         )
         .map_err(storage)?;
@@ -263,7 +278,7 @@ fn migrate(conn: &mut Connection, workspace_root: &Path) -> Result<(), SessionEr
              ALTER TABLE messages_new RENAME TO messages;
              CREATE INDEX idx_conversations_workspace ON conversations(workspace_id, updated_at_ms DESC);
              CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_ms);
-             PRAGMA user_version=3;",
+             PRAGMA user_version=4;",
         )
         .map_err(storage)?;
         tx.commit().map_err(storage)?;
@@ -279,6 +294,17 @@ fn migrate(conn: &mut Connection, workspace_root: &Path) -> Result<(), SessionEr
         conn.pragma_update(None, "user_version", 3)
             .map_err(storage)?;
     }
+    // v3 -> v4: nullable usage JSON column; existing rows read back as NULL.
+    if !has_column(conn, "messages", "usage_json")? {
+        conn.execute("ALTER TABLE messages ADD COLUMN usage_json TEXT", [])
+            .map_err(storage)?;
+    }
+    if schema_version(conn)? < 4 {
+        conn.pragma_update(None, "user_version", 4)
+            .map_err(storage)?;
+    }
+    // Normalize any pre-v4 database that already has both columns (e.g. a
+    // partially migrated file) to the current version.
     conn.execute(
         "UPDATE workspaces SET is_default = CASE WHEN id = (SELECT id FROM workspaces ORDER BY is_default DESC, created_at_ms ASC LIMIT 1) THEN 1 ELSE 0 END",
         [],
@@ -582,10 +608,16 @@ impl SessionStore for SqliteSessionStore {
                 "empty message id/conversation id".to_owned(),
             ));
         }
+        let usage_json = message
+            .usage
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(storage)?;
         self.with_conn(|conn| {
             conn.execute(
-                "INSERT INTO messages (id, conversation_id, role, content, created_at_ms, status) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![message.id, message.conversation_id, message.role, message.content, i64::try_from(message.created_at_ms).unwrap_or(i64::MAX), message.status],
+                "INSERT INTO messages (id, conversation_id, role, content, created_at_ms, status, usage_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![message.id, message.conversation_id, message.role, message.content, i64::try_from(message.created_at_ms).unwrap_or(i64::MAX), message.status, usage_json],
             )
             .map_err(storage)?;
             conn.execute(
@@ -616,9 +648,10 @@ impl SessionStore for SqliteSessionStore {
                 });
             }
             let mut stmt = conn
-                .prepare("SELECT id, conversation_id, role, content, created_at_ms, status FROM messages WHERE conversation_id=?1 ORDER BY created_at_ms ASC, id ASC")
+                .prepare("SELECT id, conversation_id, role, content, created_at_ms, status, usage_json FROM messages WHERE conversation_id=?1 ORDER BY created_at_ms ASC, id ASC")
                 .map_err(storage)?;
             let rows = stmt.query_map(params![conversation_id], |row| {
+                let usage_json: Option<String> = row.get(6)?;
                 Ok(Message {
                     id: row.get(0)?,
                     conversation_id: row.get(1)?,
@@ -626,6 +659,7 @@ impl SessionStore for SqliteSessionStore {
                     content: row.get(3)?,
                     created_at_ms: row.get::<_, i64>(4)?.max(0).try_into().unwrap_or(0),
                     status: row.get(5)?,
+                    usage: parse_usage(usage_json.as_deref()),
                 })
             })
             .map_err(storage)?;

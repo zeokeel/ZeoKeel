@@ -365,10 +365,18 @@ pub trait SettingsStore: Send + Sync {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct RuntimeSettings {
-    /// Runtime agent settings (completion/memory/hooks/max_steps).
-    pub agent: AgentSettings,
-    /// Tool execution / approval-wait timeouts.
-    pub tools: ToolSettings,
+    /// Runtime agent settings, when explicitly saved (non-default).
+    ///
+    /// `None` means "not published": the runtime keeps the env/default
+    /// fallback for the agent section instead of overriding it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<AgentSettings>,
+    /// Tool execution / approval-wait timeouts, when explicitly saved.
+    ///
+    /// `None` means "not published": the runtime keeps the env/default
+    /// fallback for the tools section.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools: Option<ToolSettings>,
 }
 
 impl RuntimeSettings {
@@ -378,16 +386,21 @@ impl RuntimeSettings {
     ///
     /// [`ConfigError::Invalid`] when agent or tool settings are out of range.
     pub fn validate(&self) -> Result<(), ConfigError> {
-        self.agent.validate()?;
-        self.tools.validate()
+        if let Some(agent) = &self.agent {
+            agent.validate()?;
+        }
+        if let Some(tools) = &self.tools {
+            tools.validate()?;
+        }
+        Ok(())
     }
 }
 
 impl From<&AppSettings> for RuntimeSettings {
     fn from(settings: &AppSettings) -> Self {
         Self {
-            agent: settings.agent.clone(),
-            tools: settings.tools,
+            agent: Some(settings.agent.clone()),
+            tools: Some(settings.tools),
         }
     }
 }
