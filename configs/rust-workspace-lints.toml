@@ -1,0 +1,26 @@
+# 参考配置：scaffold 时合并进根 Cargo.toml；每个 crate 加 `[lints] workspace = true`。
+# 零 unsafe：workspace 内所有 crate 禁止 unsafe，且不允许 #[allow(unsafe_code)]。
+# 第三方依赖内的 unsafe 由 cargo-geiger + cargo-deny + 锁版本管理，不在此列。
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "deny"
+rust_2018_idioms = "deny"
+non_ascii_idents = "deny"
+missing_abi = "deny"
+
+[workspace.lints.clippy]
+all = "deny"
+pedantic = "deny"
+nursery = "deny"
+cargo = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+indexing_slicing = "deny"
+arithmetic_side_effects = "deny"
+as_conversions = "deny"

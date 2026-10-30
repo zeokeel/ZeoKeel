@@ -1,0 +1,9 @@
+[package]
+name = "zk-composed"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+zk-contract-tool = { path = "../../packages/contract-tool" }
+zk-tool-fs = { path = "../../packages/tool-fs" }

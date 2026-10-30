@@ -1,0 +1,11 @@
+[package]
+name = "zk-tool-fs-sandboxed"
+version = "0.2.0"
+edition = "2021"
+[dependencies]
+zk-contract-tool = { path = "../contract-tool" }
+serde_json = { workspace = true }
+
+[package.metadata.zk]
+role = "tool.fs"
+contract = "zk.contract.tool@1"

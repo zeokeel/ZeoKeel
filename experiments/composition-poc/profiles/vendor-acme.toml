@@ -1,0 +1,2 @@
+[packages]
+"tool.fs" = { name = "acme-tool-fs", path = "external/acme-tool-fs" }

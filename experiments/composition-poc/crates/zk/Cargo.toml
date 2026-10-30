@@ -1,0 +1,9 @@
+[package]
+name = "zk"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+zk-composed = { path = "../zk-composed" }
+zk-contract-tool = { path = "../../packages/contract-tool" }
+serde_json = { workspace = true }

@@ -1,0 +1,27 @@
+# 构建产物
+target/
+**/target/
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+*.log
+*.tmp
+
+# 本地环境/密钥
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# 编辑器/系统
+.DS_Store
+.idea/
+.vscode/
+
+# 实验产物（源码保留，二进制/缓存忽略）
+experiments/wasm-poc/guest-go/guest-go.wasm
+experiments/wasm-poc/target/
+experiments/composition-poc/target/
+target/evidence/
