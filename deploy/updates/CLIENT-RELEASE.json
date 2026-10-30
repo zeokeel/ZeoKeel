@@ -1,1 +1,16 @@
-{"schema":1,"channel_id":"official","edition":"enterprise","server_version":"0.1.0","client_version":"0.1.0","min_supported":"0.1.0","forced":false,"assets":[{"name":"ZeoKeel_0.1.0_linux_x64.AppImage","sha256":"","size":0}]}
+{
+  "schema": 1,
+  "channel_id": "official",
+  "edition": "enterprise",
+  "server_version": "0.1.0",
+  "client_version": "0.1.0",
+  "min_supported": "0.1.0",
+  "forced": false,
+  "assets": [
+    {
+      "name": "ZeoKeel_0.1.0_linux_x64.AppImage",
+      "sha256": "55167341a867a719640912b7a3068302def3b8a8ffa8bfd95ee835664f7fb58c",
+      "size": 18
+    }
+  ]
+}

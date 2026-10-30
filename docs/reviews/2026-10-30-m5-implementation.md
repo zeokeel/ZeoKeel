@@ -204,3 +204,74 @@ M5 的 channel validate/verify、OEM fixture、updates 端点、dist 脚本和 p
 - P1 portal：按 CHANNEL.json 品牌化，hide 无 ZeoKeel；updates-e2e OEM portal。
 - P1 manifest：版本不等 409 CLIENT_VERSION_MISMATCH。
 - 未修：pin 目录/gitlink、unknown-key schema、dist assets 空、dry-run 失败语义、三平台/公证/Docker 环境阻塞。
+
+---
+
+## 9. 第三轮复评（R3，2026-10-30）
+
+> 对象：R2 修复后的 M5 实现。只读复跑；未改产品代码/spec（仅本记录）。
+> 仅列剩余 P0/P1；环境阻塞项另标 P2/manual。
+
+### 9.1 结论
+
+**CHANGES REQUIRED（CHANGES-REQUESTED）**
+
+- **P0：0**。deep OEM compose/plan 已可执行。
+- **P1：3 组（可本地修）**：channel pin/schema 校验、dist assets/portal、upgrade/CI 证据。
+- **P2/manual（环境阻塞）**：真实 Docker 镜像/load、三平台安装包、macOS 公证/staple、真实升级回滚、真实 SBOM；不能标 complete。
+
+### 9.2 已关闭
+
+- **deep OEM**：新增 `packages/oem/acme-brand` 四件套（`zk.toml`/src/tests/README），`editions/oem-deep.toml`（enterprise + brand.mark→acme/acme-brand）；oem-e2e 复制 fixture channel 到 `brands/oem-deep`，`zk plan` 断言 `acme/acme-brand`，`zk compose --edition oem-deep --channel oem-deep --check`，`cargo test -p acme-brand`，随后清理并恢复 official。实测 oem-e2e PASS。
+- **portal/1:1**：portal 读 CHANNEL；oem-demo 显示 Acme Keel 无 ZeoKeel；manifest 版本不匹配 409；updates-e2e PASS。
+- **channel verify**：dist CHANNEL/CLIENT channel、SHA256SUMS 复算、SBOM、hide 二进制扫描；oem-e2e binary leak 负向 PASS。
+
+### 9.3 剩余 P1（可本地修）
+
+1. **`channel_validate` 仍不是 gitlink/严格 schema**：
+   - `main.rs:1026` pin 仍是 `sha256(channel.json)`，不是 fixture 目录 hash，也未校验 `.gitmodules`/submodule gitlink；spec/09 三处一致未落。
+   - 未校验 id 正则/长度、logo canonicalize/256KB/script/外链、`powered_by` enum、未知键拒绝。
+   - 修：fixture pin=目录树 hash；校验 `.gitmodules`+gitlink；严格 schema（unknown key 拒绝）；logo/id/powered_by 统一校验。
+2. **dist dry-run 资产不完整**：
+   - `build-dist` 的 `CLIENT-RELEASE.assets=[]`、sha 空、客户端 24B 文本、SBOM/ deploy 占位；`channel verify` 未要求 assets 非空/sha 匹配。
+   - portal 只链接 Linux，无 Windows/macOS；产品名含空格时 URL 未编码。
+   - 修：dry-run 也生成 assets sha/平台列表；verify 强制 assets；portal 按 platforms 三平台并 URL encode。
+3. **upgrade/CI 证据语义**：
+   - `upgrade-drill --dry-run` manifest 不可用仍 exit 0，`sha256sum` 不比较；`--docker` 只 echo，不执行 load/compose/backup。
+   - `release.yml` 只 `cargo build`+假 dist；notarize job 只 echo；无三平台 bundle/公证命令。
+   - 修：dry-run 失败非零或输出 `UNVERIFIED`；`--docker` 真实执行或标注 fake；release.yml 补三平台 bundle/notarize 模板（无证书时显式跳过并留证据）。
+
+### 9.4 P2/manual（环境阻塞，不判 P1）
+
+- 真实 Docker image save/load/compose up、PG 备份/PITR。
+- 三平台 Tauri 安装包与 Windows SHA256 实测。
+- macOS notarize/staple（证书未配）。
+- 真实升级/回滚演练。
+- 真实 CycloneDX SBOM（当前占位）。
+- 真实 OEM 镜像/安装包上的二进制残留扫描（当前 fixture 负向）。
+
+这些在本环境不可复现；acceptance 必须标 `UNVERIFIED`，不得写 complete。若 CI 在有 Docker/cert/runner 的环境跑通，可作为 M5 完成证据。
+
+### 9.5 验证
+
+| 命令 | 结果 |
+| --- | --- |
+| `bash scripts/oem-e2e.sh` | **PASS**：channel/index/pin/compose/brand/residue + deep plan/compose/cargo test |
+| `bash scripts/updates-e2e.sh` | **PASS**：manifest/channel/version reject/artifact/oem-portal |
+| `bash scripts/admin-e2e.sh` | **PASS**：10 passed（M5 portal official） |
+| `cargo test -p acme-brand --offline` | **PASS**：conformance manifest test |
+| `zk validate` | **PASS**：71 packages scanned |
+| `zk compose --edition enterprise --channel official --check` | **PASS**：16 files |
+| `zk channel validate --index oem/fixtures --all` | **PASS**：2 channels |
+| `bash scripts/build-dist.sh official 0.1.0 /tmp/zk-dist` | **PASS（dry-run）**：假 assets/SBOM 占位 |
+| `bash scripts/upgrade-drill.sh --dry-run` | **PASS（dry-run）**：语义仍模拟 |
+| `cargo test --workspace` / clippy / schema / db lock | **PASS**（前轮） |
+
+### 9.6 结论
+
+- **P0：0；P1：3 组**（channel pin/schema、dist assets/portal、upgrade/CI）。
+- **P2/manual**：真实 Docker/三平台/公证/升级/SBOM；标 unverified。
+- **M5 实现仍不可 APPROVED**：修 P1 后可复评；环境项作为 P2/manual 记录。
+
+- 关联 spec：`specs/changes/2026-10-30-oem-delivery`。
+- 复评结论（第三轮）：**CHANGES-REQUESTED**

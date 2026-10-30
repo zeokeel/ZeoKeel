@@ -2,14 +2,14 @@ schema = 1
 
 [channels.oem-demo]
 submodule = "customers/oem-demo"
-pin = "0a0cf60bd9d806cf6b3374b8835fb8d1d559cefaa78717409e61442ae1e30cba"
+pin = "4b89c6784a45ff5687ed8c35629b1ce10cbcbd3301c31880a1e2576c9bcbb38f"
 edition = "enterprise"
 depth = "basic"
 owner = "demo"
 
 [channels.oem-deep]
 submodule = "customers/oem-deep"
-pin = "5c24d78c3fe16b257da08b1f2bdd1cacf57b96ade225e5e2285ab8eb61ad523e"
+pin = "d300991c2e50dbf35f3b52faf568ea244eb9eb214de7e3b311296e6cb9c076de"
 edition = "enterprise"
 depth = "deep"
 owner = "demo"

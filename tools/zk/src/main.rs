@@ -294,8 +294,11 @@ struct ProfileDecl {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 #[allow(dead_code)]
 struct ChannelFile {
+    #[serde(default)]
+    schema: u32,
     #[serde(default)]
     id: String,
     #[serde(default)]
@@ -306,9 +309,12 @@ struct ChannelFile {
     assets: Assets,
     #[serde(default)]
     defaults: Defaults,
+    #[serde(default)]
+    copy: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Identity {
     #[serde(default)]
     slug: String,
@@ -324,14 +330,26 @@ struct Identity {
     data_dir_name: String,
     #[serde(default)]
     product_home_dir: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    company: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    copyright: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    linux: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Assets { #[serde(default)] #[allow(dead_code)] accent: String }
 #[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Defaults { #[serde(default)] #[allow(dead_code)] server_url: String }
 
 #[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Brand {
     #[serde(default)]
     name: String,
@@ -342,6 +360,7 @@ struct Brand {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct BrandLogo {
     #[serde(default)]
     light: String,
@@ -549,11 +568,15 @@ fn load_channel(root: &Path, channel: &str) -> Result<(ChannelFile, PathBuf)> {
     if file.brand.logo.light.trim().is_empty() || file.brand.logo.dark.trim().is_empty() {
         bail!("channel {channel}: brand.logo.light and brand.logo.dark are required");
     }
+    if file.id.is_empty() || file.id.len() > 32 || !file.id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') { bail!("channel {channel}: bad id"); }
     for logo in [&file.brand.logo.light, &file.brand.logo.dark] {
+        if logo.is_empty() || logo.contains("..") || logo.starts_with('/') || logo.starts_with("http:") || logo.starts_with("https:") { bail!("channel {channel}: unsafe logo path {logo}"); }
         let logo_path = dir.join(logo);
-        if !logo_path.is_file() {
-            bail!("channel {channel}: logo file missing: {}", logo_path.display());
-        }
+        if !logo_path.is_file() { bail!("channel {channel}: logo file missing: {}", logo_path.display()); }
+        let meta = fs::metadata(&logo_path)?;
+        if meta.len() > 256 * 1024 { bail!("channel {channel}: logo too large"); }
+        let text = fs::read_to_string(&logo_path).unwrap_or_default().replace("http://www.w3.org/2000/svg", "");
+        if text.to_ascii_lowercase().contains("<script") || text.contains("http://") || text.contains("https://") { bail!("channel {channel}: unsafe logo content"); }
     }
     Ok((file, dir))
 }
@@ -1040,8 +1063,10 @@ fn channel_validate(index_dir: &Path) -> Result<()> {
         if !matches!(entry.depth.as_str(), "basic" | "deep") { bail!("channel {id}: bad depth"); }
         let customer = index_dir.join(&entry.submodule);
         let channel_text = fs::read_to_string(customer.join("channel.json")).with_context(|| format!("channel {id}: channel.json"))?;
-        let actual_pin = sha256_hex(channel_text.as_bytes());
-        if actual_pin != entry.pin { bail!("channel {id}: pin mismatch (fixture pin = sha256(channel.json))"); }
+        let actual_pin = dir_hash(&customer)?;
+        if actual_pin != entry.pin { bail!("channel {id}: pin mismatch (fixture pin = directory hash)"); }
+        let gitmodules = fs::read_to_string(index_dir.join(".gitmodules")).unwrap_or_default();
+        if !gitmodules.contains(&entry.submodule) { bail!("channel {id}: .gitmodules missing submodule path"); }
         let file: ChannelFile = serde_json::from_str(&channel_text).context("parse channel.json")?;
         let display = if file.identity.product_name.is_empty() { file.brand.name.clone() } else { file.identity.product_name.clone() };
         if display.is_empty() || file.identity.slug.is_empty() || file.identity.app_id.is_empty() { bail!("channel {id}: missing identity fields"); }
@@ -1094,6 +1119,16 @@ fn channel_verify(root: &Path, channel: &str, dist: &Path) -> Result<()> {
         if actual != expected { bail!("SHA256SUMS mismatch {name}"); }
     }
     if !dist.join("SBOM").is_dir() { bail!("dist missing SBOM/"); }
+    let assets = release.get("assets").and_then(|v| v.as_array()).context("CLIENT-RELEASE assets")?;
+    if assets.is_empty() { bail!("CLIENT-RELEASE assets empty"); }
+    for asset in assets {
+        let name = asset.get("name").and_then(|v| v.as_str()).context("asset name")?;
+        let sha = asset.get("sha256").and_then(|v| v.as_str()).context("asset sha")?;
+        if sha.len() != 64 { bail!("asset sha invalid: {name}"); }
+        let path = dist.join("clients").join(name);
+        if !path.is_file() { bail!("asset missing: {name}"); }
+        if sha256_hex(&fs::read(&path)?) != sha { bail!("asset sha mismatch: {name}"); }
+    }
     if file.brand.powered_by == "hide" {
         let mut stack = vec![dist.to_path_buf()];
         while let Some(dir) = stack.pop() {
@@ -1114,6 +1149,28 @@ fn channel_verify(root: &Path, channel: &str, dist: &Path) -> Result<()> {
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     if needle.is_empty() || haystack.len() < needle.len() { return false; }
     haystack.windows(needle.len()).any(|window| window == needle)
+}
+
+fn dir_hash(dir: &Path) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    let mut files = Vec::new();
+    fn walk(base: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+        for entry in fs::read_dir(dir)? {
+            let path = entry?.path();
+            if path.is_dir() { walk(base, &path, out)?; } else { out.push(path.strip_prefix(base).context("strip")?.to_path_buf()); }
+        }
+        Ok(())
+    }
+    walk(dir, dir, &mut files)?;
+    files.sort();
+    let mut hash = Sha256::new();
+    for file in &files {
+        let name = file.to_string_lossy().replace('\\', "/");
+        hash.update(name.as_bytes());
+        hash.update(b"\0");
+        hash.update(fs::read(dir.join(file))?);
+    }
+    Ok(format!("{:x}", hash.finalize()))
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
