@@ -1056,6 +1056,21 @@ fn channel_verify(root: &Path, channel: &str, dist: &Path) -> Result<()> {
     for name in ["CHANNEL.json", "CLIENT-RELEASE.json", "SHA256SUMS"] {
         if !dist.join(name).is_file() { bail!("dist missing {name}"); }
     }
+    let channel_json: serde_json::Value = serde_json::from_str(&fs::read_to_string(dist.join("CHANNEL.json"))?).context("parse dist CHANNEL.json")?;
+    if channel_json.get("channel").and_then(|v| v.as_str()) != Some(channel) { bail!("dist CHANNEL.json channel mismatch"); }
+    let release: serde_json::Value = serde_json::from_str(&fs::read_to_string(dist.join("CLIENT-RELEASE.json"))?).context("parse dist CLIENT-RELEASE.json")?;
+    if release.get("channel_id").and_then(|v| v.as_str()) != Some(channel) { bail!("CLIENT-RELEASE channel mismatch"); }
+    let sums = fs::read_to_string(dist.join("SHA256SUMS"))?;
+    for line in sums.lines().filter(|line| !line.trim().is_empty()) {
+        let mut parts = line.split_whitespace();
+        let expected = parts.next().context("bad SHA256SUMS")?;
+        let name = parts.next().context("bad SHA256SUMS")?;
+        let path = dist.join(name);
+        if !path.is_file() { bail!("SHA256SUMS missing {name}"); }
+        let actual = sha256_hex(&fs::read(&path)?);
+        if actual != expected { bail!("SHA256SUMS mismatch {name}"); }
+    }
+    if !dist.join("SBOM").is_dir() { bail!("dist missing SBOM/"); }
     if file.brand.powered_by == "hide" {
         let mut stack = vec![dist.to_path_buf()];
         while let Some(dir) = stack.pop() {
@@ -1063,13 +1078,19 @@ fn channel_verify(root: &Path, channel: &str, dist: &Path) -> Result<()> {
                 let path = entry?.path();
                 if path.is_dir() { stack.push(path); continue; }
                 let name = path.file_name().and_then(|value| value.to_str()).unwrap_or_default();
-                if matches!(name, "LICENSE" | "NOTICE" | "CHANNEL.json" | "SHA256SUMS") { continue; }
-                if let Ok(text) = fs::read_to_string(&path) { if text.contains("ZeoKeel") { bail!("brand residue in {}", path.display()); } }
+                if matches!(name, "LICENSE" | "NOTICE" | "SHA256SUMS") { continue; }
+                let bytes = fs::read(&path)?;
+                if contains_bytes(&bytes, b"ZeoKeel") { bail!("brand residue in {}", path.display()); }
             }
         }
     }
     println!("channel verify ok: {channel}");
     Ok(())
+}
+
+fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+    if needle.is_empty() || haystack.len() < needle.len() { return false; }
+    haystack.windows(needle.len()).any(|window| window == needle)
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {

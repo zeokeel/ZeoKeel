@@ -12,6 +12,7 @@ grep -q 'oem-demo' apps/desktop/web/src/generated/brand.ts
 # residue negative: a product string must fail hide verification
 cp -r oem/fixtures/dist/oem-demo /tmp/zk-oem-loud
 printf 'ZeoKeel\n' > /tmp/zk-oem-loud/leak.txt
+printf '\000ZeoKeel\000' > /tmp/zk-oem-loud/leak.bin
 if ./target/debug/zk channel verify --channel oem-demo --dist /tmp/zk-oem-loud >/dev/null 2>&1; then
   echo "residue check failed to reject" >&2; exit 1
 fi

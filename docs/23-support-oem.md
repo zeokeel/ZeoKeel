@@ -125,4 +125,4 @@ dist/<version>/<channel>/
 ## 渠道品牌资源（logo）
 
 规则与 schema 见 `09`（渠道字段）与 `27` §4（构建期注入/UI 使用）；本文不重复。客户交接时确认渠道已提供
-`brand.name`、`brand.powered_by`、`brand.logo.{light,dark}`，并在 `zk compose --check` 证据中留档。
+`identity.product_name`、`brand.powered_by`、`brand.logo.{light,dark}`，并在 `zk compose --check` 证据中留档。

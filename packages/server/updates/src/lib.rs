@@ -40,7 +40,11 @@ async fn portal() -> Response {
     let release = release().unwrap_or_else(|_| json!({ "channel_id": "official", "client_version": "0.1.0" }));
     let channel = release.get("channel_id").and_then(Value::as_str).unwrap_or("official");
     let version = release.get("client_version").and_then(Value::as_str).unwrap_or("0.1.0");
-    let html = format!("<!doctype html><html lang=zh-CN><head><meta charset=utf-8><title>ZeoKeel 下载</title><style>body{{font-family:system-ui;margin:40px;max-width:720px}}a{{display:inline-block;margin:8px 0}}</style></head><body><h1>ZeoKeel 客户端下载</h1><p>渠道：{channel} · 版本：{version}</p><p><a href=\"/api/updates/client/ZeoKeel_{version}_linux_x64.AppImage\">Linux AppImage</a></p><p><small>Windows 安装包未签名，请核对 SHA256。企业版客户端只从此服务端更新。</small></p></body></html>");
+    let channel_json: Value = std::fs::read_to_string(update_dir().join("CHANNEL.json")).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_else(|| json!({}));
+    let product = channel_json.get("product_name").and_then(Value::as_str).unwrap_or(channel);
+    let powered_by = channel_json.get("powered_by").and_then(Value::as_str).unwrap_or("hide");
+    let footer = if powered_by == "show" { "<p><small>Powered by ZeoKeel</small></p>" } else { "" };
+    let html = format!("<!doctype html><html lang=zh-CN><head><meta charset=utf-8><title>{product} 下载</title><style>body{{font-family:system-ui;margin:40px;max-width:720px}}a{{display:inline-block;margin:8px 0}}</style></head><body><h1>{product} 客户端下载</h1><p>渠道：{channel} · 版本：{version}</p><p><a href=\"/api/updates/client/{product}_{version}_linux_x64.AppImage\">Linux AppImage</a></p><p><small>Windows 安装包未签名，请核对 SHA256。企业版客户端只从此服务端更新。</small></p>{footer}</body></html>");
     let mut response = html.into_response();
     response.headers_mut().insert(axum::http::header::CONTENT_TYPE, axum::http::HeaderValue::from_static("text/html; charset=utf-8"));
     response.headers_mut().insert(axum::http::header::CONTENT_SECURITY_POLICY, axum::http::HeaderValue::from_static("default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"));
@@ -58,7 +62,8 @@ async fn manifest(State(_state): State<AppState>, headers: HeaderMap) -> Result<
     if release_edition != "enterprise" { return Err(error(StatusCode::CONFLICT, "EDITION_MISMATCH")); }
     let min_supported = release.get("min_supported").and_then(Value::as_str).unwrap_or("").to_owned();
     let current_client = release.get("client_version").and_then(Value::as_str).unwrap_or("").to_owned();
-    let forced = client_version != current_client;
+    if client_version != current_client { return Err(error(StatusCode::CONFLICT, "CLIENT_VERSION_MISMATCH")); }
+    let forced = false;
     let previous = release.get("previous").cloned().unwrap_or(Value::Null);
     let object = release.as_object_mut().ok_or_else(|| error(StatusCode::INTERNAL_SERVER_ERROR, "UPDATE_UNAVAILABLE"))?;
     object.insert("client".into(), json!({ "version": client_version, "channel": channel, "platform": platform }));

@@ -13,6 +13,7 @@ channel_json=json.loads(pathlib.Path("brands",channel,"channel.json").read_text(
 (out/"CHANNEL.json").write_text(json.dumps({"channel":channel,"product_name":channel_json.get("identity",{}).get("product_name",channel),"powered_by":channel_json.get("brand",{}).get("powered_by","show")},indent=2)+"\n")
 (out/"VERSION").write_text(version+"\n")
 (out/"SBOM"/"README.md").write_text("# SBOM placeholder (dry-run; CI generates CycloneDX)\n")
+(out/"CHANNEL.json").write_text((out/"CHANNEL.json").read_text())
 (out/"deploy"/"README.md").write_text("# deploy bundle placeholder\n")
 if not any((out/"clients").iterdir()):
     (out/"clients"/f"{channel}-{version}-linux.AppImage").write_text("dry-run client artifact\n")
