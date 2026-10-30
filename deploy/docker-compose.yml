@@ -1,0 +1,57 @@
+name: zeokeel
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zeokeel
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?PG_PASSWORD is required}
+      POSTGRES_DB: zeokeel
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zeokeel -d zeokeel"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  server:
+    image: ${SERVER_IMAGE:?SERVER_IMAGE is required}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ZEOKEEL_DATABASE_URL: postgres://zeokeel:${PG_PASSWORD}@postgres:5432/zeokeel
+      ZEOKEEL_SERVER_ADDR: 0.0.0.0:8787
+      ZEOKEEL_BOOTSTRAP_ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ZEOKEEL_BOOTSTRAP_ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      ZEOKEEL_UPSTREAM_BASE_URL: ${UPSTREAM_BASE_URL:-}
+      ZEOKEEL_UPSTREAM_API_KEY: ${UPSTREAM_API_KEY:-}
+      ZEOKEEL_COOKIE_SECURE: "1"
+      ZEOKEEL_ADMIN_DIST: /srv/admin
+    expose: ["8787"]
+    stop_grace_period: 45s
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8787/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on: [server]
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./portal:/srv/portal:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata: {}
+  caddy_data: {}
+  caddy_config: {}

@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1.7
+# Multi-stage build for the ZeoKeel enterprise server + admin SPA.
+FROM rust:1.99-bookworm AS server-build
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY packages ./packages
+COPY apps ./apps
+COPY tools ./tools
+COPY editions ./editions
+COPY profiles ./profiles
+COPY brands ./brands
+COPY zk.toml ./
+COPY pnpm-workspace.yaml package.json ./
+RUN cargo build --release -p zk-server --locked
+
+FROM node:22-bookworm AS admin-build
+WORKDIR /admin
+COPY apps/admin/web ./apps/admin/web
+RUN cd apps/admin/web && npm install --no-audit --no-fund && npm run build
+
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 10001 --home /srv/zeokeel --shell /usr/sbin/nologin zeokeel
+COPY --from=server-build /src/target/release/zk-server /usr/local/bin/zk-server
+COPY --from=admin-build /admin/apps/admin/web/dist /srv/admin
+RUN mkdir -p /srv/zeokeel && chown -R zeokeel:zeokeel /srv/zeokeel
+USER zeokeel
+ENV ZEOKEEL_ADMIN_DIST=/srv/admin
+ENV ZEOKEEL_SERVER_ADDR=0.0.0.0:8787
+EXPOSE 8787
+HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=5 \
+  CMD curl -fsS http://127.0.0.1:8787/healthz || exit 1
+ENTRYPOINT ["/usr/local/bin/zk-server"]
