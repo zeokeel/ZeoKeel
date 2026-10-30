@@ -1,6 +1,6 @@
 # 2026-10-30-agent-dsh-parity · 验收
 
-- 状态：`implementation-in-progress`（R6 CHANGES-REQUESTED；等待 R7 复评）
+- 状态：`implementation-in-progress`（R7 CHANGES-REQUESTED；等待 R8 复评）
 - 验收人：pending
 - 证据：`target/evidence/agent-parity/`
 
@@ -8,7 +8,7 @@
 
 - `docs/generated/AGENT-TOOL-MATRIX.md`（`scripts/agent-tool-matrix.py --check`）
 - `docs/39-agent-prompts.md`
-- `scripts/agent-e2e.sh`：真实 personal + fake upstream，6 scenarios（审批/拒绝/取消/ask-user/bash/present/多步）
+- `scripts/agent-e2e.sh`：真实 personal + fake upstream，9 scenarios（unknown/max/拒绝/审批/取消/ask-user/bash/present/多步/provider）
 - `cargo test --workspace` / clippy 绿
 - SSRF/redirect/私网负向；worktree 注入/逃逸负向
 - 实时 ToolCallStarted/Finished；取消标志；审批 fail-closed；ask-user IPC/UI

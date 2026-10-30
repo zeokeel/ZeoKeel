@@ -489,3 +489,74 @@ rig 循环/审批/ask-user/工具包**happy path 能跑**，但离 spec 的“DS
 
 - 关联 spec：`specs/changes/2026-10-30-agent-dsh-parity`。
 - 复评结论（第六轮）：**CHANGES-REQUESTED**
+
+---
+
+## 14. 第七轮复评（R7，2026-10-30）
+
+> 对象：R6 修复后的 agent rig 实现。只读复跑；未改产品代码/spec（仅本记录）。
+> R6 的 Playwright max/unknown 阻塞已修；本轮只发现 acceptance 事实过期。
+
+### 14.1 结论
+
+**CHANGES REQUIRED（CHANGES-REQUESTED）**
+
+- **P0：0**。
+- **P1：1（文档验收阻塞）**：`acceptance.md` 仍写“6 scenarios”，实际为 **9**；状态仍写 R6 CHANGES。
+- **无产品 P1/P0**：Playwright max/unknown 已通过，capability placeholders 已按 R6 接受 P2/manual。
+- **e2e 连续两次 9 passed (20.6s / 20.3s)，retries=0**；cargo/clippy/docs/spec/matrix 绿；review-check 因 latest R6 CHANGES 红（APPROVED 前预期）。
+
+### 14.2 已关闭
+
+- **Playwright max turns**：`ZEOKEEL_AGENT_MAX_STEPS=3` + `loop` fake upstream；断言 `AGENT_MAX_STEPS`。
+- **Playwright unknown tool**：`unknown_tool` fake upstream；断言 `unknown handled`/不崩。
+- **9 e2e**：未知工具/max/拒绝/审批/取消/bash/present/多步/provider hot-swap；两次 9 passed，retries=0。
+- **capability placeholders**：`cap-{vector,image,audio,transcription,rerank,hooks}` 均 `available()==false` + `CAPABILITY_UNAVAILABLE`；R6 已接受 P2/manual。
+- **schedule executor / subagent_fork / PDF 正例 / workflow DAG / provider hot-swap** 已落。
+- **matrix/ docs/39 / spec approved**：`agent-tool-matrix.py --check` 绿。
+
+### 14.3 剩余 P1
+
+#### P1-1 · acceptance 仍写 6 scenarios，实际 9
+
+- `specs/changes/2026-10-30-agent-dsh-parity/acceptance.md`:
+  - 状态仍 `implementation-in-progress（R6 CHANGES-REQUESTED；等待 R7 复评）`；
+  - “已落地证据”写 `6 scenarios`，实际 `e2e/agent-rig.spec.ts` 9 条；
+  - 清单 `[x]` 已勾选，但“已落地证据”数字与测试数不一致。
+- 性质：**文档修复**，无需产品代码；但 C16/证据政策下不能带错误计数 APPROVED。
+
+**修法**：改为“9 scenarios（unknown/max/拒绝/审批/取消/bash/present/多步/provider）”；状态更新为 R7/`implementation-in-progress`（独立评审 APPROVED 前）；勾选项与实测一致。
+
+### 14.4 P2/manual（R6 已接受）
+
+- capability placeholders（hooks/vector/media）P2/manual，需产品确认；`available()==false` 诚实。
+- `subagent` 异步 send/interrupt；schedule/subagent 深度；工具名/参数 DSH 对齐。
+- `call-timeout` agent 级 env + C3 豁免。
+- `review-check` 当前红是 R6 CHANGES 最新评审；R7 APPROVED 后转绿。
+- `web_search` 自定义 endpoint 私网限制。
+
+### 14.5 证据
+
+| 命令 | 结果 |
+| --- | --- |
+| `bash scripts/agent-e2e.sh`（第 1 次） | **PASS：9 passed (20.6s)，retries=0** |
+| `bash scripts/agent-e2e.sh`（第 2 次） | **PASS：9 passed (20.3s)，retries=0** |
+| `cargo test --workspace` / clippy | PASS |
+| `docs-check` / `spec-check` | PASS |
+| `agent-tool-matrix.py --check` | PASS |
+| `review-check` | **FAIL**：latest review CHANGES；APPROVED 前预期 |
+| max/unknown e2e | PASS（AGENT_MAX_STEPS/unknown handled） |
+
+### 14.6 最小 APPROVED 条件
+
+1. 仅修 acceptance：`6 scenarios`→`9 scenarios`；状态/清单与实测一致。
+2. R7 APPROVED 后 `review-check` 转绿；其余 capability placeholders 保持 P2/manual。
+
+### 14.7 结论
+
+- **P0：0；P1：1**（acceptance 计数）。
+- **产品实现已满足 R6/R7 范围**；唯一阻塞是 acceptance 事实错误。
+- 修 P1-1 后应可 APPROVED；当前仍不可 APPROVED。
+
+- 关联 spec：`specs/changes/2026-10-30-agent-dsh-parity`。
+- 复评结论（第七轮）：**CHANGES-REQUESTED**
