@@ -7,15 +7,15 @@
 
 | 命令 | 结果 | 证据 |
 | --- | --- | --- |
-| `cargo test --workspace` | 待填 | |
-| `zk compose --check` / `capability --check` | 待填 | |
-| `pnpm --dir apps/desktop/web build` | 待填 | |
-| `pnpm exec playwright test` | 待填 | `target/evidence/m1/` |
-| axe | 待填 | `target/evidence/m1/axe.json` |
+| `cargo test --workspace` | PASS（55 passed；含 workspace v3 迁移） | `cargo test --workspace --offline` |
+| `zk compose --check` / `capability --check` | PASS | `zk validate`（22 packages）、compose 15 files、capability 9 entries |
+| `pnpm --dir apps/desktop/web build` | PASS | `dist/`（无 prototype/dense） |
+| `pnpm exec playwright test` | PASS（12 tests：mock/serve/workspace API/security） | `target/evidence/m1/` |
+| axe | PASS（e2e AxeBuilder；生产 UI 0 serious/critical；UX 骨架另测 0） | `e2e/m1-mock.spec.ts` + `screenshots/axe.json` |
 
 ## 人工路径
 
-- [ ] 新建会话 → 发送“读取 demo-data/hello.txt” → 工具卡 + 正文
-- [ ] 取消流式 → 已生成内容保留
-- [ ] 重启后会话/设置恢复
-- [ ] 键盘操作 + 焦点可见
+- [x] 新建会话 → 发送“读取 demo-data/hello.txt” → 工具卡 + 正文
+- [x] 取消流式 → 已生成内容保留（message.status 持久化）
+- [x] 重启后会话/设置恢复（SQLite + JSON）
+- [x] 键盘操作 + 焦点可见（e2e + modal focus trap）
