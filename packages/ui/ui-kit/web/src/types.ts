@@ -123,6 +123,8 @@ export interface Message {
   created_at_ms: number;
   /** `done` | `cancelled` | `error` (M1 status persistence). */
   status?: string;
+  /** Persisted provider usage (round-4); absent/null for legacy rows or turns without usage. */
+  usage?: AgentUsage | null;
 }
 
 /** Payload subset used by the shell header. */

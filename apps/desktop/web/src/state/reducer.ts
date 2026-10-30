@@ -139,6 +139,7 @@ function toChatMessage(message: Message): ChatMessage {
     content: message.content,
     created_at_ms: message.created_at_ms,
     status: statusOfMessage(message),
+    usage: message.usage ?? null,
     toolCalls: [],
     approvals: [],
     questions: [],

@@ -28,6 +28,7 @@ import {
   ipc_eventSchema,
   ipc_meta_infoSchema,
   session_messageSchema,
+  workspace_changes_resultSchema,
   workspace_files_resultSchema,
   workspaceSchema,
 } from "../../../../shared/contracts/ts/contracts";
@@ -73,6 +74,7 @@ export type BoundaryName =
   | "metaInfo"
   | "chatSendResult"
   | "workspaceFilesResult"
+  | "workspaceChangesResult"
   | "questionAsked";
 
 const checks: Record<BoundaryName, ValidateFunction> = {
@@ -86,6 +88,7 @@ const checks: Record<BoundaryName, ValidateFunction> = {
   metaInfo: ajv.compile(ipc_meta_infoSchema),
   chatSendResult: ajv.compile(ipc_chat_send_resultSchema),
   workspaceFilesResult: ajv.compile(workspace_files_resultSchema),
+  workspaceChangesResult: ajv.compile(workspace_changes_resultSchema),
   questionAsked: ajv.compile(agent_question_askedSchema),
 };
 
@@ -151,4 +154,8 @@ export function validateWorkspaceFilesResult(value: unknown): boolean {
 
 export function validateQuestionAsked(value: unknown): boolean {
   return validateBoundary("questionAsked", value);
+}
+
+export function validateWorkspaceChangesResult(value: unknown): boolean {
+  return validateBoundary("workspaceChangesResult", value);
 }

@@ -15,7 +15,6 @@ import {
   type AppSettings,
   type CommandResult,
   type Conversation,
-  type FileEntry,
   type Locale,
   type Message,
   type Meta,
@@ -30,6 +29,19 @@ import {
 } from "./types";
 
 import { isRecord, readBoolean, readNumber, readString } from "@zeokeel/ui-kit";
+import type {
+  FileEntry,
+  QuestionAskedPayload,
+  QuestionDef,
+  QuestionOption,
+  WorkspaceChange,
+  WorkspaceChangesResult,
+  WorkspaceFilesResult,
+} from "../../../../shared/contracts/ts/contracts";
+
+// Wire DTOs are generated from the Rust contracts (T22); re-export for app callers so the app does
+// not hand-mirror boundary shapes (FileEntry/WorkspaceFilesResult/QuestionDef live only in contracts.ts).
+export type { FileEntry, QuestionAskedPayload, QuestionDef, QuestionOption, WorkspaceChange, WorkspaceChangesResult, WorkspaceFilesResult };
 import {
   validateAgentEvent,
   validateAppSettings,
@@ -37,8 +49,10 @@ import {
   validateConversation,
   validateMessage,
   validateMetaInfo,
+  validateQuestionAsked,
   validateUiEvent,
   validateWorkspace,
+  validateWorkspaceChangesResult,
   validateWorkspaceFilesResult,
 } from "./validate";
 
@@ -120,20 +134,57 @@ export function parseWorkspace(value: unknown): Workspace | null {
   return isRecord(nested) ? parseWorkspaceRecord(nested) : null;
 }
 
-export function parseFileEntries(value: unknown): FileEntry[] | null {
+/** Validates `workspace.files` against the generated schema, then maps the typed DTO. */
+export function parseWorkspaceFiles(value: unknown): WorkspaceFilesResult | null {
   if (!isRecord(value) || !validateWorkspaceFilesResult(value)) return null;
   const items = readArray(value, "items");
   if (items === null) return null;
-  const out: FileEntry[] = [];
+  const entries: FileEntry[] = [];
   for (const item of items) {
     if (!isRecord(item)) continue;
     const path = readString(item, "path");
     const depth = readNumber(item, "depth");
     const kind = readString(item, "kind");
     if (path === null || depth === null || (kind !== "dir" && kind !== "file")) continue;
-    out.push({ path, depth, kind });
+    const badge = readString(item, "badge");
+    entries.push(badge === null ? { path, depth, kind } : { path, depth, kind, badge });
   }
-  return out;
+  return { items: entries };
+}
+
+export function parseFileEntries(value: unknown): FileEntry[] | null {
+  return parseWorkspaceFiles(value)?.items ?? null;
+}
+
+export interface ParsedWorkspaceChanges {
+  items: WorkspaceChange[];
+  /** Non-fatal scan notice (git unavailable/non-repo/truncated); null when clean. */
+  warning: string | null;
+}
+
+/** Validates `workspace.changes` against the generated schema, then maps the typed DTO. */
+export function parseWorkspaceChanges(value: unknown): ParsedWorkspaceChanges | null {
+  if (!isRecord(value) || !validateWorkspaceChangesResult(value)) {
+    return null;
+  }
+  const rawItems = readArray(value, "items");
+  if (rawItems === null) {
+    return null;
+  }
+  const items: WorkspaceChange[] = [];
+  for (const item of rawItems) {
+    if (!isRecord(item)) {
+      continue;
+    }
+    const path = readString(item, "path");
+    const add = readNumber(item, "add");
+    const del = readNumber(item, "del");
+    if (path === null || add === null || del === null) {
+      continue;
+    }
+    items.push({ path, add, del });
+  }
+  return { items, warning: readString(value, "warning") };
 }
 
 export interface UpdateRelease { version: string; notes: string }
@@ -184,14 +235,25 @@ export function parseConversations(value: unknown): Conversation[] | null {
 }
 
 function parseMessageRecord(value: Record<string, unknown>): Message | null {
-  if (!validateMessage(value)) {
-    return null;
+  let record: Record<string, unknown> = value;
+  let usage: AgentUsage | null = null;
+  if (validateMessage(value)) {
+    usage = parseUsage(value["usage"]);
+  } else {
+    // Boundary policy: invalid persisted usage degrades to "unknown" (null) without dropping the
+    // message; any other schema violation still rejects the record.
+    const withoutUsage = { ...value };
+    delete withoutUsage["usage"];
+    if (!validateMessage(withoutUsage)) {
+      return null;
+    }
+    record = withoutUsage;
   }
-  const id = readString(value, "id");
-  const conversationId = readString(value, "conversation_id");
-  const role = readString(value, "role");
-  const content = readString(value, "content");
-  const createdAt = readNumber(value, "created_at_ms");
+  const id = readString(record, "id");
+  const conversationId = readString(record, "conversation_id");
+  const role = readString(record, "role");
+  const content = readString(record, "content");
+  const createdAt = readNumber(record, "created_at_ms");
   if (
     id === null ||
     conversationId === null ||
@@ -201,8 +263,8 @@ function parseMessageRecord(value: Record<string, unknown>): Message | null {
   ) {
     return null;
   }
-  const status = readString(value, "status") ?? "done";
-  return { id, conversation_id: conversationId, role, content, created_at_ms: createdAt, status };
+  const status = readString(record, "status") ?? "done";
+  return { id, conversation_id: conversationId, role, content, created_at_ms: createdAt, status, usage };
 }
 
 export function parseMessages(value: unknown): Message[] | null {
@@ -436,6 +498,45 @@ function parseCompletedReply(value: unknown): CompletedReply | null {
   return { text, tool_calls: toolCalls, usage: parseUsage(value["usage"]) };
 }
 
+function parseQuestions(value: unknown): QuestionDef[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const questions: QuestionDef[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) {
+      return null;
+    }
+    const id = readString(item, "id");
+    const question = readString(item, "question");
+    if (id === null || question === null) {
+      return null;
+    }
+    const parsed: QuestionDef = { id, question };
+    const header = readString(item, "header");
+    if (header !== null) parsed.header = header;
+    const multiSelect = readBoolean(item, "multi_select");
+    if (multiSelect !== null) parsed.multi_select = multiSelect;
+    const rawOptions = item["options"];
+    if (rawOptions !== undefined) {
+      if (!Array.isArray(rawOptions)) {
+        return null;
+      }
+      const options: QuestionOption[] = [];
+      for (const option of rawOptions) {
+        if (!isRecord(option)) return null;
+        const label = readString(option, "label");
+        if (label === null) return null;
+        const description = readString(option, "description");
+        options.push(description === null ? { label } : { label, description });
+      }
+      parsed.options = options;
+    }
+    questions.push(parsed);
+  }
+  return questions;
+}
+
 export function parseAgentEvent(value: unknown): AgentEvent | null {
   if (!isRecord(value) || !validateAgentEvent(value)) {
     return null;
@@ -465,7 +566,16 @@ export function parseAgentEvent(value: unknown): AgentEvent | null {
     }
     case "question_asked": {
       const questionId = readString(value, "question_id");
-      return questionId === null ? null : { type, question_id: questionId, questions: value["questions"] ?? null };
+      if (questionId === null) {
+        return null;
+      }
+      const asked: QuestionAskedPayload = { question_id: questionId, questions: [] };
+      const questions = parseQuestions(value["questions"]);
+      if (questions === null || !validateQuestionAsked({ question_id: questionId, questions })) {
+        return null;
+      }
+      asked.questions = questions;
+      return { type, question_id: asked.question_id, questions: asked.questions };
     }
     case "question_answered": {
       const questionId = readString(value, "question_id");

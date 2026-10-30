@@ -34,6 +34,3 @@ declare global {
     __TAURI__?: TauriGlobal;
   }
 }
-
-/** Inspector file tree entry (workspace.files). */
-export interface FileEntry { path: string; depth: number; kind: "dir" | "file" }

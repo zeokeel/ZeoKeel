@@ -275,11 +275,15 @@ const zhCN = {
   usageCost: "成本 ${cost}",
   usageTotal: "合计 {count}",
   agentConfigError: "Agent 配置无效，已回退默认值：{message}",
-  inspectorChangesUnavailable: "变更 diff 需要 workspace.changes IPC（后续）",
   settingsSectionTools: "工具与审批超时",
   settingsToolTimeout: "工具超时（ms，1000-600000）",
   settingsApprovalTimeout: "审批超时（ms，1000-1800000）",
   settingsToolsHint: "保存后立即生效；环境变量 ZEOKEEL_TOOL_TIMEOUT_MS / ZEOKEEL_APPROVAL_TIMEOUT_MS 仅作 fallback。",
+  inspectorChangesLoading: "正在加载变更…",
+  inspectorChangesEmpty: "工作区没有未提交的变更",
+  inspectorChangesError: "变更加载失败",
+  inspectorChangesRetry: "重新加载",
+  inspectorChangesWarning: "变更扫描提示：{message}",
 } as const;
 
 export type MessageKey = keyof typeof zhCN;
@@ -555,11 +559,15 @@ const enUS: Record<MessageKey, string> = {
   usageCost: "cost ${cost}",
   usageTotal: "total {count}",
   agentConfigError: "Agent settings are invalid; defaults were used: {message}",
-  inspectorChangesUnavailable: "Change diffs need a workspace.changes IPC (later)",
   settingsSectionTools: "Tools and approvals",
   settingsToolTimeout: "Tool timeout (ms, 1000-600000)",
   settingsApprovalTimeout: "Approval timeout (ms, 1000-1800000)",
   settingsToolsHint: "Applied immediately after saving; ZEOKEEL_TOOL_TIMEOUT_MS / ZEOKEEL_APPROVAL_TIMEOUT_MS are fallbacks only.",
+  inspectorChangesLoading: "Loading changes…",
+  inspectorChangesEmpty: "No uncommitted changes in this workspace",
+  inspectorChangesError: "Failed to load changes",
+  inspectorChangesRetry: "Retry",
+  inspectorChangesWarning: "Change scan notice: {message}",
 };
 
 const dictionaries: Record<Locale, Record<string, string>> = {

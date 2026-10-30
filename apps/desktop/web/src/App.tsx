@@ -14,8 +14,8 @@ import { AppSurfaceSlot, AppsSlot, ChatSlot, CommandsSlot, ConnectorsSlot, Inspe
 import { translate } from "./i18n";
 import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
-import type { FileEntry, Transport } from "./types";
-import { parseFileEntries, parseUpdateRelease } from "./protocol";
+import type { Transport } from "./types";
+import { parseFileEntries, parseWorkspaceChanges, parseUpdateRelease, type FileEntry, type WorkspaceChange } from "./protocol";
 import { downloadSkillArchive, fetchAppHtml, fetchApps, fetchConnectors, fetchSkills, fetchTombstones, openApp, sendInstallReceipt, toggleConnector, type AppItem, type ConnectorItem, type SkillItem } from "./store";
 import { buildAuthorizeUrl, createPkcePair, exchangeCode, parseOAuthTokens, refreshOAuthToken, savePendingAuth, takePendingAuth, tokenNeedsRefresh } from "./oauth";
 import { clearSession, fetchBootstrapInfo, loadGatewayModel, loadServerUrl, loadSession, login as loginRequest, refreshSession, saveGatewayModel, saveServerUrl, saveSession, type AuthSession } from "./auth";
@@ -455,6 +455,46 @@ function AppShell(props: AppShellProps) {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<"files" | "changes" | "terminal">("files");
   const [files, setFiles] = useState<FileEntry[]>([]);
+  const [changes, setChanges] = useState<WorkspaceChange[]>([]);
+  const [changesState, setChangesState] = useState<"idle" | "loading" | "error">("idle");
+  const [changesError, setChangesError] = useState<string | null>(null);
+  const [changesWarning, setChangesWarning] = useState<string | null>(null);
+  const [changesAttempt, setChangesAttempt] = useState(0);
+  useEffect(() => {
+    if (!inspectorOpen || inspectorTab !== "changes" || ui.activeWorkspaceId === null) {
+      return;
+    }
+    let active = true;
+    // Defer the loading transition out of the render commit (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => {
+      if (!active) return undefined;
+      setChangesState("loading");
+      setChangesError(null);
+      return transport.call("workspace.changes", { workspace_id: ui.activeWorkspaceId });
+    })
+      .then((value) => {
+        if (!active) return;
+        const parsed = parseWorkspaceChanges(value);
+        if (parsed === null) {
+          setChanges([]);
+          setChangesWarning(null);
+          setChangesState("error");
+          setChangesError(t("inspectorChangesError"));
+          return;
+        }
+        setChanges(parsed.items);
+        setChangesWarning(parsed.warning);
+        setChangesState("idle");
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setChanges([]);
+        setChangesWarning(null);
+        setChangesState("error");
+        setChangesError(error instanceof Error ? error.message : t("inspectorChangesError"));
+      });
+    return () => { active = false; };
+  }, [inspectorOpen, inspectorTab, ui.activeWorkspaceId, transport, changesAttempt, t]);
   useEffect(() => {
     if (!inspectorOpen || ui.activeWorkspaceId === null) { return; }
     let cancelled = false;
@@ -578,7 +618,7 @@ function AppShell(props: AppShellProps) {
           <SlotErrorBoundary name="ui.apps"><AppsSlot open={panel === "apps"} items={apps} error={appError} opened={appOpened} onOpenApp={onOpenApp} onClose={() => { setPanel(null); }} /></SlotErrorBoundary>
         </>
       ) : null}
-      inspector={<SlotErrorBoundary name="ui.inspector"><InspectorSlot open={inspectorOpen} tab={inspectorTab} files={visibleFiles} onTab={setInspectorTab} onClose={() => { setInspectorOpen(false); }} /></SlotErrorBoundary>}
+      inspector={<SlotErrorBoundary name="ui.inspector"><InspectorSlot open={inspectorOpen} tab={inspectorTab} files={visibleFiles} changes={changes} changesState={changesState} changesError={changesError} changesWarning={changesWarning} onRetryChanges={() => { setChangesAttempt((value) => value + 1); }} onTab={setInspectorTab} onClose={() => { setInspectorOpen(false); }} /></SlotErrorBoundary>}
       inspectorOpen={inspectorOpen}
       onToggleInspector={() => { setInspectorOpen((value) => !value); }}
       onRetryBoot={ui.actions.retryBoot}

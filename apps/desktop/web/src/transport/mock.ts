@@ -361,6 +361,10 @@ export function createMockTransport(options: MockOptions = {}): Transport {
         settings = parseSettings(value);
         return parseSettings(settings);
       }
+      case "workspace.changes": {
+        requireWorkspace(payload);
+        return { items: [] };
+      }
       case "chat.send": {
         const workspace = requireWorkspace(payload);
         const conversation = requireConversation(payload, workspace);

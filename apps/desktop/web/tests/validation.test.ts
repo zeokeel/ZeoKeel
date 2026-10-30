@@ -10,6 +10,8 @@ import {
   parseUiEvent,
   parseMeta,
   parseWorkspace,
+  parseWorkspaceChanges,
+  parseWorkspaceFiles,
   parseWorkspaces,
 } from "../src/protocol";
 import {
@@ -24,6 +26,7 @@ import {
   validateQuestionAsked,
   validateUiEvent,
   validateWorkspace,
+  validateWorkspaceChangesResult,
   validateWorkspaceFilesResult,
 } from "../src/validate";
 
@@ -246,6 +249,11 @@ describe("round-3 T22 boundary DTOs", () => {
     expect(validateWorkspaceFilesResult({ items: [{ path: "x", kind: "file" }] })).toBe(false);
     expect(validateWorkspaceFilesResult({ items: [{ path: "x", depth: 0, kind: "link" }] })).toBe(false);
     expect(parseFileEntries({ entries: [FILE] })).toBeNull();
+    // Generated WorkspaceFilesResult/FileEntry types are used (badge is part of the wire schema).
+    const withBadge = { ...FILE, badge: "M" };
+    const parsed = parseWorkspaceFiles({ items: [FILE, withBadge] });
+    expect(parsed?.items).toEqual([FILE, withBadge]);
+    expect(parseFileEntries({ items: [FILE] })?.[0]?.kind).toBe("file");
   });
 
   it("validates meta.get and falls back to safe defaults on bad payloads", () => {
@@ -269,5 +277,44 @@ describe("round-3 T22 boundary DTOs", () => {
     expect(validateQuestionAsked({ question_id: "q1", questions: [{ id: "n", question: "Name?", options: [{ label: "A" }] }] })).toBe(true);
     expect(validateAgentEvent({ type: "question_asked", ...valid })).toBe(true);
     expect(validateAgentEvent({ type: "question_asked", question_id: "q1", questions: [{ question: "Name?" }] })).toBe(false);
+
+    // parseAgentEvent walks the generated agent_question_asked/QuestionDef path (no dead validator).
+    const parsed = parseAgentEvent({ type: "question_asked", ...valid });
+    expect(parsed).toEqual({ type: "question_asked", question_id: "q1", questions: [{ id: "name", question: "Name?" }] });
+    expect(parseAgentEvent({ type: "question_asked", question_id: "q1", questions: [{ question: "Name?" }] })).toBeNull();
+    expect(parseAgentEvent({
+      type: "question_asked",
+      question_id: "q1",
+      questions: [{ id: "n", question: "Name?", header: "H", multi_select: true, options: [{ label: "A" }, { label: "B", description: "desc" }] }],
+    })).toEqual({
+      type: "question_asked",
+      question_id: "q1",
+      questions: [{ id: "n", question: "Name?", header: "H", multi_select: true, options: [{ label: "A" }, { label: "B", description: "desc" }] }],
+    });
+  });
+});
+
+
+describe("workspace.changes boundary (round-4)", () => {
+  it("validates WorkspaceChangesResult and maps items+warning", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const value = {
+      items: [{ path: "src/main.rs", add: 1, del: 0 }],
+      warning: "not a git repository or git status failed: exit status: 128",
+    };
+    expect(validateWorkspaceChangesResult(value)).toBe(true);
+    expect(parseWorkspaceChanges(value)).toEqual({
+      items: [{ path: "src/main.rs", add: 1, del: 0 }],
+      warning: "not a git repository or git status failed: exit status: 128",
+    });
+    expect(parseWorkspaceChanges({ items: [], warning: null })).toEqual({ items: [], warning: null });
+  });
+
+  it("rejects malformed changes payloads", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(validateWorkspaceChangesResult({ changes: [] })).toBe(false);
+    expect(validateWorkspaceChangesResult({ items: [{ path: "x", add: "1", del: 0 }] })).toBe(false);
+    expect(validateWorkspaceChangesResult({ items: [{ path: "x", add: 1 }] })).toBe(false);
+    expect(parseWorkspaceChanges({ entries: [] })).toBeNull();
   });
 });
