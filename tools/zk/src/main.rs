@@ -1035,15 +1035,21 @@ fn channel_validate(index_dir: &Path) -> Result<()> {
         if entry.depth == "deep" {
             let packages = customer.join("packages");
             if !packages.is_dir() { bail!("channel {id}: deep requires packages/"); }
-            let mut count = 0_usize;
-            for entry in fs::read_dir(&packages)? {
-                let package = entry?.path();
-                if !package.is_dir() { continue; }
-                count = count.saturating_add(1);
-                for file in ["zk.toml", "README.md"] { if !package.join(file).is_file() { bail!("channel {id}: deep package missing {file}"); } }
-                if !package.join("src/lib.rs").is_file() || !package.join("tests").is_dir() { bail!("channel {id}: deep package must have src/lib.rs + tests/"); }
+            #[derive(serde::Deserialize)]
+            struct OemToml { #[serde(default)] packages: BTreeMap<String, String> }
+            let oem: OemToml = toml::from_str(&fs::read_to_string(customer.join("oem.toml"))?).context("parse oem.toml")?;
+            if oem.packages.is_empty() { bail!("channel {id}: deep [packages] is empty"); }
+            for (role, package_id) in &oem.packages {
+                let dir_name = package_id.rsplit('/').next().unwrap_or(package_id);
+                let package = packages.join(dir_name);
+                for file in ["zk.toml", "README.md"] { if !package.join(file).is_file() { bail!("channel {id}: deep package {package_id} missing {file}"); } }
+                if !package.join("src/lib.rs").is_file() || !package.join("tests").is_dir() { bail!("channel {id}: deep package {package_id} must have src/lib.rs + tests/"); }
+                let manifest: toml::Value = toml::from_str(&fs::read_to_string(package.join("zk.toml"))?).context("parse deep package zk.toml")?;
+                let declared_role = manifest.get("role").and_then(|v| v.get("name")).and_then(|v| v.as_str()).unwrap_or("");
+                if declared_role != role { bail!("channel {id}: deep package {package_id} role {declared_role} != {role}"); }
+                let contract = manifest.get("role").and_then(|v| v.get("contract")).and_then(|v| v.as_str()).unwrap_or("");
+                if !contract.starts_with("zk-contract-") { bail!("channel {id}: deep package {package_id} contract must be zk-contract-*"); }
             }
-            if count == 0 { bail!("channel {id}: deep packages/ is empty"); }
         }
         if !customer.join("oem.toml").is_file() { bail!("channel {id}: oem.toml missing"); }
     }

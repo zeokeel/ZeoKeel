@@ -5,3 +5,4 @@ platforms = ["linux-x64"]
 depth = "deep"
 
 [packages]
+"brand.mark" = "acme/acme-brand"
