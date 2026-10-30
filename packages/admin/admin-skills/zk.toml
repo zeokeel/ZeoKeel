@@ -1,0 +1,21 @@
+schema = 1
+id = "zeokeel/admin-skills"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "Admin skills page"
+
+[role]
+name = "admin.page.skills"
+contract = "zk-contract-admin-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-admin-admin-skills" }
+ui = { package = "@zeokeel/admin-skills" }
+
+[[ui.contributions]]
+slot = "admin.page.skills"
+component = "page.skills"
+order = 10

@@ -20,7 +20,8 @@
     "@zeokeel/admin-wallet": "workspace:*",
     "ajv": "^8.20.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "@zeokeel/admin-skills": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",

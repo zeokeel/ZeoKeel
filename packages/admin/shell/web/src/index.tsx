@@ -1,10 +1,10 @@
 /** Admin shell: login + nav + page slot. Pages are supplied by admin-page packages. */
 import { useState } from "react";
-import { api, setCsrf, clearCsrf, validateLogin, assertValid } from "@zeokeel/admin-ui-kit";
+import { api, setCsrf, clearCsrf, validateAdminLogin, assertValid } from "@zeokeel/admin-ui-kit";
 
-export type AdminPage = "users" | "wallet" | "pricing" | "audit" | "usage" | "jobs" | "settings";
+export type AdminPage = "users" | "wallet" | "pricing" | "audit" | "usage" | "jobs" | "skills" | "settings";
 const LABELS: Record<AdminPage, string> = {
-  users: "用户/角色", wallet: "钱包", pricing: "价格", audit: "审计", usage: "用量", jobs: "作业", settings: "系统设置",
+  users: "用户/角色", wallet: "钱包", pricing: "价格", audit: "审计", usage: "用量", jobs: "作业", skills: "技能", settings: "系统设置",
 };
 
 export function AdminShell(props: { renderPage: (page: AdminPage) => React.ReactNode }) {
@@ -33,7 +33,7 @@ function Login({ onDone }: { onDone: () => void }) {
     event.preventDefault();
     try {
       const payload = { username, password };
-      assertValid(validateLogin, payload, "LOGIN");
+      assertValid(validateAdminLogin, payload, "LOGIN");
       const result = await api<{ csrf_token: string }>("/api/admin/auth/login", { method: "POST", body: JSON.stringify(payload) });
       setCsrf(result.csrf_token);
       onDone();

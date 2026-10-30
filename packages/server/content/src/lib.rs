@@ -63,8 +63,10 @@ fn uuid_of(value: &str) -> Result<Uuid, ServerError> {
 async fn list_admin(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<serde_json::Value>, ServerError> {
     require_admin(&state, &headers, false).await?;
     let rows = sqlx::query(
-        "SELECT id, kind, name, owner_id, status, visibility, current_release_id, force_update, min_client_version
-         FROM contents WHERE kind = 'skill' AND deleted_at IS NULL ORDER BY created_at DESC",
+        "SELECT c.id, c.kind, c.name, c.owner_id, c.status, c.visibility, c.current_release_id, c.force_update,
+                c.min_client_version, r.version
+         FROM contents c LEFT JOIN content_releases r ON r.id = c.current_release_id
+         WHERE c.kind = 'skill' AND c.deleted_at IS NULL ORDER BY c.created_at DESC",
     )
     .fetch_all(&state.pool)
     .await
@@ -81,6 +83,7 @@ async fn list_admin(State(state): State<AppState>, headers: HeaderMap) -> Result
             "current_release_id": row.try_get::<Option<Uuid>, _>("current_release_id").ok().flatten().map(|value| value.to_string()),
             "force_update": row.try_get::<bool, _>("force_update").unwrap_or(false),
             "min_client_version": row.try_get::<String, _>("min_client_version").unwrap_or_default(),
+            "version": row.try_get::<Option<String>, _>("version").ok().flatten().unwrap_or_default(),
         }))
         .collect();
     Ok(Json(json!({ "ok": true, "items": items })))

@@ -5,18 +5,20 @@ import { components as c1 } from "@zeokeel/admin-jobs";
 import { components as c2 } from "@zeokeel/admin-pricing";
 import { components as c3 } from "@zeokeel/admin-settings";
 import { components as c4 } from "@zeokeel/admin-shell";
-import { components as c5 } from "@zeokeel/admin-usage";
-import { components as c6 } from "@zeokeel/admin-users";
-import { components as c7 } from "@zeokeel/admin-wallet";
+import { components as c5 } from "@zeokeel/admin-skills";
+import { components as c6 } from "@zeokeel/admin-usage";
+import { components as c7 } from "@zeokeel/admin-users";
+import { components as c8 } from "@zeokeel/admin-wallet";
 
 export const ADMIN_PAGES = {
   audit: c0["page.audit"],
   jobs: c1["page.jobs"],
   pricing: c2["page.pricing"],
   settings: c3["page.settings"],
-  usage: c5["page.usage"],
-  users: c6["page.users"],
-  wallet: c7["page.wallet"],
+  skills: c5["page.skills"],
+  usage: c6["page.usage"],
+  users: c7["page.users"],
+  wallet: c8["page.wallet"],
 } as const;
 
 export const AdminShellSlot = c4["shell.admin"];

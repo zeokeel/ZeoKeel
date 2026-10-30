@@ -10,6 +10,7 @@ zk-admin-admin-audit = { path = "../../packages/admin/admin-audit" }
 zk-admin-admin-jobs = { path = "../../packages/admin/admin-jobs" }
 zk-admin-admin-pricing = { path = "../../packages/admin/admin-pricing" }
 zk-admin-admin-settings = { path = "../../packages/admin/admin-settings" }
+zk-admin-admin-skills = { path = "../../packages/admin/admin-skills" }
 zk-admin-admin-usage = { path = "../../packages/admin/admin-usage" }
 zk-admin-admin-users = { path = "../../packages/admin/admin-users" }
 zk-admin-admin-wallet = { path = "../../packages/admin/admin-wallet" }

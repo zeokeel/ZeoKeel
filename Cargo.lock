@@ -6105,6 +6105,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-admin-admin-skills"
+version = "0.1.0"
+dependencies = [
+ "zk-contract-admin-ui",
+]
+
+[[package]]
 name = "zk-admin-admin-usage"
 version = "0.1.0"
 dependencies = [
@@ -6182,6 +6189,7 @@ dependencies = [
  "zk-admin-admin-jobs",
  "zk-admin-admin-pricing",
  "zk-admin-admin-settings",
+ "zk-admin-admin-skills",
  "zk-admin-admin-usage",
  "zk-admin-admin-users",
  "zk-admin-admin-wallet",

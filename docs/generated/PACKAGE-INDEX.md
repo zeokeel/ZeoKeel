@@ -2,7 +2,7 @@
 
 # Package Index
 
-edition `enterprise` · channel `official` · 34 packages
+edition `enterprise` · channel `official` · 35 packages
 
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
@@ -11,6 +11,7 @@ edition `enterprise` · channel `official` · 34 packages
 | `admin.page.jobs` | `zeokeel/admin-jobs` | `zk-admin-admin-jobs` | `zk-contract-admin-ui` | singleton |
 | `admin.page.pricing` | `zeokeel/admin-pricing` | `zk-admin-admin-pricing` | `zk-contract-admin-ui` | singleton |
 | `admin.page.settings` | `zeokeel/admin-settings` | `zk-admin-admin-settings` | `zk-contract-admin-ui` | singleton |
+| `admin.page.skills` | `zeokeel/admin-skills` | `zk-admin-admin-skills` | `zk-contract-admin-ui` | singleton |
 | `admin.page.usage` | `zeokeel/admin-usage` | `zk-admin-admin-usage` | `zk-contract-admin-ui` | singleton |
 | `admin.page.users` | `zeokeel/admin-users` | `zk-admin-admin-users` | `zk-contract-admin-ui` | singleton |
 | `admin.page.wallet` | `zeokeel/admin-wallet` | `zk-admin-admin-wallet` | `zk-contract-admin-ui` | singleton |

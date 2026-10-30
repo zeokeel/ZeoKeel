@@ -24,4 +24,27 @@ export interface UsageItem { username: string; requests: number; input_tokens: n
 export interface JobItem { job: string; idempotency_key: string; status: string; detail: unknown }
 export interface SettingItem { key: string; value: unknown; hot: boolean }
 
-export { validateLogin, validateCreateUser, validateAdjust, assertValid } from "./validation";
+export { validateLogin, validateAdminLogin, validateCreateUser, validateAdjust, assertValid } from "./validation";
+
+export interface SkillContent {
+  id: string;
+  kind: string;
+  name: string;
+  owner_id: string;
+  status: string;
+  visibility: string;
+  current_release_id: string | null;
+  force_update: boolean;
+  min_client_version: string;
+  version: string;
+}
+
+/** Multipart POST with CSRF (zip upload; no content-type override). */
+export async function apiForm<T>(path: string, form: FormData): Promise<T> {
+  const headers = new Headers();
+  if (csrf !== "") headers.set("x-csrf-token", csrf);
+  const response = await fetch(path, { method: "POST", headers, body: form, credentials: "include" });
+  const body = (await response.json()) as ApiErrorBody & T;
+  if (!response.ok || body.ok === false) throw new Error(body.error ?? `HTTP ${response.status}`);
+  return body;
+}
