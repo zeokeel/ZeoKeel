@@ -25,7 +25,10 @@ base_edition 链（personal）
 ### 1.2 基线元组（入库）
 
 - 唯一入库生成物基线：`edition=personal × profile=default × channel=official`。
-- 其它组合（enterprise、oem-*）由 CI 用 `--check` 生成到临时目录比对，不二次入库。
+- 其它组合（enterprise、oem-*）由 CI/构建脚本用 `zk compose` 生成到工作区后再构建，产物不提交；
+  `compose --check` 只校验入库基线，非基线元组会被拒绝（避免用个人版基线比对其它 edition 的产物）。
+- 非基线 edition 中不存在的生成段必须由 writer 写成确定性的空实现（例如个人版 `apps/admin/web/src/generated/registry.ts`），
+  不能残留其它 edition 的生成物；否则入库基线会夹带企业包（违反 C1）。
 - `zk compose/api` 的 `--channel` 必填（无默认），`--profile` 默认 `default`；`zk db` 只处理迁移，不需要 channel；生成物头部写 `@edition/@profile/@channel`。
 
 ### 1.3 解析输出（resolve report）

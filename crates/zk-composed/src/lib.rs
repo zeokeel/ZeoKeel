@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
-pub const EDITION: &str = "enterprise";
-pub const PACKAGES: &[&str] = &["zeokeel/admin-ui-kit","zeokeel/admin-apps","zeokeel/admin-audit","zeokeel/admin-connectors","zeokeel/admin-jobs","zeokeel/admin-pricing","zeokeel/admin-settings","zeokeel/admin-skills","zeokeel/admin-usage","zeokeel/admin-users","zeokeel/admin-wallet","zeokeel/admin-shell","zeokeel/cap-hooks","zeokeel/agent-loop","zeokeel/client-auth","zeokeel/llm-gateway","zeokeel/cap-audio","zeokeel/cap-image","zeokeel/cap-rerank","zeokeel/cap-transcription","zeokeel/app-db","zeokeel/app-runtime","zeokeel/apps","zeokeel/audit","zeokeel/auth","zeokeel/connectors","zeokeel/content","zeokeel/gateway","zeokeel/srv-http","zeokeel/jobs","zeokeel/pricing","zeokeel/settings","zeokeel/skills","zeokeel/updates","zeokeel/users","zeokeel/wallet","zeokeel/store-session-sqlite","zeokeel/store-settings-json","zeokeel/tool-agent-team","zeokeel/tool-ask-user","zeokeel/tool-bash","zeokeel/tool-bash-persistent","zeokeel/tool-cordis","zeokeel/tool-extract","zeokeel/tool-fs","zeokeel/tool-fs-edit","zeokeel/tool-fs-search","zeokeel/tool-fs-write","zeokeel/tool-glob","zeokeel/tool-goal","zeokeel/tool-grep","zeokeel/tool-job-kill","zeokeel/tool-job-list","zeokeel/tool-job-output","zeokeel/tool-present","zeokeel/tool-pwsh","zeokeel/tool-pwsh-persistent","zeokeel/tool-ralph","zeokeel/tool-read-document","zeokeel/tool-read-image","zeokeel/tool-schedule","zeokeel/tool-session-query","zeokeel/tool-skill","zeokeel/tool-subagent","zeokeel/tool-subagent-control","zeokeel/tool-subagent-fork","zeokeel/tool-terminal","zeokeel/tool-todo","zeokeel/tool-web-fetch","zeokeel/tool-web-search","zeokeel/tool-workflow","zeokeel/tool-working-directory","zeokeel/tool-workspace-dependencies","zeokeel/tool-worktree","zeokeel/ui-kit","zeokeel/ui-shell","zeokeel/ui-apps","zeokeel/ui-chat","zeokeel/ui-commands","zeokeel/ui-connectors","zeokeel/ui-inspector","zeokeel/ui-login","zeokeel/ui-sessions","zeokeel/ui-settings","zeokeel/ui-skills","zeokeel/cap-vector",];
+pub const EDITION: &str = "personal";
+pub const PACKAGES: &[&str] = &["zeokeel/cap-hooks","zeokeel/agent-loop","zeokeel/llm-mock","zeokeel/cap-audio","zeokeel/cap-image","zeokeel/cap-rerank","zeokeel/cap-transcription","zeokeel/store-session-sqlite","zeokeel/store-settings-json","zeokeel/tool-agent-team","zeokeel/tool-ask-user","zeokeel/tool-bash","zeokeel/tool-bash-persistent","zeokeel/tool-cordis","zeokeel/tool-extract","zeokeel/tool-fs","zeokeel/tool-fs-edit","zeokeel/tool-fs-search","zeokeel/tool-fs-write","zeokeel/tool-glob","zeokeel/tool-goal","zeokeel/tool-grep","zeokeel/tool-job-kill","zeokeel/tool-job-list","zeokeel/tool-job-output","zeokeel/tool-present","zeokeel/tool-pwsh","zeokeel/tool-pwsh-persistent","zeokeel/tool-ralph","zeokeel/tool-read-document","zeokeel/tool-read-image","zeokeel/tool-schedule","zeokeel/tool-session-query","zeokeel/tool-skill","zeokeel/tool-subagent","zeokeel/tool-subagent-control","zeokeel/tool-subagent-fork","zeokeel/tool-terminal","zeokeel/tool-todo","zeokeel/tool-web-fetch","zeokeel/tool-web-search","zeokeel/tool-workflow","zeokeel/tool-working-directory","zeokeel/tool-workspace-dependencies","zeokeel/tool-worktree","zeokeel/ui-kit","zeokeel/ui-shell","zeokeel/ui-chat","zeokeel/ui-commands","zeokeel/ui-inspector","zeokeel/ui-sessions","zeokeel/ui-settings","zeokeel/ui-settings-provider","zeokeel/client-update-github","zeokeel/cap-vector",];
 
 pub struct Runtime {
     agent: Arc<dyn zk_contract_agent::Agent>,
@@ -47,14 +47,13 @@ impl Runtime {
     }
 }
 
-pub fn check_update(_current: &str, _platform: &str) -> Result<Option<zk_contract_update::ReleaseInfo>, String> { Ok(None) }
-
-pub fn configure_llm(base_url: &str, access_token: &str, model: &str) {
-    zk_llm_gateway::set_credentials(base_url, access_token);
-    zk_llm_gateway::set_model(model);
+pub fn check_update(current: &str, platform: &str) -> Result<Option<zk_contract_update::ReleaseInfo>, String> {
+    zk_client_update_github::check(current, platform).map(|check| if check.available { check.release } else { None }).map_err(|error| error.to_string())
 }
 
-pub fn gateway_credentials() -> Option<(String, String)> { zk_llm_gateway::credentials() }
+pub fn configure_llm(_base_url: &str, _access_token: &str, _model: &str) {}
+
+pub fn gateway_credentials() -> Option<(String, String)> { None }
 
 pub fn build() -> Result<Runtime, String> {
     let tools: Vec<Arc<dyn zk_contract_tool::Tool>> = vec![
@@ -95,7 +94,7 @@ pub fn build() -> Result<Runtime, String> {
         Arc::new(zk_tool_workspace_dependencies::tool()),
         Arc::new(zk_tool_worktree::tool()),
     ];
-    let llm: Arc<dyn zk_contract_llm::LlmProvider> = Arc::new(zk_llm_gateway::provider());
+    let llm: Arc<dyn zk_contract_llm::LlmProvider> = Arc::new(zk_llm_mock::provider());
     let agent: Arc<dyn zk_contract_agent::Agent> = Arc::new(zk_agent_loop::agent(tools, llm));
     let sessions: Arc<dyn zk_contract_session::SessionStore> = Arc::new(zk_store_session_sqlite::store().map_err(|e| e.to_string())?);
     let settings: Arc<dyn zk_contract_config::SettingsStore> = Arc::new(zk_store_settings_json::store());
