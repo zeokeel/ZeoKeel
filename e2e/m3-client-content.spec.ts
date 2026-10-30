@@ -3,11 +3,12 @@ import AxeBuilder from "@axe-core/playwright";
 
 const LOGIN_URL = process.env["ZEOKEEL_LOGIN_URL"];
 const SERVER_URL = process.env["ZEOKEEL_LOGIN_SERVER"] ?? "http://127.0.0.1:8795";
+const SKILL_ZIP = process.env["ZEOKEEL_CLIENT_SKILL_ZIP"] ?? "/tmp/zk-client-skill.zip";
 
 test.describe("M3 client content store", () => {
   test.skip(LOGIN_URL === undefined, "set ZEOKEEL_LOGIN_URL to run");
 
-  test("install a skill and toggle a connector", async ({ page }) => {
+  test("install a skill, remove it via admin tombstone, toggle a connector", async ({ page, context }) => {
     await page.goto(`${LOGIN_URL}/`, { waitUntil: "networkidle" });
     await page.getByLabel("服务器地址").fill(SERVER_URL);
     await page.getByLabel("账号").fill("admin");

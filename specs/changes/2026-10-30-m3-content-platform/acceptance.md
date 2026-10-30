@@ -13,7 +13,10 @@
 - `cargo test -p zk-desktop installs_valid_archive`：valid zip 安装且 tree_sha256 64 位；重复 409；`../evil` 拒绝；zip symlink 拒绝；remove 清理目录。
 - 安装回执：`POST /skills/{name}/{version}/install` 写 content_installs + audit；`srv-store-test.sh` 验证 200。
 - tombstone：删除后 `/skills/tombstones` 返回名称；客户端启动时拉取并调 `skills.remove`（代码路径已接）。
-- 仍未做：OAuth 刷新/过期/失败客户端测试；tombstone 跨页面刷新 e2e；force update 版本比较 e2e。
+- OAuth PKCE/authorize URL/token exchange/refresh/error 单测：`apps/desktop/web/tests/oauth.test.ts`（3 passed）。
+- tombstone e2e：安装 → 管理台删除 → 客户端刷新后目录为空。
+- force update e2e：管理台上传 1.1.0 + 强制更新 → 客户端显示“更新” → 更新后“已安装”。
+- 仍未做：OAuth 授权回调 UI 接入 connector 面板（helper 已有）。
 
 ### task 9 evidence (2026-10-30)
 

@@ -37,6 +37,7 @@ python3 /tmp/zk-login-upstream.py "$UPSTREAM_PORT" >/dev/null 2>&1 & UPSTREAM_PI
 cargo run -q -p zk -- compose --edition enterprise --profile default --channel official >/dev/null
 cargo build -q -p zk-server -p zk-desktop
 pnpm --dir apps/desktop/web build >/dev/null
+pnpm --dir apps/admin/web build >/dev/null
 sudo -u postgres psql -Atq -c "CREATE ROLE $ROLE LOGIN PASSWORD '$ROLE';"
 sudo -u postgres createdb -O "$ROLE" "$DB"
 ZEOKEEL_DATABASE_URL="postgres://$ROLE:$ROLE@127.0.0.1:5432/$DB" \
@@ -73,6 +74,6 @@ curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X PUT "http:/
 CONN=$(curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/connectors" -H 'content-type: application/json' -d '{"name":"client-mcp","transport":"http","config":{}}')
 CONN_ID=$(printf '%s' "$CONN" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
 curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X PUT "http://127.0.0.1:$SERVER_PORT/api/admin/connectors/$CONN_ID/grants" -H 'content-type: application/json' -d '{"grants":[{"grantee":"all","can_enable":true}]}' >/dev/null
-ZEOKEEL_LOGIN_URL="http://127.0.0.1:$UI_PORT" ZEOKEEL_LOGIN_SERVER="http://127.0.0.1:$SERVER_PORT" \
+ZEOKEEL_CLIENT_SKILL_ZIP=/tmp/zk-client-skill.zip ZEOKEEL_LOGIN_URL="http://127.0.0.1:$UI_PORT" ZEOKEEL_LOGIN_SERVER="http://127.0.0.1:$SERVER_PORT" \
   pnpm exec playwright test e2e/m2-login.spec.ts e2e/m2-gateway-chat.spec.ts e2e/m3-client-content.spec.ts --reporter=line
 echo "login e2e ok"
