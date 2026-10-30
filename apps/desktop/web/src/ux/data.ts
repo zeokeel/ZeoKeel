@@ -39,8 +39,8 @@ export const MESSAGES: MessageView[] = [
     text: "我先确认当前结构，然后给出 DSH 式三栏骨架：左侧平铺 Workspace + 缩进会话，中间对话，右侧文件/变更/终端。",
     status: "done",
     tools: [
-      { id: "t1", name: "fs.read", detail: "packages/ui/ui-sessions/src/index.tsx", time: "0.4s", status: "done", args: '{"path":"packages/ui/ui-sessions/src/index.tsx"}', result: "Sidebar(...) { ... }" },
-      { id: "t2", name: "grep", detail: "workspace switcher", time: "0.2s", status: "done", args: '{"pattern":"workspace"}', result: "12 matches" },
+      { id: "t1", name: "fs.read", detail: "packages/ui/ui-sessions/src/index.tsx", time: "0.4s", status: "success", args: '{"path":"packages/ui/ui-sessions/src/index.tsx"}', result: "Sidebar(...) { ... }" },
+      { id: "t2", name: "grep", detail: "workspace switcher", time: "0.2s", status: "success", args: '{"pattern":"workspace"}', result: "12 matches" },
     ],
     plan: [
       { id: "p1", label: "读取现有 Sidebar / 布局", status: "done" },

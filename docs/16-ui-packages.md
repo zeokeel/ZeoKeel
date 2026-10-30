@@ -10,10 +10,10 @@
   `zk compose` 读取后生成 `apps/desktop/web/src/generated/registry.ts` 与 `shared/contracts/ui-contributions.json`。
 - **build-time 组合**：换 UI 包 = 改 edition/profile → `zk compose` → 重新 `pnpm build`；运行期无加载器/热插拔（C2）。
 - **shell 只认 slot/component**：`App.tsx` 从 `registry.ts` 取 `SessionsSlot/ChatSlot/SettingsSlot`，不直接 import 业务 UI 包。
-- **M1 不使用** `package.json#zeokeel.client`、`props_schema` 闭包校验、`virtual:@zeokeel/registry`、`scripts/lint-boundaries.mjs`、
+- **M1 app 不接入**（已注册骨架）`package.json#zeokeel.client`、`props_schema` 闭包校验、`virtual:@zeokeel/registry`、`scripts/lint-boundaries.mjs`、
   `ui-shell-kit`/`ui-shell`/transport 包——这些是 §6 的目标模型（T21），不是现状。
 
-## 2. M1 包结构（实际）
+## 2. M1 包结构（active 3 + 已注册骨架 3）
 
 | 包 | 角色 | 内容 | 依赖 |
 | --- | --- | --- | --- |
@@ -21,9 +21,9 @@
 | `@zeokeel/ui-sessions` | `ui.slot.sessions` | Sidebar（**平铺 Workspace 列表**/会话列表/新建/选中/设置入口/窄窗；规则见 `26` §6） | ui-kit |
 | `@zeokeel/ui-chat` | `ui.slot.chat` | ChatView + assistant-ui primitives + 工具卡/审批/空态 + ExternalStoreRuntime adapter | ui-kit + `@assistant-ui/*` |
 | `@zeokeel/ui-settings` | `ui.slot.settings` | SettingsDialog + 校验 | ui-kit + Radix dialog |
-| `@zeokeel/ui-shell` | `ui.shell` | AppShell 骨架（布局/header/status/overlay 挂载） | ui-kit |
-| `@zeokeel/ui-inspector` | `ui.slot.inspector` | 右栏文件/变更/终端骨架 | ui-kit |
-| `@zeokeel/ui-commands` | `ui.slot.commands` | ⌘K 命令面板骨架 | ui-kit |
+| `@zeokeel/ui-shell`（骨架，M1 不接入） | `ui.shell` | AppShell 骨架（布局/header/status/overlay 挂载） | ui-kit |
+| `@zeokeel/ui-inspector`（骨架，M1 不接入） | `ui.slot.inspector` | 右栏文件/变更/终端骨架 | ui-kit |
+| `@zeokeel/ui-commands`（骨架，M1 不接入） | `ui.slot.commands` | ⌘K 命令面板骨架 | ui-kit |
 | `apps/desktop/web` | 薄壳 | transport/controller/reducer/i18n/theme/UiProvider/registry/boot/error/header/toast | registry 生成的包 |
 
 依赖方向：`ui-chat/ui-sessions/ui-settings → ui-kit`；app → `generated/registry` → UI 包；**包不得 import app，业务包不得互相 import**。

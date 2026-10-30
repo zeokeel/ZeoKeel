@@ -34,11 +34,11 @@
 
 | slotId | 角色 | 包 | skeleton component | props（M1 约定） |
 | --- | --- | --- | --- | --- |
-| `ui.shell`（骨架，M1 不接入） | `ui.shell` | `@zeokeel/ui-shell` | `AppShell` | `navigation/conversation/composer/inspector/overlays` |
+| `ui.shell`（骨架，M1 不接入） | `ui.shell` | `@zeokeel/ui-shell` | `AppShell`（`shell.frame`） | `title/workspaceName/streaming/inspectorOpen/onToggleInspector/onOpenCommands/navigation/conversation/composer/inspector/overlay?` |
 | `ui.sessions` | `ui.slot.sessions` | `@zeokeel/ui-sessions` | `Sidebar` | 现有 |
 | `ui.chat` | `ui.slot.chat` | `@zeokeel/ui-chat` | `ChatView` | 现有 |
-| `ui.inspector`（骨架，M1 不接入） | `ui.slot.inspector` | `@zeokeel/ui-inspector` | `InspectorPanel` | `open/tab/onTab/onClose/files/changes` |
-| `ui.commands`（骨架，M1 不接入） | `ui.slot.commands` | `@zeokeel/ui-commands` | `CommandPalette` | `open/onClose/commands/onRun` |
+| `ui.inspector`（骨架，M1 不接入） | `ui.slot.inspector` | `@zeokeel/ui-inspector` | `InspectorPanel`（`inspector.panel`） | `open/tab/onTab/onClose/files/changes` |
+| `ui.commands`（骨架，M1 不接入） | `ui.slot.commands` | `@zeokeel/ui-commands` | `CommandPalette`（`commands.palette`） | `open/onClose/commands/onRun` |
 | `ui.settings` | `ui.slot.settings` | `@zeokeel/ui-settings` | `SettingsDialog` | 现有 |
 
 - 新包先只提供**空壳组件 + props 类型 + README 功能说明**；`zk compose` 生成 registry，**M1 app 不接入**（M1 active slot 仍只有 sessions/chat/settings）。
@@ -56,11 +56,11 @@
 ### Conversation + Composer
 - 消息：用户右侧 low-contrast pill；助手无气泡；流式光标；取消保留内容 + “已取消”；错误内联。
 - 工具行：单行折叠（状态点/name/关键参数/耗时），点击展开 args/result；Shift 点击展开全部。
-- 工具状态 M2 补齐 `preparing/running/done/error/cancelled`；审批决策命名后续映射 DSH `allowed-once/rejected`（M1 API 仍 `approved`）。
+- 工具状态**以 `docs/19` 为准**：`pending/running/success/failed/cancelled`（DSH 的 `preparing` 对应 `pending`）；审批决策后续映射 DSH `allowed-once/rejected`（M1 API 仍 `approved`）。
 - **Plan/Todo（M2 占位）**：DSH 的 plan 是 Markdown 审阅 + Todo dock，不是步骤数组；M1 不实现，UX 骨架里的步骤卡标 “Todo · M2”。
 - **审批（M1 inline 占位）**：允许一次/拒绝；DSH 的 composer takeover/持久策略/超时 post-M1；不要宣称 M1 有完整审批。
 - Composer：Enter 发送、Shift+Enter 换行、IME 安全；`/` 命令 popup、`@` 文件引用、附件、模型下拉、上下文占用、发送/停止。
-- Composer 的 `deliveryMode/attempt/queue/attachments` 为 post-M1 预留，不在 M1 承诺。
+- Composer 的 `deliveryMode/attempt/queue/attachments` 为 post-M1 预留，不在 M1 承诺；M1 不注册 `ui.composer` slot，避免与 `docs/19` 冲突。
 - 空态/加载/错误/离线/流式中/已取消六态。
 
 ### Inspector
@@ -75,7 +75,7 @@
 
 - DSH 把 **conversation 装配层**（target-neutral event/view registry、session binding、composer shell）与 **chat 目标层**（消息节点/渲染）分开；
   ZeoKeel M1 合并进 `ui-chat`，但内部按 `conversation/`、`composer/`、`tool/`、`approval/` 目录组织，post-M1 可拆包。
-- DSH **Composer 是 shell + takeover 链**：审批、plan chip、GoalBar、queue、附件各自 slot；ZeoKeel M1 先用单 composer + inline approval/plan 卡，slot 预留。
+- DSH **Composer 是 shell + takeover 链**：审批、plan chip、GoalBar、queue、附件各自 slot；ZeoKeel M1 的 composer **渲染在 `ui-chat` 内**，`ui.composer` slot 仍为 post-M1 保留，不注册、不验收。
 - DSH **审批**是 allow-once/reject 的临时请求，持久策略/Host waterfall 不在 UI；ZeoKeel M1 同（bridge 占位）。
 - DSH **plan 是 plan mode + Markdown review**，步骤清单属于 Todo dock；ZeoKeel M1 的“计划卡”是简化版，后续拆 `ui-plan`/`ui-todo`。
 - DSH **Jobs/Subagent/Deliverables** 都在 header/turnTail/右栏，M1 不建包；右栏“变更”是 ZeoKeel 自有（DSH 无 changes tab）。
@@ -91,10 +91,20 @@
 
 1. **Plan**：M1 不做 plan mode；步骤卡降级为 “Todo · M2” 占位（DSH 的 plan 是文档审阅，不是步骤数组）。
 2. **Approval**：M1 inline 占位（允许一次/拒绝），post-M1 再谈 composer takeover/持久策略/超时。
-3. **工具/审批 DTO**：按 DSH 词汇补齐 `preparing/running/done/error/cancelled`；审批决策后续 `allowed-once/rejected`，M1 API 保持 `approved` 并映射。
+3. **工具/审批 DTO**：以 `docs/19` 为准 `pending/running/success/failed/cancelled`；审批决策后续 `allowed-once/rejected`，M1 API 保持 `approved` 并映射。
 4. **Jobs/Subagent/Deliverables**：骨架入口灰显/隐藏，不实现；不建包。
 5. **Composer**：M1 不做 deliveryMode/queue/attachments 完整状态，类型只预留。
 6. **Slot/M1 范围**：M1 仍只有 `ui.sessions/ui.chat/ui.settings` 三个 active slot；`ui.shell/ui.inspector/ui.commands` 是骨架，不接入 M1。
+
+## 4.7 导航后置项裁决（回应 navigation 报告 §5）
+
+1. **post-M1 侧栏拆分**：M1 保持 `ui-sessions` 单包单 slot；不建 `ui.sidebar`/子 slot。只有出现第二消费者或明确替换需求时才拆。
+2. **M1 会话操作**：仅新建/选择/workspace 重命名/workspace 移除；**session rename/fork/copy ID 后置**（与 pin/archive/reorder 一起）。
+3. **状态契约**：M1 `running | idle`；`unread | pending | scheduled` 后置。不提前定义 unread 语义。
+4. **平铺/ungrouped**：永久平铺 Workspace（用户要求），**不做 ungrouped**；移除有会话必须 reassign（C18 唯一例外）。
+5. **归档/删除**：M1 无 session delete/archive；post-M1 先做 archive-only，**不提供硬删除**；是否删除由后续 spec 决定。
+6. **/ 菜单与 ⌘K**：同一 `ui-commands` 包内**按 surface 分开组件/状态**（composer `/` popup vs shell ⌘K palette），不共享一个组件状态。
+7. **侧栏宽度**：以实际 248px 为准；`docs/27` 已同步为 248。
 
 ## 5. 骨架验收（本轮）
 
@@ -110,12 +120,4 @@
 - `research/dsh-ui-modules/inspector-settings.md`：sidebar-right/files/terminal/preview/browser/settings/commands/shortcuts/theme/plugins。
 这些报告只作事实参考（C15），不进入依赖/构建输入。
 
-## 4.7 导航后置项裁决（回应 navigation 报告 §5）
-
-1. **post-M1 侧栏拆分**：M1 保持 `ui-sessions` 单包单 slot；不建 `ui.sidebar`/子 slot。只有出现第二消费者或明确替换需求时才拆。
-2. **M1 会话操作**：仅新建/选择/workspace 重命名/workspace 移除；**session rename/fork/copy ID 后置**（与 pin/archive/reorder 一起）。
-3. **状态契约**：M1 `running | idle`；`unread | pending | scheduled` 后置。不提前定义 unread 语义。
-4. **平铺/ungrouped**：永久平铺 Workspace（用户要求），**不做 ungrouped**；移除有会话必须 reassign（C18 唯一例外）。
-5. **归档/删除**：M1 无 session delete/archive；post-M1 先做 archive-only，**不提供硬删除**；是否删除由后续 spec 决定。
-6. **/ 菜单与 ⌘K**：同一 `ui-commands` 包内**按 surface 分开组件/状态**（composer `/` popup vs shell ⌘K palette），不共享一个组件状态。
-7. **侧栏宽度**：以实际 248px 为准（docs/27 已同步）；docs/27 的 288 为旧值。
+> 本文只覆盖 **M1 personal UI**（含骨架）；M2 企业登录/首配/管理台/网关 UI 不在本文范围（见 `04`/`08`/`19`）。

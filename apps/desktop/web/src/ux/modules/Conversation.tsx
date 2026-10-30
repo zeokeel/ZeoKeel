@@ -6,7 +6,7 @@ function ToolRow({ tool, expanded, onToggle }: { tool: ToolView; expanded: boole
   return (
     <div className="rounded-sm border border-border/60">
       <button type="button" onClick={onToggle} aria-expanded={expanded} className="flex w-full items-center gap-2 px-2 py-[5px] text-start font-mono text-[11px] hover:bg-foreground/[0.03]">
-        <span className={`h-1.5 w-1.5 shrink-0 rounded-capsule ${tool.status === "running" || tool.status === "preparing" ? "bg-live" : tool.status === "error" ? "bg-destructive" : "bg-border"}`} />
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-capsule ${tool.status === "running" || tool.status === "pending" ? "bg-live" : tool.status === "failed" ? "bg-destructive" : "bg-border"}`} />
         <span className="w-[72px] shrink-0 text-foreground">{tool.name}</span>
         <span className="min-w-0 flex-1 truncate text-muted-foreground">{tool.detail}</span>
         <span className="shrink-0 text-muted-foreground">{tool.time}</span>

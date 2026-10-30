@@ -17,7 +17,7 @@ export interface ToolView {
   name: string;
   detail: string;
   time: string;
-  status: "preparing" | "running" | "done" | "error" | "cancelled";
+  status: "pending" | "running" | "success" | "failed" | "cancelled";
   args: string;
   result: string;
 }
