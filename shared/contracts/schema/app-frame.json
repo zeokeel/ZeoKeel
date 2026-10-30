@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AppRequest",
+  "description": "App request envelope (docs/04 §9).",
+  "type": "object",
+  "required": [
+    "abi",
+    "app_id",
+    "method",
+    "path",
+    "request_id"
+  ],
+  "properties": {
+    "abi": {
+      "type": "string"
+    },
+    "app_id": {
+      "type": "string"
+    },
+    "body_b64": {
+      "default": "",
+      "type": "string"
+    },
+    "headers": {
+      "default": {},
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "method": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "query": {
+      "default": "",
+      "type": "string"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "version": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

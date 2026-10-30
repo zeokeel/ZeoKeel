@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AppManifest",
+  "description": "Release manifest uploaded with app.",
+  "type": "object",
+  "required": [
+    "db_schema_version",
+    "name",
+    "version"
+  ],
+  "properties": {
+    "db_migrations": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/AppMigration"
+      }
+    },
+    "db_schema_version": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "description": {
+      "default": "",
+      "type": "string"
+    },
+    "icon": {
+      "default": "",
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "ui": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "AppMigration": {
+      "description": "One host-managed schema migration.",
+      "type": "object",
+      "required": [
+        "sql",
+        "version"
+      ],
+      "properties": {
+        "sql": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    }
+  }
+}

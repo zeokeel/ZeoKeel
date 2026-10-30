@@ -5,6 +5,38 @@ export interface AdminLoginRequest {
   username: string;
 }
 
+export interface AppRequest {
+  abi: string;
+  app_id: string;
+  body_b64?: string;
+  headers?: unknown;
+  method: string;
+  path: string;
+  query?: string;
+  request_id: string;
+  version?: string | unknown;
+}
+
+export interface AppManifest {
+  db_migrations?: Array<unknown>;
+  db_schema_version: number;
+  description?: string;
+  icon?: string;
+  name: string;
+  ui?: Array<string>;
+  version: string;
+}
+
+export interface AppItem {
+  access: unknown;
+  app_id: string;
+  description?: string;
+  icon?: string;
+  name: string;
+  ui?: boolean;
+  version: string;
+}
+
 export interface LoginRequest {
   device_id: string;
   password: string;
@@ -55,6 +87,12 @@ export interface AdjustRequest {
 }
 
 export const admin_loginSchema = {"$schema":"http://json-schema.org/draft-07/schema#","title":"AdminLoginRequest","description":"Admin cookie login payload.","type":"object","required":["password","username"],"properties":{"password":{"type":"string"},"username":{"type":"string"}}} as const;
+
+export const app_frameSchema = {"$schema":"http://json-schema.org/draft-07/schema#","title":"AppRequest","description":"App request envelope (docs/04 §9).","type":"object","required":["abi","app_id","method","path","request_id"],"properties":{"abi":{"type":"string"},"app_id":{"type":"string"},"body_b64":{"default":"","type":"string"},"headers":{"default":{},"type":"object","additionalProperties":{"type":"string"}},"method":{"type":"string"},"path":{"type":"string"},"query":{"default":"","type":"string"},"request_id":{"type":"string"},"version":{"default":null,"type":["string","null"]}}} as const;
+
+export const app_manifestSchema = {"$schema":"http://json-schema.org/draft-07/schema#","title":"AppManifest","description":"Release manifest uploaded with app.","type":"object","required":["db_schema_version","name","version"],"properties":{"db_migrations":{"default":[],"type":"array","items":{"$ref":"#/definitions/AppMigration"}},"db_schema_version":{"type":"integer","format":"uint32","minimum":0.0},"description":{"default":"","type":"string"},"icon":{"default":"","type":"string"},"name":{"type":"string"},"ui":{"default":[],"type":"array","items":{"type":"string"}},"version":{"type":"string"}},"definitions":{"AppMigration":{"description":"One host-managed schema migration.","type":"object","required":["sql","version"],"properties":{"sql":{"type":"string"},"version":{"type":"integer","format":"uint32","minimum":0.0}}}}} as const;
+
+export const appSchema = {"$schema":"http://json-schema.org/draft-07/schema#","title":"AppItem","description":"App catalog item (docs/04).","type":"object","required":["access","app_id","name","version"],"properties":{"access":{"$ref":"#/definitions/AppAccess"},"app_id":{"type":"string"},"description":{"default":"","type":"string"},"icon":{"default":"","type":"string"},"name":{"type":"string"},"ui":{"default":false,"type":"boolean"},"version":{"type":"string"}},"definitions":{"AppAccess":{"description":"App visibility/access.","type":"string","enum":["all","selected"]}}} as const;
 
 export const auth_loginSchema = {"$schema":"http://json-schema.org/draft-07/schema#","title":"LoginRequest","description":"Client login payload (public endpoints).","type":"object","required":["device_id","password","username"],"properties":{"device_id":{"type":"string"},"password":{"type":"string"},"username":{"type":"string"}}} as const;
 

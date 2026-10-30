@@ -4,6 +4,12 @@
 - 验收人：pending
 - 证据目录：`target/evidence/m4/`
 
+## 进展
+
+- task 0：`experiments/wasm-poc/build.sh` + golden → `{"ok": true, "failures": [], "rows":[...]}`，证据 `target/evidence/m0/wasm/`
+- task 1：`zk-contract-app` + `shared/contracts/schema/{app,app-frame,app-manifest}.json`，schema-check 绿
+- task 2：`crates/zk-kit-wasm`（wasmtime 50、帧、SQL 闸门、限额、golden Go/Rust）；`cargo test -p zk-kit-wasm -- --ignored` 通过
+
 ## 检查
 
 - [ ] `bash scripts/apps-e2e.sh`

@@ -6,9 +6,9 @@
 
 | # | 任务 | 写作用域（文件/目录） | 依赖 | 验证 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| 0 | P2 原型证据归档 | `target/evidence/m0/wasm/`（不入库） | — | `experiments/wasm-poc/build.sh` && `python3 golden/run.py` 输出 `ok` | ☐ |
-| 1 | `zk-contract-app` + schemas | `packages/contracts/app`, `shared/contracts` | — | `cargo test -p zk-contract-app export_schema`; `bash scripts/schema-check.sh` | ☐ |
-| 2 | `zk-kit-wasm` 抽取 runtime/帧/SQL 闸门 | `crates/zk-kit-wasm`, `Cargo.toml` | 1 | `cargo test -p zk-kit-wasm` + Go/Rust golden | ☐ |
+| 0 | P2 原型证据归档 | `target/evidence/m0/wasm/`（不入库） | — | `experiments/wasm-poc/build.sh` && `python3 golden/run.py` 输出 `ok` | ✅ |
+| 1 | `zk-contract-app` + schemas | `packages/contracts/app`, `shared/contracts` | — | `cargo test -p zk-contract-app export_schema`; `bash scripts/schema-check.sh` | ✅ |
+| 2 | `zk-kit-wasm` 抽取 runtime/帧/SQL 闸门 | `crates/zk-kit-wasm`, `Cargo.toml` | 1 | `cargo test -p zk-kit-wasm` + Go/Rust golden | ✅ |
 | 3 | `srv.apps`/`srv.app.runtime`/`srv.app.db` 骨架与迁移/组合根 | `packages/server/{apps,app-runtime,app-db}`, `apps/server/src/main.rs`, template, zk.toml, editions | 1,2 | `zk validate`, `zk compose --check`, `srv-store-test.sh` 表存在 | ☐ |
 | 4 | 员工上传/owner/transfer + 管理审批/版本 | `packages/server/apps` | 3 | `scripts/srv-store-test.sh` 新增 apps 用例（owner 403/转交/pending） | ☐ |
 | 5 | 客户端 open/request + 限额/审计 + `scripts/apps-e2e.sh` 骨架（fixture guest） | `packages/server/{apps,app-runtime,app-db}`, `scripts/apps-e2e.sh`, `e2e/fixtures/app-guest.wasm` | 4 | `bash scripts/apps-e2e.sh`（fixture 上传/open/request/重启） | ☐ |

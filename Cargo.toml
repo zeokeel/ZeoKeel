@@ -22,6 +22,8 @@ axum = { version = "0.8", features = ["multipart"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "signal", "time"] }
 tauri = { version = "2.12", features = [] }
 tauri-build = "2.7"
+wasmtime = "50"
+wasmtime-wasi = "50"
 rusqlite = { version = "0.32", features = ["bundled"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "chrono", "macros"] }
 sha2 = "0.10"

@@ -1,6 +1,6 @@
 # 2026-10-30-wasm-app-center · 提案（M4）
 
-- 状态：`draft`
+- 状态：`approved`
 - 评审：`docs/reviews/2026-10-30-m4-spec.md`
 - 依据：`docs/12` §M4、`docs/07` §7、`docs/04` §2.6/§9、`docs/21`、`docs/06`、ADR-062、`experiments/wasm-poc`、`docs/15` T11
 - 关联：M3 `content` 聚合（`kind=app` 复用 contents/releases/deployments/grants）

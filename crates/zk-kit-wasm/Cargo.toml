@@ -1,0 +1,21 @@
+[package]
+name = "zk-kit-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+wasmtime = { workspace = true }
+wasmtime-wasi = { workspace = true }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+rusqlite = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }

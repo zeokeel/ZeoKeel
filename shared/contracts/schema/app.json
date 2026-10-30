@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AppItem",
+  "description": "App catalog item (docs/04).",
+  "type": "object",
+  "required": [
+    "access",
+    "app_id",
+    "name",
+    "version"
+  ],
+  "properties": {
+    "access": {
+      "$ref": "#/definitions/AppAccess"
+    },
+    "app_id": {
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "type": "string"
+    },
+    "icon": {
+      "default": "",
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "ui": {
+      "default": false,
+      "type": "boolean"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "AppAccess": {
+      "description": "App visibility/access.",
+      "type": "string",
+      "enum": [
+        "all",
+        "selected"
+      ]
+    }
+  }
+}

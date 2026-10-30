@@ -1,6 +1,6 @@
 # 2026-10-30-wasm-app-center · 规格（M4）
 
-- 状态：`draft`
+- 状态：`approved`
 - 依据：`docs/07` §7、`docs/04` §2.6/§9、`docs/06`、`docs/21`、ADR-062
 
 ## 1. 数据

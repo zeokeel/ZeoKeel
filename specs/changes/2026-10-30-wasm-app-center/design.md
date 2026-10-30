@@ -1,6 +1,6 @@
 # 2026-10-30-wasm-app-center · 设计（M4）
 
-- 状态：`draft`
+- 状态：`approved`
 
 ## 1. 包/契约/角色
 
