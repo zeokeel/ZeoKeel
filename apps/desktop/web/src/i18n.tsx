@@ -294,6 +294,8 @@ const zhCN = {
   upgradeServer: "服务器版本",
   inspectorChangesFile: "文件变更",
   inspectorChangesItem: "{path}，新增 {add}，删除 {del}",
+  upgradeRequestId: "请求 ID",
+  upgradeOpenFailed: "无法打开下载页，请手动复制链接访问。",
 } as const;
 
 export type MessageKey = keyof typeof zhCN;
@@ -588,6 +590,8 @@ const enUS: Record<MessageKey, string> = {
   upgradeServer: "Server version",
   inspectorChangesFile: "File change",
   inspectorChangesItem: "{path}, added {add}, deleted {del}",
+  upgradeRequestId: "Request ID",
+  upgradeOpenFailed: "Could not open the download page; copy the link and open it manually.",
 };
 
 const dictionaries: Record<Locale, Record<string, string>> = {

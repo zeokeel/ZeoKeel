@@ -28,6 +28,17 @@ describe("forced upgrade 426 parsing", () => {
     });
   });
 
+  it("tolerates legacy flat and new nested 426 envelopes (request_id included when present)", () => {
+    const legacy = parseUpgradeInfo(426, JSON.stringify({ ok: false, error: "CLIENT_TOO_OLD" }));
+    expect(legacy).toEqual({ current: null, minimum: null, portalUrl: null });
+    const legacyWithRequest = parseUpgradeInfo(426, JSON.stringify({ ok: false, error: "CLIENT_TOO_OLD", request_id: "req-legacy" }));
+    expect(legacyWithRequest?.requestId).toBe("req-legacy");
+    const nested = parseUpgradeInfo(426, JSON.stringify({
+      error: { code: "CLIENT_TOO_OLD", message: "too old", retryable: false, request_id: "req-1", current: "0.1.0", minimum: "9.9.9", portal_url: "/portal" },
+    }));
+    expect(nested).toEqual({ current: "0.1.0", minimum: "9.9.9", portalUrl: "/portal", requestId: "req-1" });
+  });
+
   it("treats any 426 as a forced upgrade, even without versions/body", () => {
     expect(parseUpgradeInfo(426, "not json")).toEqual({ current: null, minimum: null, portalUrl: null });
     expect(parseUpgradeInfo(409, JSON.stringify({ error: "CLIENT_TOO_OLD" }))).toBeNull();
@@ -112,6 +123,21 @@ describe("forced upgrade gate", () => {
     expect(link.getAttribute("href")).toBe("https://srv.example/portal");
   });
 
+  it("shows the request id in the version-details block when present", () => {
+    const base = readyTransport([]);
+    render(
+      <UpgradeGate
+        info={{ current: "0.1.0", minimum: "9.9.9", portalUrl: "/portal", requestId: "req-abc-123" }}
+        serverUrl="https://srv.example"
+        serverVersion={null}
+        locale="zh-CN"
+        transport={base}
+      />,
+    );
+    expect(screen.getByText("请求 ID")).toBeTruthy();
+    expect(screen.getByText("req-abc-123")).toBeTruthy();
+  });
+
   it("shows the server version in the version-details block when available", () => {
     const base = readyTransport([]);
     render(
@@ -163,6 +189,47 @@ describe("forced upgrade gate", () => {
     expect(tauriCalls).toContain("system.open_url");
     expect(openedUrls).toEqual(["https://srv.example/portal"]);
     Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
+    openSpy.mockRestore();
+  });
+
+  it("shows a localized non-blocking error when external open fails", async () => {
+    localStorage.setItem("zk.enterprise.server", "https://srv.example");
+    const base = readyTransport([]);
+    const opened: string[] = [];
+    const transport: Transport = {
+      async call(name, payload) {
+        if (name === "meta.get") throw new UpgradeRequiredError({ current: "0.1.0", minimum: "9.9.9", portalUrl: "/portal" });
+        if (name === "system.open_url") {
+          opened.push(String(payload["url"]));
+          throw new Error("open failed");
+        }
+        return base.call(name, payload);
+      },
+      subscribe: (handler) => base.subscribe(handler),
+    };
+    Reflect.set(window, "__TAURI_INTERNALS__", {});
+    render(<App transport={transport} />);
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    await userEvent.click(screen.getByRole("link", { name: "打开下载页" }));
+    expect(await screen.findByRole("status")).toBeTruthy();
+    expect(screen.getByText("无法打开下载页，请手动复制链接访问。")).toBeTruthy();
+    expect(opened).toEqual(["https://srv.example/portal"]);
+    // The gate itself is not blocked/replaced by the open failure.
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+    Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
+  });
+
+  it("also reports browser window.open failures without blocking the gate", async () => {
+    localStorage.setItem("zk.enterprise.server", "https://srv.example");
+    const calls: string[] = [];
+    const transport = upgradeTransport(new UpgradeRequiredError({ current: "0.1.0", minimum: "9.9.9", portalUrl: "/portal" }), calls);
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    render(<App transport={transport} />);
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    await userEvent.click(screen.getByRole("link", { name: "打开下载页" }));
+    expect(await screen.findByRole("status")).toBeTruthy();
+    expect(screen.getByRole("alert")).toBeTruthy();
     openSpy.mockRestore();
   });
 

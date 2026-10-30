@@ -645,6 +645,17 @@ fn open_url_invocation(_url: &str) -> Result<(&'static str, Vec<String>), String
     Err("open-url/unsupported-platform".to_owned())
 }
 
+/// Spawn the opener and reap it on a detached thread (no zombies, no IPC wait).
+fn spawn_and_reap(mut command: std::process::Command) -> Result<(), String> {
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("open-url/launch-failed: {error}"))?;
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
+}
+
 fn open_platform_browser(url: &str) -> Result<(), String> {
     let (program, args) = open_url_invocation(url)?;
     let mut command = std::process::Command::new(program);
@@ -652,10 +663,8 @@ fn open_platform_browser(url: &str) -> Result<(), String> {
         .args(args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map(|_child| ())
-        .map_err(|error| format!("open-url/launch-failed: {error}"))
+        .stderr(std::process::Stdio::null());
+    spawn_and_reap(command)
 }
 
 /// `system.open_url`: validate, then spawn the platform opener without waiting.
@@ -1581,6 +1590,25 @@ mod tests {
             vec!["url.dll,FileProtocolHandler".to_owned(), url.to_owned()]
         );
         assert!(!args.iter().any(|arg| arg == "cmd" || arg == "/C"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn open_url_child_is_spawned_and_reaped_without_waiting() {
+        let mut command = std::process::Command::new("true");
+        command
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        super::spawn_and_reap(command).expect("spawn/reap helper");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn open_url_spawn_failure_is_returned() {
+        let command = std::process::Command::new("/definitely/not/a/real/zk-opener");
+        let error = super::spawn_and_reap(command).expect_err("missing program must fail");
+        assert!(error.starts_with("open-url/launch-failed:"), "{error}");
     }
 
     #[test]

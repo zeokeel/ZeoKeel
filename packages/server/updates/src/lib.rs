@@ -36,7 +36,9 @@ use base64::Engine as _;
 use ed25519_dalek::{Signature, VerifyingKey};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use zk_kit_server::{error, AppState, ServerError};
+use zk_kit_server::{
+    error, request_id_from_headers, upgrade_required_response, AppState, ServerError,
+};
 
 /// Environment variable holding the ed25519 public key (base64 or hex).
 pub const SIGNATURE_KEY_ENV: &str = "ZEOKEEL_UPDATES_SIGNATURE_KEY";
@@ -264,11 +266,16 @@ async fn manifest(
     if client_version != current_client {
         // Below the supported floor is a forced upgrade (426); any other 1:1
         // mismatch stays a channel/config error (409).
-        return if below_min {
-            Err(error(StatusCode::UPGRADE_REQUIRED, "CLIENT_TOO_OLD"))
-        } else {
-            Err(error(StatusCode::CONFLICT, "CLIENT_VERSION_MISMATCH"))
-        };
+        if below_min {
+            let request_id = request_id_from_headers(&headers);
+            return Ok(upgrade_required_response(
+                &request_id,
+                Some(&client_version),
+                &min_supported,
+                "client version is below the minimum supported version",
+            ));
+        }
+        return Err(error(StatusCode::CONFLICT, "CLIENT_VERSION_MISMATCH"));
     }
     let (signature_status, signature) = signature_policy(&release)?;
     let forced = forced_for(&release, below_min);
@@ -609,6 +616,10 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)] // test-only
 
     use super::*;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use sqlx::postgres::PgPoolOptions;
+    use tower::ServiceExt;
 
     #[test]
     fn version_ordering_is_numeric() {
@@ -695,5 +706,60 @@ mod tests {
 
         let empty = portal_html(&json!({"assets": []}), &json!({}));
         assert!(empty.contains("暂无可用安装包"));
+    }
+    #[tokio::test]
+    async fn manifest_below_min_returns_nested_426_envelope() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("CLIENT-RELEASE.json"),
+            serde_json::json!({
+                "schema": 1,
+                "channel_id": "official",
+                "edition": "enterprise",
+                "server_version": "0.1.0",
+                "client_version": "9.9.9",
+                "min_supported": "9.9.9",
+                "forced": false,
+                "assets": []
+            })
+            .to_string(),
+        )
+        .expect("write release");
+        let old = std::env::var_os("ZEOKEEL_UPDATE_DIR");
+        std::env::set_var("ZEOKEEL_UPDATE_DIR", dir.path());
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://localhost/zk_never")
+            .expect("lazy pool");
+        let app = routes().with_state(AppState::new(pool));
+        let request = Request::builder()
+            .uri("/api/updates/manifest")
+            .header("x-zeokeel-client", "0.5.0;official;linux-x64;test")
+            .header("x-request-id", "req-updates-426")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        if let Some(value) = old {
+            std::env::set_var("ZEOKEEL_UPDATE_DIR", value);
+        } else {
+            std::env::remove_var("ZEOKEEL_UPDATE_DIR");
+        }
+        assert_eq!(response.status(), StatusCode::UPGRADE_REQUIRED);
+        assert_eq!(
+            response
+                .headers()
+                .get("x-request-id")
+                .and_then(|value| value.to_str().ok()),
+            Some("req-updates-426")
+        );
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let value: Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(value["error"]["code"], "CLIENT_TOO_OLD");
+        assert_eq!(value["error"]["retryable"], false);
+        assert_eq!(value["error"]["request_id"], "req-updates-426");
+        assert_eq!(value["error"]["current"], "0.5.0");
+        assert_eq!(value["error"]["minimum"], "9.9.9");
+        assert_eq!(value["error"]["portal_url"], "/portal");
     }
 }

@@ -157,7 +157,14 @@ async fn updates_http_contract_smoke() {
     // --- 426 below min_supported; 409 for a normal 1:1 mismatch
     let (status, _headers, body) = get_json(MANIFEST, Some("0.0.1;official;linux-x64"), &[]).await;
     assert_eq!(status, StatusCode::UPGRADE_REQUIRED, "{body}");
-    assert_eq!(body["error"], "CLIENT_TOO_OLD");
+    assert_eq!(body["error"]["code"], "CLIENT_TOO_OLD");
+    assert_eq!(body["error"]["retryable"], false);
+    assert!(body["error"]["request_id"]
+        .as_str()
+        .is_some_and(|id| !id.is_empty()));
+    assert_eq!(body["error"]["current"], "0.0.1");
+    assert_eq!(body["error"]["minimum"], "0.1.0");
+    assert_eq!(body["error"]["portal_url"], "/portal");
     let (status, _headers, body) = get_json(MANIFEST, Some("0.2.0;official;linux-x64"), &[]).await;
     assert_eq!(status, StatusCode::CONFLICT, "{body}");
     assert_eq!(body["error"], "CLIENT_VERSION_MISMATCH");

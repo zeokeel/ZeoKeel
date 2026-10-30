@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { translate } from "./i18n";
 import { resolvePortalHref, type UpgradeInfo } from "./upgrade";
 import type { Locale, Transport } from "./types";
@@ -14,16 +15,28 @@ export function UpgradeGate(props: {
     translate(props.locale, key, vars);
   const href = resolvePortalHref(props.info.portalUrl, props.serverUrl);
   const unknown = t("upgradeUnknown");
+  const [openError, setOpenError] = useState<string | null>(null);
   const tauri = Reflect.get(window, "__TAURI_INTERNALS__") !== undefined;
   const openPortal = (): void => {
     if (href === null) return;
+    setOpenError(null);
     if (tauri) {
-      void props.transport.call("system.open_url", { url: href }).catch((error: unknown) => {
-        console.warn("[zk] system.open_url failed", String(error));
-      });
+      void (async () => {
+        try {
+          await props.transport.call("system.open_url", { url: href });
+        } catch (error: unknown) {
+          console.warn("[zk] system.open_url failed", String(error));
+          setOpenError(t("upgradeOpenFailed"));
+        }
+      })();
       return;
     }
-    window.open(href, "_blank", "noopener");
+    try {
+      const opened = window.open(href, "_blank", "noopener");
+      if (opened === null) setOpenError(t("upgradeOpenFailed"));
+    } catch {
+      setOpenError(t("upgradeOpenFailed"));
+    }
   };
   return (
     <div
@@ -53,6 +66,12 @@ export function UpgradeGate(props: {
                 <dd className="font-mono">{props.serverVersion}</dd>
               </>
             )}
+            {props.info.requestId === undefined || props.info.requestId === null ? null : (
+              <>
+                <dt className="text-muted-foreground">{t("upgradeRequestId")}</dt>
+                <dd className="font-mono break-all">{props.info.requestId}</dd>
+              </>
+            )}
           </dl>
         </details>
         {href === null ? null : (
@@ -66,6 +85,7 @@ export function UpgradeGate(props: {
             {t("upgradePortal")}
           </a>
         )}
+        {openError === null ? null : <p role="status" className="mt-2 text-[12px] text-destructive">{openError}</p>}
       </div>
     </div>
   );

@@ -4,12 +4,13 @@
 #![forbid(unsafe_code)]
 
 use std::collections::BTreeSet;
+use std::future::Future;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::Argon2;
-use axum::http::{header, HeaderMap, StatusCode};
+use axum::http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -490,6 +491,86 @@ pub fn client_is_too_old(headers: &HeaderMap) -> bool {
     current < minimum
 }
 
+/// Read the request id from `X-Request-Id`, generating a UUID when missing/invalid.
+#[must_use]
+pub fn request_id_from_headers(headers: &HeaderMap) -> String {
+    headers
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && value.len() <= 128)
+        .map(str::to_owned)
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
+}
+
+/// Attach the response `X-Request-Id` when not already present.
+pub fn attach_request_id(response: &mut Response, request_id: &str) {
+    if response.headers().get("x-request-id").is_none() {
+        if let Ok(value) = HeaderValue::from_str(request_id) {
+            response
+                .headers_mut()
+                .insert(HeaderName::from_static("x-request-id"), value);
+        }
+    }
+}
+
+tokio::task_local! {
+    static REQUEST_ID: String;
+}
+
+/// Run a handler future with the request-scoped correlation id available to
+/// [`audit_tx`] and other shared infrastructure.
+pub async fn with_request_id<F>(request_id: String, future: F) -> F::Output
+where
+    F: Future,
+{
+    REQUEST_ID.scope(request_id, future).await
+}
+
+/// Request id for the current HTTP request, if the middleware installed it.
+#[must_use]
+pub fn current_request_id() -> Option<String> {
+    REQUEST_ID.try_with(Clone::clone).ok()
+}
+
+/// Canonical nested 426 body shared by the HTTP gate, bootstrap and updates.
+#[must_use]
+pub fn upgrade_required_body(
+    request_id: &str,
+    current: Option<&str>,
+    minimum: &str,
+    message: &str,
+) -> Value {
+    json!({
+        "error": {
+            "code": "CLIENT_TOO_OLD",
+            "message": message,
+            "retryable": false,
+            "request_id": request_id,
+            "current": current,
+            "minimum": minimum,
+            "portal_url": "/portal",
+        }
+    })
+}
+
+/// Build the nested 426 response with the request-id echo header.
+#[must_use]
+pub fn upgrade_required_response(
+    request_id: &str,
+    current: Option<&str>,
+    minimum: &str,
+    message: &str,
+) -> Response {
+    let mut response = (
+        StatusCode::UPGRADE_REQUIRED,
+        Json(upgrade_required_body(request_id, current, minimum, message)),
+    )
+        .into_response();
+    attach_request_id(&mut response, request_id);
+    response
+}
+
 /// Stable ETag for a JSON payload (`"<sha256 hex>"`).
 #[must_use]
 pub fn content_etag(payload: &Value) -> String {
@@ -679,13 +760,15 @@ pub async fn audit_tx(
     .await
     .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "AUDIT_FAILED"))?;
     let hash = sha256_hex(&format!("{prev}{action}{target}{}", canonical_json(detail)));
-    sqlx::query("INSERT INTO audit_log (actor_id, action, target, detail, prev_hash, hash) VALUES ($1, $2, $3, $4, $5, $6)")
+    let request_id = current_request_id().unwrap_or_default();
+    sqlx::query("INSERT INTO audit_log (actor_id, action, target, detail, prev_hash, hash, request_id) VALUES ($1, $2, $3, $4, $5, $6, $7)")
         .bind(actor)
         .bind(action)
         .bind(target)
         .bind(detail)
         .bind(&prev)
         .bind(hash)
+        .bind(&request_id)
         .execute(&mut **tx)
         .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "AUDIT_FAILED"))?;
@@ -872,5 +955,61 @@ mod permission_tests {
         let super_admin = permissions_for_role("super_admin");
         assert!(super_admin.contains(&"admin:providers"));
         assert!(super_admin.contains(&"wallet:self"));
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)] // test-only
+mod request_context_tests {
+    use super::{
+        attach_request_id, current_request_id, request_id_from_headers, upgrade_required_body,
+        with_request_id,
+    };
+    use axum::body::Body;
+    use axum::http::{HeaderMap, HeaderValue, StatusCode};
+    use axum::response::Response;
+
+    #[test]
+    fn request_id_reads_or_generates_uuid() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-request-id", HeaderValue::from_static("req-123"));
+        assert_eq!(request_id_from_headers(&headers), "req-123");
+        let generated = request_id_from_headers(&HeaderMap::new());
+        assert!(uuid::Uuid::parse_str(&generated).is_ok(), "{generated}");
+    }
+
+    #[test]
+    fn upgrade_body_is_nested_without_fake_values() {
+        let body = upgrade_required_body("req-9", Some("0.0.0"), "9.9.9", "too old");
+        let error = &body["error"];
+        assert_eq!(error["code"], "CLIENT_TOO_OLD");
+        assert_eq!(error["retryable"], false);
+        assert_eq!(error["request_id"], "req-9");
+        assert_eq!(error["current"], "0.0.0");
+        assert_eq!(error["minimum"], "9.9.9");
+        assert_eq!(error["portal_url"], "/portal");
+        assert_eq!(error["message"], "too old");
+    }
+
+    #[test]
+    fn attach_request_id_sets_header() {
+        let mut response = Response::new(Body::empty());
+        attach_request_id(&mut response, "req-header");
+        assert_eq!(
+            response
+                .headers()
+                .get("x-request-id")
+                .and_then(|value| value.to_str().ok()),
+            Some("req-header")
+        );
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn request_id_is_visible_inside_scope_only() {
+        assert!(current_request_id().is_none());
+        let value = with_request_id("req-scope".to_owned(), async { current_request_id() }).await;
+        assert_eq!(value.as_deref(), Some("req-scope"));
+        assert!(current_request_id().is_none());
     }
 }

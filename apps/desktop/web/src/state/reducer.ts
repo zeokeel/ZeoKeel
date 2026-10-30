@@ -658,6 +658,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             current: action.info.current ?? previous.current,
             minimum: action.info.minimum ?? previous.minimum,
             portalUrl: action.info.portalUrl ?? previous.portalUrl,
+            requestId: action.info.requestId ?? previous.requestId ?? null,
           };
       return { ...state, upgrade: info };
     }

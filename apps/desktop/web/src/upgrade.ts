@@ -16,6 +16,8 @@ export interface UpgradeInfo {
   minimum: string | null;
   /** Absolute or relative download portal URL, when present. */
   portalUrl: string | null;
+  /** Server request id for support/diagnostics, when the 426 body carries it. */
+  requestId?: string | null;
 }
 
 export class UpgradeRequiredError extends Error {
@@ -43,6 +45,7 @@ function infoFromRecord(record: Record<string, unknown>): UpgradeInfo {
     current: readStringField(record, ["current", "current_version", "client_version", "version"]),
     minimum: readStringField(record, ["minimum", "min", "min_client_version", "minimum_version"]),
     portalUrl: readStringField(record, ["portal_url", "portalUrl", "portal", "download_url"]),
+    requestId: readStringField(record, ["request_id", "requestId"]),
   };
 }
 
@@ -79,15 +82,23 @@ export function parseUpgradeInfo(status: number, rawBody: string): UpgradeInfo |
   const error = root["error"];
   if (isRecord(error)) {
     const info = infoFromRecord(error);
+    const rootInfo = infoFromRecord(root);
+    const requestId = info.requestId ?? rootInfo.requestId;
     return {
-      current: info.current ?? infoFromRecord(root).current,
-      minimum: info.minimum ?? infoFromRecord(root).minimum,
-      portalUrl: info.portalUrl ?? infoFromRecord(root).portalUrl,
+      current: info.current ?? rootInfo.current,
+      minimum: info.minimum ?? rootInfo.minimum,
+      portalUrl: info.portalUrl ?? rootInfo.portalUrl,
+      ...(requestId === null || requestId === undefined ? {} : { requestId }),
     };
   }
   // Flat body or unrecognized shape: still a forced upgrade (status 426).
   const info = infoFromRecord(root);
-  return { current: info.current, minimum: info.minimum, portalUrl: info.portalUrl };
+  return {
+    current: info.current,
+    minimum: info.minimum,
+    portalUrl: info.portalUrl,
+    ...(info.requestId === null || info.requestId === undefined ? {} : { requestId: info.requestId }),
+  };
 }
 
 /** Extracts upgrade info from any thrown transport/auth error, if it is a 426. */

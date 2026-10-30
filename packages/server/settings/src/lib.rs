@@ -13,8 +13,9 @@ use uuid::Uuid;
 
 use zk_kit_server::AppState;
 use zk_kit_server::{
-    client_is_too_old, content_etag, current_user as current_user_public, error as auth_error,
-    if_none_match, permissions_for_role, require_admin, ServerError as AuthError,
+    client_is_too_old, client_version, content_etag, current_user as current_user_public,
+    error as auth_error, if_none_match, min_client_version_for_server, permissions_for_role,
+    request_id_from_headers, require_admin, upgrade_required_response, ServerError as AuthError,
 };
 
 #[derive(Debug, Deserialize)]
@@ -116,7 +117,15 @@ async fn bootstrap(
 ) -> Result<Response, AuthError> {
     let (user_id, role, _) = current_user_public(&state, &headers).await?;
     if client_is_too_old(&headers) {
-        return Err(auth_error(StatusCode::UPGRADE_REQUIRED, "CLIENT_TOO_OLD"));
+        let request_id = request_id_from_headers(&headers);
+        let current = client_version(&headers);
+        let minimum = min_client_version_for_server();
+        return Ok(upgrade_required_response(
+            &request_id,
+            current.as_deref(),
+            &minimum,
+            "client version is below the minimum supported version",
+        ));
     }
     let user = Uuid::parse_str(&user_id)
         .map_err(|_| auth_error(StatusCode::UNAUTHORIZED, "AUTH_EXPIRED"))?;

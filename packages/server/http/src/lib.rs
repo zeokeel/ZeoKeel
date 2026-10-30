@@ -3,7 +3,7 @@
 
 use axum::body::Body;
 use axum::extract::{Request, State};
-use axum::http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode};
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -15,8 +15,10 @@ use sqlx::PgPool;
 use zk_contract_server::ServerModule;
 pub use zk_kit_server::AppState;
 use zk_kit_server::{
-    brand_snapshot, client_version, content_etag, if_none_match, min_client_version,
-    min_client_version_for_server, parse_semver, permissions_for_role, require_admin, ServerError,
+    attach_request_id, brand_snapshot, client_version, content_etag, if_none_match,
+    min_client_version, min_client_version_for_server, parse_semver, permissions_for_role,
+    request_id_from_headers, require_admin, upgrade_required_response, with_request_id,
+    ServerError,
 };
 
 /// Stable API version for the cross-major `/api/meta/*` surface (`docs/04` §2).
@@ -39,93 +41,50 @@ fn is_client_business_path(path: &str) -> bool {
     )
 }
 
-fn request_id_for(headers: &HeaderMap) -> String {
-    headers
-        .get("x-request-id")
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && value.len() <= 128)
-        .map(str::to_owned)
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
-}
-
-fn attach_request_id(response: &mut Response, request_id: &str) {
-    if response.headers().get("x-request-id").is_none() {
-        if let Ok(value) = HeaderValue::from_str(request_id) {
-            response
-                .headers_mut()
-                .insert(HeaderName::from_static("x-request-id"), value);
-        }
-    }
-}
-
-fn upgrade_required(
-    current: Option<&str>,
-    reason: &str,
-    minimum: &str,
-    request_id: &str,
-) -> Response {
-    let body = json!({
-        "error": {
-            "code": "CLIENT_TOO_OLD",
-            "message": reason,
-            "retryable": false,
-            "request_id": request_id,
-            "current": current,
-            "minimum": minimum,
-            "portal_url": "/portal",
-        }
-    });
-    let mut response = (StatusCode::UPGRADE_REQUIRED, Json(body)).into_response();
-    attach_request_id(&mut response, request_id);
-    response
-}
-
 /// Gate `/api/client/v1/*` on the `X-ZeoKeel-Client` semver.
 ///
 /// Missing or malformed headers fail closed with 426 so the client can show the
 /// forced-upgrade surface; login/refresh/bootstrap and stable surfaces pass.
 /// A client without the header cannot prove it is new enough for business calls.
-/// The minimum is resolved per channel (env/brand) with a global fallback; the
-/// request id is read from `X-Request-Id` or generated and echoed on responses.
+/// The minimum is resolved from the authoritative server channel (env/brand),
+/// never from the client-controlled channel segment; the request id is read from
+/// `X-Request-Id` or generated and echoed on responses.
 pub async fn client_version_gate(request: Request, next: Next) -> Response {
-    let request_id = request_id_for(request.headers());
+    let request_id = request_id_from_headers(request.headers());
     // CORS preflights never carry custom request headers; let the CORS layer
     // answer them, otherwise a browser client cannot reach the business surface.
     if request.method() == axum::http::Method::OPTIONS
         || !is_client_business_path(request.uri().path())
     {
-        let mut response = next.run(request).await;
+        let mut response = with_request_id(request_id.clone(), next.run(request)).await;
         attach_request_id(&mut response, &request_id);
         return response;
     }
-    // Authoritative server channel (compiled brand): never trust the channel
-    // segment in the client-controlled header to choose a lower minimum.
     let minimum = min_client_version_for_server();
     let current = client_version(request.headers());
     let Some(version) = current.as_deref().and_then(parse_semver) else {
-        return upgrade_required(
-            current.as_deref(),
-            "X-ZeoKeel-Client header is missing or invalid",
-            &minimum,
+        return upgrade_required_response(
             &request_id,
+            current.as_deref(),
+            &minimum,
+            "X-ZeoKeel-Client header is missing or invalid",
         );
     };
     let Some(minimum_version) = parse_semver(&minimum) else {
         // The kit helper validates env overrides and falls back to 0.1.0.
-        let mut response = next.run(request).await;
+        let mut response = with_request_id(request_id.clone(), next.run(request)).await;
         attach_request_id(&mut response, &request_id);
         return response;
     };
     if version < minimum_version {
-        return upgrade_required(
-            current.as_deref(),
-            "client version is below the minimum supported version",
-            &minimum,
+        return upgrade_required_response(
             &request_id,
+            current.as_deref(),
+            &minimum,
+            "client version is below the minimum supported version",
         );
     }
-    let mut response = next.run(request).await;
+    let mut response = with_request_id(request_id.clone(), next.run(request)).await;
     attach_request_id(&mut response, &request_id);
     response
 }
