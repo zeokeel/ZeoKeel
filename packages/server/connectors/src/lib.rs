@@ -9,7 +9,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::Row;
 use uuid::Uuid;
-use zk_kit_server::{audit, current_user, error, require_admin, AppState, ServerError};
+use zk_kit_server::{audit_tx, current_user, error, require_admin, AppState, ServerError};
 
 /// Immutable migrations owned by this package.
 pub const MIGRATIONS: &[(&str, &str)] = &[(
@@ -134,23 +134,31 @@ async fn create(
     {
         return Err(error(StatusCode::BAD_REQUEST, "VALIDATION"));
     }
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let id: Uuid = sqlx::query_scalar(
         "INSERT INTO connectors (name, transport, config) VALUES ($1, $2, $3) RETURNING id",
     )
     .bind(body.name.trim())
     .bind(&body.transport)
     .bind(&body.config)
-    .fetch_one(&state.pool)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|_| error(StatusCode::CONFLICT, "CONFLICT"))?;
-    audit(
-        &state,
+    audit_tx(
+        &mut tx,
         admin.user_id,
         "connector.create",
         &id.to_string(),
         &json!({ "name": body.name, "transport": body.transport }),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true, "id": id.to_string() })))
 }
 
@@ -161,19 +169,27 @@ async fn delete_connector(
 ) -> Result<Json<Value>, ServerError> {
     let admin = require_admin(&state, &headers, true).await?;
     let id = uuid_of(&id)?;
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let result = sqlx::query("UPDATE connectors SET deleted_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL")
-        .bind(id).execute(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        .bind(id).execute(&mut *tx).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     if result.rows_affected() == 0 {
         return Err(error(StatusCode::NOT_FOUND, "CONNECTOR_NOT_FOUND"));
     }
-    audit(
-        &state,
+    audit_tx(
+        &mut tx,
         admin.user_id,
         "connector.delete",
         &id.to_string(),
         &json!({}),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -209,17 +225,17 @@ async fn set_grants(
         .await
         .map_err(|_| error(StatusCode::BAD_REQUEST, "VALIDATION"))?;
     }
-    tx.commit()
-        .await
-        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    audit(
-        &state,
+    audit_tx(
+        &mut tx,
         admin.user_id,
         "connector.grants.update",
         &id.to_string(),
         &json!({}),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -234,20 +250,28 @@ async fn set_oauth(
     if body.client_id.trim().is_empty() || body.redirect_uri.trim().is_empty() {
         return Err(error(StatusCode::BAD_REQUEST, "VALIDATION"));
     }
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     sqlx::query(
         "INSERT INTO connector_oauth (connector_id, client_id, scopes, redirect_uri) VALUES ($1, $2, $3, $4)
          ON CONFLICT (connector_id) DO UPDATE SET client_id = EXCLUDED.client_id, scopes = EXCLUDED.scopes, redirect_uri = EXCLUDED.redirect_uri",
     )
     .bind(id).bind(body.client_id.trim()).bind(json!(body.scopes)).bind(body.redirect_uri.trim())
-    .execute(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    audit(
-        &state,
+    .execute(&mut *tx).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    audit_tx(
+        &mut tx,
         admin.user_id,
         "connector.oauth.update",
         &id.to_string(),
         &json!({}),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -259,17 +283,25 @@ async fn force_update(
 ) -> Result<Json<Value>, ServerError> {
     let admin = require_admin(&state, &headers, true).await?;
     let id = uuid_of(&id)?;
-    sqlx::query("UPDATE connectors SET force_update = $1, min_client_version = $2, updated_at = now() WHERE id = $3 AND deleted_at IS NULL")
-        .bind(body.force).bind(body.min_client_version).bind(id).execute(&state.pool).await
+    let mut tx = state
+        .pool
+        .begin()
+        .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    audit(
-        &state,
+    sqlx::query("UPDATE connectors SET force_update = $1, min_client_version = $2, updated_at = now() WHERE id = $3 AND deleted_at IS NULL")
+        .bind(body.force).bind(body.min_client_version).bind(id).execute(&mut *tx).await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    audit_tx(
+        &mut tx,
         admin.user_id,
         "connector.force_update",
         &id.to_string(),
         &json!({}),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -324,14 +356,30 @@ async fn toggle(
         "disable" => false,
         _ => return Err(error(StatusCode::BAD_REQUEST, "VALIDATION")),
     };
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let allowed: Option<bool> = sqlx::query_scalar(
         "SELECT COALESCE((SELECT can_enable FROM connector_grants g WHERE g.connector_id = $1 AND (g.grantee = $2 OR g.grantee = 'all') AND can_enable LIMIT 1), false)",
-    ).bind(connector).bind(user.to_string()).fetch_one(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    ).bind(connector).bind(user.to_string()).fetch_one(&mut *tx).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     if allowed != Some(true) {
         return Err(error(StatusCode::FORBIDDEN, "CONNECTOR_FORBIDDEN"));
     }
     sqlx::query("INSERT INTO connector_prefs (user_id, connector_id, enabled) VALUES ($1, $2, $3) ON CONFLICT (user_id, connector_id) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now()")
-        .bind(user).bind(connector).bind(enabled).execute(&state.pool).await
+        .bind(user).bind(connector).bind(enabled).execute(&mut *tx).await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    audit_tx(
+        &mut tx,
+        user,
+        "connector.toggle",
+        &connector.to_string(),
+        &json!({ "enabled": enabled }),
+    )
+    .await?;
+    tx.commit()
+        .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true, "enabled": enabled })))
 }

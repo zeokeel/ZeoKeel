@@ -11,7 +11,9 @@ use serde_json::{json, Value};
 use sqlx::Row;
 
 use zk_kit_server::AppState;
-use zk_kit_server::{error as auth_error, require_admin, ServerError as AuthError};
+use zk_kit_server::{
+    audit_tx, error as auth_error, require_admin, setting_value, ServerError as AuthError,
+};
 
 #[derive(Debug, Deserialize)]
 struct PriceInput {
@@ -136,11 +138,92 @@ async fn models(
     Ok(Json(json!({ "object": "list", "data": data })))
 }
 
+#[derive(Debug, Deserialize)]
+struct PeakWindowInput {
+    #[serde(default)]
+    weekday_mask: i32,
+    #[serde(default)]
+    start_minute: i32,
+    #[serde(default)]
+    end_minute: i32,
+}
+
+async fn get_peak_window(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, AuthError> {
+    require_admin(&state, &headers, false).await?;
+    let peak_window = setting_value(&state.pool, "pricing.peak_window").await?;
+    Ok(Json(
+        json!({ "ok": true, "key": "pricing.peak_window", "peak_window": peak_window }),
+    ))
+}
+
+/// Admin-configurable peak/off-peak window (`docs/22` §5.3, `docs/01` §7.5).
+///
+/// Stored hot in `system_settings.pricing.peak_window`; the gateway reads it per
+/// request. `weekday_mask` bit 0 = Monday (mask 0 = every day); `start == end`
+/// means the window is empty.
+async fn put_peak_window(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<PeakWindowInput>,
+) -> Result<Json<Value>, AuthError> {
+    let admin = require_admin(&state, &headers, true).await?;
+    if !(0..=127).contains(&request.weekday_mask)
+        || !(0..=1440).contains(&request.start_minute)
+        || !(0..=1440).contains(&request.end_minute)
+    {
+        return Err(auth_error(StatusCode::BAD_REQUEST, "INVALID_PRICE_WINDOW"));
+    }
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let previous = sqlx::query_scalar::<_, Value>(
+        "SELECT value FROM system_settings WHERE key = 'pricing.peak_window'",
+    )
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let value = json!({
+        "weekday_mask": request.weekday_mask,
+        "start_minute": request.start_minute,
+        "end_minute": request.end_minute,
+    });
+    sqlx::query(
+        "INSERT INTO system_settings (key, value, hot, updated_by) VALUES ('pricing.peak_window', $1, true, $2)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, hot = true, updated_at = now(), updated_by = EXCLUDED.updated_by",
+    )
+    .bind(&value)
+    .bind(admin.user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    audit_tx(
+        &mut tx,
+        admin.user_id,
+        "pricing.peak_window.update",
+        "pricing.peak_window",
+        &json!({ "before": previous, "after": value }),
+    )
+    .await?;
+    tx.commit()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    Ok(Json(json!({ "ok": true, "peak_window": value })))
+}
+
 /// Pricing/admin + client model catalog routes.
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/admin/pricing", get(list))
         .route("/api/admin/pricing/{model}", put(upsert))
+        .route(
+            "/api/admin/pricing/peak-window",
+            get(get_peak_window).put(put_peak_window),
+        )
         .route("/v1/models", get(models))
 }
 

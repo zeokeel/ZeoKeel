@@ -19,7 +19,7 @@ use sqlx::Row;
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 use zk_contract_app::{AppManifest, AppOpen, AppRequest, ABI};
-use zk_kit_server::{audit, current_user, error, require_admin, AppState, ServerError};
+use zk_kit_server::{audit_tx, current_user, error, require_admin, AppState, ServerError};
 use zk_srv_app_db as app_db;
 use zk_srv_app_runtime as runtime;
 
@@ -174,18 +174,24 @@ async fn upload(
             return Err(error(StatusCode::BAD_REQUEST, "APP_BAD_MANIFEST"));
         }
     }
+    // Content row + release + audit are one transaction (fail-closed audit).
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let existing: Option<(Uuid, Uuid)> = sqlx::query_as(
         "SELECT id, owner_id FROM contents WHERE kind = 'app' AND name = $1 AND deleted_at IS NULL",
     )
     .bind(manifest.name.trim())
-    .fetch_optional(&state.pool)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let content = match existing {
         Some((id, owner_id)) if owner_id == owner => id,
         Some(_) => return Err(error(StatusCode::FORBIDDEN, "APP_FORBIDDEN")),
         None => sqlx::query_scalar("INSERT INTO contents (kind, name, owner_id, status) VALUES ('app', $1, $2, 'pending') RETURNING id")
-            .bind(manifest.name.trim()).bind(owner).fetch_one(&state.pool).await.map_err(|_| error(StatusCode::CONFLICT, "CONFLICT"))?,
+            .bind(manifest.name.trim()).bind(owner).fetch_one(&mut *tx).await.map_err(|_| error(StatusCode::CONFLICT, "CONFLICT"))?,
     };
     let wasm_sha = sha256(&wasm);
     let ui_sha = ui.as_ref().map(|bytes| sha256(bytes)).unwrap_or_default();
@@ -194,16 +200,19 @@ async fn upload(
          VALUES ($1, $2, $3, $4, $5, '', $6, $5, $3, $7, $8, $9, $10, $11) RETURNING id",
     ).bind(content).bind(manifest.version.trim()).bind(&wasm_sha).bind(i64::try_from(wasm.len()).unwrap_or(0)).bind(wasm.as_ref()).bind(owner)
         .bind(ui.as_ref().map(|bytes| bytes.as_ref())).bind(&ui_sha).bind(json!(manifest.ui)).bind(i64::from(manifest.db_schema_version)).bind(json!(manifest.db_migrations))
-        .fetch_one(&state.pool).await.map_err(|_| error(StatusCode::CONFLICT, "CONFLICT"))?;
-    sqlx::query("UPDATE contents SET current_release_id = $1, status = 'pending', updated_at = now() WHERE id = $2").bind(release).bind(content).execute(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    audit(
-        &state,
+        .fetch_one(&mut *tx).await.map_err(|_| error(StatusCode::CONFLICT, "CONFLICT"))?;
+    sqlx::query("UPDATE contents SET current_release_id = $1, status = 'pending', updated_at = now() WHERE id = $2").bind(release).bind(content).execute(&mut *tx).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    audit_tx(
+        &mut tx,
         owner,
         "app.upload",
         &content.to_string(),
         &json!({ "name": manifest.name, "version": manifest.version, "wasm_sha256": wasm_sha }),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(
         json!({ "ok": true, "app_id": content.to_string(), "status": "pending" }),
     ))
@@ -257,7 +266,15 @@ async fn open(
         .try_get("version")
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let manifest: Value = row.try_get("ui_manifest").unwrap_or(json!([]));
-    audit(&state, user, "app.open", &app.to_string(), &json!({})).await?;
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    audit_tx(&mut tx, user, "app.open", &app.to_string(), &json!({})).await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let payload = AppOpen {
         app_id: app.to_string(),
         version: version.clone(),
@@ -440,18 +457,27 @@ async fn request(
             .await;
         }
     }
+    let mut call_tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     sqlx::query("INSERT INTO app_calls (app_id, user_id, request_id, status, duration_ms, fuel) VALUES ($1,$2,$3,$4,$5,$6)")
         .bind(app).bind(user).bind(&body.request_id).bind(i64::try_from(output.response.get("status").and_then(Value::as_u64).unwrap_or(500)).unwrap_or(500))
-        .bind(i64::try_from(output.elapsed.as_millis()).unwrap_or(0)).bind(i64::try_from(output.fuel_used).unwrap_or(0)).execute(&state.pool).await
+        .bind(i64::try_from(output.elapsed.as_millis()).unwrap_or(0)).bind(i64::try_from(output.fuel_used).unwrap_or(0)).execute(&mut *call_tx).await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "AUDIT_FAILED"))?;
-    audit(
-        &state,
+    audit_tx(
+        &mut call_tx,
         user,
         "app.request",
         &format!("{}:{}", app, body.request_id),
         &json!({ "status": output.response.get("status") }),
     )
     .await?;
+    call_tx
+        .commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "AUDIT_FAILED"))?;
     let _ = sqlx::query("UPDATE app_databases SET size_bytes=$1, updated_at=now() WHERE app_id=$2")
         .bind(
             i64::try_from(
@@ -583,24 +609,32 @@ async fn admin_action(
         if role != "super_admin" {
             return Err(error(StatusCode::FORBIDDEN, "FORBIDDEN"));
         }
-        let file = std::path::Path::new(
-            &std::env::var("ZEOKEEL_APP_DB_DIR").unwrap_or_else(|_| "target/app-db".to_owned()),
-        )
-        .join(format!("{app}.sqlite"));
-        let _ = std::fs::remove_file(file);
-        sqlx::query("DELETE FROM contents WHERE id=$1 AND kind='app'")
-            .bind(app)
-            .execute(&state.pool)
+        let mut tx = state
+            .pool
+            .begin()
             .await
             .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-        audit(
-            &state,
+        sqlx::query("DELETE FROM contents WHERE id=$1 AND kind='app'")
+            .bind(app)
+            .execute(&mut *tx)
+            .await
+            .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        audit_tx(
+            &mut tx,
             admin.user_id,
             "app.purge",
             &app.to_string(),
             &json!({}),
         )
         .await?;
+        tx.commit()
+            .await
+            .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        let file = std::path::Path::new(
+            &std::env::var("ZEOKEEL_APP_DB_DIR").unwrap_or_else(|_| "target/app-db".to_owned()),
+        )
+        .join(format!("{app}.sqlite"));
+        let _ = std::fs::remove_file(file);
         return Ok(Json(json!({ "ok": true })));
     }
     if action == "rollback" {
@@ -612,35 +646,51 @@ async fn admin_action(
         if target_schema != current_schema {
             return Err(error(StatusCode::CONFLICT, "APP_DB_SCHEMA"));
         }
-        sqlx::query("UPDATE contents SET current_release_id=$1, status='approved', updated_at=now() WHERE id=$2").bind(target).bind(app).execute(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-        sqlx::query("INSERT INTO content_deployments (content_id, release_id, action, actor_id, reason) VALUES ($1,$2,'rollback',$3,'')").bind(app).bind(target).bind(admin.user_id).execute(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-        audit(
-            &state,
+        let mut tx = state
+            .pool
+            .begin()
+            .await
+            .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        sqlx::query("UPDATE contents SET current_release_id=$1, status='approved', updated_at=now() WHERE id=$2").bind(target).bind(app).execute(&mut *tx).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        sqlx::query("INSERT INTO content_deployments (content_id, release_id, action, actor_id, reason) VALUES ($1,$2,'rollback',$3,'')").bind(app).bind(target).bind(admin.user_id).execute(&mut *tx).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        audit_tx(
+            &mut tx,
             admin.user_id,
             "app.rollback",
             &app.to_string(),
             &json!({ "release_id": target.to_string() }),
         )
         .await?;
+        tx.commit()
+            .await
+            .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
         return Ok(Json(json!({ "ok": true })));
     }
     if action == "delete" {
+        let mut tx = state
+            .pool
+            .begin()
+            .await
+            .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
         sqlx::query(
             "UPDATE contents SET status='delisted', deleted_at=now(), updated_at=now() WHERE id=$1",
         )
         .bind(app)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-        sqlx::query("INSERT INTO content_deployments (content_id, release_id, action, actor_id, reason) VALUES ($1,NULL,'delete',$2,'')").bind(app).bind(admin.user_id).execute(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-        audit(
-            &state,
+        sqlx::query("INSERT INTO content_deployments (content_id, release_id, action, actor_id, reason) VALUES ($1,NULL,'delete',$2,'')").bind(app).bind(admin.user_id).execute(&mut *tx).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        audit_tx(
+            &mut tx,
             admin.user_id,
             "app.delete",
             &app.to_string(),
             &json!({}),
         )
         .await?;
+        tx.commit()
+            .await
+            .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
         return Ok(Json(json!({ "ok": true })));
     }
     let status = match action.as_str() {
@@ -648,22 +698,30 @@ async fn admin_action(
         "reject" => "rejected",
         _ => "delisted",
     };
-    let result = sqlx::query("UPDATE contents SET status=$1, updated_at=now() WHERE id=$2 AND kind='app' AND deleted_at IS NULL").bind(status).bind(app).execute(&state.pool).await
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let result = sqlx::query("UPDATE contents SET status=$1, updated_at=now() WHERE id=$2 AND kind='app' AND deleted_at IS NULL").bind(status).bind(app).execute(&mut *tx).await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     if result.rows_affected() == 0 {
         return Err(error(StatusCode::NOT_FOUND, "APP_NOT_FOUND"));
     }
     if action == "approve" {
-        let _ = sqlx::query("INSERT INTO content_deployments (content_id, release_id, action, actor_id, reason) SELECT $1, current_release_id, 'publish', $2, '' FROM contents WHERE id=$1").bind(app).bind(admin.user_id).execute(&state.pool).await;
+        sqlx::query("INSERT INTO content_deployments (content_id, release_id, action, actor_id, reason) SELECT $1, current_release_id, 'publish', $2, '' FROM contents WHERE id=$1").bind(app).bind(admin.user_id).execute(&mut *tx).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     }
-    audit(
-        &state,
+    audit_tx(
+        &mut tx,
         admin.user_id,
         &format!("app.{action}"),
         &app.to_string(),
         &json!({}),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -681,15 +739,23 @@ async fn admin_transfer(
     let admin = require_admin(&state, &headers, true).await?;
     let app = uuid_of(&id)?;
     let owner = uuid_of(&body.user_id)?;
-    sqlx::query("UPDATE contents SET owner_id=$1, updated_at=now() WHERE id=$2 AND kind='app' AND deleted_at IS NULL").bind(owner).bind(app).execute(&state.pool).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    audit(
-        &state,
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    sqlx::query("UPDATE contents SET owner_id=$1, updated_at=now() WHERE id=$2 AND kind='app' AND deleted_at IS NULL").bind(owner).bind(app).execute(&mut *tx).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    audit_tx(
+        &mut tx,
         admin.user_id,
         "app.transfer",
         &app.to_string(),
         &json!({ "owner_id": owner.to_string() }),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -747,16 +813,16 @@ async fn admin_grants(
         .execute(&mut *tx)
         .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    tx.commit()
-        .await
-        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    audit(
-        &state,
+    audit_tx(
+        &mut tx,
         admin.user_id,
         "app.grants",
         &app.to_string(),
         &json!({}),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true })))
 }

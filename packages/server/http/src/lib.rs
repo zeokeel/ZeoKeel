@@ -1,15 +1,22 @@
 //! Enterprise HTTP entrypoint and PostgreSQL readiness (M2 P1).
 #![forbid(unsafe_code)]
 
+use axum::body::Body;
 use axum::extract::State;
-use axum::response::IntoResponse;
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
-use serde_json::json;
+use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use zk_contract_server::ServerModule;
 pub use zk_kit_server::AppState;
+use zk_kit_server::{permissions_for_role, require_admin, ServerError};
+
+/// Stable API version for the cross-major `/api/meta/*` surface (`docs/04` §2).
+pub const API_VERSION: &str = "v1";
 
 /// Stable module descriptor.
 #[must_use]
@@ -41,6 +48,8 @@ pub fn router_from(state: AppState) -> Router {
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .route("/api/meta", get(meta))
+        .route("/api/meta/capabilities", get(capabilities))
+        .route("/api/admin/meta", get(admin_meta))
         .with_state(state)
 }
 
@@ -84,6 +93,93 @@ async fn meta() -> impl IntoResponse {
 fn zk_composed_placeholder() -> &'static str {
     // The composed app injects the real edition; this package stays composition-neutral.
     "enterprise"
+}
+
+/// Stable capability-negotiation payload (`docs/04` §2.1 / `docs/04` §3).
+fn capabilities_payload() -> Value {
+    let build_channel =
+        std::env::var("ZEOKEEL_BUILD_CHANNEL").unwrap_or_else(|_| "official".to_owned());
+    let build_profile =
+        std::env::var("ZEOKEEL_BUILD_PROFILE").unwrap_or_else(|_| "default".to_owned());
+    let app_origin_scheme =
+        std::env::var("ZEOKEEL_APP_ORIGIN_SCHEME").unwrap_or_else(|_| "zeokeel".to_owned());
+    json!({
+        "api_version": API_VERSION,
+        "server_version": module().version,
+        "min_client_version": "0.1.0",
+        "features": [
+            "auth.local",
+            "gateway.responses",
+            "gateway.routing",
+            "wallet.ledger",
+            "skills",
+            "connectors",
+            "apps",
+            "audit.hash_chain",
+            "updates.manifest",
+            "admin.providers",
+        ],
+        "auth_methods": ["local"],
+        "app_origin_scheme": app_origin_scheme,
+        "event_topics": [],
+        "build": {
+            "edition": zk_composed_placeholder(),
+            "profile": build_profile,
+            "channel": build_channel,
+        },
+    })
+}
+
+/// Public capability negotiation with ETag/304 (`docs/04` §2.1).
+async fn capabilities(headers: HeaderMap) -> Response {
+    let payload = capabilities_payload();
+    let rendered = serde_json::to_vec(&payload).unwrap_or_default();
+    let mut hash = Sha256::new();
+    hash.update(&rendered);
+    let etag = format!("\"{:x}\"", hash.finalize());
+    let if_none_match = headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    if if_none_match == etag || if_none_match == "*" {
+        let mut response = Response::new(Body::empty());
+        *response.status_mut() = StatusCode::NOT_MODIFIED;
+        if let Ok(value) = HeaderValue::from_str(&etag) {
+            response.headers_mut().insert(header::ETAG, value);
+        }
+        return response;
+    }
+    let mut response = Response::new(Body::from(rendered));
+    *response.status_mut() = StatusCode::OK;
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    if let Ok(value) = HeaderValue::from_str(&etag) {
+        response.headers_mut().insert(header::ETAG, value);
+    }
+    response
+}
+
+/// Admin build/permission metadata so the admin SPA can render capabilities
+/// without guessing (`docs/08` admin shell; permission points `docs/04` §3).
+async fn admin_meta(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ServerError> {
+    require_admin(&state, &headers, false).await?;
+    Ok(Json(json!({
+        "ok": true,
+        "api_version": API_VERSION,
+        "server_version": module().version,
+        "capabilities": capabilities_payload(),
+        "roles": ["super_admin", "auditor", "employee"],
+        "permissions": {
+            "super_admin": permissions_for_role("super_admin"),
+            "auditor": permissions_for_role("auditor"),
+            "employee": permissions_for_role("employee"),
+        },
+    })))
 }
 
 #[cfg(test)]

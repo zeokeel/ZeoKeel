@@ -10,7 +10,7 @@ use serde_json::json;
 use sqlx::Row;
 use uuid::Uuid;
 use zk_contract_content::{ContentGrant, ContentKind, ContentStatus, Visibility};
-use zk_kit_server::{audit, current_user, error, require_admin, AppState, ServerError};
+use zk_kit_server::{audit_tx, current_user, error, require_admin, AppState, ServerError};
 
 /// Immutable content migrations owned by this package.
 pub const MIGRATIONS: &[(&str, &str)] = &[(
@@ -115,22 +115,32 @@ async fn create(
     if kind != "skill" {
         return Err(error(StatusCode::BAD_REQUEST, "VALIDATION"));
     }
+    // Business mutation + audit in one transaction: an audit failure aborts the
+    // content write (fail-closed, docs/07 §8).
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let id: Uuid = sqlx::query_scalar(
         "INSERT INTO contents (kind, name, owner_id, status) VALUES ('skill', $1, $2, 'pending') RETURNING id",
     )
     .bind(name)
     .bind(admin.user_id)
-    .fetch_one(&state.pool)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|_| error(StatusCode::CONFLICT, "CONFLICT"))?;
-    audit(
-        &state,
+    audit_tx(
+        &mut tx,
         admin.user_id,
         "skill.upload",
         &id.to_string(),
         &json!({ "name": name }),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true, "id": id.to_string() })))
 }
 
@@ -147,23 +157,31 @@ async fn update_status(
         ContentStatus::Rejected => "rejected",
         ContentStatus::Delisted => "delisted",
     };
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let result = sqlx::query("UPDATE contents SET status = $1, updated_at = now() WHERE id = $2 AND deleted_at IS NULL AND kind = 'skill'")
         .bind(status_text)
         .bind(id)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     if result.rows_affected() == 0 {
         return Err(error(StatusCode::NOT_FOUND, "SKILL_NOT_FOUND"));
     }
-    audit(
-        state,
+    audit_tx(
+        &mut tx,
         actor,
         action,
         &id.to_string(),
         &json!({ "status": status_text }),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -239,17 +257,17 @@ async fn delete_content(
         .execute(&mut *tx)
         .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    tx.commit()
-        .await
-        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    audit(
-        &state,
+    audit_tx(
+        &mut tx,
         admin.user_id,
         "skill.delete",
         &id.to_string(),
         &json!({}),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -262,23 +280,31 @@ async fn transfer(
     let admin = require_admin(&state, &headers, true).await?;
     let id = uuid_of(&id)?;
     let owner = uuid_of(&body.user_id)?;
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let result = sqlx::query("UPDATE contents SET owner_id = $1, updated_at = now() WHERE id = $2 AND deleted_at IS NULL")
         .bind(owner)
         .bind(id)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     if result.rows_affected() == 0 {
         return Err(error(StatusCode::NOT_FOUND, "SKILL_NOT_FOUND"));
     }
-    audit(
-        &state,
+    audit_tx(
+        &mut tx,
         admin.user_id,
         "skill.transfer",
         &id.to_string(),
         &json!({ "owner_id": owner.to_string() }),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -330,17 +356,17 @@ async fn set_grants(
         .execute(&mut *tx)
         .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    tx.commit()
-        .await
-        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    audit(
-        &state,
+    audit_tx(
+        &mut tx,
         admin.user_id,
         "skill.grants.update",
         &id.to_string(),
         &json!({ "visibility": visibility_text }),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -352,24 +378,32 @@ async fn force_update(
 ) -> Result<Json<serde_json::Value>, ServerError> {
     let admin = require_admin(&state, &headers, true).await?;
     let id = uuid_of(&id)?;
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let result = sqlx::query("UPDATE contents SET force_update = $1, min_client_version = $2, updated_at = now() WHERE id = $3 AND deleted_at IS NULL")
         .bind(body.force)
         .bind(&body.min_client_version)
         .bind(id)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     if result.rows_affected() == 0 {
         return Err(error(StatusCode::NOT_FOUND, "SKILL_NOT_FOUND"));
     }
-    audit(
-        &state,
+    audit_tx(
+        &mut tx,
         admin.user_id,
         "skill.force_update",
         &id.to_string(),
         &json!({ "min_client_version": body.min_client_version }),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true })))
 }
 

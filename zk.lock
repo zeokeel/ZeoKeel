@@ -70,6 +70,16 @@
       "version": "0014_wallet_overdraft",
       "package": "packages/server/wallet/migrations/0014_wallet_overdraft.sql",
       "checksum": "28096b8f8fe119e56b8972321c64e204314caef001af951133f9fed6a2af1959"
+    },
+    {
+      "version": "0015_gateway_routing",
+      "package": "packages/server/gateway/migrations/0015_gateway_routing.sql",
+      "checksum": "0f963e26a98e4e4383c3a7a6a296728b587c01a29eda326360ec41f4b548d614"
+    },
+    {
+      "version": "0016_auth_session",
+      "package": "packages/server/auth/migrations/0016_auth_session.sql",
+      "checksum": "3298a0b63431ecc2d57b532618800be3c7ef6efe448433b8f7e24643be6894d8"
     }
   ]
 }

@@ -1,4 +1,6 @@
 //! Shared server infrastructure (state, JWT, password, admin guard, audit chain).
+//!
+//! @capability kit.server
 #![forbid(unsafe_code)]
 
 use std::collections::BTreeSet;
@@ -86,13 +88,30 @@ impl JwtKeys {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Claims {
+    iss: String,
+    aud: String,
     sub: String,
+    uid: String,
     role: String,
     epoch: i32,
     device: String,
+    channel: String,
+    jti: String,
     kid: String,
     iat: u64,
     exp: u64,
+}
+
+/// Access-token issuer (`ZEOKEEL_JWT_ISSUER`).
+#[must_use]
+pub fn jwt_issuer() -> String {
+    std::env::var("ZEOKEEL_JWT_ISSUER").unwrap_or_else(|_| "zeokeel".to_owned())
+}
+
+/// Access-token audience (`ZEOKEEL_JWT_AUDIENCE`).
+#[must_use]
+pub fn jwt_audience() -> String {
+    std::env::var("ZEOKEEL_JWT_AUDIENCE").unwrap_or_else(|_| "zeokeel-client".to_owned())
 }
 
 /// Current time seconds.
@@ -148,13 +167,19 @@ pub fn encode_token(
     role: &str,
     epoch: i32,
     device: &str,
+    channel: &str,
 ) -> Result<String, ServerError> {
     let now = now_secs();
     let claims = Claims {
+        iss: jwt_issuer(),
+        aud: jwt_audience(),
         sub: user_id.to_owned(),
+        uid: user_id.to_owned(),
         role: role.to_owned(),
         epoch,
         device: device.to_owned(),
+        channel: channel.to_owned(),
+        jti: random_token(),
         kid: state.jwt.kid.clone(),
         iat: now,
         exp: now.saturating_add(15 * 60),
@@ -200,6 +225,9 @@ fn decode_token(state: &AppState, token: &str) -> Result<Claims, ServerError> {
         .map_err(|_| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
     if claims.exp <= now_secs() || claims.kid != state.jwt.kid {
         return Err(error(StatusCode::UNAUTHORIZED, "AUTH_EXPIRED"));
+    }
+    if claims.iss != jwt_issuer() || claims.aud != jwt_audience() || claims.uid != claims.sub {
+        return Err(error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"));
     }
     Ok(claims)
 }
@@ -263,6 +291,118 @@ pub async fn current_user(
     Ok((claims.sub, db_role, epoch))
 }
 
+/// Constant-time string comparison (CSRF token hashes).
+///
+/// Length differences still leak (unavoidable while hashing hex strings), but the
+/// content comparison does not short-circuit.
+#[must_use]
+pub fn constant_time_eq(left: &str, right: &str) -> bool {
+    let mut diff = u8::from(left.len() != right.len());
+    let max = left.len().max(right.len());
+    for index in 0..max {
+        let a = left.as_bytes().get(index).copied().unwrap_or(0);
+        let b = right.as_bytes().get(index).copied().unwrap_or(0);
+        diff |= a ^ b;
+    }
+    diff == 0
+}
+
+/// Documented permission points for the employee role (`docs/04` §3).
+pub const EMPLOYEE_PERMISSIONS: &[&str] = &[
+    "auth:self",
+    "config:read",
+    "gateway:chat",
+    "skills:read",
+    "skills:publish",
+    "connectors:use",
+    "apps:use",
+    "telemetry:write",
+    "audit:self",
+    "wallet:self",
+];
+
+/// Read-only admin surfaces available to the auditor role.
+pub const AUDITOR_PERMISSIONS: &[&str] = &[
+    "auth:self",
+    "config:read",
+    "audit:self",
+    "admin:audit:read",
+    "admin:usage:read",
+    "admin:users:read",
+    "admin:jobs:read",
+];
+
+/// Full admin surfaces for the super admin role.
+pub const SUPER_ADMIN_PERMISSIONS: &[&str] = &[
+    "auth:self",
+    "config:read",
+    "gateway:chat",
+    "skills:read",
+    "skills:publish",
+    "connectors:use",
+    "apps:use",
+    "telemetry:write",
+    "audit:self",
+    "wallet:self",
+    "admin:users",
+    "admin:wallet",
+    "admin:pricing",
+    "admin:providers",
+    "admin:models",
+    "admin:skills",
+    "admin:connectors",
+    "admin:apps",
+    "admin:audit",
+    "admin:usage",
+    "admin:settings",
+    "admin:jobs",
+];
+
+/// Permission points for a role (unknown roles degrade to employee).
+#[must_use]
+pub fn permissions_for_role(role: &str) -> Vec<&'static str> {
+    match role {
+        "super_admin" => SUPER_ADMIN_PERMISSIONS.to_vec(),
+        "auditor" => AUDITOR_PERMISSIONS.to_vec(),
+        _ => EMPLOYEE_PERMISSIONS.to_vec(),
+    }
+}
+
+/// Read one JSON `system_settings` value (hot config).
+pub async fn setting_value(
+    pool: &sqlx::PgPool,
+    key: &str,
+) -> Result<Option<serde_json::Value>, ServerError> {
+    sqlx::query_scalar("SELECT value FROM system_settings WHERE key = $1")
+        .bind(key)
+        .fetch_optional(pool)
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))
+}
+
+/// Read one integer `system_settings` value with a default.
+pub async fn setting_i64(pool: &sqlx::PgPool, key: &str, default: i64) -> Result<i64, ServerError> {
+    let Some(value) = setting_value(pool, key).await? else {
+        return Ok(default);
+    };
+    match value {
+        serde_json::Value::Number(number) => Ok(number.as_i64().unwrap_or(default)),
+        serde_json::Value::String(text) => Ok(text.parse::<i64>().unwrap_or(default)),
+        _ => Ok(default),
+    }
+}
+
+/// Admin session limits from `system_settings` (docs/04 §3: 12h max, 60m idle).
+pub async fn admin_session_limits(pool: &sqlx::PgPool) -> Result<(i64, i64), ServerError> {
+    let ttl = setting_i64(pool, "admin.session_ttl_secs", 12 * 60 * 60)
+        .await?
+        .clamp(300, 12 * 60 * 60);
+    let idle = setting_i64(pool, "admin.session_idle_secs", 60 * 60)
+        .await?
+        .clamp(60, 12 * 60 * 60);
+    Ok((ttl, idle))
+}
+
 /// Admin session context.
 pub struct AdminContext {
     pub user_id: uuid::Uuid,
@@ -276,11 +416,15 @@ pub async fn require_admin(
 ) -> Result<AdminContext, ServerError> {
     let session = cookie(headers, "zk_admin")
         .ok_or_else(|| error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
+    let session_hash = sha256_hex(session);
+    let (_, idle_secs) = admin_session_limits(&state.pool).await?;
     let row = sqlx::query(
         "SELECT s.id, s.csrf_hash, s.user_id, u.role, u.status FROM admin_sessions s JOIN users u ON u.id = s.user_id
-         WHERE s.session_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()",
+         WHERE s.session_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()
+           AND s.last_seen_at > now() - ($2 * interval '1 second')",
     )
-    .bind(sha256_hex(session))
+    .bind(&session_hash)
+    .bind(idle_secs)
     .fetch_optional(&state.pool)
     .await
     .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?
@@ -308,15 +452,49 @@ pub async fn require_admin(
             .get("x-csrf-token")
             .and_then(|value| value.to_str().ok())
             .unwrap_or("");
-        if sha256_hex(supplied) != csrf_hash {
+        if !constant_time_eq(&sha256_hex(supplied), &csrf_hash) {
             return Err(error(StatusCode::FORBIDDEN, "CSRF_INVALID"));
         }
     }
+    // Sliding idle window: a successfully validated admin request refreshes it.
+    sqlx::query("UPDATE admin_sessions SET last_seen_at = now() WHERE session_hash = $1")
+        .bind(&session_hash)
+        .execute(&state.pool)
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(AdminContext {
         user_id: row
             .try_get("user_id")
             .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?,
     })
+}
+
+/// Canonical JSON text with recursively sorted object keys.
+///
+/// `audit_log.detail` is `jsonb`, whose textual key order is normalization-
+/// defined; hashing a raw `Display` form would make the chain order-dependent.
+/// Insert and verify both use this canonical form so the hash is stable.
+#[must_use]
+pub fn canonical_json(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort_unstable();
+            let mut parts = Vec::with_capacity(keys.len());
+            for key in keys {
+                if let Some(inner) = map.get(key) {
+                    let encoded_key = serde_json::to_string(key).unwrap_or_default();
+                    parts.push(format!("{encoded_key}:{}", canonical_json(inner)));
+                }
+            }
+            format!("{{{}}}", parts.join(","))
+        }
+        serde_json::Value::Array(items) => {
+            let parts: Vec<String> = items.iter().map(canonical_json).collect();
+            format!("[{}]", parts.join(","))
+        }
+        other => serde_json::to_string(other).unwrap_or_default(),
+    }
 }
 
 /// Advisory-lock slot serializing audit hash-chain appends.
@@ -346,7 +524,7 @@ pub async fn audit_tx(
     .fetch_one(&mut **tx)
     .await
     .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "AUDIT_FAILED"))?;
-    let hash = sha256_hex(&format!("{prev}{action}{target}{detail}"));
+    let hash = sha256_hex(&format!("{prev}{action}{target}{}", canonical_json(detail)));
     sqlx::query("INSERT INTO audit_log (actor_id, action, target, detail, prev_hash, hash) VALUES ($1, $2, $3, $4, $5, $6)")
         .bind(actor)
         .bind(action)
@@ -496,4 +674,49 @@ pub async fn ensure_bootstrap_admin(
         .execute(&state.pool)
         .await?;
     Ok(true)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+mod tests {
+    use super::canonical_json;
+
+    #[test]
+    fn canonical_json_sorts_nested_object_keys() {
+        let left = serde_json::json!({"b": 1, "a": {"y": true, "x": "z"}});
+        let right = serde_json::json!({"a": {"x": "z", "y": true}, "b": 1});
+        assert_eq!(canonical_json(&left), r#"{"a":{"x":"z","y":true},"b":1}"#);
+        assert_eq!(canonical_json(&left), canonical_json(&right));
+        assert_eq!(
+            canonical_json(&serde_json::json!([3, {"b": 2, "a": 1}])),
+            r#"[3,{"a":1,"b":2}]"#
+        );
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+mod permission_tests {
+    use super::{constant_time_eq, permissions_for_role};
+
+    #[test]
+    fn constant_time_eq_compares_content_and_length() {
+        assert!(constant_time_eq("abc", "abc"));
+        assert!(!constant_time_eq("abc", "abd"));
+        assert!(!constant_time_eq("abc", "abcd"));
+        assert!(constant_time_eq("", ""));
+    }
+
+    #[test]
+    fn permissions_cover_documented_roles() {
+        let employee = permissions_for_role("employee");
+        assert!(employee.contains(&"gateway:chat"));
+        assert!(employee.contains(&"skills:publish"));
+        let auditor = permissions_for_role("auditor");
+        assert!(auditor.contains(&"admin:audit:read"));
+        assert!(!auditor.contains(&"admin:users"));
+        let super_admin = permissions_for_role("super_admin");
+        assert!(super_admin.contains(&"admin:providers"));
+        assert!(super_admin.contains(&"wallet:self"));
+    }
 }

@@ -13,7 +13,7 @@ use sqlx::Row;
 use std::io::{Cursor, Read};
 use uuid::Uuid;
 use zk_kit_content::is_safe_archive_path;
-use zk_kit_server::{audit, current_user, error, require_admin, AppState, ServerError};
+use zk_kit_server::{audit_tx, current_user, error, require_admin, AppState, ServerError};
 
 const MAX_ARCHIVE: usize = 16 * 1024 * 1024;
 const MAX_UNCOMPRESSED: u64 = 64 * 1024 * 1024;
@@ -142,42 +142,50 @@ async fn upload_client(
         return Err(error(StatusCode::BAD_REQUEST, "VALIDATION"));
     }
     let meta = validate_archive(&bytes)?;
-    let existing: Option<(Uuid, Uuid)> = sqlx::query_as("SELECT id, owner_id FROM contents WHERE kind = 'skill' AND name = $1 AND deleted_at IS NULL")
-        .bind(name.trim()).fetch_optional(&state.pool).await
+    // Upload + release + audit are one transaction (fail-closed audit).
+    let mut tx = state
+        .pool
+        .begin()
+        .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    let (content, owner_id) = match existing {
+    let existing: Option<(Uuid, Uuid)> = sqlx::query_as("SELECT id, owner_id FROM contents WHERE kind = 'skill' AND name = $1 AND deleted_at IS NULL")
+        .bind(name.trim()).fetch_optional(&mut *tx).await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let content = match existing {
         Some((content, owner)) => {
             if owner != actor {
                 return Err(error(StatusCode::FORBIDDEN, "SKILL_FORBIDDEN"));
             }
-            (content, owner)
+            content
         }
         None => {
             let content: Uuid = sqlx::query_scalar("INSERT INTO contents (kind, name, owner_id, status) VALUES ('skill', $1, $2, 'pending') RETURNING id")
-                .bind(name.trim()).bind(actor).fetch_one(&state.pool).await
+                .bind(name.trim()).bind(actor).fetch_one(&mut *tx).await
                 .map_err(|_| error(StatusCode::CONFLICT, "CONFLICT"))?;
-            (content, actor)
+            content
         }
     };
-    let _ = owner_id;
     let release: Uuid = sqlx::query_scalar(
         "INSERT INTO content_releases (content_id, version, sha256, archive_size, archive, changelog, created_by)
          VALUES ($1, $2, $3, $4, $5, '', $6) RETURNING id",
     ).bind(content).bind(version.trim()).bind(&meta.sha256)
         .bind(i64::try_from(meta.size).map_err(|_| error(StatusCode::PAYLOAD_TOO_LARGE, "SKILL_ARCHIVE_TOO_LARGE"))?)
-        .bind(bytes.as_ref()).bind(actor).fetch_one(&state.pool).await
+        .bind(bytes.as_ref()).bind(actor).fetch_one(&mut *tx).await
         .map_err(|_| error(StatusCode::CONFLICT, "CONFLICT"))?;
     sqlx::query("UPDATE contents SET current_release_id = $1, status = 'pending', updated_at = now() WHERE id = $2")
-        .bind(release).bind(content).execute(&state.pool).await
+        .bind(release).bind(content).execute(&mut *tx).await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    audit(
-        &state,
+    audit_tx(
+        &mut tx,
         actor,
         "skill.upload",
         &content.to_string(),
         &json!({ "name": name.trim(), "version": version.trim(), "sha256": meta.sha256 }),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(
         json!({ "ok": true, "id": content.to_string(), "release_id": release.to_string(), "status": "pending" }),
     ))
@@ -258,10 +266,17 @@ async fn upload(
         .execute(&mut *tx)
         .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    audit_tx(
+        &mut tx,
+        admin.user_id,
+        "skill.release.create",
+        &release_id.to_string(),
+        &json!({ "content_id": content_id.to_string(), "version": version.trim(), "sha256": meta.sha256 }),
+    )
+    .await?;
     tx.commit()
         .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    audit(&state, admin.user_id, "skill.release.create", &release_id.to_string(), &json!({ "content_id": content_id.to_string(), "version": version.trim(), "sha256": meta.sha256 })).await?;
     Ok(Json(
         json!({ "ok": true, "release_id": release_id.to_string(), "sha256": meta.sha256 }),
     ))
@@ -299,20 +314,28 @@ async fn receipt(
     let release: Uuid = row
         .try_get("release_id")
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     sqlx::query(
         "INSERT INTO content_installs (user_id, content_id, release_id, tree_sha256, source)
          VALUES ($1, $2, $3, $4, 'client')
          ON CONFLICT (user_id, content_id, release_id) DO UPDATE SET tree_sha256 = EXCLUDED.tree_sha256, installed_at = now()",
-    ).bind(user).bind(content).bind(release).bind(&body.tree_sha256).execute(&state.pool).await
+    ).bind(user).bind(content).bind(release).bind(&body.tree_sha256).execute(&mut *tx).await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    audit(
-        &state,
+    audit_tx(
+        &mut tx,
         user,
         "skill.install",
         &format!("{name}@{version}"),
         &json!({ "tree_sha256": body.tree_sha256, "source": "client" }),
     )
     .await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true })))
 }
 

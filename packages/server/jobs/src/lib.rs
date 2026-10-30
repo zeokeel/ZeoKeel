@@ -147,7 +147,10 @@ async fn verify_audit(pool: &PgPool) -> Result<Value, sqlx::Error> {
         let detail: Value = row.try_get("detail")?;
         let stored_prev: String = row.try_get("prev_hash")?;
         let stored_hash: String = row.try_get("hash")?;
-        let expected = zk_kit_server::sha256_hex(&format!("{previous}{action}{target}{detail}"));
+        let expected = zk_kit_server::sha256_hex(&format!(
+            "{previous}{action}{target}{}",
+            zk_kit_server::canonical_json(&detail)
+        ));
         if stored_prev != previous || stored_hash != expected {
             broken = broken.saturating_add(1);
         }

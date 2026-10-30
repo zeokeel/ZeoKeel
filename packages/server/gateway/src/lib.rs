@@ -19,15 +19,17 @@ use axum::body::Body;
 use axum::extract::State;
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::Response;
-use axum::routing::post;
+use axum::routing::{get, patch, post, put};
 use axum::{Json, Router};
-use serde_json::Value;
+use serde::Deserialize;
+use serde_json::{json, Value};
 use sqlx::Row;
 use uuid::Uuid;
 
 use zk_kit_server::AppState;
 use zk_kit_server::{
-    current_user as current_user_public, error as auth_error, ServerError as AuthError,
+    audit_tx, current_user as current_user_public, error as auth_error, require_admin,
+    setting_value, ServerError as AuthError,
 };
 
 const DEFAULT_OUTPUT_TOKENS: i64 = 1024;
@@ -74,29 +76,10 @@ async fn responses(
         .try_get("offpeak_multiplier_bps")
         .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
 
-    // Validate upstream configuration before admission so a misconfigured server
-    // never leaks a hold.
-    let base = std::env::var("ZEOKEEL_UPSTREAM_BASE_URL")
-        .map_err(|_| auth_error(StatusCode::SERVICE_UNAVAILABLE, "UPSTREAM_UNAVAILABLE"))?;
-    let key = std::env::var("ZEOKEEL_UPSTREAM_API_KEY")
-        .map_err(|_| auth_error(StatusCode::SERVICE_UNAVAILABLE, "UPSTREAM_UNAVAILABLE"))?;
-    if !base.starts_with("https://")
-        && !base.starts_with("http://127.0.0.1")
-        && !base.starts_with("http://localhost")
-    {
-        return Err(auth_error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "UPSTREAM_NOT_ALLOWED",
-        ));
-    }
-    let upstream_timeout = std::env::var("ZEOKEEL_UPSTREAM_TIMEOUT_SECS")
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .unwrap_or(DEFAULT_UPSTREAM_TIMEOUT_SECS);
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(upstream_timeout))
-        .build()
-        .map_err(|_| auth_error(StatusCode::SERVICE_UNAVAILABLE, "UPSTREAM_UNAVAILABLE"))?;
+    // DB-driven upstream routing/failover (docs/07 §4). `providers`/`models` are
+    // the source of truth; env vars are bootstrap fallback only and are used
+    // only when no enabled DB target exists.
+    let targets = resolve_upstreams(&state, &model).await?;
 
     let max_output = body
         .get("max_output_tokens")
@@ -107,7 +90,11 @@ async fn responses(
     let input_estimate = input_chars.saturating_div(4).saturating_add(1);
     let input_cost_estimate = amount_micros(input_estimate, input_price);
     let output_cost_estimate = amount_micros(max_output, output_price);
-    let multiplier_bps = if is_peak_now() { peak_bps } else { offpeak_bps };
+    let multiplier_bps = if is_peak_now(&state).await {
+        peak_bps
+    } else {
+        offpeak_bps
+    };
     let estimate = apply_multiplier(
         input_cost_estimate.saturating_add(output_cost_estimate),
         multiplier_bps,
@@ -126,13 +113,13 @@ async fn responses(
     )
     .await?;
 
-    let upstream = client
-        .post(format!("{}/responses", base.trim_end_matches('/')))
-        .bearer_auth(key)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|_| auth_error(StatusCode::BAD_GATEWAY, "UPSTREAM"))?;
+    let upstream = match send_upstream(&targets, &body).await {
+        Ok(response) => response,
+        Err(error) => {
+            release_hold(&state, &request_id).await?;
+            return Err(error);
+        }
+    };
     let status = upstream.status();
     let content_type = upstream
         .headers()
@@ -256,6 +243,158 @@ async fn responses(
         response.headers_mut().insert(header::CONTENT_TYPE, value);
     }
     Ok(response)
+}
+
+/// One resolved upstream endpoint (DB provider row or env bootstrap fallback).
+struct UpstreamTarget {
+    name: String,
+    base_url: String,
+    api_key: String,
+    timeout_secs: u64,
+    max_retries: u32,
+}
+
+fn allowed_upstream_base(base: &str) -> bool {
+    base.starts_with("https://")
+        || base.starts_with("http://127.0.0.1")
+        || base.starts_with("http://localhost")
+}
+
+/// Resolve the ordered failover list for one model from `models`/`providers`.
+///
+/// Precedence (documented in the evidence report): enabled DB rows for the model
+/// first, ordered by `providers.priority`; when the DB has no usable target the
+/// server falls back to the `ZEOKEEL_UPSTREAM_BASE_URL/API_KEY` bootstrap env vars.
+async fn resolve_upstreams(
+    state: &AppState,
+    model: &str,
+) -> Result<Vec<UpstreamTarget>, AuthError> {
+    let rows = sqlx::query(
+        "SELECT p.name, p.base_url, p.api_key_enc, p.timeout_secs, p.max_retries
+         FROM models m JOIN providers p ON p.id = m.provider_id
+         WHERE m.model = $1 AND m.enabled = true AND p.enabled = true
+         ORDER BY p.priority ASC, p.name ASC",
+    )
+    .bind(model)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let mut targets = Vec::new();
+    for row in rows {
+        let base_url: String = row
+            .try_get("base_url")
+            .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        let api_key: String = row
+            .try_get("api_key_enc")
+            .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        if !allowed_upstream_base(&base_url) || api_key.is_empty() {
+            continue;
+        }
+        targets.push(UpstreamTarget {
+            name: row
+                .try_get("name")
+                .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?,
+            base_url,
+            api_key,
+            timeout_secs: u64::try_from(row.try_get::<i32, _>("timeout_secs").unwrap_or(120))
+                .unwrap_or(DEFAULT_UPSTREAM_TIMEOUT_SECS)
+                .clamp(1, 600),
+            max_retries: u32::try_from(row.try_get::<i32, _>("max_retries").unwrap_or(1))
+                .unwrap_or(1)
+                .min(5),
+        });
+    }
+    if targets.is_empty() {
+        // Bootstrap fallback: env-only configuration (docs/01 §7: settings must be
+        // management-console DB config; env remains a first-boot escape hatch).
+        if let (Ok(base), Ok(key)) = (
+            std::env::var("ZEOKEEL_UPSTREAM_BASE_URL"),
+            std::env::var("ZEOKEEL_UPSTREAM_API_KEY"),
+        ) {
+            if allowed_upstream_base(&base) {
+                targets.push(UpstreamTarget {
+                    name: "env-bootstrap".to_owned(),
+                    base_url: base,
+                    api_key: key,
+                    timeout_secs: std::env::var("ZEOKEEL_UPSTREAM_TIMEOUT_SECS")
+                        .ok()
+                        .and_then(|value| value.parse::<u64>().ok())
+                        .unwrap_or(DEFAULT_UPSTREAM_TIMEOUT_SECS),
+                    max_retries: 0,
+                });
+            }
+        }
+    }
+    if targets.is_empty() {
+        return Err(auth_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "UPSTREAM_UNAVAILABLE",
+        ));
+    }
+    Ok(targets)
+}
+
+/// Send a Responses request with same-provider retries and cross-provider failover.
+///
+/// Retryable failures are transport errors/timeouts and 5xx responses
+/// (`docs/07` §4 "路由 + 故障转移"); any <500 response is passed through unchanged
+/// (client errors are not retried, per `docs/22` §5.2 first-byte rule for streams).
+async fn send_upstream(
+    targets: &[UpstreamTarget],
+    body: &Value,
+) -> Result<reqwest::Response, AuthError> {
+    let mut last_error = false;
+    for target in targets {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(target.timeout_secs))
+            .build()
+            .map_err(|_| auth_error(StatusCode::SERVICE_UNAVAILABLE, "UPSTREAM_UNAVAILABLE"))?;
+        let mut attempt: u32 = 0;
+        loop {
+            match client
+                .post(format!(
+                    "{}/responses",
+                    target.base_url.trim_end_matches('/')
+                ))
+                .bearer_auth(&target.api_key)
+                .json(body)
+                .send()
+                .await
+            {
+                Ok(response) => {
+                    let status = response.status();
+                    if status.is_server_error() {
+                        last_error = true;
+                        if attempt < target.max_retries {
+                            attempt = attempt.saturating_add(1);
+                            continue;
+                        }
+                        // Exhausted this provider's retries: fail over if possible.
+                        eprintln!(
+                            "gateway: upstream provider {} returned {}; failing over",
+                            target.name, status
+                        );
+                        break;
+                    }
+                    return Ok(response);
+                }
+                Err(error) => {
+                    last_error = true;
+                    if attempt < target.max_retries {
+                        attempt = attempt.saturating_add(1);
+                        continue;
+                    }
+                    eprintln!(
+                        "gateway: upstream provider {} transport error: {error}; failing over",
+                        target.name
+                    );
+                    break;
+                }
+            }
+        }
+    }
+    let _ = last_error;
+    Err(auth_error(StatusCode::BAD_GATEWAY, "UPSTREAM"))
 }
 
 /// Insert the hold and the `usage(pending)` row in one transaction with a wallet
@@ -490,10 +629,64 @@ fn usage_from_value(value: &Value) -> Option<UsageTotals> {
     })
 }
 
-fn is_peak_now() -> bool {
-    use chrono::Timelike;
-    let hour = chrono::Local::now().hour();
-    (9..18).contains(&hour)
+/// Peak/off-peak window from hot `system_settings` (`pricing.peak_window`).
+///
+/// JSON shape: `{ "weekday_mask": 0..=127, "start_minute": 0..=1440, "end_minute": 0..=1440 }`
+/// (bit 0 = Monday, mask 0 = every day, `start == end` = never). When the setting
+/// is absent the documented legacy default (09:00–18:00 local) applies.
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+struct PeakWindow {
+    #[serde(default)]
+    weekday_mask: i32,
+    #[serde(default)]
+    start_minute: i32,
+    #[serde(default)]
+    end_minute: i32,
+}
+
+async fn is_peak_now(state: &AppState) -> bool {
+    use chrono::{Datelike, Timelike};
+    let now = chrono::Local::now();
+    let minute = i32::try_from(now.hour())
+        .unwrap_or(0)
+        .saturating_mul(60)
+        .saturating_add(i32::try_from(now.minute()).unwrap_or(0));
+    let weekday = i32::try_from(now.weekday().num_days_from_monday()).unwrap_or(0);
+    let config = setting_value(&state.pool, "pricing.peak_window")
+        .await
+        .ok()
+        .flatten()
+        .and_then(|value| serde_json::from_value::<PeakWindow>(value).ok());
+    config.map_or_else(
+        || (540..1080).contains(&minute),
+        |config| peak_at(minute, weekday, &config),
+    )
+}
+
+fn peak_at(minute: i32, weekday: i32, config: &PeakWindow) -> bool {
+    let mask = config.weekday_mask;
+    let date_enabled = if mask == 0 {
+        true
+    } else {
+        match 1_i32.checked_shl(u32::try_from(weekday).unwrap_or(31)) {
+            Some(bit) => mask & bit != 0,
+            None => false,
+        }
+    };
+    if !date_enabled {
+        return false;
+    }
+    let start = config.start_minute.clamp(0, 1440);
+    let end = config.end_minute.clamp(0, 1440);
+    if start == end {
+        return false;
+    }
+    if start < end {
+        minute >= start && minute < end
+    } else {
+        // Window wraps midnight (e.g. 22:00–06:00).
+        minute >= start || minute < end
+    }
 }
 
 /// Configured lower bound for streaming overdraft (micros below zero).
@@ -662,16 +855,373 @@ async fn mark_settled(
     Ok(())
 }
 
+fn default_true() -> bool {
+    true
+}
+
+fn default_kind() -> String {
+    "openai_responses".to_owned()
+}
+
+fn default_priority() -> i32 {
+    100
+}
+
+fn default_provider_timeout() -> i32 {
+    120
+}
+
+fn default_provider_retries() -> i32 {
+    1
+}
+
+#[derive(Debug, Deserialize)]
+struct ProviderInput {
+    name: String,
+    #[serde(default = "default_kind")]
+    kind: String,
+    base_url: String,
+    api_key: String,
+    #[serde(default = "default_true")]
+    enabled: bool,
+    #[serde(default = "default_priority")]
+    priority: i32,
+    #[serde(default = "default_provider_timeout")]
+    timeout_secs: i32,
+    #[serde(default = "default_provider_retries")]
+    max_retries: i32,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProviderPatch {
+    name: Option<String>,
+    base_url: Option<String>,
+    api_key: Option<String>,
+    enabled: Option<bool>,
+    priority: Option<i32>,
+    timeout_secs: Option<i32>,
+    max_retries: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelInput {
+    provider_id: String,
+    #[serde(default)]
+    display_name: String,
+    #[serde(default)]
+    capabilities: Value,
+    #[serde(default = "default_true")]
+    enabled: bool,
+}
+
+fn validate_provider(
+    name: &str,
+    base_url: &str,
+    timeout_secs: i32,
+    max_retries: i32,
+) -> Result<(), AuthError> {
+    if name.trim().is_empty() || !allowed_upstream_base(base_url) {
+        return Err(auth_error(StatusCode::BAD_REQUEST, "VALIDATION"));
+    }
+    if !(1..=600).contains(&timeout_secs) || !(0..=5).contains(&max_retries) {
+        return Err(auth_error(StatusCode::BAD_REQUEST, "VALIDATION"));
+    }
+    Ok(())
+}
+
+async fn admin_providers(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, AuthError> {
+    require_admin(&state, &headers, false).await?;
+    let rows = sqlx::query(
+        "SELECT id, name, kind, base_url, enabled, priority, timeout_secs, max_retries,
+                api_key_enc <> '' AS has_api_key
+         FROM providers ORDER BY priority ASC, name ASC",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let items: Vec<Value> = rows
+        .into_iter()
+        .map(|row| {
+            json!({
+                "id": row.try_get::<Uuid, _>("id").map(|value| value.to_string()).unwrap_or_default(),
+                "name": row.try_get::<String, _>("name").unwrap_or_default(),
+                "kind": row.try_get::<String, _>("kind").unwrap_or_default(),
+                "base_url": row.try_get::<String, _>("base_url").unwrap_or_default(),
+                "enabled": row.try_get::<bool, _>("enabled").unwrap_or(false),
+                "priority": row.try_get::<i32, _>("priority").unwrap_or(100),
+                "timeout_secs": row.try_get::<i32, _>("timeout_secs").unwrap_or(120),
+                "max_retries": row.try_get::<i32, _>("max_retries").unwrap_or(1),
+                "has_api_key": row.try_get::<bool, _>("has_api_key").unwrap_or(false),
+            })
+        })
+        .collect();
+    Ok(Json(json!({ "ok": true, "items": items })))
+}
+
+async fn admin_provider_create(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ProviderInput>,
+) -> Result<Json<Value>, AuthError> {
+    let admin = require_admin(&state, &headers, true).await?;
+    validate_provider(
+        &request.name,
+        &request.base_url,
+        request.timeout_secs,
+        request.max_retries,
+    )?;
+    if request.api_key.trim().is_empty() {
+        return Err(auth_error(StatusCode::BAD_REQUEST, "VALIDATION"));
+    }
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let id: Uuid = sqlx::query_scalar(
+        "INSERT INTO providers (name, kind, base_url, api_key_enc, enabled, priority, timeout_secs, max_retries)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+    )
+    .bind(request.name.trim())
+    .bind(&request.kind)
+    .bind(&request.base_url)
+    .bind(&request.api_key)
+    .bind(request.enabled)
+    .bind(request.priority)
+    .bind(request.timeout_secs)
+    .bind(request.max_retries)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|error| {
+        if error.to_string().contains("duplicate") {
+            auth_error(StatusCode::CONFLICT, "PROVIDER_EXISTS")
+        } else {
+            auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR")
+        }
+    })?;
+    audit_tx(
+        &mut tx,
+        admin.user_id,
+        "provider.create",
+        &id.to_string(),
+        &json!({
+            "name": request.name.trim(),
+            "base_url": request.base_url,
+            "priority": request.priority,
+            "timeout_secs": request.timeout_secs,
+            "max_retries": request.max_retries,
+            "enabled": request.enabled,
+        }),
+    )
+    .await?;
+    tx.commit()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    Ok(Json(json!({ "ok": true, "id": id.to_string() })))
+}
+
+async fn admin_provider_update(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Json(request): Json<ProviderPatch>,
+) -> Result<Json<Value>, AuthError> {
+    let admin = require_admin(&state, &headers, true).await?;
+    let provider_id =
+        Uuid::parse_str(&id).map_err(|_| auth_error(StatusCode::BAD_REQUEST, "VALIDATION"))?;
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let current = sqlx::query(
+        "SELECT name, base_url, timeout_secs, max_retries FROM providers WHERE id = $1 FOR UPDATE",
+    )
+    .bind(provider_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?
+    .ok_or_else(|| auth_error(StatusCode::NOT_FOUND, "PROVIDER_NOT_FOUND"))?;
+    let name = request
+        .name
+        .clone()
+        .unwrap_or_else(|| current.try_get::<String, _>("name").unwrap_or_default());
+    let base_url = request
+        .base_url
+        .clone()
+        .unwrap_or_else(|| current.try_get::<String, _>("base_url").unwrap_or_default());
+    let timeout_secs = request
+        .timeout_secs
+        .unwrap_or_else(|| current.try_get::<i32, _>("timeout_secs").unwrap_or(120));
+    let max_retries = request
+        .max_retries
+        .unwrap_or_else(|| current.try_get::<i32, _>("max_retries").unwrap_or(1));
+    validate_provider(&name, &base_url, timeout_secs, max_retries)?;
+    if request
+        .api_key
+        .as_deref()
+        .is_some_and(|key| key.trim().is_empty())
+    {
+        return Err(auth_error(StatusCode::BAD_REQUEST, "VALIDATION"));
+    }
+    sqlx::query(
+        "UPDATE providers SET name = $1, base_url = $2, api_key_enc = COALESCE($3, api_key_enc),
+           enabled = COALESCE($4, enabled), priority = COALESCE($5, priority),
+           timeout_secs = $6, max_retries = $7 WHERE id = $8",
+    )
+    .bind(&name)
+    .bind(&base_url)
+    .bind(request.api_key.as_deref())
+    .bind(request.enabled)
+    .bind(request.priority)
+    .bind(timeout_secs)
+    .bind(max_retries)
+    .bind(provider_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    audit_tx(
+        &mut tx,
+        admin.user_id,
+        "provider.update",
+        &provider_id.to_string(),
+        &json!({
+            "name": name,
+            "base_url": base_url,
+            "enabled": request.enabled,
+            "priority": request.priority,
+            "timeout_secs": timeout_secs,
+            "max_retries": max_retries,
+            "api_key_rotated": request.api_key.is_some(),
+        }),
+    )
+    .await?;
+    tx.commit()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn admin_models(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, AuthError> {
+    require_admin(&state, &headers, false).await?;
+    let rows = sqlx::query(
+        "SELECT m.model, m.display_name, m.capabilities, m.enabled, m.provider_id, p.name AS provider
+         FROM models m JOIN providers p ON p.id = m.provider_id
+         ORDER BY m.model ASC, p.priority ASC",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let items: Vec<Value> = rows
+        .into_iter()
+        .map(|row| {
+            json!({
+                "model": row.try_get::<String, _>("model").unwrap_or_default(),
+                "display_name": row.try_get::<String, _>("display_name").unwrap_or_default(),
+                "capabilities": row.try_get::<Value, _>("capabilities").unwrap_or(Value::Null),
+                "enabled": row.try_get::<bool, _>("enabled").unwrap_or(false),
+                "provider_id": row.try_get::<Uuid, _>("provider_id").map(|value| value.to_string()).unwrap_or_default(),
+                "provider": row.try_get::<String, _>("provider").unwrap_or_default(),
+            })
+        })
+        .collect();
+    Ok(Json(json!({ "ok": true, "items": items })))
+}
+
+async fn admin_model_upsert(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(model): axum::extract::Path<String>,
+    Json(request): Json<ModelInput>,
+) -> Result<Json<Value>, AuthError> {
+    let admin = require_admin(&state, &headers, true).await?;
+    if model.trim().is_empty() {
+        return Err(auth_error(StatusCode::BAD_REQUEST, "VALIDATION"));
+    }
+    let provider_id = Uuid::parse_str(&request.provider_id)
+        .map_err(|_| auth_error(StatusCode::BAD_REQUEST, "VALIDATION"))?;
+    let capabilities = if request.capabilities.is_null() {
+        json!({})
+    } else {
+        request.capabilities.clone()
+    };
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM providers WHERE id = $1)")
+        .bind(provider_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    if !exists {
+        return Err(auth_error(StatusCode::NOT_FOUND, "PROVIDER_NOT_FOUND"));
+    }
+    // A model may map to several providers for priority failover (`docs/07` §4);
+    // PUT upserts this provider's mapping without deleting the other routes.
+    sqlx::query(
+        "INSERT INTO models (provider_id, model, display_name, capabilities, enabled)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (provider_id, model) DO UPDATE SET display_name = EXCLUDED.display_name,
+           capabilities = EXCLUDED.capabilities, enabled = EXCLUDED.enabled",
+    )
+    .bind(provider_id)
+    .bind(model.trim())
+    .bind(&request.display_name)
+    .bind(&capabilities)
+    .bind(request.enabled)
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    audit_tx(
+        &mut tx,
+        admin.user_id,
+        "model.upsert",
+        model.trim(),
+        &json!({
+            "provider_id": request.provider_id,
+            "display_name": request.display_name,
+            "enabled": request.enabled,
+        }),
+    )
+    .await?;
+    tx.commit()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    Ok(Json(json!({ "ok": true })))
+}
+
 /// Gateway routes.
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/v1/responses", post(responses))
+    Router::new()
+        .route("/v1/responses", post(responses))
+        .route(
+            "/api/admin/providers",
+            get(admin_providers).post(admin_provider_create),
+        )
+        .route("/api/admin/providers/{id}", patch(admin_provider_update))
+        .route("/api/admin/models", get(admin_models))
+        .route("/api/admin/models/{model}", put(admin_model_upsert))
 }
 
 /// Immutable migrations owned by this domain.
-pub const MIGRATIONS: &[(&str, &str)] = &[(
-    "0005_gateway",
-    include_str!("../migrations/0005_gateway.sql"),
-)];
+pub const MIGRATIONS: &[(&str, &str)] = &[
+    (
+        "0005_gateway",
+        include_str!("../migrations/0005_gateway.sql"),
+    ),
+    (
+        "0015_gateway_routing",
+        include_str!("../migrations/0015_gateway_routing.sql"),
+    ),
+];
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)] // test-only
@@ -836,6 +1386,36 @@ mod tests {
             .execute(&state.pool)
             .await
             .expect("cleanup user");
+    }
+
+    #[test]
+    fn peak_window_handles_mask_wrap_and_empty() {
+        use super::peak_at;
+        // Weekday-only window: Monday 09:00–18:00.
+        let config = super::PeakWindow {
+            weekday_mask: 1,
+            start_minute: 540,
+            end_minute: 1080,
+        };
+        assert!(peak_at(600, 0, &config));
+        assert!(!peak_at(600, 1, &config));
+        assert!(!peak_at(1200, 0, &config));
+        // Wrapping window (22:00–06:00) on all days.
+        let wrap = super::PeakWindow {
+            weekday_mask: 0,
+            start_minute: 1320,
+            end_minute: 360,
+        };
+        assert!(peak_at(1400, 3, &wrap));
+        assert!(peak_at(60, 3, &wrap));
+        assert!(!peak_at(720, 3, &wrap));
+        // start == end means the window is empty (never peak).
+        let empty = super::PeakWindow {
+            weekday_mask: 0,
+            start_minute: 600,
+            end_minute: 600,
+        };
+        assert!(!peak_at(600, 0, &empty));
     }
 
     #[test]

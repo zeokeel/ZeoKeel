@@ -11,12 +11,23 @@ use serde_json::json;
 use sqlx::Row;
 
 use zk_kit_server::{
-    encode_token, error, random_token, require_admin, sha256_hex, verify_password, AppState,
-    ServerError,
+    admin_session_limits, encode_token, error, permissions_for_role, random_token, require_admin,
+    sha256_hex, verify_password, AppState, ServerError,
 };
 
-const ADMIN_TTL_SECS: u64 = 8 * 60 * 60;
 const ACCESS_TTL_SECS: u64 = 15 * 60;
+
+/// Channel from `X-ZeoKeel-Client: <semver>;<channel>;<platform>;<device_id>`.
+fn channel_from_headers(headers: &HeaderMap) -> String {
+    headers
+        .get("x-zeokeel-client")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').nth(1))
+        .map(str::trim)
+        .filter(|channel| !channel.is_empty())
+        .unwrap_or("official")
+        .to_owned()
+}
 
 use zk_contract_auth::{AdminLoginRequest, LoginRequest, RefreshRequest};
 
@@ -70,6 +81,7 @@ async fn methods() -> Json<serde_json::Value> {
 
 async fn login(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(request): Json<LoginRequest>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
     if request.device_id.trim().is_empty() {
@@ -111,12 +123,21 @@ async fn login(
         .try_get("token_epoch")
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let user_id_string = user_id.to_string();
-    let access = encode_token(&state, &user_id_string, &role, epoch, &request.device_id)?;
+    let channel = channel_from_headers(&headers);
+    let access = encode_token(
+        &state,
+        &user_id_string,
+        &role,
+        epoch,
+        &request.device_id,
+        &channel,
+    )?;
     let refresh = random_token();
-    sqlx::query("INSERT INTO refresh_tokens (user_id, device_id, token_hash, expires_at) VALUES ($1, $2, $3, now() + interval '30 days')")
+    sqlx::query("INSERT INTO refresh_tokens (user_id, device_id, token_hash, expires_at, channel) VALUES ($1, $2, $3, now() + interval '30 days', $4)")
         .bind(user_id)
         .bind(&request.device_id)
         .bind(sha256_hex(&refresh))
+        .bind(&channel)
         .execute(&state.pool)
         .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
@@ -131,17 +152,19 @@ async fn login(
         "access_token": access,
         "refresh_token": refresh,
         "expires_in": ACCESS_TTL_SECS,
+        "permissions": permissions_for_role(&role),
         "user": { "id": user_id_string, "role": role, "username": request.username },
     })))
 }
 
 async fn refresh(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(request): Json<RefreshRequest>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
     let digest = sha256_hex(&request.refresh_token);
     let row = sqlx::query(
-        "SELECT id, user_id, device_id, revoked_at, expires_at FROM refresh_tokens WHERE token_hash = $1",
+        "SELECT id, user_id, device_id, revoked_at, expires_at, channel FROM refresh_tokens WHERE token_hash = $1",
     )
     .bind(&digest)
     .fetch_optional(&state.pool)
@@ -172,6 +195,14 @@ async fn refresh(
     if device != request.device_id {
         return Err(error(StatusCode::UNAUTHORIZED, "DEVICE_MISMATCH"));
     }
+    // Refresh tokens are bound to device_id + channel (docs/04 §3).
+    let stored_channel: String = row
+        .try_get("channel")
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let channel = channel_from_headers(&headers);
+    if stored_channel != channel {
+        return Err(error(StatusCode::UNAUTHORIZED, "DEVICE_MISMATCH"));
+    }
     let user = sqlx::query(
         "SELECT role, token_epoch, status FROM users WHERE id = $1 AND deleted_at IS NULL",
     )
@@ -194,11 +225,12 @@ async fn refresh(
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let next = random_token();
     let next_id: uuid::Uuid = sqlx::query_scalar(
-        "INSERT INTO refresh_tokens (user_id, device_id, token_hash, expires_at) VALUES ($1, $2, $3, now() + interval '30 days') RETURNING id",
+        "INSERT INTO refresh_tokens (user_id, device_id, token_hash, expires_at, channel) VALUES ($1, $2, $3, now() + interval '30 days', $4) RETURNING id",
     )
     .bind(user_id)
     .bind(&request.device_id)
     .bind(sha256_hex(&next))
+    .bind(&stored_channel)
     .fetch_one(&state.pool)
     .await
     .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
@@ -217,6 +249,7 @@ async fn refresh(
         &role,
         epoch,
         &request.device_id,
+        &stored_channel,
     )?;
     Ok(Json(
         json!({ "ok": true, "access_token": access, "refresh_token": next, "expires_in": ACCESS_TTL_SECS }),
@@ -244,9 +277,11 @@ async fn me(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ServerError> {
     let (user_id, role, _) = zk_kit_server::current_user(&state, &headers).await?;
-    Ok(Json(
-        json!({ "id": user_id, "role": role, "permissions": [] }),
-    ))
+    Ok(Json(json!({
+        "id": user_id,
+        "role": role,
+        "permissions": permissions_for_role(&role),
+    })))
 }
 
 async fn logout(
@@ -274,7 +309,7 @@ async fn admin_login(
     if locked(&state, "admin", &request.username).await? {
         return Err(error(StatusCode::TOO_MANY_REQUESTS, "ACCOUNT_LOCKED"));
     }
-    let row = sqlx::query("SELECT id, password_hash FROM users WHERE username = $1 AND role IN ('super_admin', 'auditor') AND status = 'active' AND deleted_at IS NULL")
+    let row = sqlx::query("SELECT id, role, password_hash FROM users WHERE username = $1 AND role IN ('super_admin', 'auditor') AND status = 'active' AND deleted_at IS NULL")
         .bind(&request.username)
         .fetch_optional(&state.pool)
         .await
@@ -296,10 +331,13 @@ async fn admin_login(
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let session = random_token();
     let csrf = random_token();
-    sqlx::query("INSERT INTO admin_sessions (user_id, session_hash, csrf_hash, expires_at) VALUES ($1, $2, $3, now() + interval '8 hours')")
+    // TTL/idle are hot admin settings (docs/04 §3: 12h max + 60min idle defaults).
+    let (ttl_secs, idle_secs) = admin_session_limits(&state.pool).await?;
+    sqlx::query("INSERT INTO admin_sessions (user_id, session_hash, csrf_hash, expires_at) VALUES ($1, $2, $3, now() + ($4 * interval '1 second'))")
         .bind(user_id)
         .bind(sha256_hex(&session))
         .bind(sha256_hex(&csrf))
+        .bind(ttl_secs)
         .execute(&state.pool)
         .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
@@ -308,9 +346,14 @@ async fn admin_login(
         "zk_admin={session}; HttpOnly; SameSite=Lax; Path=/{}",
         if secure { "; Secure" } else { "" }
     );
-    let mut response =
-        Json(json!({ "ok": true, "csrf_token": csrf, "expires_in": ADMIN_TTL_SECS }))
-            .into_response();
+    let mut response = Json(json!({
+        "ok": true,
+        "csrf_token": csrf,
+        "expires_in": ttl_secs,
+        "idle_timeout_secs": idle_secs,
+        "role": row.try_get::<String, _>("role").unwrap_or_default(),
+    }))
+    .into_response();
     if let Ok(value) = HeaderValue::from_str(&cookie) {
         response.headers_mut().insert(header::SET_COOKIE, value);
     }
@@ -361,5 +404,9 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
     (
         "0009_lockout",
         include_str!("../migrations/0009_lockout.sql"),
+    ),
+    (
+        "0016_auth_session",
+        include_str!("../migrations/0016_auth_session.sql"),
     ),
 ];
