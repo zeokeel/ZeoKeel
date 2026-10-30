@@ -45,7 +45,7 @@ pub fn build() -> Result<Runtime, String> {
     ];
     let llm: Arc<dyn zk_contract_llm::LlmProvider> = Arc::new(zk_llm_mock::provider());
     let agent: Arc<dyn zk_contract_agent::Agent> = Arc::new(zk_agent_loop::agent(tools, llm));
-    let sessions: Arc<dyn zk_contract_session::SessionStore> = Arc::new(zk_store_session_sqlite::store());
+    let sessions: Arc<dyn zk_contract_session::SessionStore> = Arc::new(zk_store_session_sqlite::store().map_err(|e| e.to_string())?);
     let settings: Arc<dyn zk_contract_config::SettingsStore> = Arc::new(zk_store_settings_json::store());
     Ok(Runtime { agent, sessions, settings })
 }

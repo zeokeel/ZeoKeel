@@ -54,7 +54,7 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
         })),
         commands::WORKSPACE_LIST => match state.runtime.sessions().list_workspaces() {
             Ok(list) => CommandResponse::ok(json!(list)),
-            Err(error) => CommandResponse::err(error.to_string()),
+            Err(error) => session_err(error),
         },
         commands::WORKSPACE_CREATE => {
             let (Some(path), title) = (
@@ -73,7 +73,7 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             };
             match state.runtime.sessions().create_workspace(&expanded, title) {
                 Ok(workspace) => CommandResponse::ok(json!(workspace)),
-                Err(error) => CommandResponse::err(error.to_string()),
+                Err(error) => session_err(error),
             }
         }
         commands::WORKSPACE_RENAME => {
@@ -85,7 +85,7 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             };
             match state.runtime.sessions().rename_workspace(workspace_id, title) {
                 Ok(workspace) => CommandResponse::ok(json!(workspace)),
-                Err(error) => CommandResponse::err(error.to_string()),
+                Err(error) => session_err(error),
             }
         }
         commands::WORKSPACE_SET_DEFAULT => {
@@ -94,7 +94,7 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             };
             match state.runtime.sessions().set_default_workspace(workspace_id) {
                 Ok(list) => CommandResponse::ok(json!(list)),
-                Err(error) => CommandResponse::err(error.to_string()),
+                Err(error) => session_err(error),
             }
         }
         commands::WORKSPACE_REMOVE => {
@@ -105,7 +105,7 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             let confirm = payload.get("confirm").and_then(Value::as_bool).unwrap_or(false);
             match state.runtime.sessions().remove_workspace(workspace_id, reassign, confirm) {
                 Ok(result) => CommandResponse::ok(json!(result)),
-                Err(error) => CommandResponse::err(error.to_string()),
+                Err(error) => session_err(error),
             }
         }
         commands::SESSION_CREATE => {
@@ -115,7 +115,7 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             };
             match state.runtime.sessions().create_conversation_in(workspace_id, title.trim()) {
                 Ok(conversation) => CommandResponse::ok(json!(conversation)),
-                Err(error) => CommandResponse::err(error.to_string()),
+                Err(error) => session_err(error),
             }
         }
         commands::SESSION_LIST => {
@@ -124,7 +124,7 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             };
             match state.runtime.sessions().list_conversations_in(workspace_id) {
                 Ok(list) => CommandResponse::ok(json!(list)),
-                Err(error) => CommandResponse::err(error.to_string()),
+                Err(error) => session_err(error),
             }
         }
         commands::SESSION_MESSAGES => {
@@ -136,21 +136,34 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             };
             match state.runtime.sessions().messages_in(workspace_id, conversation_id) {
                 Ok(messages) => CommandResponse::ok(json!(messages)),
-                Err(error) => CommandResponse::err(error.to_string()),
+                Err(error) => session_err(error),
             }
         }
         commands::SETTINGS_GET => match state.runtime.settings().load() {
-            Ok(settings) => CommandResponse::ok(json!(settings)),
+            Ok(settings) => {
+                let mut value = json!(settings);
+                if let Some(provider) = value.get_mut("provider").and_then(Value::as_object_mut) {
+                    provider.insert("api_key".to_owned(), Value::String(String::new()));
+                }
+                CommandResponse::ok(value)
+            }
             Err(error) => CommandResponse::err(error.to_string()),
         },
         commands::SETTINGS_SET => {
             let Some(value) = payload.get("settings") else {
                 return CommandResponse::err("missing settings");
             };
-            let settings: AppSettings = match serde_json::from_value(value.clone()) {
+            let mut settings: AppSettings = match serde_json::from_value(value.clone()) {
                 Ok(settings) => settings,
                 Err(error) => return CommandResponse::err(format!("invalid settings: {error}")),
             };
+            if settings.provider.api_key.trim().is_empty() {
+                // The UI never receives the stored key (masked by settings.get).
+                // An empty field means "keep the existing secret".
+                if let Ok(existing) = state.runtime.settings().load() {
+                    settings.provider.api_key = existing.provider.api_key;
+                }
+            }
             if let Err(error) = validate_settings(&settings) {
                 return CommandResponse::err(error);
             }
@@ -166,6 +179,10 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
         }
         other => CommandResponse::err(format!("unknown command: {other}")),
     }
+}
+
+fn session_err(error: zk_contract_session::SessionError) -> CommandResponse {
+    CommandResponse::err(format!("{}: {error}", error.code()))
 }
 
 fn validate_settings(settings: &AppSettings) -> Result<(), String> {
@@ -229,7 +246,7 @@ fn chat_send(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
         created_at_ms: now_ms(),
     };
     if let Err(error) = sessions.append_message(&user_message) {
-        return CommandResponse::err(error.to_string());
+        return session_err(error);
     }
     let stream_id = uuid::Uuid::new_v4().to_string();
     let cancelled = Arc::new(AtomicBool::new(false));

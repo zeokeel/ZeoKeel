@@ -79,9 +79,24 @@ pub enum SessionError {
         /// Expected workspace id.
         workspace: String,
     },
-    /// Workspace path is unavailable (missing/not a directory/not writable).
+    /// Workspace path does not exist.
+    #[error("workspace path not found: {0}")]
+    WorkspacePathNotFound(String),
+    /// Workspace path is not a directory.
+    #[error("workspace not a directory: {0}")]
+    WorkspaceNotADirectory(String),
+    /// Workspace path is not writable.
+    #[error("workspace not writable: {0}")]
+    WorkspaceNotWritable(String),
+    /// Workspace path is unavailable.
     #[error("workspace path unavailable: {0}")]
     WorkspacePathUnavailable(String),
+    /// Reassign target is unavailable/invalid.
+    #[error("workspace reassign target invalid: {0}")]
+    WorkspaceReassignTargetInvalid(String),
+    /// Default workspace cannot be removed directly.
+    #[error("workspace is default: {0}")]
+    DefaultWorkspace(String),
     /// Workspace path already registered.
     #[error("workspace duplicate path: {0}")]
     DuplicateWorkspacePath(String),
@@ -100,6 +115,30 @@ pub enum SessionError {
     /// Invalid input.
     #[error("session invalid input: {0}")]
     Invalid(String),
+}
+
+impl SessionError {
+    /// Stable IPC error code (closed, documented in `docs/26` §5).
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::NotFound(_) => "session/not-found",
+            Self::WorkspaceNotFound(_) => "workspace/not-found",
+            Self::WorkspaceMismatch { .. } => "session/workspace-mismatch",
+            Self::WorkspacePathNotFound(_) => "workspace/path-not-found",
+            Self::WorkspaceNotADirectory(_) => "workspace/not-a-directory",
+            Self::WorkspaceNotWritable(_) => "workspace/not-writable",
+            Self::WorkspacePathUnavailable(_) => "workspace/path-unavailable",
+            Self::DuplicateWorkspacePath(_) => "workspace/duplicate-path",
+            Self::WorkspaceInUse(_) => "workspace/has-sessions",
+            Self::WorkspaceReassignTargetInvalid(_) => "workspace/reassign-target-invalid",
+            Self::DefaultWorkspace(_) => "workspace/default",
+            Self::ConfirmRequired(_) => "workspace/confirm-required",
+            Self::InvalidWorkspace(_) => "workspace/invalid",
+            Self::Storage(_) => "storage/error",
+            Self::Invalid(_) => "session/invalid",
+        }
+    }
 }
 
 /// Replaceable workspace store.

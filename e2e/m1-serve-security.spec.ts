@@ -1,0 +1,45 @@
+import { test, expect } from "@playwright/test";
+
+const SERVE = "http://127.0.0.1:8788";
+
+test.describe("serve carrier security", () => {
+  test("rejects unauthenticated IPC and does not leak the provider key", async ({ request }) => {
+    const unauthorized = await request.post(`${SERVE}/ipc`, {
+      data: { name: "workspace.list", payload: {} },
+    });
+    expect(unauthorized.status()).toBe(401);
+
+    const index = await request.get(`${SERVE}/`);
+    expect(index.ok()).toBeTruthy();
+
+    const set = await request.post(`${SERVE}/ipc`, {
+      data: {
+        name: "settings.set",
+        payload: {
+          settings: {
+            schema: 1,
+            provider: { kind: "open_ai_compatible", base_url: "https://example.com/v1", model: "m", api_key: "sk-SECRET-TEST" },
+            theme: "light",
+            locale: "zh-CN",
+            auto_approve_read_only: true,
+          },
+        },
+      },
+    });
+    expect(set.ok()).toBeTruthy();
+    const got = await request.post(`${SERVE}/ipc`, {
+      data: { name: "settings.get", payload: {} },
+    });
+    const body = (await got.json()) as { data: { provider: { api_key: string } } };
+    expect(body.data.provider.api_key).toBe("");
+    expect(JSON.stringify(body)).not.toContain("sk-SECRET-TEST");
+  });
+
+  test("does not reflect arbitrary cross-origin access", async ({ request }) => {
+    const response = await request.post(`${SERVE}/ipc`, {
+      headers: { Origin: "http://evil.example" },
+      data: { name: "workspace.list", payload: {} },
+    });
+    expect(response.headers()["access-control-allow-origin"]).toBeUndefined();
+  });
+});

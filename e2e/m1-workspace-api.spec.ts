@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { copyFileSync, mkdirSync, mkdtempSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -14,12 +14,18 @@ async function call(request: import("@playwright/test").APIRequestContext, name:
 
 test.describe("workspace IPC (serve carrier)", () => {
   test("create workspace, scoped conversation, cross-workspace mismatch, reassign delete", async ({ request }) => {
+    // Serve mode sets the HttpOnly auth cookie when the SPA index is loaded.
+    await request.get(`${SERVE}/`);
     const list = await call(request, "workspace.list", {});
     expect(list.ok).toBeTruthy();
     const workspaces = list.data as Array<{ id: string; path: string; is_default: boolean }>;
     const defaultWs = workspaces.find((w) => w.is_default);
     expect(defaultWs).toBeTruthy();
     expect(defaultWs?.path).toContain("home");
+
+    const missingPath = await call(request, "workspace.create", { path: join(tmpdir(), "zeokeel-does-not-exist-e2e") });
+    expect(missingPath.ok).toBeFalsy();
+    expect(missingPath.error).toContain("workspace/path-not-found");
 
     const dir = mkdtempSync(join(tmpdir(), "zeokeel-e2e-ws-"));
     mkdirSync(join(dir, "demo-data"));
@@ -28,6 +34,9 @@ test.describe("workspace IPC (serve carrier)", () => {
     expect(created.ok, created.error).toBeTruthy();
     const ws = created.data as { id: string; path: string; is_default: boolean };
     expect(ws.path).toBe(dir);
+    const duplicate = await call(request, "workspace.create", { path: dir, title: "dup" });
+    expect(duplicate.ok).toBeFalsy();
+    expect(duplicate.error).toContain("workspace/duplicate-path");
 
     const conv = await call(request, "session.create", { workspace_id: ws.id, title: "scoped" });
     expect(conv.ok, conv.error).toBeTruthy();
@@ -51,6 +60,13 @@ test.describe("workspace IPC (serve carrier)", () => {
 
     const refused = await call(request, "workspace.remove", { workspace_id: ws.id, confirm: true });
     expect(refused.ok).toBeFalsy();
+    const defaultRemove = await call(request, "workspace.remove", { workspace_id: defaultWs?.id, confirm: true });
+    expect(defaultRemove.ok).toBeFalsy();
+    expect(defaultRemove.error).toContain("workspace/default");
+    rmSync(dir, { recursive: true, force: true });
+    const badTarget = await call(request, "workspace.remove", { workspace_id: ws.id, reassign_to: ws.id, confirm: true });
+    expect(badTarget.ok).toBeFalsy();
+    expect(badTarget.error).toContain("workspace/reassign-target-invalid");
     const removed = await call(request, "workspace.remove", { workspace_id: ws.id, reassign_to: defaultWs?.id, confirm: true });
     expect(removed.ok, removed.error).toBeTruthy();
     expect((removed.data as { moved_sessions: number }).moved_sessions).toBe(1);

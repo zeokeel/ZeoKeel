@@ -63,7 +63,7 @@ fn workspace_crud_default_and_removal() {
     assert!(list.iter().find(|w| w.id == ws.id).unwrap().is_default);
 
     let conv = store.create_conversation_in(&ws.id, "会话").unwrap();
-    assert!(matches!(store.remove_workspace(&ws.id, None, true), Err(SessionError::WorkspaceInUse(_))));
+    assert!(matches!(store.remove_workspace(&ws.id, None, true), Err(SessionError::DefaultWorkspace(_))));
     let old_default = store.list_workspaces().unwrap().into_iter().find(|w| !w.is_default).unwrap();
     store.set_default_workspace(&old_default.id).unwrap();
     assert!(matches!(store.remove_workspace(&ws.id, Some(&old_default.id), false), Err(SessionError::ConfirmRequired(_))));
@@ -73,7 +73,7 @@ fn workspace_crud_default_and_removal() {
     assert_eq!(store.messages_in(&old_default.id, &conv.id).unwrap().len(), 0);
 
     let default_now = store.list_workspaces().unwrap().into_iter().find(|w| w.is_default).unwrap();
-    assert!(matches!(store.remove_workspace(&default_now.id, None, true), Err(SessionError::WorkspaceInUse(_))));
+    assert!(matches!(store.remove_workspace(&default_now.id, None, true), Err(SessionError::DefaultWorkspace(_))));
 }
 
 #[test]

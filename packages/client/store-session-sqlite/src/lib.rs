@@ -18,13 +18,10 @@ pub struct SqliteSessionStore {
 }
 
 /// Default store location: `$ZEOKEEL_HOME/sessions.db` or the platform data dir.
-#[must_use]
-pub fn store() -> SqliteSessionStore {
+pub fn store() -> Result<SqliteSessionStore, SessionError> {
     let path = default_path();
-    match default_workspace_root().and_then(|root| open_with_root(path, root)) {
-        Ok(store) => store,
-        Err(_) => SqliteSessionStore { conn: Mutex::new(None) },
-    }
+    let root = default_workspace_root()?;
+    open_with_root(path, root)
 }
 
 /// Open (and migrate) a store at `path`; the default workspace is the user home (`~`).
@@ -343,11 +340,17 @@ impl WorkspaceStore for SqliteSessionStore {
         if path.is_empty() {
             return Err(SessionError::WorkspacePathUnavailable("empty path".to_owned()));
         }
-        let canonical = std::fs::canonicalize(path).map_err(|error| {
-            SessionError::WorkspacePathUnavailable(format!("{path}: {error}"))
+        let canonical = std::fs::canonicalize(path).map_err(|error| match error.kind() {
+            std::io::ErrorKind::NotFound => SessionError::WorkspacePathNotFound(path.to_owned()),
+            std::io::ErrorKind::PermissionDenied => SessionError::WorkspaceNotWritable(path.to_owned()),
+            _ => SessionError::WorkspacePathUnavailable(format!("{path}: {error}")),
         })?;
+        let metadata = std::fs::metadata(&canonical).map_err(storage)?;
+        if !metadata.is_dir() {
+            return Err(SessionError::WorkspaceNotADirectory(path.to_owned()));
+        }
         if !is_writable_dir(&canonical) {
-            return Err(SessionError::WorkspacePathUnavailable(path.to_owned()));
+            return Err(SessionError::WorkspaceNotWritable(path.to_owned()));
         }
         let path_text = canonical.to_string_lossy().to_string();
         let title = if title.trim().is_empty() {
@@ -421,7 +424,7 @@ impl WorkspaceStore for SqliteSessionStore {
         self.with_conn(|conn| {
             let workspace = SqliteSessionStore::get_workspace(conn, workspace_id)?;
             if workspace.is_default {
-                return Err(SessionError::WorkspaceInUse("default workspace must be changed with set_default first".to_owned()));
+                return Err(SessionError::DefaultWorkspace("change default with workspace.set_default first".to_owned()));
             }
             let count: i64 = conn
                 .query_row("SELECT COUNT(1) FROM conversations WHERE workspace_id=?1", params![workspace_id], |row| row.get(0))
@@ -432,9 +435,12 @@ impl WorkspaceStore for SqliteSessionStore {
                     return Err(SessionError::WorkspaceInUse(format!("{workspace_id} has {count} conversations")));
                 };
                 if target == workspace_id {
-                    return Err(SessionError::InvalidWorkspace("reassign_to must differ from removed workspace".to_owned()));
+                    return Err(SessionError::WorkspaceReassignTargetInvalid("reassign_to must differ from removed workspace".to_owned()));
                 }
-                SqliteSessionStore::get_workspace(conn, target)?;
+                let target_workspace = SqliteSessionStore::get_workspace(conn, target)?;
+                if !is_writable_dir(Path::new(&target_workspace.path)) {
+                    return Err(SessionError::WorkspaceReassignTargetInvalid(format!("target path unavailable: {}", target_workspace.path)));
+                }
                 let tx = conn.unchecked_transaction().map_err(storage)?;
                 tx.execute(
                     "UPDATE conversations SET workspace_id=?2 WHERE workspace_id=?1",
@@ -493,12 +499,12 @@ impl SessionStore for SqliteSessionStore {
         self.with_conn(|conn| {
             conn.execute(
                 "INSERT INTO messages (id, conversation_id, role, content, created_at_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![message.id, message.conversation_id, message.role, message.content, message.created_at_ms as i64],
+                params![message.id, message.conversation_id, message.role, message.content, i64::try_from(message.created_at_ms).unwrap_or(i64::MAX)],
             )
             .map_err(storage)?;
             conn.execute(
                 "UPDATE conversations SET updated_at_ms=?2 WHERE id=?1",
-                params![message.conversation_id, now_ms() as i64],
+                params![message.conversation_id, i64::try_from(now_ms()).unwrap_or(i64::MAX)],
             )
             .map_err(storage)?;
             Ok(())

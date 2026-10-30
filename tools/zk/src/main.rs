@@ -893,7 +893,7 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
         agent.crate_name.replace('-', "_")
     ));
     out.push_str(&format!(
-        "    let sessions: Arc<dyn zk_contract_session::SessionStore> = Arc::new({}::store());\n",
+        "    let sessions: Arc<dyn zk_contract_session::SessionStore> = Arc::new({}::store().map_err(|e| e.to_string())?);\n",
         sessions.crate_name.replace('-', "_")
     ));
     out.push_str(&format!(
