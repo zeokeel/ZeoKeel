@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SkillCatalogEntry",
+  "description": "Catalog entry returned by `GET /api/client/v1/skills`.",
+  "type": "object",
+  "required": [
+    "can_install",
+    "category",
+    "enforced",
+    "min_client_version",
+    "name",
+    "sha256",
+    "title",
+    "version"
+  ],
+  "properties": {
+    "can_install": {
+      "type": "boolean"
+    },
+    "category": {
+      "type": "string"
+    },
+    "enforced": {
+      "type": "boolean"
+    },
+    "min_client_version": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "sha256": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    }
+  }
+}

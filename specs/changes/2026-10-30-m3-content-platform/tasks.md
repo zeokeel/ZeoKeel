@@ -5,7 +5,7 @@
 | # | 任务 | 写作用域 | 依赖 | 验证 | 状态 |
 | --- | --- | --- | --- | --- | --- |
 | 0 | 规格与六轮评审 | `specs/...`, `docs/reviews/...` | — | `spec-check`/`review-check` | ✅ |
-| 1 | 契约 + `zk-kit-content` + schema/@capability | `packages/contracts/{content,skill,connector}/`, `crates/zk-kit-content/`, `shared/contracts/schema/`（生成） | 0 | `cargo test -p zk-contract-content -p zk-contract-skill -p zk-contract-connector -p zk-kit-content`; `bash scripts/schema-check.sh`; `zk capability --check` | ☐ |
+| 1 | 契约 + `zk-kit-content` + schema/@capability | `packages/contracts/{content,skill,connector}/`, `crates/zk-kit-content/`, `shared/contracts/schema/`（生成） | 0 | `cargo test -p zk-contract-content -p zk-contract-skill -p zk-contract-connector -p zk-kit-content`; `bash scripts/schema-check.sh`; `zk capability --check` | ✅ |
 | 2 | content 迁移 `0010_content` + 组合根接线 + 测试脚本骨架 | `packages/server/content/migrations/`, `tools/zk/templates/app_server.Cargo.toml`, `apps/server/src/main.rs`, `zk.toml`, `editions/enterprise.toml`, `apps/admin/web/package.json`, `apps/desktop/web/package.json`, `scripts/srv-store-test.sh`, `docs/24` | 1 | `zk db lock --check`, `cargo check -p zk-server`, `bash scripts/srv-migration-test.sh` | ☐ |
 | 3 | `zk-srv-content` 内核 | `packages/server/content/` | 2 | `bash scripts/srv-store-test.sh` | ☐ |
 | 4 | `zk-srv-skills` 归档元数据/目录/下载 | `packages/server/skills/` | 3 | `bash scripts/srv-store-test.sh` | ☐ |

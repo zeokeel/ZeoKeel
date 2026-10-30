@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Content",
+  "description": "Content record.",
+  "type": "object",
+  "required": [
+    "id",
+    "kind",
+    "name",
+    "owner_id",
+    "status",
+    "visibility"
+  ],
+  "properties": {
+    "current_release_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/definitions/ContentKind"
+    },
+    "name": {
+      "type": "string"
+    },
+    "owner_id": {
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/definitions/ContentStatus"
+    },
+    "visibility": {
+      "$ref": "#/definitions/Visibility"
+    }
+  },
+  "definitions": {
+    "ContentKind": {
+      "description": "Content kind.",
+      "type": "string",
+      "enum": [
+        "skill",
+        "app"
+      ]
+    },
+    "ContentStatus": {
+      "description": "Content lifecycle status.",
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "delisted"
+      ]
+    },
+    "Visibility": {
+      "description": "Visibility scope.",
+      "type": "string",
+      "enum": [
+        "all",
+        "selected"
+      ]
+    }
+  }
+}

@@ -8,6 +8,14 @@
     "path": "packages/contracts/config/src/lib.rs"
   },
   {
+    "id": "contract.connector",
+    "path": "packages/contracts/connector/src/lib.rs"
+  },
+  {
+    "id": "contract.content",
+    "path": "packages/contracts/content/src/lib.rs"
+  },
+  {
     "id": "contract.ipc",
     "path": "packages/contracts/ipc/src/lib.rs"
   },
@@ -28,11 +36,19 @@
     "path": "packages/contracts/session/src/lib.rs"
   },
   {
+    "id": "contract.skill",
+    "path": "packages/contracts/skill/src/lib.rs"
+  },
+  {
     "id": "contract.tool",
     "path": "packages/contracts/tool/src/lib.rs"
   },
   {
     "id": "contract.ui",
     "path": "packages/contracts/ui/src/lib.rs"
+  },
+  {
+    "id": "kit.content",
+    "path": "crates/zk-kit-content/src/lib.rs"
   }
 ]

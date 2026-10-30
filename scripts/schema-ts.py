@@ -9,8 +9,18 @@ OUT = ROOT / "shared/contracts/ts/contracts.ts"
 TYPE_MAP = {"string": "string", "integer": "number", "number": "number", "boolean": "boolean"}
 
 def ts_type(prop: dict) -> str:
-    if "type" in prop: return TYPE_MAP.get(prop["type"], "unknown")
-    if "$ref" in prop: return prop["$ref"].rsplit("/", 1)[-1]
+    if "$ref" in prop:
+        return "unknown"
+    if "enum" in prop and all(isinstance(item, str) for item in prop["enum"]):
+        return " | ".join(f'"{item}"' for item in prop["enum"])
+    kind = prop.get("type")
+    if isinstance(kind, list):
+        parts = [TYPE_MAP.get(item, "unknown") for item in kind]
+        return " | ".join(dict.fromkeys(parts))
+    if kind == "array":
+        return f"Array<{ts_type(prop.get('items', {}))}>"
+    if isinstance(kind, str):
+        return TYPE_MAP.get(kind, "unknown")
     return "unknown"
 
 def gen(name: str, schema: dict) -> tuple[str, str]:

@@ -1,6 +1,6 @@
 # 2026-10-30-m3-content-platform · 验收
 
-- 状态：`pending`（实现完成后填实；未填不得标 `done`）
+- 状态：`in-progress`（task 1 完成；实现未完成）
 - 验收人：pending
 - 日期：pending
 - PR/commit：pending
@@ -8,9 +8,17 @@
 
 ## 1. 自动验证（实现后填写真实结果）
 
+### task 1 evidence (2026-10-30)
+
+- `cargo test -p zk-contract-content -p zk-contract-skill -p zk-contract-connector -p zk-kit-content`：pass
+- `bash scripts/schema-check.sh`：pass（6 schemas）
+- `zk capability --check`：up to date (13 entries)
+- `cargo run -q -p zk -- validate`：56 packages
+
+
 | 命令 | 期望 | 结果 |
 | --- | --- | --- |
-| `cargo test --workspace` | 全绿 | pending |
+| `cargo test --workspace` | 全绿 | task1: content/skill/connector + zk-kit-content tests pass |
 | `bash scripts/srv-store-test.sh` | 上传/审批/可见/安装/更新/删除/配额/恶意 zip 全通过 | pending |
 | `bash scripts/admin-e2e.sh` | 技能页面操作 + axe 0 serious/critical | pending |
 | `pnpm --dir apps/desktop/web test` | 客户端安装/冲突/删除六态 | pending |

@@ -6,6 +6,36 @@ export interface LoginRequest {
   username: string;
 }
 
+export interface Connector {
+  auth_mode: string;
+  enabled: boolean;
+  id: string;
+  name: string;
+  scopes?: Array<string>;
+  transport: unknown;
+}
+
+export interface Content {
+  current_release_id?: string | unknown;
+  id: string;
+  kind: unknown;
+  name: string;
+  owner_id: string;
+  status: unknown;
+  visibility: unknown;
+}
+
+export interface SkillCatalogEntry {
+  can_install: boolean;
+  category: string;
+  enforced: boolean;
+  min_client_version: string;
+  name: string;
+  sha256: string;
+  title: string;
+  version: string;
+}
+
 export interface CreateUser {
   display_name?: string;
   password: string;
@@ -20,6 +50,12 @@ export interface AdjustRequest {
 }
 
 export const auth_loginSchema = {"$schema":"http://json-schema.org/draft-07/schema#","title":"LoginRequest","description":"Client login payload (public endpoints).","type":"object","required":["device_id","password","username"],"properties":{"device_id":{"type":"string"},"password":{"type":"string"},"username":{"type":"string"}}} as const;
+
+export const connectorSchema = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Connector","description":"Connector definition (no secret/token).","type":"object","required":["auth_mode","enabled","id","name","transport"],"properties":{"auth_mode":{"type":"string"},"enabled":{"type":"boolean"},"id":{"type":"string"},"name":{"type":"string"},"scopes":{"default":[],"type":"array","items":{"type":"string"}},"transport":{"$ref":"#/definitions/ConnectorTransport"}},"definitions":{"ConnectorTransport":{"description":"MCP transport.","type":"string","enum":["stdio","http","sse"]}}} as const;
+
+export const contentSchema = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Content","description":"Content record.","type":"object","required":["id","kind","name","owner_id","status","visibility"],"properties":{"current_release_id":{"type":["string","null"]},"id":{"type":"string"},"kind":{"$ref":"#/definitions/ContentKind"},"name":{"type":"string"},"owner_id":{"type":"string"},"status":{"$ref":"#/definitions/ContentStatus"},"visibility":{"$ref":"#/definitions/Visibility"}},"definitions":{"ContentKind":{"description":"Content kind.","type":"string","enum":["skill","app"]},"ContentStatus":{"description":"Content lifecycle status.","type":"string","enum":["pending","approved","rejected","delisted"]},"Visibility":{"description":"Visibility scope.","type":"string","enum":["all","selected"]}}} as const;
+
+export const skill_catalogSchema = {"$schema":"http://json-schema.org/draft-07/schema#","title":"SkillCatalogEntry","description":"Catalog entry returned by `GET /api/client/v1/skills`.","type":"object","required":["can_install","category","enforced","min_client_version","name","sha256","title","version"],"properties":{"can_install":{"type":"boolean"},"category":{"type":"string"},"enforced":{"type":"boolean"},"min_client_version":{"type":"string"},"name":{"type":"string"},"sha256":{"type":"string"},"title":{"type":"string"},"version":{"type":"string"}}} as const;
 
 export const user_createSchema = {"$schema":"http://json-schema.org/draft-07/schema#","title":"CreateUser","description":"Create-user payload.","type":"object","required":["password","role","username"],"properties":{"display_name":{"default":"","type":"string"},"password":{"type":"string"},"role":{"type":"string"},"username":{"type":"string"}}} as const;
 

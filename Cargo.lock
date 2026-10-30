@@ -6201,6 +6201,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-contract-connector"
+version = "0.1.0"
+dependencies = [
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "zk-contract-content"
+version = "0.1.0"
+dependencies = [
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "zk-contract-gateway"
 version = "0.1.0"
 dependencies = [
@@ -6249,6 +6267,15 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "zk-contract-skill"
+version = "0.1.0"
+dependencies = [
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -6314,6 +6341,13 @@ dependencies = [
  "zk-contract-ipc",
  "zk-contract-session",
  "zk-contract-tool",
+]
+
+[[package]]
+name = "zk-kit-content"
+version = "0.1.0"
+dependencies = [
+ "sha2",
 ]
 
 [[package]]

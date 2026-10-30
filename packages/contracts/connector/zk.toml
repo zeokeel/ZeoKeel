@@ -1,0 +1,9 @@
+schema = 1
+id = "zeokeel/contract-connector"
+kind = "contract"
+version = "0.1.0"
+license = "MIT"
+summary = "MCP connector contract"
+
+[facets]
+rust = { crate = "zk-contract-connector" }
