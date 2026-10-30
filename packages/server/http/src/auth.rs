@@ -203,6 +203,10 @@ pub(crate) fn cookie<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> 
     })
 }
 
+pub(crate) async fn current_user_public(state: &AppState, headers: &HeaderMap) -> Result<(String, String, i32), AuthError> {
+    current_user(state, headers).await
+}
+
 async fn current_user(state: &AppState, headers: &HeaderMap) -> Result<(String, String, i32), AuthError> {
     let token = bearer(headers).ok_or_else(|| auth_error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
     let claims = decode_token(state, token)?;

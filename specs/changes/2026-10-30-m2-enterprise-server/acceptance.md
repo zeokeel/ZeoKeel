@@ -15,5 +15,5 @@
 ## P1 evidence (progress)
 
 - `bash scripts/srv-migration-test.sh` → `migration ok: 17 tables`（真实 PG 16）。
-- `bash scripts/srv-auth-test.sh` → `auth ok: login/me/refresh/reuse/admin-csrf`（真实 server + PG）。
+- `bash scripts/srv-auth-test.sh` → `auth ok: login/me/refresh/reuse/admin-csrf/users-auditor/wallet-ledger`（真实 server + PG）。
 - `/healthz`、`/readyz` 200；`schema_migrations(0001_init)` 写入。

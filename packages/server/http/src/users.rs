@@ -123,6 +123,7 @@ async fn create(
             auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR")
         }
     })?;
+    crate::wallet::ensure_wallet(&state, id).await?;
     audit(&state, admin.user_id, "user.create", &id.to_string(), &json!({ "role": request.role })).await?;
     Ok(Json(json!({ "ok": true, "id": id.to_string() })))
 }

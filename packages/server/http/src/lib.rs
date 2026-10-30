@@ -13,6 +13,7 @@ use zk_contract_server::ServerModule;
 
 pub mod auth;
 pub mod users;
+pub mod wallet;
 
 /// Stable module descriptor.
 #[must_use]
@@ -80,6 +81,7 @@ pub fn router_from(state: AppState) -> Router {
         .route("/api/meta", get(meta))
         .merge(auth::routes())
         .merge(users::routes())
+        .merge(wallet::routes())
         .with_state(state)
 }
 
