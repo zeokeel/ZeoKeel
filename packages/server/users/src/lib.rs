@@ -9,7 +9,9 @@ use serde_json::{json, Value};
 use sqlx::Row;
 use uuid::Uuid;
 
-use zk_kit_server::{error as auth_error, hash_password, require_admin, AppState, ServerError as AuthError};
+use zk_kit_server::{
+    error as auth_error, hash_password, require_admin, AppState, ServerError as AuthError,
+};
 
 const ROLES: [&str; 3] = ["super_admin", "auditor", "employee"];
 
@@ -63,7 +65,8 @@ async fn create(
         return Err(auth_error(StatusCode::BAD_REQUEST, "INVALID_USER"));
     }
     validate_role(&request.role)?;
-    let hash = hash_password(&request.password).map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "HASH_ERROR"))?;
+    let hash = hash_password(&request.password)
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "HASH_ERROR"))?;
     let id: Uuid = sqlx::query_scalar(
         "INSERT INTO users (username, display_name, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id",
     )
@@ -81,7 +84,14 @@ async fn create(
         }
     })?;
     sqlx::query("INSERT INTO wallet_accounts (user_id, balance_micros) VALUES ($1, 0) ON CONFLICT (user_id) DO NOTHING").bind(id).execute(&state.pool).await.map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    zk_kit_server::audit(&state, admin.user_id, "user.create", &id.to_string(), &json!({ "role": request.role })).await?;
+    zk_kit_server::audit(
+        &state,
+        admin.user_id,
+        "user.create",
+        &id.to_string(),
+        &json!({ "role": request.role }),
+    )
+    .await?;
     Ok(Json(json!({ "ok": true, "id": id.to_string() })))
 }
 
@@ -92,15 +102,21 @@ async fn update(
     Json(request): Json<UpdateUser>,
 ) -> Result<Json<Value>, AuthError> {
     let admin = require_admin(&state, &headers, true).await?;
-    let user_id = Uuid::parse_str(&id).map_err(|_| auth_error(StatusCode::BAD_REQUEST, "INVALID_USER"))?;
-    let current = sqlx::query("SELECT role, status FROM users WHERE id = $1 AND deleted_at IS NULL")
-        .bind(user_id)
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?
-        .ok_or_else(|| auth_error(StatusCode::NOT_FOUND, "USER_NOT_FOUND"))?;
-    let current_role: String = current.try_get("role").map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    let current_status: String = current.try_get("status").map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let user_id =
+        Uuid::parse_str(&id).map_err(|_| auth_error(StatusCode::BAD_REQUEST, "INVALID_USER"))?;
+    let current =
+        sqlx::query("SELECT role, status FROM users WHERE id = $1 AND deleted_at IS NULL")
+            .bind(user_id)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?
+            .ok_or_else(|| auth_error(StatusCode::NOT_FOUND, "USER_NOT_FOUND"))?;
+    let current_role: String = current
+        .try_get("role")
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let current_status: String = current
+        .try_get("status")
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let next_role = request.role.unwrap_or_else(|| current_role.clone());
     let next_status = request.status.unwrap_or_else(|| current_status.clone());
     validate_role(&next_role)?;
@@ -114,7 +130,10 @@ async fn update(
         return Err(auth_error(StatusCode::CONFLICT, "LAST_SUPER_ADMIN"));
     }
     let password_hash = match request.password {
-        Some(password) if password.len() >= 8 => Some(hash_password(&password).map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "HASH_ERROR"))?),
+        Some(password) if password.len() >= 8 => Some(
+            hash_password(&password)
+                .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "HASH_ERROR"))?,
+        ),
         Some(_) => return Err(auth_error(StatusCode::BAD_REQUEST, "INVALID_PASSWORD")),
         None => None,
     };
@@ -128,7 +147,14 @@ async fn update(
     .execute(&state.pool)
     .await
     .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    zk_kit_server::audit(&state, admin.user_id, "user.update", &id, &json!({ "role": next_role, "status": next_status })).await?;
+    zk_kit_server::audit(
+        &state,
+        admin.user_id,
+        "user.update",
+        &id,
+        &json!({ "role": next_role, "status": next_status }),
+    )
+    .await?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -138,14 +164,17 @@ async fn remove(
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AuthError> {
     let admin = require_admin(&state, &headers, true).await?;
-    let user_id = Uuid::parse_str(&id).map_err(|_| auth_error(StatusCode::BAD_REQUEST, "INVALID_USER"))?;
+    let user_id =
+        Uuid::parse_str(&id).map_err(|_| auth_error(StatusCode::BAD_REQUEST, "INVALID_USER"))?;
     let current = sqlx::query("SELECT role FROM users WHERE id = $1 AND deleted_at IS NULL")
         .bind(user_id)
         .fetch_optional(&state.pool)
         .await
         .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?
         .ok_or_else(|| auth_error(StatusCode::NOT_FOUND, "USER_NOT_FOUND"))?;
-    let role: String = current.try_get("role").map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let role: String = current
+        .try_get("role")
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     if role == "super_admin" && last_super_admin(&state, user_id).await? {
         return Err(auth_error(StatusCode::CONFLICT, "LAST_SUPER_ADMIN"));
     }
@@ -154,17 +183,28 @@ async fn remove(
         .execute(&state.pool)
         .await
         .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    sqlx::query("UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL")
-        .bind(user_id)
-        .execute(&state.pool)
-        .await
-        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    sqlx::query("UPDATE admin_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL")
-        .bind(user_id)
-        .execute(&state.pool)
-        .await
-        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    zk_kit_server::audit(&state, admin.user_id, "user.delete", &id, &json!({ "soft": true })).await?;
+    sqlx::query(
+        "UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(user_id)
+    .execute(&state.pool)
+    .await
+    .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    sqlx::query(
+        "UPDATE admin_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(user_id)
+    .execute(&state.pool)
+    .await
+    .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    zk_kit_server::audit(
+        &state,
+        admin.user_id,
+        "user.delete",
+        &id,
+        &json!({ "soft": true }),
+    )
+    .await?;
     Ok(Json(json!({ "ok": true })))
 }
 

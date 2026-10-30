@@ -9,12 +9,24 @@ pub use zk_kit_wasm::WasmError;
 use zk_kit_wasm::{run, Limits, RunInput, RunOutput};
 
 /// Headroom: one run.
-pub fn execute(wasm: &[u8], db: &Path, request: serde_json::Value, fuel: u64, memory_bytes: usize, assets: &HashMap<String, Vec<u8>>, db_quota_bytes: u64) -> Result<RunOutput, WasmError> {
+pub fn execute(
+    wasm: &[u8],
+    db: &Path,
+    request: serde_json::Value,
+    fuel: u64,
+    memory_bytes: usize,
+    assets: &HashMap<String, Vec<u8>>,
+    db_quota_bytes: u64,
+) -> Result<RunOutput, WasmError> {
     run(RunInput {
         wasm,
         db_path: db,
         request,
-        limits: Limits { fuel, timeout: Duration::from_secs(30), memory_bytes },
+        limits: Limits {
+            fuel,
+            timeout: Duration::from_secs(30),
+            memory_bytes,
+        },
         assets,
         db_quota_bytes,
     })

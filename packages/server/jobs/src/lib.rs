@@ -14,11 +14,12 @@ use zk_kit_server::{error as auth_error, require_admin, ServerError as AuthError
 
 /// Run one named job once and record a job_run.
 pub async fn run_job(pool: &PgPool, job: &str, idempotency: &str) -> Result<Value, String> {
-    let already: Option<String> = sqlx::query_scalar("SELECT status FROM job_runs WHERE idempotency_key = $1")
-        .bind(idempotency)
-        .fetch_optional(pool)
-        .await
-        .map_err(|error| error.to_string())?;
+    let already: Option<String> =
+        sqlx::query_scalar("SELECT status FROM job_runs WHERE idempotency_key = $1")
+            .bind(idempotency)
+            .fetch_optional(pool)
+            .await
+            .map_err(|error| error.to_string())?;
     if already.is_some() {
         return Ok(json!({ "job": job, "skipped": true }));
     }
@@ -74,15 +75,22 @@ pub async fn run_job(pool: &PgPool, job: &str, idempotency: &str) -> Result<Valu
 }
 
 async fn app_retire(pool: &PgPool) -> Result<Value, sqlx::Error> {
-    sqlx::query("DELETE FROM app_runtime_logs WHERE at < now() - interval '30 days'").execute(pool).await?;
-    sqlx::query("DELETE FROM app_calls WHERE at < now() - interval '30 days'").execute(pool).await?;
+    sqlx::query("DELETE FROM app_runtime_logs WHERE at < now() - interval '30 days'")
+        .execute(pool)
+        .await?;
+    sqlx::query("DELETE FROM app_calls WHERE at < now() - interval '30 days'")
+        .execute(pool)
+        .await?;
     let expired: Vec<(uuid::Uuid,)> = sqlx::query_as("SELECT id FROM contents WHERE kind='app' AND deleted_at IS NOT NULL AND deleted_at < now() - interval '30 days'").fetch_all(pool).await?;
     let root = std::env::var("ZEOKEEL_APP_DB_DIR").unwrap_or_else(|_| "target/app-db".to_owned());
     for (app,) in &expired {
         let _ = std::fs::remove_file(std::path::Path::new(&root).join(format!("{app}.sqlite")));
     }
     for (app,) in &expired {
-        sqlx::query("DELETE FROM contents WHERE id=$1").bind(app).execute(pool).await?;
+        sqlx::query("DELETE FROM contents WHERE id=$1")
+            .bind(app)
+            .execute(pool)
+            .await?;
     }
     Ok(json!({ "retired": expired.len() }))
 }
@@ -111,27 +119,43 @@ async fn verify_audit(pool: &PgPool) -> Result<Value, sqlx::Error> {
 }
 
 async fn retention(pool: &PgPool) -> Result<Value, sqlx::Error> {
-    let audit_days = std::env::var("ZEOKEEL_AUDIT_RETENTION_DAYS").ok().and_then(|v| v.parse::<i64>().ok()).unwrap_or(180).max(180);
-    let usage_days = std::env::var("ZEOKEEL_USAGE_RETENTION_DAYS").ok().and_then(|v| v.parse::<i64>().ok()).unwrap_or(365).max(365);
-    let audit = sqlx::query("DELETE FROM audit_log WHERE created_at < now() - ($1 || ' days')::interval")
-        .bind(audit_days.to_string())
-        .execute(pool)
-        .await?
-        .rows_affected();
-    let usage = sqlx::query("DELETE FROM usage WHERE created_at < now() - ($1 || ' days')::interval")
-        .bind(usage_days.to_string())
-        .execute(pool)
-        .await?
-        .rows_affected();
-    Ok(json!({ "audit_deleted": audit, "usage_deleted": usage, "audit_days": audit_days, "usage_days": usage_days }))
+    let audit_days = std::env::var("ZEOKEEL_AUDIT_RETENTION_DAYS")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(180)
+        .max(180);
+    let usage_days = std::env::var("ZEOKEEL_USAGE_RETENTION_DAYS")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(365)
+        .max(365);
+    let audit =
+        sqlx::query("DELETE FROM audit_log WHERE created_at < now() - ($1 || ' days')::interval")
+            .bind(audit_days.to_string())
+            .execute(pool)
+            .await?
+            .rows_affected();
+    let usage =
+        sqlx::query("DELETE FROM usage WHERE created_at < now() - ($1 || ' days')::interval")
+            .bind(usage_days.to_string())
+            .execute(pool)
+            .await?
+            .rows_affected();
+    Ok(
+        json!({ "audit_deleted": audit, "usage_deleted": usage, "audit_days": audit_days, "usage_days": usage_days }),
+    )
 }
 
 async fn monthly_grant(pool: &PgPool) -> Result<Value, sqlx::Error> {
-    let amount = std::env::var("ZEOKEEL_MONTHLY_GRANT_MICROS").ok().and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
+    let amount = std::env::var("ZEOKEEL_MONTHLY_GRANT_MICROS")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(0);
     if amount <= 0 {
         return Ok(json!({ "granted": 0, "note": "ZEOKEEL_MONTHLY_GRANT_MICROS unset" }));
     }
-    let overwrite = std::env::var("ZEOKEEL_MONTHLY_GRANT_MODE").is_ok_and(|mode| mode == "overwrite");
+    let overwrite =
+        std::env::var("ZEOKEEL_MONTHLY_GRANT_MODE").is_ok_and(|mode| mode == "overwrite");
     let month = chrono::Utc::now().format("%Y-%m").to_string();
     let mut tx = pool.begin().await?;
     let rows = sqlx::query(
@@ -145,23 +169,30 @@ async fn monthly_grant(pool: &PgPool) -> Result<Value, sqlx::Error> {
         let user_id: uuid::Uuid = row.try_get("user_id")?;
         let balance: i64 = row.try_get("balance_micros")?;
         let key = format!("grant:{user_id}:{month}");
-        let exists: Option<uuid::Uuid> = sqlx::query_scalar("SELECT id FROM wallet_ledger WHERE idempotency_key = $1")
-            .bind(&key)
-            .fetch_optional(&mut *tx)
-            .await?;
+        let exists: Option<uuid::Uuid> =
+            sqlx::query_scalar("SELECT id FROM wallet_ledger WHERE idempotency_key = $1")
+                .bind(&key)
+                .fetch_optional(&mut *tx)
+                .await?;
         if exists.is_some() {
             continue;
         }
-        let delta = if overwrite { amount.saturating_sub(balance) } else { amount };
+        let delta = if overwrite {
+            amount.saturating_sub(balance)
+        } else {
+            amount
+        };
         let next = balance.saturating_add(delta);
         if next < 0 {
             continue;
         }
-        sqlx::query("UPDATE wallet_accounts SET balance_micros = $1, updated_at = now() WHERE user_id = $2")
-            .bind(next)
-            .bind(user_id)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(
+            "UPDATE wallet_accounts SET balance_micros = $1, updated_at = now() WHERE user_id = $2",
+        )
+        .bind(next)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
         sqlx::query("INSERT INTO wallet_ledger (user_id, delta_micros, balance_after, reason, ref, idempotency_key) VALUES ($1, $2, $3, 'monthly grant', $4, $5)")
             .bind(user_id)
             .bind(delta)
@@ -173,7 +204,9 @@ async fn monthly_grant(pool: &PgPool) -> Result<Value, sqlx::Error> {
         granted = granted.saturating_add(1);
     }
     tx.commit().await?;
-    Ok(json!({ "granted": granted, "month": month, "mode": if overwrite { "overwrite" } else { "accumulate" } }))
+    Ok(
+        json!({ "granted": granted, "month": month, "mode": if overwrite { "overwrite" } else { "accumulate" } }),
+    )
 }
 
 async fn list(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<Value>, AuthError> {
@@ -213,7 +246,15 @@ pub fn spawn_loop(pool: PgPool) {
         let mut ticker = tokio::time::interval(Duration::from_secs(300));
         loop {
             ticker.tick().await;
-            for job in ["hold-expire", "usage-pending", "wallet-reconcile", "wallet-grant", "audit-retention", "audit-verify", "app-retire"] {
+            for job in [
+                "hold-expire",
+                "usage-pending",
+                "wallet-reconcile",
+                "wallet-grant",
+                "audit-retention",
+                "audit-verify",
+                "app-retire",
+            ] {
                 let key = format!("{job}:{}", chrono::Utc::now().format("%Y%m%d%H"));
                 if let Err(error) = run_job(&pool, job, &key).await {
                     eprintln!("job {job} failed: {error}");
@@ -231,4 +272,5 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// Immutable migrations owned by this domain.
-pub const MIGRATIONS: &[(&str, &str)] = &[("0008_jobs", include_str!("../migrations/0008_jobs.sql"))];
+pub const MIGRATIONS: &[(&str, &str)] =
+    &[("0008_jobs", include_str!("../migrations/0008_jobs.sql"))];

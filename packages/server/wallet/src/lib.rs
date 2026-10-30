@@ -27,13 +27,15 @@ pub(crate) async fn ensure_wallet(state: &AppState, user_id: Uuid) -> Result<(),
 
 async fn mine(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<Value>, AuthError> {
     let (user_id, _, _) = zk_kit_server::current_user(&state, &headers).await?;
-    let uuid = Uuid::parse_str(&user_id).map_err(|_| auth_error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
+    let uuid = Uuid::parse_str(&user_id)
+        .map_err(|_| auth_error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
     ensure_wallet(&state, uuid).await?;
-    let balance: i64 = sqlx::query_scalar("SELECT balance_micros FROM wallet_accounts WHERE user_id = $1")
-        .bind(uuid)
-        .fetch_one(&state.pool)
-        .await
-        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let balance: i64 =
+        sqlx::query_scalar("SELECT balance_micros FROM wallet_accounts WHERE user_id = $1")
+            .bind(uuid)
+            .fetch_one(&state.pool)
+            .await
+            .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({
         "ok": true,
         "balance_micros": balance,
@@ -42,9 +44,13 @@ async fn mine(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<
     })))
 }
 
-async fn ledger(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<Value>, AuthError> {
+async fn ledger(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, AuthError> {
     let (user_id, _, _) = zk_kit_server::current_user(&state, &headers).await?;
-    let uuid = Uuid::parse_str(&user_id).map_err(|_| auth_error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
+    let uuid = Uuid::parse_str(&user_id)
+        .map_err(|_| auth_error(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED"))?;
     let rows = sqlx::query("SELECT delta_micros, balance_after, reason, ref, created_at FROM wallet_ledger WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50")
         .bind(uuid)
         .fetch_all(&state.pool)
@@ -70,7 +76,10 @@ fn format_micros(micros: i64) -> String {
     format!("{sign}{whole}.{fraction:06}")
 }
 
-async fn admin_list(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<Value>, AuthError> {
+async fn admin_list(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, AuthError> {
     require_admin(&state, &headers, false).await?;
     let rows = sqlx::query(
         "SELECT u.id, u.username, COALESCE(w.balance_micros, 0) AS balance_micros
@@ -101,33 +110,49 @@ async fn admin_adjust(
     if request.delta_micros == 0 || request.idempotency_key.trim().is_empty() {
         return Err(auth_error(StatusCode::BAD_REQUEST, "INVALID_ADJUSTMENT"));
     }
-    let uuid = Uuid::parse_str(&user_id).map_err(|_| auth_error(StatusCode::BAD_REQUEST, "INVALID_USER"))?;
-    let existing = sqlx::query("SELECT balance_after FROM wallet_ledger WHERE idempotency_key = $1")
-        .bind(&request.idempotency_key)
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let uuid = Uuid::parse_str(&user_id)
+        .map_err(|_| auth_error(StatusCode::BAD_REQUEST, "INVALID_USER"))?;
+    let existing =
+        sqlx::query("SELECT balance_after FROM wallet_ledger WHERE idempotency_key = $1")
+            .bind(&request.idempotency_key)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     if let Some(row) = existing {
-        let balance: i64 = row.try_get("balance_after").map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-        return Ok(Json(json!({ "ok": true, "idempotent": true, "balance_micros": balance })));
+        let balance: i64 = row
+            .try_get("balance_after")
+            .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        return Ok(Json(
+            json!({ "ok": true, "idempotent": true, "balance_micros": balance }),
+        ));
     }
     ensure_wallet(&state, uuid).await?;
-    let mut tx = state.pool.begin().await.map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    let balance: i64 = sqlx::query_scalar("SELECT balance_micros FROM wallet_accounts WHERE user_id = $1 FOR UPDATE")
-        .bind(uuid)
-        .fetch_one(&mut *tx)
+    let mut tx = state
+        .pool
+        .begin()
         .await
         .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    let next = balance.checked_add(request.delta_micros).ok_or_else(|| auth_error(StatusCode::BAD_REQUEST, "AMOUNT_OVERFLOW"))?;
+    let balance: i64 = sqlx::query_scalar(
+        "SELECT balance_micros FROM wallet_accounts WHERE user_id = $1 FOR UPDATE",
+    )
+    .bind(uuid)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let next = balance
+        .checked_add(request.delta_micros)
+        .ok_or_else(|| auth_error(StatusCode::BAD_REQUEST, "AMOUNT_OVERFLOW"))?;
     if next < 0 {
         return Err(auth_error(StatusCode::CONFLICT, "INSUFFICIENT_BALANCE"));
     }
-    sqlx::query("UPDATE wallet_accounts SET balance_micros = $1, updated_at = now() WHERE user_id = $2")
-        .bind(next)
-        .bind(uuid)
-        .execute(&mut *tx)
-        .await
-        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    sqlx::query(
+        "UPDATE wallet_accounts SET balance_micros = $1, updated_at = now() WHERE user_id = $2",
+    )
+    .bind(next)
+    .bind(uuid)
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     sqlx::query("INSERT INTO wallet_ledger (user_id, delta_micros, balance_after, reason, ref, idempotency_key) VALUES ($1, $2, $3, $4, $5, $6)")
         .bind(uuid)
         .bind(request.delta_micros)
@@ -138,7 +163,9 @@ async fn admin_adjust(
         .execute(&mut *tx)
         .await
         .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    tx.commit().await.map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    tx.commit()
+        .await
+        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true, "balance_micros": next })))
 }
 
@@ -152,4 +179,5 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// Immutable migrations owned by this domain.
-pub const MIGRATIONS: &[(&str, &str)] = &[("0003_wallet", include_str!("../migrations/0003_wallet.sql"))];
+pub const MIGRATIONS: &[(&str, &str)] =
+    &[("0003_wallet", include_str!("../migrations/0003_wallet.sql"))];

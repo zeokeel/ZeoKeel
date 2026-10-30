@@ -10,7 +10,10 @@ use sqlx::Row;
 use zk_kit_server::AppState;
 use zk_kit_server::{error as auth_error, require_admin, ServerError as AuthError};
 
-async fn audit(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<Value>, AuthError> {
+async fn audit(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, AuthError> {
     require_admin(&state, &headers, false).await?;
     let rows = sqlx::query("SELECT id, actor_id, action, target, detail, created_at FROM audit_log ORDER BY id DESC LIMIT 100")
         .fetch_all(&state.pool)
@@ -29,7 +32,10 @@ async fn audit(State(state): State<AppState>, headers: HeaderMap) -> Result<Json
     Ok(Json(json!({ "ok": true, "items": items })))
 }
 
-async fn usage(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<Value>, AuthError> {
+async fn usage(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, AuthError> {
     require_admin(&state, &headers, false).await?;
     let rows = sqlx::query(
         "SELECT u.username, count(*) AS requests, COALESCE(sum(g.input_tokens),0)::bigint AS input_tokens,
@@ -61,4 +67,5 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// Immutable migrations owned by this domain.
-pub const MIGRATIONS: &[(&str, &str)] = &[("0006_audit", include_str!("../migrations/0006_audit.sql"))];
+pub const MIGRATIONS: &[(&str, &str)] =
+    &[("0006_audit", include_str!("../migrations/0006_audit.sql"))];

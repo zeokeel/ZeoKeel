@@ -13,7 +13,10 @@ use zk_contract_content::{ContentGrant, ContentKind, ContentStatus, Visibility};
 use zk_kit_server::{audit, current_user, error, require_admin, AppState, ServerError};
 
 /// Immutable content migrations owned by this package.
-pub const MIGRATIONS: &[(&str, &str)] = &[("0010_content", include_str!("../migrations/0010_content.sql"))];
+pub const MIGRATIONS: &[(&str, &str)] = &[(
+    "0010_content",
+    include_str!("../migrations/0010_content.sql"),
+)];
 
 /// Content routes (M3 slice 3).
 pub fn routes() -> Router<AppState> {
@@ -49,7 +52,9 @@ struct ForceUpdateRequest {
     min_client_version: String,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 #[derive(Debug, Deserialize)]
 struct GrantsRequest {
@@ -60,7 +65,10 @@ fn uuid_of(value: &str) -> Result<Uuid, ServerError> {
     Uuid::parse_str(value).map_err(|_| error(StatusCode::BAD_REQUEST, "VALIDATION"))
 }
 
-async fn list_admin(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<serde_json::Value>, ServerError> {
+async fn list_admin(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ServerError> {
     require_admin(&state, &headers, false).await?;
     let rows = sqlx::query(
         "SELECT c.id, c.kind, c.name, c.owner_id, c.status, c.visibility, c.current_release_id, c.force_update,
@@ -89,13 +97,21 @@ async fn list_admin(State(state): State<AppState>, headers: HeaderMap) -> Result
     Ok(Json(json!({ "ok": true, "items": items })))
 }
 
-async fn create(State(state): State<AppState>, headers: HeaderMap, Json(body): Json<CreateContent>) -> Result<Json<serde_json::Value>, ServerError> {
+async fn create(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<CreateContent>,
+) -> Result<Json<serde_json::Value>, ServerError> {
     let admin = require_admin(&state, &headers, true).await?;
     let name = body.name.trim();
     if name.is_empty() || name.len() > 128 {
         return Err(error(StatusCode::BAD_REQUEST, "VALIDATION"));
     }
-    let kind = if body.kind.is_empty() { "skill" } else { body.kind.as_str() };
+    let kind = if body.kind.is_empty() {
+        "skill"
+    } else {
+        body.kind.as_str()
+    };
     if kind != "skill" {
         return Err(error(StatusCode::BAD_REQUEST, "VALIDATION"));
     }
@@ -107,11 +123,24 @@ async fn create(State(state): State<AppState>, headers: HeaderMap, Json(body): J
     .fetch_one(&state.pool)
     .await
     .map_err(|_| error(StatusCode::CONFLICT, "CONFLICT"))?;
-    audit(&state, admin.user_id, "skill.upload", &id.to_string(), &json!({ "name": name })).await?;
+    audit(
+        &state,
+        admin.user_id,
+        "skill.upload",
+        &id.to_string(),
+        &json!({ "name": name }),
+    )
+    .await?;
     Ok(Json(json!({ "ok": true, "id": id.to_string() })))
 }
 
-async fn update_status(state: &AppState, id: Uuid, status: ContentStatus, action: &str, actor: Uuid) -> Result<Json<serde_json::Value>, ServerError> {
+async fn update_status(
+    state: &AppState,
+    id: Uuid,
+    status: ContentStatus,
+    action: &str,
+    actor: Uuid,
+) -> Result<Json<serde_json::Value>, ServerError> {
     let status_text = match status {
         ContentStatus::Pending => "pending",
         ContentStatus::Approved => "approved",
@@ -127,27 +156,75 @@ async fn update_status(state: &AppState, id: Uuid, status: ContentStatus, action
     if result.rows_affected() == 0 {
         return Err(error(StatusCode::NOT_FOUND, "SKILL_NOT_FOUND"));
     }
-    audit(state, actor, action, &id.to_string(), &json!({ "status": status_text })).await?;
+    audit(
+        state,
+        actor,
+        action,
+        &id.to_string(),
+        &json!({ "status": status_text }),
+    )
+    .await?;
     Ok(Json(json!({ "ok": true })))
 }
 
-async fn approve(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>) -> Result<Json<serde_json::Value>, ServerError> {
+async fn approve(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ServerError> {
     let admin = require_admin(&state, &headers, true).await?;
-    update_status(&state, uuid_of(&id)?, ContentStatus::Approved, "skill.approve", admin.user_id).await
+    update_status(
+        &state,
+        uuid_of(&id)?,
+        ContentStatus::Approved,
+        "skill.approve",
+        admin.user_id,
+    )
+    .await
 }
-async fn reject(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>) -> Result<Json<serde_json::Value>, ServerError> {
+async fn reject(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ServerError> {
     let admin = require_admin(&state, &headers, true).await?;
-    update_status(&state, uuid_of(&id)?, ContentStatus::Rejected, "skill.reject", admin.user_id).await
+    update_status(
+        &state,
+        uuid_of(&id)?,
+        ContentStatus::Rejected,
+        "skill.reject",
+        admin.user_id,
+    )
+    .await
 }
-async fn delist(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>) -> Result<Json<serde_json::Value>, ServerError> {
+async fn delist(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ServerError> {
     let admin = require_admin(&state, &headers, true).await?;
-    update_status(&state, uuid_of(&id)?, ContentStatus::Delisted, "skill.delist", admin.user_id).await
+    update_status(
+        &state,
+        uuid_of(&id)?,
+        ContentStatus::Delisted,
+        "skill.delist",
+        admin.user_id,
+    )
+    .await
 }
 
-async fn delete_content(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>) -> Result<Json<serde_json::Value>, ServerError> {
+async fn delete_content(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ServerError> {
     let admin = require_admin(&state, &headers, true).await?;
     let id = uuid_of(&id)?;
-    let mut tx = state.pool.begin().await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let result = sqlx::query("UPDATE contents SET deleted_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL")
         .bind(id)
         .execute(&mut *tx)
@@ -162,12 +239,26 @@ async fn delete_content(State(state): State<AppState>, headers: HeaderMap, Path(
         .execute(&mut *tx)
         .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    tx.commit().await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    audit(&state, admin.user_id, "skill.delete", &id.to_string(), &json!({})).await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    audit(
+        &state,
+        admin.user_id,
+        "skill.delete",
+        &id.to_string(),
+        &json!({}),
+    )
+    .await?;
     Ok(Json(json!({ "ok": true })))
 }
 
-async fn transfer(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>, Json(body): Json<TransferRequest>) -> Result<Json<serde_json::Value>, ServerError> {
+async fn transfer(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<TransferRequest>,
+) -> Result<Json<serde_json::Value>, ServerError> {
     let admin = require_admin(&state, &headers, true).await?;
     let id = uuid_of(&id)?;
     let owner = uuid_of(&body.user_id)?;
@@ -180,28 +271,58 @@ async fn transfer(State(state): State<AppState>, headers: HeaderMap, Path(id): P
     if result.rows_affected() == 0 {
         return Err(error(StatusCode::NOT_FOUND, "SKILL_NOT_FOUND"));
     }
-    audit(&state, admin.user_id, "skill.transfer", &id.to_string(), &json!({ "owner_id": owner.to_string() })).await?;
+    audit(
+        &state,
+        admin.user_id,
+        "skill.transfer",
+        &id.to_string(),
+        &json!({ "owner_id": owner.to_string() }),
+    )
+    .await?;
     Ok(Json(json!({ "ok": true })))
 }
 
-async fn set_grants(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>, Json(body): Json<GrantsRequest>) -> Result<Json<serde_json::Value>, ServerError> {
+async fn set_grants(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<GrantsRequest>,
+) -> Result<Json<serde_json::Value>, ServerError> {
     let admin = require_admin(&state, &headers, true).await?;
     let id = uuid_of(&id)?;
     if body.grants.is_empty() {
         return Err(error(StatusCode::BAD_REQUEST, "VALIDATION"));
     }
-    let visibility = if body.grants.iter().any(|grant| grant.grantee == "all") { Visibility::All } else { Visibility::Selected };
-    let visibility_text = if visibility == Visibility::All { "all" } else { "selected" };
-    let mut tx = state.pool.begin().await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    sqlx::query("DELETE FROM content_grants WHERE content_id = $1").bind(id).execute(&mut *tx).await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let visibility = if body.grants.iter().any(|grant| grant.grantee == "all") {
+        Visibility::All
+    } else {
+        Visibility::Selected
+    };
+    let visibility_text = if visibility == Visibility::All {
+        "all"
+    } else {
+        "selected"
+    };
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    sqlx::query("DELETE FROM content_grants WHERE content_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     for grant in &body.grants {
-        sqlx::query("INSERT INTO content_grants (content_id, grantee, can_install) VALUES ($1, $2, $3)")
-            .bind(id)
-            .bind(&grant.grantee)
-            .bind(grant.can_install)
-            .execute(&mut *tx)
-            .await
-            .map_err(|_| error(StatusCode::BAD_REQUEST, "VALIDATION"))?;
+        sqlx::query(
+            "INSERT INTO content_grants (content_id, grantee, can_install) VALUES ($1, $2, $3)",
+        )
+        .bind(id)
+        .bind(&grant.grantee)
+        .bind(grant.can_install)
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| error(StatusCode::BAD_REQUEST, "VALIDATION"))?;
     }
     sqlx::query("UPDATE contents SET visibility = $1, updated_at = now() WHERE id = $2")
         .bind(visibility_text)
@@ -209,12 +330,26 @@ async fn set_grants(State(state): State<AppState>, headers: HeaderMap, Path(id):
         .execute(&mut *tx)
         .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    tx.commit().await.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    audit(&state, admin.user_id, "skill.grants.update", &id.to_string(), &json!({ "visibility": visibility_text })).await?;
+    tx.commit()
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    audit(
+        &state,
+        admin.user_id,
+        "skill.grants.update",
+        &id.to_string(),
+        &json!({ "visibility": visibility_text }),
+    )
+    .await?;
     Ok(Json(json!({ "ok": true })))
 }
 
-async fn force_update(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>, Json(body): Json<ForceUpdateRequest>) -> Result<Json<serde_json::Value>, ServerError> {
+async fn force_update(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<ForceUpdateRequest>,
+) -> Result<Json<serde_json::Value>, ServerError> {
     let admin = require_admin(&state, &headers, true).await?;
     let id = uuid_of(&id)?;
     let result = sqlx::query("UPDATE contents SET force_update = $1, min_client_version = $2, updated_at = now() WHERE id = $3 AND deleted_at IS NULL")
@@ -227,11 +362,21 @@ async fn force_update(State(state): State<AppState>, headers: HeaderMap, Path(id
     if result.rows_affected() == 0 {
         return Err(error(StatusCode::NOT_FOUND, "SKILL_NOT_FOUND"));
     }
-    audit(&state, admin.user_id, "skill.force_update", &id.to_string(), &json!({ "min_client_version": body.min_client_version })).await?;
+    audit(
+        &state,
+        admin.user_id,
+        "skill.force_update",
+        &id.to_string(),
+        &json!({ "min_client_version": body.min_client_version }),
+    )
+    .await?;
     Ok(Json(json!({ "ok": true })))
 }
 
-async fn catalog(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<serde_json::Value>, ServerError> {
+async fn catalog(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ServerError> {
     let (user_id, _role, _epoch) = current_user(&state, &headers).await?;
     let _user = uuid_of(&user_id)?;
     let rows = sqlx::query(

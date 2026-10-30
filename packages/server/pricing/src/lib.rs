@@ -63,7 +63,10 @@ async fn upsert(
     Json(request): Json<PriceInput>,
 ) -> Result<Json<Value>, AuthError> {
     let admin = require_admin(&state, &headers, true).await?;
-    if model.trim().is_empty() || request.input_per_1k_micros < 0 || request.output_per_1k_micros < 0 {
+    if model.trim().is_empty()
+        || request.input_per_1k_micros < 0
+        || request.output_per_1k_micros < 0
+    {
         return Err(auth_error(StatusCode::BAD_REQUEST, "INVALID_PRICE"));
     }
     sqlx::query(
@@ -84,11 +87,21 @@ async fn upsert(
     .execute(&state.pool)
     .await
     .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    zk_kit_server::audit(&state, admin.user_id, "pricing.upsert", &model, &json!({ "enabled": request.enabled })).await?;
+    zk_kit_server::audit(
+        &state,
+        admin.user_id,
+        "pricing.upsert",
+        &model,
+        &json!({ "enabled": request.enabled }),
+    )
+    .await?;
     Ok(Json(json!({ "ok": true })))
 }
 
-async fn models(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<Value>, AuthError> {
+async fn models(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, AuthError> {
     let _ = zk_kit_server::current_user(&state, &headers).await?;
     let rows = sqlx::query("SELECT model, input_per_1k_micros, output_per_1k_micros FROM model_prices WHERE enabled = true ORDER BY model")
         .fetch_all(&state.pool)
@@ -115,4 +128,7 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// Immutable migrations owned by this domain.
-pub const MIGRATIONS: &[(&str, &str)] = &[("0004_pricing", include_str!("../migrations/0004_pricing.sql"))];
+pub const MIGRATIONS: &[(&str, &str)] = &[(
+    "0004_pricing",
+    include_str!("../migrations/0004_pricing.sql"),
+)];

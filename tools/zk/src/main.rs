@@ -214,7 +214,9 @@ impl Manifest {
     }
 
     fn ui_contributions(&self) -> &[UiContributionDecl] {
-        self.ui.as_ref().map_or(&[], |ui| ui.contributions.as_slice())
+        self.ui
+            .as_ref()
+            .map_or(&[], |ui| ui.contributions.as_slice())
     }
 }
 
@@ -343,10 +345,18 @@ struct Identity {
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Assets { #[serde(default)] #[allow(dead_code)] accent: String }
+struct Assets {
+    #[serde(default)]
+    #[allow(dead_code)]
+    accent: String,
+}
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Defaults { #[serde(default)] #[allow(dead_code)] server_url: String }
+struct Defaults {
+    #[serde(default)]
+    #[allow(dead_code)]
+    server_url: String,
+}
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -452,7 +462,9 @@ fn edition_closure(root: &Path, name: &str) -> Result<BTreeSet<String>> {
     let mut set = BTreeSet::new();
     let mut current = name.to_owned();
     loop {
-        if !set.insert(current.clone()) { break; }
+        if !set.insert(current.clone()) {
+            break;
+        }
         let file = load_edition(root, &current)?;
         match file.edition.base_edition {
             Some(base) => current = base,
@@ -560,28 +572,89 @@ fn load_channel(root: &Path, channel: &str) -> Result<(ChannelFile, PathBuf)> {
 
 fn validate_channel_dir(channel: &str, dir: &Path) -> Result<ChannelFile> {
     let path = dir.join("channel.json");
-    if !path.is_file() { bail!("channel {channel} not found at {}", path.display()); }
+    if !path.is_file() {
+        bail!("channel {channel} not found at {}", path.display());
+    }
     let text = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
-    let file: ChannelFile = serde_json::from_str(&text).with_context(|| format!("parse {}", path.display()))?;
-    let display_name = if file.identity.product_name.trim().is_empty() { file.brand.name.trim() } else { file.identity.product_name.trim() };
-    if display_name.is_empty() { bail!("channel {channel}: identity.product_name is required"); }
-    if file.id.is_empty() || file.id.len() > 32 || !file.id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') { bail!("channel {channel}: bad id"); }
-    if file.id != channel { bail!("channel {channel}: channel.json id {} != index key", file.id); }
-    if !file.identity.slug.is_empty() && !file.identity.slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') { bail!("channel {channel}: bad identity.slug"); }
-    if !file.identity.app_id.is_empty() && (!file.identity.app_id.contains('.') || file.identity.app_id.contains(' ')) { bail!("channel {channel}: bad identity.app_id"); }
-    if !matches!(file.brand.powered_by.as_str(), "show" | "hide") { bail!("channel {channel}: brand.powered_by must be show|hide"); }
+    let file: ChannelFile =
+        serde_json::from_str(&text).with_context(|| format!("parse {}", path.display()))?;
+    let display_name = if file.identity.product_name.trim().is_empty() {
+        file.brand.name.trim()
+    } else {
+        file.identity.product_name.trim()
+    };
+    if display_name.is_empty() {
+        bail!("channel {channel}: identity.product_name is required");
+    }
+    if file.id.is_empty()
+        || file.id.len() > 32
+        || !file
+            .id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        bail!("channel {channel}: bad id");
+    }
+    if file.id != channel {
+        bail!(
+            "channel {channel}: channel.json id {} != index key",
+            file.id
+        );
+    }
+    if !file.identity.slug.is_empty()
+        && !file
+            .identity
+            .slug
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        bail!("channel {channel}: bad identity.slug");
+    }
+    if !file.identity.app_id.is_empty()
+        && (!file.identity.app_id.contains('.') || file.identity.app_id.contains(' '))
+    {
+        bail!("channel {channel}: bad identity.app_id");
+    }
+    if !matches!(file.brand.powered_by.as_str(), "show" | "hide") {
+        bail!("channel {channel}: brand.powered_by must be show|hide");
+    }
     for logo in [&file.brand.logo.light, &file.brand.logo.dark] {
-        if logo.is_empty() || logo.contains("..") || logo.starts_with('/') || logo.starts_with("http:") || logo.starts_with("https:") { bail!("channel {channel}: unsafe logo path {logo}"); }
+        if logo.is_empty()
+            || logo.contains("..")
+            || logo.starts_with('/')
+            || logo.starts_with("http:")
+            || logo.starts_with("https:")
+        {
+            bail!("channel {channel}: unsafe logo path {logo}");
+        }
         let logo_path = dir.join(logo);
-        if !logo_path.is_file() { bail!("channel {channel}: logo file missing: {}", logo_path.display()); }
-        if fs::symlink_metadata(&logo_path)?.file_type().is_symlink() { bail!("channel {channel}: logo symlink forbidden"); }
+        if !logo_path.is_file() {
+            bail!(
+                "channel {channel}: logo file missing: {}",
+                logo_path.display()
+            );
+        }
+        if fs::symlink_metadata(&logo_path)?.file_type().is_symlink() {
+            bail!("channel {channel}: logo symlink forbidden");
+        }
         let canonical_dir = dir.canonicalize()?;
         let canonical_logo = logo_path.canonicalize()?;
-        if !canonical_logo.starts_with(&canonical_dir) { bail!("channel {channel}: logo escapes channel dir"); }
+        if !canonical_logo.starts_with(&canonical_dir) {
+            bail!("channel {channel}: logo escapes channel dir");
+        }
         let meta = fs::metadata(&logo_path)?;
-        if meta.len() > 256 * 1024 { bail!("channel {channel}: logo too large"); }
-        let text = fs::read_to_string(&logo_path).unwrap_or_default().replace("http://www.w3.org/2000/svg", "");
-        if text.to_ascii_lowercase().contains("<script") || text.contains("http://") || text.contains("https://") { bail!("channel {channel}: unsafe logo content"); }
+        if meta.len() > 256 * 1024 {
+            bail!("channel {channel}: logo too large");
+        }
+        let text = fs::read_to_string(&logo_path)
+            .unwrap_or_default()
+            .replace("http://www.w3.org/2000/svg", "");
+        if text.to_ascii_lowercase().contains("<script")
+            || text.contains("http://")
+            || text.contains("https://")
+        {
+            bail!("channel {channel}: unsafe logo content");
+        }
     }
     Ok(file)
 }
@@ -590,7 +663,9 @@ fn resolve(root: &Path, flags: &Flags) -> Result<Resolved> {
     let config = load_root(root)?;
     let manifests = scan_manifests(root)?;
     let (mut channel_file, channel_dir) = load_channel(root, &flags.channel)?;
-    if channel_file.brand.name.is_empty() { channel_file.brand.name = channel_file.identity.product_name.clone(); }
+    if channel_file.brand.name.is_empty() {
+        channel_file.brand.name = channel_file.identity.product_name.clone();
+    }
 
     let mut chain = Vec::new();
     let mut packages = resolve_edition(root, &flags.edition, &mut chain)?;
@@ -637,7 +712,9 @@ fn resolve(root: &Path, flags: &Flags) -> Result<Resolved> {
                     role_def.cardinality
                 );
             }
-            if !decl.editions.is_empty() && !decl.editions.iter().any(|e| allowed_editions.contains(e)) {
+            if !decl.editions.is_empty()
+                && !decl.editions.iter().any(|e| allowed_editions.contains(e))
+            {
                 bail!(
                     "role {role}: package {id} not available for edition {}",
                     flags.edition
@@ -955,13 +1032,20 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
             settings = Some(pkg);
         } else if pkg.role == "update.client" {
             update = Some(pkg);
-        } else if pkg.role.starts_with("srv.") || pkg.role.starts_with("admin.") || pkg.role == "auth.client" {
+        } else if pkg.role.starts_with("srv.")
+            || pkg.role.starts_with("admin.")
+            || pkg.role == "auth.client"
+        {
             // Server/admin packages are wired by their composition roots (M2).
-        } else if pkg.role.starts_with("vector.") || pkg.role.starts_with("media.") || pkg.role == "agent.hooks" {
+        } else if pkg.role.starts_with("vector.")
+            || pkg.role.starts_with("media.")
+            || pkg.role == "agent.hooks"
+        {
             // Capability placeholders: provider packages register themselves when configured.
         } else if pkg.role == "brand.mark" {
             // Deep OEM brand implementation is injected by generated brand constants; no Rust glue.
-        } else if pkg.role == "ui.kit" || pkg.role == "ui.shell" || pkg.role.starts_with("ui.slot.") {
+        } else if pkg.role == "ui.kit" || pkg.role == "ui.shell" || pkg.role.starts_with("ui.slot.")
+        {
             // UI-only packages are wired by the generated web registry, not the Rust glue.
         } else {
             bail!(
@@ -975,7 +1059,7 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
     let sessions = sessions.context("compose: store.session is required")?;
     let settings = settings.context("compose: store.settings is required")?;
     let mut out = String::new();
-    out.push_str("// @generated by zk compose -- do not edit\n#![forbid(unsafe_code)]\n\nuse std::sync::Arc;\n\n");
+    out.push_str("// @generated by zk compose -- do not edit\n#![forbid(unsafe_code)]\n\n#[rustfmt::skip]\nmod inner {\n\nuse std::sync::Arc;\n\n");
     out.push_str(&format!(
         "pub const EDITION: &str = \"{}\";\n",
         resolved.edition
@@ -1038,13 +1122,26 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
         settings.crate_name.replace('-', "_")
     ));
     out.push_str("    Ok(Runtime { agent, sessions, settings })\n}\n");
+    out.push_str("\n}\n\npub use inner::*;\n");
     Ok(out)
 }
 
 #[derive(Debug, serde::Deserialize)]
-struct OemIndex { #[allow(dead_code)] schema: u32, channels: BTreeMap<String, OemChannel> }
+struct OemIndex {
+    #[allow(dead_code)]
+    schema: u32,
+    channels: BTreeMap<String, OemChannel>,
+}
 #[derive(Debug, serde::Deserialize)]
-struct OemChannel { submodule: String, pin: String, edition: String, depth: String, #[serde(default)] #[allow(dead_code)] owner: String }
+struct OemChannel {
+    submodule: String,
+    pin: String,
+    edition: String,
+    depth: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    owner: String,
+}
 
 fn channel_command(root: &Path, args: &[String]) -> Result<()> {
     match args.first().map(String::as_str).unwrap_or("") {
@@ -1053,7 +1150,10 @@ fn channel_command(root: &Path, args: &[String]) -> Result<()> {
             let mut i = 1;
             while let Some(arg) = args.get(i) {
                 match arg.as_str() {
-                    "--index" => { index_dir = args.get(i.saturating_add(1)).map(PathBuf::from); i = i.saturating_add(2); }
+                    "--index" => {
+                        index_dir = args.get(i.saturating_add(1)).map(PathBuf::from);
+                        i = i.saturating_add(2);
+                    }
                     "--all" => i = i.saturating_add(1),
                     other => bail!("unknown channel validate arg: {other}"),
                 }
@@ -1067,67 +1167,142 @@ fn channel_command(root: &Path, args: &[String]) -> Result<()> {
             let mut i = 1;
             while let Some(arg) = args.get(i) {
                 match arg.as_str() {
-                    "--channel" => { channel = args.get(i.saturating_add(1)).cloned(); i = i.saturating_add(2); }
-                    "--dist" => { dist = args.get(i.saturating_add(1)).map(PathBuf::from); i = i.saturating_add(2); }
+                    "--channel" => {
+                        channel = args.get(i.saturating_add(1)).cloned();
+                        i = i.saturating_add(2);
+                    }
+                    "--dist" => {
+                        dist = args.get(i.saturating_add(1)).map(PathBuf::from);
+                        i = i.saturating_add(2);
+                    }
                     other => bail!("unknown channel verify arg: {other}"),
                 }
             }
-            channel_verify(root, &channel.context("--channel")?, &dist.context("--dist")?)
+            channel_verify(
+                root,
+                &channel.context("--channel")?,
+                &dist.context("--dist")?,
+            )
         }
         other => bail!("usage: zk channel <validate|verify> (got {other})"),
     }
 }
 
 fn channel_validate(index_dir: &Path) -> Result<()> {
-    let index_text = fs::read_to_string(index_dir.join("index.toml")).with_context(|| "read oem index.toml")?;
+    let index_text =
+        fs::read_to_string(index_dir.join("index.toml")).with_context(|| "read oem index.toml")?;
     let index: OemIndex = toml::from_str(&index_text).context("parse oem index.toml")?;
     let manifest_path = index_dir.join("channels.manifest.json");
     if manifest_path.is_file() {
-        let manifest: Vec<String> = serde_json::from_str(&fs::read_to_string(&manifest_path)?).context("parse channels.manifest.json")?;
+        let manifest: Vec<String> = serde_json::from_str(&fs::read_to_string(&manifest_path)?)
+            .context("parse channels.manifest.json")?;
         let mut expected = manifest;
         let mut actual: Vec<String> = index.channels.keys().cloned().collect();
         expected.sort();
         actual.sort();
-        if expected != actual { bail!("channels.manifest.json != index.toml channels"); }
+        if expected != actual {
+            bail!("channels.manifest.json != index.toml channels");
+        }
     }
     let mut seen = BTreeMap::<String, String>::new();
     for (id, entry) in &index.channels {
-        if id == "official" || id == "beta" || id == "personal" || id == "demo" || id == "test" { bail!("reserved channel id: {id}"); }
-        if !id.starts_with("oem-") { bail!("OEM channel must be oem-<customer>: {id}"); }
-        if entry.edition != "enterprise" { bail!("channel {id}: edition must be enterprise"); }
-        if !matches!(entry.depth.as_str(), "basic" | "deep") { bail!("channel {id}: bad depth"); }
+        if id == "official" || id == "beta" || id == "personal" || id == "demo" || id == "test" {
+            bail!("reserved channel id: {id}");
+        }
+        if !id.starts_with("oem-") {
+            bail!("OEM channel must be oem-<customer>: {id}");
+        }
+        if entry.edition != "enterprise" {
+            bail!("channel {id}: edition must be enterprise");
+        }
+        if !matches!(entry.depth.as_str(), "basic" | "deep") {
+            bail!("channel {id}: bad depth");
+        }
         let customer = index_dir.join(&entry.submodule);
         let actual_pin = dir_hash(&customer)?;
-        if actual_pin != entry.pin { bail!("channel {id}: pin mismatch (fixture pin = directory hash)"); }
-        let gitmodules = fs::read_to_string(index_dir.join(".gitmodules")).unwrap_or_default();
-        if !gitmodules.contains(&entry.submodule) { bail!("channel {id}: .gitmodules missing submodule path"); }
-        let file = validate_channel_dir(id, &customer)?;
-        let display = if file.identity.product_name.is_empty() { file.brand.name.clone() } else { file.identity.product_name.clone() };
-        if display.is_empty() || file.identity.slug.is_empty() || file.identity.app_id.is_empty() { bail!("channel {id}: missing identity fields"); }
-        for (value, label) in [(&file.identity.app_id, "app_id"), (&file.identity.deep_link_scheme, "deep_link_scheme"), (&file.identity.app_origin_scheme, "app_origin_scheme"), (&file.identity.data_dir_name, "data_dir_name"), (&file.identity.product_home_dir, "product_home_dir"), (&display, "product_name")] {
-            if let Some(previous) = seen.insert(format!("{label}:{value}"), id.clone()) { if previous != *id { bail!("channel uniqueness {label} {value}: {previous} vs {id}"); } }
+        if actual_pin != entry.pin {
+            bail!("channel {id}: pin mismatch (fixture pin = directory hash)");
         }
-        if file.identity.deep_link_scheme == file.identity.app_origin_scheme { bail!("channel {id}: deep link and app origin schemes must differ"); }
+        let gitmodules = fs::read_to_string(index_dir.join(".gitmodules")).unwrap_or_default();
+        if !gitmodules.contains(&entry.submodule) {
+            bail!("channel {id}: .gitmodules missing submodule path");
+        }
+        let file = validate_channel_dir(id, &customer)?;
+        let display = if file.identity.product_name.is_empty() {
+            file.brand.name.clone()
+        } else {
+            file.identity.product_name.clone()
+        };
+        if display.is_empty() || file.identity.slug.is_empty() || file.identity.app_id.is_empty() {
+            bail!("channel {id}: missing identity fields");
+        }
+        for (value, label) in [
+            (&file.identity.app_id, "app_id"),
+            (&file.identity.deep_link_scheme, "deep_link_scheme"),
+            (&file.identity.app_origin_scheme, "app_origin_scheme"),
+            (&file.identity.data_dir_name, "data_dir_name"),
+            (&file.identity.product_home_dir, "product_home_dir"),
+            (&display, "product_name"),
+        ] {
+            if let Some(previous) = seen.insert(format!("{label}:{value}"), id.clone()) {
+                if previous != *id {
+                    bail!("channel uniqueness {label} {value}: {previous} vs {id}");
+                }
+            }
+        }
+        if file.identity.deep_link_scheme == file.identity.app_origin_scheme {
+            bail!("channel {id}: deep link and app origin schemes must differ");
+        }
         if entry.depth == "deep" {
             let packages = customer.join("packages");
-            if !packages.is_dir() { bail!("channel {id}: deep requires packages/"); }
+            if !packages.is_dir() {
+                bail!("channel {id}: deep requires packages/");
+            }
             #[derive(serde::Deserialize)]
-            struct OemToml { #[serde(default)] packages: BTreeMap<String, String> }
-            let oem: OemToml = toml::from_str(&fs::read_to_string(customer.join("oem.toml"))?).context("parse oem.toml")?;
-            if oem.packages.is_empty() { bail!("channel {id}: deep [packages] is empty"); }
+            struct OemToml {
+                #[serde(default)]
+                packages: BTreeMap<String, String>,
+            }
+            let oem: OemToml = toml::from_str(&fs::read_to_string(customer.join("oem.toml"))?)
+                .context("parse oem.toml")?;
+            if oem.packages.is_empty() {
+                bail!("channel {id}: deep [packages] is empty");
+            }
             for (role, package_id) in &oem.packages {
                 let dir_name = package_id.rsplit('/').next().unwrap_or(package_id);
                 let package = packages.join(dir_name);
-                for file in ["zk.toml", "README.md"] { if !package.join(file).is_file() { bail!("channel {id}: deep package {package_id} missing {file}"); } }
-                if !package.join("src/lib.rs").is_file() || !package.join("tests").is_dir() { bail!("channel {id}: deep package {package_id} must have src/lib.rs + tests/"); }
-                let manifest: toml::Value = toml::from_str(&fs::read_to_string(package.join("zk.toml"))?).context("parse deep package zk.toml")?;
-                let declared_role = manifest.get("role").and_then(|v| v.get("name")).and_then(|v| v.as_str()).unwrap_or("");
-                if declared_role != role { bail!("channel {id}: deep package {package_id} role {declared_role} != {role}"); }
-                let contract = manifest.get("role").and_then(|v| v.get("contract")).and_then(|v| v.as_str()).unwrap_or("");
-                if !contract.starts_with("zk-contract-") { bail!("channel {id}: deep package {package_id} contract must be zk-contract-*"); }
+                for file in ["zk.toml", "README.md"] {
+                    if !package.join(file).is_file() {
+                        bail!("channel {id}: deep package {package_id} missing {file}");
+                    }
+                }
+                if !package.join("src/lib.rs").is_file() || !package.join("tests").is_dir() {
+                    bail!("channel {id}: deep package {package_id} must have src/lib.rs + tests/");
+                }
+                let manifest: toml::Value =
+                    toml::from_str(&fs::read_to_string(package.join("zk.toml"))?)
+                        .context("parse deep package zk.toml")?;
+                let declared_role = manifest
+                    .get("role")
+                    .and_then(|v| v.get("name"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if declared_role != role {
+                    bail!("channel {id}: deep package {package_id} role {declared_role} != {role}");
+                }
+                let contract = manifest
+                    .get("role")
+                    .and_then(|v| v.get("contract"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if !contract.starts_with("zk-contract-") {
+                    bail!("channel {id}: deep package {package_id} contract must be zk-contract-*");
+                }
             }
         }
-        if !customer.join("oem.toml").is_file() { bail!("channel {id}: oem.toml missing"); }
+        if !customer.join("oem.toml").is_file() {
+            bail!("channel {id}: oem.toml missing");
+        }
     }
     println!("channel validate ok: {} channels", index.channels.len());
     Ok(())
@@ -1136,43 +1311,86 @@ fn channel_validate(index_dir: &Path) -> Result<()> {
 fn channel_verify(root: &Path, channel: &str, dist: &Path) -> Result<()> {
     let (file, _) = load_channel(root, channel)?;
     for name in ["CHANNEL.json", "CLIENT-RELEASE.json", "SHA256SUMS"] {
-        if !dist.join(name).is_file() { bail!("dist missing {name}"); }
+        if !dist.join(name).is_file() {
+            bail!("dist missing {name}");
+        }
     }
-    let channel_json: serde_json::Value = serde_json::from_str(&fs::read_to_string(dist.join("CHANNEL.json"))?).context("parse dist CHANNEL.json")?;
-    if channel_json.get("channel").and_then(|v| v.as_str()) != Some(channel) { bail!("dist CHANNEL.json channel mismatch"); }
-    let release: serde_json::Value = serde_json::from_str(&fs::read_to_string(dist.join("CLIENT-RELEASE.json"))?).context("parse dist CLIENT-RELEASE.json")?;
-    if release.get("channel_id").and_then(|v| v.as_str()) != Some(channel) { bail!("CLIENT-RELEASE channel mismatch"); }
+    let channel_json: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(dist.join("CHANNEL.json"))?)
+            .context("parse dist CHANNEL.json")?;
+    if channel_json.get("channel").and_then(|v| v.as_str()) != Some(channel) {
+        bail!("dist CHANNEL.json channel mismatch");
+    }
+    let release: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(dist.join("CLIENT-RELEASE.json"))?)
+            .context("parse dist CLIENT-RELEASE.json")?;
+    if release.get("channel_id").and_then(|v| v.as_str()) != Some(channel) {
+        bail!("CLIENT-RELEASE channel mismatch");
+    }
     let sums = fs::read_to_string(dist.join("SHA256SUMS"))?;
     for line in sums.lines().filter(|line| !line.trim().is_empty()) {
         let mut parts = line.split_whitespace();
         let expected = parts.next().context("bad SHA256SUMS")?;
         let name = parts.next().context("bad SHA256SUMS")?;
         let path = dist.join(name);
-        if !path.is_file() { bail!("SHA256SUMS missing {name}"); }
+        if !path.is_file() {
+            bail!("SHA256SUMS missing {name}");
+        }
         let actual = sha256_hex(&fs::read(&path)?);
-        if actual != expected { bail!("SHA256SUMS mismatch {name}"); }
+        if actual != expected {
+            bail!("SHA256SUMS mismatch {name}");
+        }
     }
-    if !dist.join("SBOM").is_dir() { bail!("dist missing SBOM/"); }
-    let assets = release.get("assets").and_then(|v| v.as_array()).context("CLIENT-RELEASE assets")?;
-    if assets.is_empty() { bail!("CLIENT-RELEASE assets empty"); }
+    if !dist.join("SBOM").is_dir() {
+        bail!("dist missing SBOM/");
+    }
+    let assets = release
+        .get("assets")
+        .and_then(|v| v.as_array())
+        .context("CLIENT-RELEASE assets")?;
+    if assets.is_empty() {
+        bail!("CLIENT-RELEASE assets empty");
+    }
     for asset in assets {
-        let name = asset.get("name").and_then(|v| v.as_str()).context("asset name")?;
-        let sha = asset.get("sha256").and_then(|v| v.as_str()).context("asset sha")?;
-        if sha.len() != 64 { bail!("asset sha invalid: {name}"); }
+        let name = asset
+            .get("name")
+            .and_then(|v| v.as_str())
+            .context("asset name")?;
+        let sha = asset
+            .get("sha256")
+            .and_then(|v| v.as_str())
+            .context("asset sha")?;
+        if sha.len() != 64 {
+            bail!("asset sha invalid: {name}");
+        }
         let path = dist.join("clients").join(name);
-        if !path.is_file() { bail!("asset missing: {name}"); }
-        if sha256_hex(&fs::read(&path)?) != sha { bail!("asset sha mismatch: {name}"); }
+        if !path.is_file() {
+            bail!("asset missing: {name}");
+        }
+        if sha256_hex(&fs::read(&path)?) != sha {
+            bail!("asset sha mismatch: {name}");
+        }
     }
     if file.brand.powered_by == "hide" {
         let mut stack = vec![dist.to_path_buf()];
         while let Some(dir) = stack.pop() {
             for entry in fs::read_dir(dir)? {
                 let path = entry?.path();
-                if path.is_dir() { stack.push(path); continue; }
-                let name = path.file_name().and_then(|value| value.to_str()).unwrap_or_default();
-                if matches!(name, "LICENSE" | "NOTICE" | "SHA256SUMS") { continue; }
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                let name = path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or_default();
+                if matches!(name, "LICENSE" | "NOTICE" | "SHA256SUMS") {
+                    continue;
+                }
                 let bytes = fs::read(&path)?;
-                if contains_bytes(&bytes, b"ZeoKeel") { bail!("brand residue in {}", path.display()); }
+                if contains_bytes(&bytes, b"ZeoKeel") {
+                    bail!("brand residue in {}", path.display());
+                }
             }
         }
     }
@@ -1181,8 +1399,12 @@ fn channel_verify(root: &Path, channel: &str, dist: &Path) -> Result<()> {
 }
 
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
-    if needle.is_empty() || haystack.len() < needle.len() { return false; }
-    haystack.windows(needle.len()).any(|window| window == needle)
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return false;
+    }
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
 }
 
 fn dir_hash(dir: &Path) -> Result<String> {
@@ -1191,7 +1413,11 @@ fn dir_hash(dir: &Path) -> Result<String> {
     fn walk(base: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
         for entry in fs::read_dir(dir)? {
             let path = entry?.path();
-            if path.is_dir() { walk(base, &path, out)?; } else { out.push(path.strip_prefix(base).context("strip")?.to_path_buf()); }
+            if path.is_dir() {
+                walk(base, &path, out)?;
+            } else {
+                out.push(path.strip_prefix(base).context("strip")?.to_path_buf());
+            }
         }
         Ok(())
     }
@@ -1217,12 +1443,21 @@ fn sha256_hex(bytes: &[u8]) -> String {
 fn db_lock(root: &Path, check: bool) -> Result<()> {
     use sha2::{Digest, Sha256};
     #[derive(serde::Serialize)]
-    struct LockMigration { version: String, package: String, checksum: String }
+    struct LockMigration {
+        version: String,
+        package: String,
+        checksum: String,
+    }
     #[derive(serde::Serialize)]
-    struct LockFile { schema: u32, migrations: Vec<LockMigration> }
+    struct LockFile {
+        schema: u32,
+        migrations: Vec<LockMigration>,
+    }
 
     fn collect(root: &Path, dir: &Path, out: &mut Vec<(String, String, String)>) -> Result<()> {
-        if !dir.is_dir() { return Ok(()); }
+        if !dir.is_dir() {
+            return Ok(());
+        }
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
@@ -1233,9 +1468,15 @@ fn db_lock(root: &Path, check: bool) -> Result<()> {
             if path.extension().and_then(|value| value.to_str()) != Some("sql") {
                 continue;
             }
-            let file_name = path.file_name().and_then(|value| value.to_str()).unwrap_or_default();
+            let file_name = path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or_default();
             let version = file_name.trim_end_matches(".sql").to_owned();
-            let package = path.strip_prefix(root).map(|value| value.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+            let package = path
+                .strip_prefix(root)
+                .map(|value| value.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_default();
             let content = fs::read(&path)?;
             let mut hash = Sha256::new();
             hash.update(&content);
@@ -1255,12 +1496,20 @@ fn db_lock(root: &Path, check: bool) -> Result<()> {
     }
     let lock = LockFile {
         schema: 1,
-        migrations: migrations.into_iter().map(|(version, package, checksum)| LockMigration { version, package, checksum }).collect(),
+        migrations: migrations
+            .into_iter()
+            .map(|(version, package, checksum)| LockMigration {
+                version,
+                package,
+                checksum,
+            })
+            .collect(),
     };
     let rendered = format!("{}\n", serde_json::to_string_pretty(&lock)?);
     let path = root.join("zk.lock");
     if check {
-        let current = fs::read_to_string(&path).with_context(|| "zk.lock missing; run zk db lock")?;
+        let current =
+            fs::read_to_string(&path).with_context(|| "zk.lock missing; run zk db lock")?;
         if current != rendered {
             bail!("zk.lock out of date; run zk db lock");
         }
@@ -1323,17 +1572,29 @@ fn admin_registry_ts(resolved: &Resolved) -> String {
     for pkg in &resolved.packages {
         // Only packages selected by the resolved composition may contribute admin
         // pages; scanning all manifests leaks enterprise pages into the personal baseline.
-        let Some(manifest) = resolved.manifests.get(&pkg.package_id) else { continue };
+        let Some(manifest) = resolved.manifests.get(&pkg.package_id) else {
+            continue;
+        };
         if manifest.kind != "ui" {
             continue;
         }
-        let Some(ui) = manifest.facets.ui.as_ref() else { continue };
+        let Some(ui) = manifest.facets.ui.as_ref() else {
+            continue;
+        };
         if pkg.role == "admin.shell" {
-            imports.push_str(&format!("import {{ components as c{index} }} from \"{}\";\n", ui.package));
-            shell = Some(format!("export const AdminShellSlot = c{index}[\"shell.admin\"];\n"));
+            imports.push_str(&format!(
+                "import {{ components as c{index} }} from \"{}\";\n",
+                ui.package
+            ));
+            shell = Some(format!(
+                "export const AdminShellSlot = c{index}[\"shell.admin\"];\n"
+            ));
             index = index.saturating_add(1);
         } else if let Some(key) = pkg.role.strip_prefix("admin.page.") {
-            imports.push_str(&format!("import {{ components as c{index} }} from \"{}\";\n", ui.package));
+            imports.push_str(&format!(
+                "import {{ components as c{index} }} from \"{}\";\n",
+                ui.package
+            ));
             entries.push_str(&format!("  {key}: c{index}[\"page.{key}\"],\n"));
             index = index.saturating_add(1);
         }
@@ -1373,7 +1634,10 @@ fn ui_registry_ts(resolved: &Resolved) -> String {
         if pkg.role == "ui.kit" || pkg.role.starts_with("admin.") {
             continue;
         }
-        imports.push_str(&format!("import {{ components as c{index} }} from \"{}\";\n", ui.package));
+        imports.push_str(&format!(
+            "import {{ components as c{index} }} from \"{}\";\n",
+            ui.package
+        ));
         spreads.push_str(&format!("  ...c{index},\n"));
         for contribution in manifest.ui_contributions() {
             if let Some(binding) = slot_binding(&contribution.slot) {
@@ -1390,9 +1654,22 @@ fn ui_registry_ts(resolved: &Resolved) -> String {
     } else {
         "import type { ProviderSettingsProps } from \"@zeokeel/ui-kit\";\nexport function SettingsProviderSlot(_props: ProviderSettingsProps) { return null; }\n".to_owned()
     };
-    let skills_stub = if bindings.contains("SkillsSlot") { String::new() } else { "export function SkillsSlot(_props: Record<string, unknown>) { return null; }\n".to_owned() };
-    let apps_stub = if bindings.contains("AppsSlot") { String::new() } else { "export function AppsSlot(_props: Record<string, unknown>) { return null; }\n".to_owned() };
-    let connectors_stub = if bindings.contains("ConnectorsSlot") { String::new() } else { "export function ConnectorsSlot(_props: Record<string, unknown>) { return null; }\n".to_owned() };
+    let skills_stub = if bindings.contains("SkillsSlot") {
+        String::new()
+    } else {
+        "export function SkillsSlot(_props: Record<string, unknown>) { return null; }\n".to_owned()
+    };
+    let apps_stub = if bindings.contains("AppsSlot") {
+        String::new()
+    } else {
+        "export function AppsSlot(_props: Record<string, unknown>) { return null; }\n".to_owned()
+    };
+    let connectors_stub = if bindings.contains("ConnectorsSlot") {
+        String::new()
+    } else {
+        "export function ConnectorsSlot(_props: Record<string, unknown>) { return null; }\n"
+            .to_owned()
+    };
     let login_stub = if bindings.contains("LoginSlot") {
         String::new()
     } else {
@@ -1422,7 +1699,12 @@ fn ui_contributions_json(resolved: &Resolved) -> Result<String> {
             }));
         }
     }
-    out.sort_by_key(|v| v.get("slot").and_then(|s| s.as_str()).unwrap_or("").to_owned());
+    out.sort_by_key(|v| {
+        v.get("slot")
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_owned()
+    });
     Ok(format!("{}\n", serde_json::to_string_pretty(&out)?))
 }
 
@@ -1686,19 +1968,31 @@ fn scan_forbidden_dirs(dir: &Path, root: &Path, bad: &mut Vec<String>) -> Result
     Ok(())
 }
 
-
 #[cfg(test)]
 mod channel_tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
     use std::path::PathBuf;
 
     fn fixture(id_in_json: &str) -> PathBuf {
-        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let dir = std::env::temp_dir().join(format!("zk-channel-test-{stamp}"));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("logo.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>").unwrap();
-        std::fs::write(dir.join("logo-dark.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>").unwrap();
-        let body = format!(r##"{{"schema":1,"id":"{id_in_json}","identity":{{"slug":"x","product_name":"X","app_id":"com.x.y","deep_link_scheme":"x","app_origin_scheme":"x-app","data_dir_name":"X","product_home_dir":".x"}},"brand":{{"powered_by":"hide","logo":{{"light":"logo.svg","dark":"logo-dark.svg"}}}},"assets":{{"accent":"#000000"}},"defaults":{{"server_url":""}},"copy":{{}}}}"##);
+        std::fs::write(
+            dir.join("logo.svg"),
+            "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("logo-dark.svg"),
+            "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>",
+        )
+        .unwrap();
+        let body = format!(
+            r##"{{"schema":1,"id":"{id_in_json}","identity":{{"slug":"x","product_name":"X","app_id":"com.x.y","deep_link_scheme":"x","app_origin_scheme":"x-app","data_dir_name":"X","product_home_dir":".x"}},"brand":{{"powered_by":"hide","logo":{{"light":"logo.svg","dark":"logo-dark.svg"}}}},"assets":{{"accent":"#000000"}},"defaults":{{"server_url":""}},"copy":{{}}}}"##
+        );
         std::fs::write(dir.join("channel.json"), body).unwrap();
         dir
     }
@@ -1716,7 +2010,8 @@ mod channel_tests {
         let outside = std::env::temp_dir().join("zk-channel-outside.svg");
         std::fs::write(&outside, "<svg></svg>").unwrap();
         std::fs::remove_file(dir.join("logo.svg")).unwrap();
-        #[cfg(unix)] std::os::unix::fs::symlink(&outside, dir.join("logo.svg")).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, dir.join("logo.svg")).unwrap();
         assert!(super::validate_channel_dir("good-id", &dir).is_err());
         std::fs::remove_dir_all(dir).unwrap();
     }

@@ -9,7 +9,10 @@ use serde_json::{json, Value};
 use sqlx::Row;
 
 use zk_kit_server::AppState;
-use zk_kit_server::{current_user as current_user_public, error as auth_error, require_admin, ServerError as AuthError};
+use zk_kit_server::{
+    current_user as current_user_public, error as auth_error, require_admin,
+    ServerError as AuthError,
+};
 
 #[derive(Debug, Deserialize)]
 struct SettingInput {
@@ -18,7 +21,10 @@ struct SettingInput {
     hot: bool,
 }
 
-async fn admin_list(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<Value>, AuthError> {
+async fn admin_list(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, AuthError> {
     require_admin(&state, &headers, false).await?;
     let rows = sqlx::query("SELECT key, value, hot, updated_at FROM system_settings ORDER BY key")
         .fetch_all(&state.pool)
@@ -56,11 +62,21 @@ async fn admin_put(
     .execute(&state.pool)
     .await
     .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-    zk_kit_server::audit(&state, admin.user_id, "settings.update", &key, &json!({ "hot": request.hot })).await?;
+    zk_kit_server::audit(
+        &state,
+        admin.user_id,
+        "settings.update",
+        &key,
+        &json!({ "hot": request.hot }),
+    )
+    .await?;
     Ok(Json(json!({ "ok": true })))
 }
 
-async fn bootstrap(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<Value>, AuthError> {
+async fn bootstrap(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, AuthError> {
     let (user_id, role, _) = current_user_public(&state, &headers).await?;
     let models = sqlx::query("SELECT model, input_per_1k_micros, output_per_1k_micros FROM model_prices WHERE enabled = true ORDER BY model")
         .fetch_all(&state.pool)
@@ -76,10 +92,11 @@ async fn bootstrap(State(state): State<AppState>, headers: HeaderMap) -> Result<
             },
         }));
     }
-    let update_channel: Option<Value> = sqlx::query_scalar("SELECT value FROM system_settings WHERE key = 'updates.channel'")
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+    let update_channel: Option<Value> =
+        sqlx::query_scalar("SELECT value FROM system_settings WHERE key = 'updates.channel'")
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     let payload = json!({
         "schema_version": 1,
         "identity": { "user_id": user_id, "role": role },
@@ -103,4 +120,7 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// Immutable migrations owned by this domain.
-pub const MIGRATIONS: &[(&str, &str)] = &[("0007_settings", include_str!("../migrations/0007_settings.sql"))];
+pub const MIGRATIONS: &[(&str, &str)] = &[(
+    "0007_settings",
+    include_str!("../migrations/0007_settings.sql"),
+)];

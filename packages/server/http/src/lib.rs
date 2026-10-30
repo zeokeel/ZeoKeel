@@ -6,8 +6,8 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
 use serde_json::json;
-use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
+use sqlx::PgPool;
 use zk_contract_server::ServerModule;
 pub use zk_kit_server::AppState;
 
@@ -19,11 +19,15 @@ pub fn module() -> ServerModule {
 
 /// Connect to PostgreSQL (fail-closed caller: exit if this errors).
 pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
-    PgPoolOptions::new().max_connections(16).connect(database_url).await
+    PgPoolOptions::new()
+        .max_connections(16)
+        .connect(database_url)
+        .await
 }
 
 /// Core migration: only the migration ledger; domains own their schema.
-pub const MIGRATIONS: &[(&str, &str)] = &[("0001_core", include_str!("../migrations/0001_core.sql"))];
+pub const MIGRATIONS: &[(&str, &str)] =
+    &[("0001_core", include_str!("../migrations/0001_core.sql"))];
 
 /// Build server state (fresh ephemeral JWT key).
 #[must_use]
@@ -54,9 +58,18 @@ async fn healthz() -> impl IntoResponse {
 }
 
 async fn readyz(State(state): State<AppState>) -> impl IntoResponse {
-    match sqlx::query_scalar::<_, i32>("SELECT 1").fetch_one(&state.pool).await {
-        Ok(_) => (axum::http::StatusCode::OK, Json(json!({ "status": "ready" }))),
-        Err(_) => (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "status": "not_ready" }))),
+    match sqlx::query_scalar::<_, i32>("SELECT 1")
+        .fetch_one(&state.pool)
+        .await
+    {
+        Ok(_) => (
+            axum::http::StatusCode::OK,
+            Json(json!({ "status": "ready" })),
+        ),
+        Err(_) => (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "status": "not_ready" })),
+        ),
     }
 }
 
@@ -85,7 +98,9 @@ mod tests {
 
     #[tokio::test]
     async fn router_builds() {
-        let pool = PgPoolOptions::new().connect_lazy("postgres://localhost/zk_never").expect("lazy pool");
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://localhost/zk_never")
+            .expect("lazy pool");
         let _ = router(pool);
     }
 }
