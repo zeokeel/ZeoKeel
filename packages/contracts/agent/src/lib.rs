@@ -40,8 +40,57 @@ pub enum AgentError {
     Invalid(String),
 }
 
+/// Streaming events emitted during one agent turn.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AgentEvent {
+    /// Turn accepted and started.
+    TurnStarted { turn_id: String },
+    /// Incremental assistant text.
+    TextDelta { delta: String },
+    /// A tool call is about to run.
+    ToolCallStarted { name: String, args: String },
+    /// A tool call finished (success or error text in `result`).
+    ToolCallFinished { name: String, result: String },
+    /// The turn needs a user approval decision (reserved for M1 approval flow).
+    ApprovalRequested { approval_id: String, tool: String, args: String, reason: String },
+    /// Turn finished successfully.
+    TurnCompleted { reply: AgentReply },
+    /// Turn was cancelled by the user.
+    TurnCancelled,
+    /// Turn failed.
+    Error { message: String },
+}
+
+/// Sink for streaming events (UI/bridge implements it).
+pub trait EventSink: Send + Sync {
+    /// Emit one event; implementations must not block.
+    fn emit(&self, event: AgentEvent);
+}
+
 /// A replaceable local agent loop (state machine grows in M1).
 pub trait Agent: Send + Sync {
     /// Run one turn for the given user input.
     fn run(&self, input: &str) -> Result<AgentReply, AgentError>;
+
+    /// Run one turn and stream events. Default implementation emits start/complete only.
+    fn run_stream(
+        &self,
+        turn_id: &str,
+        input: &str,
+        sink: &dyn EventSink,
+    ) -> Result<AgentReply, AgentError> {
+        sink.emit(AgentEvent::TurnStarted { turn_id: turn_id.to_owned() });
+        match self.run(input) {
+            Ok(reply) => {
+                sink.emit(AgentEvent::TextDelta { delta: reply.text.clone() });
+                sink.emit(AgentEvent::TurnCompleted { reply: reply.clone() });
+                Ok(reply)
+            }
+            Err(err) => {
+                sink.emit(AgentEvent::Error { message: err.to_string() });
+                Err(err)
+            }
+        }
+    }
 }

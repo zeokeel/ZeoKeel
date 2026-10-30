@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/store-session-sqlite"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "会话持久化（SQLite WAL 最小实现）"
+
+[role]
+name = "store.session"
+contract = "zk-contract-session"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-store-session-sqlite" }

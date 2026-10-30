@@ -4,6 +4,14 @@
     "path": "packages/contracts/agent/src/lib.rs"
   },
   {
+    "id": "contract.config",
+    "path": "packages/contracts/config/src/lib.rs"
+  },
+  {
+    "id": "contract.ipc",
+    "path": "packages/contracts/ipc/src/lib.rs"
+  },
+  {
     "id": "contract.kernel",
     "path": "packages/contracts/kernel/src/lib.rs"
   },
@@ -14,6 +22,10 @@
   {
     "id": "contract.package",
     "path": "packages/contracts/package/src/lib.rs"
+  },
+  {
+    "id": "contract.session",
+    "path": "packages/contracts/session/src/lib.rs"
   },
   {
     "id": "contract.tool",

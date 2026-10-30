@@ -4,16 +4,30 @@
 use std::sync::Arc;
 
 pub const EDITION: &str = "personal";
-pub const PACKAGES: &[&str] = &["zeokeel/agent-loop","zeokeel/llm-mock","zeokeel/tool-fs",];
+pub const PACKAGES: &[&str] = &["zeokeel/agent-loop","zeokeel/llm-mock","zeokeel/store-session-sqlite","zeokeel/store-settings-json","zeokeel/tool-fs",];
 
 pub struct Runtime {
     agent: Arc<dyn zk_contract_agent::Agent>,
+    sessions: Arc<dyn zk_contract_session::SessionStore>,
+    settings: Arc<dyn zk_contract_config::SettingsStore>,
 }
 
 impl Runtime {
     pub fn run(&self, input: &str) -> Result<serde_json::Value, String> {
         let reply = self.agent.run(input).map_err(|e| e.to_string())?;
         serde_json::to_value(reply).map_err(|e| e.to_string())
+    }
+
+    pub fn run_stream(&self, turn_id: &str, input: &str, sink: &dyn zk_contract_agent::EventSink) -> Result<zk_contract_agent::AgentReply, zk_contract_agent::AgentError> {
+        self.agent.run_stream(turn_id, input, sink)
+    }
+
+    pub fn sessions(&self) -> Arc<dyn zk_contract_session::SessionStore> {
+        Arc::clone(&self.sessions)
+    }
+
+    pub fn settings(&self) -> Arc<dyn zk_contract_config::SettingsStore> {
+        Arc::clone(&self.settings)
     }
 
     pub fn packages(&self) -> &'static [&'static str] {
@@ -26,5 +40,7 @@ pub fn build() -> Result<Runtime, String> {
     tools.push(Arc::new(zk_tool_fs::tool()));
     let llm: Arc<dyn zk_contract_llm::LlmProvider> = Arc::new(zk_llm_mock::provider());
     let agent: Arc<dyn zk_contract_agent::Agent> = Arc::new(zk_agent_loop::agent(tools, llm));
-    Ok(Runtime { agent })
+    let sessions: Arc<dyn zk_contract_session::SessionStore> = Arc::new(zk_store_session_sqlite::store());
+    let settings: Arc<dyn zk_contract_config::SettingsStore> = Arc::new(zk_store_settings_json::store());
+    Ok(Runtime { agent, sessions, settings })
 }

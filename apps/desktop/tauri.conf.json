@@ -1,16 +1,16 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ZeoKeel Demo",
+  "productName": "ZeoKeel",
   "version": "0.1.0",
   "identifier": "dev.zeokeel.demo",
   "build": {
-    "frontendDist": "web"
+    "frontendDist": "web/dist"
   },
   "app": {
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "ZeoKeel 最小 Demo",
+        "title": "ZeoKeel",
         "width": 900,
         "height": 640,
         "resizable": true

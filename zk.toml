@@ -27,9 +27,22 @@ contract = "zk-contract-agent"
 cardinality = "singleton"
 editions = ["personal", "enterprise"]
 
+[roles."store.session"]
+contract = "zk-contract-session"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."store.settings"]
+contract = "zk-contract-config"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
 [contracts]
 "zk.contract.package" = "zk-contract-package"
 "zk.contract.kernel" = "zk-contract-kernel"
 "zk.contract.tool" = "zk-contract-tool"
 "zk.contract.llm" = "zk-contract-llm"
 "zk.contract.agent" = "zk-contract-agent"
+"zk.contract.ipc" = "zk-contract-ipc"
+"zk.contract.session" = "zk-contract-session"
+"zk.contract.config" = "zk-contract-config"

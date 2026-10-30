@@ -13,6 +13,15 @@ tauri = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 zk-composed = { path = "../../crates/zk-composed" }
+zk-contract-agent = { path = "../../packages/contracts/agent" }
+zk-contract-config = { path = "../../packages/contracts/config" }
+zk-contract-ipc = { path = "../../packages/contracts/ipc" }
+zk-contract-session = { path = "../../packages/contracts/session" }
+axum = { workspace = true }
+tokio = { workspace = true }
+tower-http = { workspace = true }
+futures = { workspace = true }
+uuid = { workspace = true }
 
 [lints]
 workspace = true

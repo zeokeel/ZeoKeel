@@ -11,6 +11,18 @@
     "contract": "zk-contract-llm",
     "cardinality": "singleton"
   },
+  "store.session": {
+    "package": "zeokeel/store-session-sqlite",
+    "crate_name": "zk-store-session-sqlite",
+    "contract": "zk-contract-session",
+    "cardinality": "singleton"
+  },
+  "store.settings": {
+    "package": "zeokeel/store-settings-json",
+    "crate_name": "zk-store-settings-json",
+    "contract": "zk-contract-config",
+    "cardinality": "singleton"
+  },
   "tool.fs": {
     "package": "zeokeel/tool-fs",
     "crate_name": "zk-tool-fs",

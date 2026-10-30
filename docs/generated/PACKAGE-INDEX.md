@@ -2,10 +2,12 @@
 
 # Package Index
 
-edition `personal` · channel `official` · 3 packages
+edition `personal` · channel `official` · 5 packages
 
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
 | `agent.loop` | `zeokeel/agent-loop` | `zk-agent-loop` | `zk-contract-agent` | singleton |
 | `llm.provider.default` | `zeokeel/llm-mock` | `zk-llm-mock` | `zk-contract-llm` | singleton |
+| `store.session` | `zeokeel/store-session-sqlite` | `zk-store-session-sqlite` | `zk-contract-session` | singleton |
+| `store.settings` | `zeokeel/store-settings-json` | `zk-store-settings-json` | `zk-contract-config` | singleton |
 | `tool.fs` | `zeokeel/tool-fs` | `zk-tool-fs` | `zk-contract-tool` | singleton |

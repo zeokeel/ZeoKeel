@@ -8,11 +8,16 @@ license.workspace = true
 [dependencies]
 zk-agent-loop = { path = "../../packages/client/agent-loop" }
 zk-contract-agent = { path = "../../packages/contracts/agent" }
+zk-contract-config = { path = "../../packages/contracts/config" }
+zk-contract-ipc = { path = "../../packages/contracts/ipc" }
 zk-contract-kernel = { path = "../../packages/contracts/kernel" }
 zk-contract-llm = { path = "../../packages/contracts/llm" }
 zk-contract-package = { path = "../../packages/contracts/package" }
+zk-contract-session = { path = "../../packages/contracts/session" }
 zk-contract-tool = { path = "../../packages/contracts/tool" }
 zk-llm-mock = { path = "../../packages/client/llm-mock" }
+zk-store-session-sqlite = { path = "../../packages/client/store-session-sqlite" }
+zk-store-settings-json = { path = "../../packages/client/store-settings-json" }
 zk-tool-fs = { path = "../../packages/client/tool-fs" }
 serde_json = { workspace = true }
 

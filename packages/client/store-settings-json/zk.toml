@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/store-settings-json"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "本地设置持久化（JSON 原子写，最小实现）"
+
+[role]
+name = "store.settings"
+contract = "zk-contract-config"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-store-settings-json" }

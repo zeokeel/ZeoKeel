@@ -1,0 +1,9 @@
+schema = 1
+id = "zeokeel/contract-ipc"
+kind = "contract"
+version = "0.1.0"
+license = "MIT"
+summary = "本地 IPC 命令/响应/事件信封（最小 M1 子集）"
+
+[facets]
+rust = { crate = "zk-contract-ipc" }

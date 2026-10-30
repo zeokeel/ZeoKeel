@@ -1,0 +1,13 @@
+[package]
+name = "zk-store-settings-json"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+zk-contract-config = { path = "../../contracts/config" }
+serde_json = { workspace = true }
+dirs = { workspace = true }
+
+[lints]
+workspace = true

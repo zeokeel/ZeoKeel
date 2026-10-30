@@ -16,6 +16,22 @@
     ]
   },
   {
+    "id": "zeokeel/store-session-sqlite",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "store.session"
+    ]
+  },
+  {
+    "id": "zeokeel/store-settings-json",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "store.settings"
+    ]
+  },
+  {
     "id": "zeokeel/tool-fs",
     "version": "0.1.0",
     "kind": "capability",

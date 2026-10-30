@@ -148,3 +148,41 @@ fn loop_is_object_safe_as_contract_agent() {
     let loop_: Arc<dyn Agent> = Arc::new(AgentLoop::new(Vec::new(), llm));
     assert_eq!(loop_.run("hi").unwrap().text, "plain");
 }
+
+/// Streaming order: started -> deltas* -> completed, UTF-8 safe.
+#[test]
+fn streaming_emits_ordered_utf8_events() {
+    use std::sync::Mutex;
+    use zk_contract_agent::{AgentEvent, EventSink};
+    use zk_contract_llm::{LlmError, LlmProvider};
+    use zk_contract_tool::{Tool, ToolError, ToolSpec};
+
+    struct Llm;
+    impl LlmProvider for Llm {
+        fn complete(&self, _prompt: &str) -> Result<String, LlmError> {
+            Ok("你好🙂这是一段用于测试分片的中文和 emoji 混合文本，长度足够产生多个 delta。".to_owned())
+        }
+    }
+    struct NoTools;
+    impl Tool for NoTools {
+        fn spec(&self) -> ToolSpec { ToolSpec { name: "noop".to_owned(), description: String::new() } }
+        fn call(&self, _args: &str) -> Result<String, ToolError> { Ok(String::new()) }
+    }
+    struct Sink(Mutex<Vec<AgentEvent>>);
+    impl EventSink for Sink {
+        fn emit(&self, event: AgentEvent) {
+            if let Ok(mut guard) = self.0.lock() { guard.push(event); }
+        }
+    }
+    let loop_ = zk_agent_loop::AgentLoop::new(vec![], std::sync::Arc::new(Llm));
+    let sink = Sink(Mutex::new(Vec::new()));
+    let reply = loop_.run_stream("t1", "hi", &sink).unwrap();
+    let events = sink.0.lock().unwrap();
+    assert!(matches!(events.first(), Some(AgentEvent::TurnStarted { .. })));
+    assert!(matches!(events.last(), Some(AgentEvent::TurnCompleted { .. })));
+    let mut joined = String::new();
+    for event in events.iter() {
+        if let AgentEvent::TextDelta { delta } = event { joined.push_str(delta); }
+    }
+    assert_eq!(joined, reply.text);
+}

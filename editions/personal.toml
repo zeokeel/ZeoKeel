@@ -6,3 +6,5 @@ targets = ["desktop"]
 "tool.fs" = "zeokeel/tool-fs"
 "llm.provider.default" = "zeokeel/llm-mock"
 "agent.loop" = "zeokeel/agent-loop"
+"store.session" = "zeokeel/store-session-sqlite"
+"store.settings" = "zeokeel/store-settings-json"
