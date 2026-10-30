@@ -60,3 +60,15 @@ pub fn close_all() {
         guard.clear();
     }
 }
+
+/// Close the persistent shell for one workspace/conversation.
+pub fn close(context: &TurnContext) -> Result<bool, ToolError> {
+    let key = key(context);
+    let shell = shells().lock().map_err(|_| ToolError::Io("shell lock poisoned".to_owned()))?.remove(&key);
+    if let Some(shell) = shell { if let Ok(mut child) = shell.child.lock() { let _ = child.kill(); let _ = child.wait(); } return Ok(true); }
+    Ok(false)
+}
+
+/// Whether a persistent shell exists for this context.
+#[must_use]
+pub fn is_open(context: &TurnContext) -> bool { shells().lock().map(|guard| guard.contains_key(&key(context))).unwrap_or(false) }

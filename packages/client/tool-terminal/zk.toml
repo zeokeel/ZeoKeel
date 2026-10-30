@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-terminal"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Persistent terminal session tool"
+
+[role]
+name = "tool.terminal"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-terminal" }

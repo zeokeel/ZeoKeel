@@ -1,4 +1,5 @@
 [packages]
+"tool.terminal" = "zeokeel/tool-terminal"
 "tool.workspace_dependencies" = "zeokeel/tool-workspace-dependencies"
 "tool.worktree" = "zeokeel/tool-worktree"
 

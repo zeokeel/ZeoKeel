@@ -368,6 +368,14 @@
     ]
   },
   {
+    "id": "zeokeel/tool-terminal",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.terminal"
+    ]
+  },
+  {
     "id": "zeokeel/tool-todo",
     "version": "0.1.0",
     "kind": "capability",

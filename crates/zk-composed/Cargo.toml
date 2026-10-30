@@ -73,6 +73,7 @@ zk-tool-job-list = { path = "../../packages/client/tool-job-list" }
 zk-tool-job-output = { path = "../../packages/client/tool-job-output" }
 zk-tool-present = { path = "../../packages/client/tool-present" }
 zk-tool-skill = { path = "../../packages/client/tool-skill" }
+zk-tool-terminal = { path = "../../packages/client/tool-terminal" }
 zk-tool-todo = { path = "../../packages/client/tool-todo" }
 zk-tool-web-fetch = { path = "../../packages/client/tool-web-fetch" }
 zk-tool-working-directory = { path = "../../packages/client/tool-working-directory" }

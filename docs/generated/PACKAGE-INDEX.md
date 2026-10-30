@@ -2,7 +2,7 @@
 
 # Package Index
 
-edition `enterprise` · channel `official` · 62 packages
+edition `enterprise` · channel `official` · 63 packages
 
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
@@ -52,6 +52,7 @@ edition `enterprise` · channel `official` · 62 packages
 | `tool.jobs.output` | `zeokeel/tool-job-output` | `zk-tool-job-output` | `zk-contract-tool` | singleton |
 | `tool.present` | `zeokeel/tool-present` | `zk-tool-present` | `zk-contract-tool` | singleton |
 | `tool.skill` | `zeokeel/tool-skill` | `zk-tool-skill` | `zk-contract-tool` | singleton |
+| `tool.terminal` | `zeokeel/tool-terminal` | `zk-tool-terminal` | `zk-contract-tool` | singleton |
 | `tool.todo` | `zeokeel/tool-todo` | `zk-tool-todo` | `zk-contract-tool` | singleton |
 | `tool.web.fetch` | `zeokeel/tool-web-fetch` | `zk-tool-web-fetch` | `zk-contract-tool` | singleton |
 | `tool.working_directory` | `zeokeel/tool-working-directory` | `zk-tool-working-directory` | `zk-contract-tool` | singleton |

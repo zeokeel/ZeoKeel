@@ -275,6 +275,12 @@
     "contract": "zk-contract-tool",
     "cardinality": "singleton"
   },
+  "tool.terminal": {
+    "package": "zeokeel/tool-terminal",
+    "crate_name": "zk-tool-terminal",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
   "tool.todo": {
     "package": "zeokeel/tool-todo",
     "crate_name": "zk-tool-todo",
