@@ -71,6 +71,7 @@ impl EventSink for BridgeSink {
                 content,
                 created_at_ms: now_ms(),
                 status: "done".to_owned(),
+                usage: None,
             };
             let _ = self.sessions.append_message(&message);
         }

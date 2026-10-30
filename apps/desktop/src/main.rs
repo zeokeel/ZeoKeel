@@ -7,6 +7,7 @@
 
 mod approval;
 mod automation;
+mod changes;
 mod events;
 mod ipc;
 mod serve;

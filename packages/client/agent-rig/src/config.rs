@@ -363,35 +363,48 @@ pub fn set_default_agent_config(config: AgentRuntimeConfig) -> Result<(), String
     let agent = config.to_contract();
     zk_contract_agent::set_default_agent_settings(&agent)?;
     zk_contract_config::set_runtime_settings(&zk_contract_config::RuntimeSettings {
-        agent,
-        tools: config.tools,
+        agent: Some(agent),
+        tools: Some(config.tools),
     })
     .map_err(|error| error.to_string())
 }
 
-/// The process-wide default agent config: the published contract settings when
-/// present, else the `ZEOKEEL_AGENT_*` environment fallback.
+/// Whether the `ZEOKEEL_AGENT_*` environment explicitly changed an agent
+/// setting (tools are handled separately).
+fn env_agent_is_overridden(env: &AgentRuntimeConfig) -> bool {
+    let defaults = AgentRuntimeConfig::default();
+    env.completion != defaults.completion
+        || env.memory != defaults.memory
+        || env.hooks != defaults.hooks
+        || env.max_steps != defaults.max_steps
+}
+
+/// The process-wide default agent config, merged per section:
+/// published snapshot section > explicit `ZEOKEEL_*` env > legacy
+/// contract-agent registry > built-in defaults.
+///
+/// The legacy registry is only a fallback for hosts that never publish a
+/// runtime snapshot (and only when the env has no explicit agent override): a
+/// tools-only save must not pin agent defaults over the environment.
 #[must_use]
 pub fn default_agent_config() -> AgentRuntimeConfig {
-    // One merge point for every setting: published non-secret snapshot >
-    // contract-agent registry (legacy hosts) > `ZEOKEEL_*` env > defaults.
-    // Agent and tool sections follow the same precedence.
     let published = zk_contract_config::runtime_settings().ok().flatten();
-    let agent_settings = published
+    let snapshot_agent = published
         .as_ref()
-        .map(|snapshot| snapshot.agent.clone())
-        .or_else(zk_contract_agent::default_agent_settings);
-    let mut config = agent_settings
-        .as_ref()
-        .and_then(|settings| AgentRuntimeConfig::from_contract(settings).ok())
-        .unwrap_or_else(AgentRuntimeConfig::from_env);
-    if let Some(snapshot) = published {
-        config.tools = snapshot.tools;
-    } else if agent_settings.is_some() {
-        // Legacy host published AgentSettings only: keep the env/default
-        // timeout fallback (the snapshot is the authoritative carrier).
-        config.tools = AgentRuntimeConfig::from_env().tools;
-    }
+        .and_then(|snapshot| snapshot.agent.clone());
+    let env = AgentRuntimeConfig::from_env();
+    let mut config = if let Some(agent) = snapshot_agent {
+        AgentRuntimeConfig::from_contract(&agent).unwrap_or(env)
+    } else if env_agent_is_overridden(&env) {
+        env
+    } else if let Some(legacy) = zk_contract_agent::default_agent_settings() {
+        AgentRuntimeConfig::from_contract(&legacy).unwrap_or(env)
+    } else {
+        env
+    };
+    config.tools = published
+        .and_then(|snapshot| snapshot.tools)
+        .unwrap_or_else(|| AgentRuntimeConfig::from_env().tools);
     config
 }
 
@@ -536,83 +549,138 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn env_fallback_and_published_settings_precedence() {
-        // One test keeps the process-global registries deterministic: env
-        // first, then the explicitly saved settings that desktop publishes.
-        zk_contract_config::clear_runtime_settings().unwrap();
-        std::env::set_var("ZEOKEEL_AGENT_TEMPERATURE", "0.42");
-        std::env::set_var("ZEOKEEL_TOOL_TIMEOUT_MS", "5000");
-        std::env::set_var("ZEOKEEL_APPROVAL_TIMEOUT_MS", "9000");
+    fn snapshot(
+        agent: Option<zk_contract_config::AgentSettings>,
+        tools: Option<zk_contract_config::ToolSettings>,
+    ) -> zk_contract_config::RuntimeSettings {
+        zk_contract_config::RuntimeSettings { agent, tools }
+    }
 
-        // Fresh install: no published settings -> env fallbacks apply.
-        let env_config = AgentRuntimeConfig::from_env();
-        assert_eq!(env_config.completion.temperature, Some(0.42));
-        assert_eq!(env_config.tools.tool_timeout_ms, 5000);
-        assert_eq!(env_config.tools.approval_timeout_ms, 9000);
-        assert_eq!(env_config.tools.tool_timeout(), 5000);
-
-        // Explicitly saved settings (desktop publishes them) win over env.
-        let saved = zk_contract_config::AgentSettings {
+    fn agent_settings(max_steps: usize, temperature: f64) -> zk_contract_config::AgentSettings {
+        zk_contract_config::AgentSettings {
+            max_steps,
             completion: zk_contract_config::CompletionSettings {
-                temperature: Some(0.7),
+                temperature: Some(temperature),
                 ..zk_contract_config::CompletionSettings::default()
             },
             ..zk_contract_config::AgentSettings::default()
-        };
-        let snapshot = zk_contract_config::RuntimeSettings {
-            agent: saved,
-            tools: zk_contract_config::ToolSettings {
-                tool_timeout_ms: 2_000,
-                approval_timeout_ms: 4_000,
-            },
-        };
-        zk_contract_config::set_runtime_settings(&snapshot).unwrap();
-        let effective = default_agent_config();
-        assert_eq!(
-            effective.completion.temperature,
-            Some(0.7),
-            "published snapshot wins over env for completion"
-        );
-        assert_eq!(
-            effective.tools.tool_timeout_ms, 2_000,
-            "published snapshot wins over env for tools"
-        );
-        assert_eq!(effective.tools.approval_timeout_ms, 4_000);
+        }
+    }
 
-        // The single publish entry point writes both sections atomically.
-        let mut programmatic = AgentRuntimeConfig::default();
-        programmatic.completion.temperature = Some(0.55);
-        programmatic.tools.tool_timeout_ms = 3_000;
-        programmatic.tools.approval_timeout_ms = 6_000;
+    fn tool_settings(
+        tool_timeout_ms: u64,
+        approval_timeout_ms: u64,
+    ) -> zk_contract_config::ToolSettings {
+        zk_contract_config::ToolSettings {
+            tool_timeout_ms,
+            approval_timeout_ms,
+        }
+    }
+
+    #[test]
+    fn per_section_precedence_between_published_settings_and_env() {
+        // One ordered test keeps the process-global registries deterministic.
+        zk_contract_config::clear_runtime_settings().unwrap();
+        std::env::set_var("ZEOKEEL_AGENT_TEMPERATURE", "0.42");
+        std::env::set_var("ZEOKEEL_AGENT_MAX_STEPS", "33");
+        std::env::set_var("ZEOKEEL_TOOL_TIMEOUT_MS", "5000");
+        std::env::set_var("ZEOKEEL_APPROVAL_TIMEOUT_MS", "9000");
+
+        // Fresh install: no published sections -> env fallbacks apply.
+        let env_config = default_agent_config();
+        assert_eq!(env_config.completion.temperature, Some(0.42));
+        assert_eq!(env_config.max_steps, 33);
+        assert_eq!(env_config.tools.tool_timeout_ms, 5_000);
+        assert_eq!(env_config.tools.approval_timeout_ms, 9_000);
+
+        // Legacy host published an agent registry only: explicit env still wins.
+        zk_contract_agent::set_default_agent_settings(&agent_settings(12, 0.7)).unwrap();
+        let config = default_agent_config();
+        assert_eq!(config.max_steps, 33, "env agent wins over legacy registry");
+        assert_eq!(config.completion.temperature, Some(0.42));
+
+        // Without an explicit env agent override the legacy registry applies.
+        std::env::remove_var("ZEOKEEL_AGENT_TEMPERATURE");
+        std::env::remove_var("ZEOKEEL_AGENT_MAX_STEPS");
+        let config = default_agent_config();
+        assert_eq!(config.max_steps, 12);
+        assert_eq!(config.completion.temperature, Some(0.7));
+
+        // Restore env so the tools-only scenario exercises env > legacy again.
+        std::env::set_var("ZEOKEEL_AGENT_TEMPERATURE", "0.42");
+        std::env::set_var("ZEOKEEL_AGENT_MAX_STEPS", "33");
+
+        // Tools-only saved: published tools win, agent keeps env fallback over
+        // the legacy registry (the round-4 P1 regression).
+        zk_contract_config::set_runtime_settings(&snapshot(
+            None,
+            Some(tool_settings(2_000, 4_000)),
+        ))
+        .unwrap();
+        let config = default_agent_config();
+        assert_eq!(
+            config.max_steps, 33,
+            "tools-only save must not pin agent defaults"
+        );
+        assert_eq!(config.completion.temperature, Some(0.42));
+        assert_eq!(config.tools.tool_timeout_ms, 2_000);
+        assert_eq!(config.tools.approval_timeout_ms, 4_000);
+
+        // Agent-only saved: published agent wins, tools keep env fallback.
+        zk_contract_config::set_runtime_settings(&snapshot(Some(agent_settings(12, 0.7)), None))
+            .unwrap();
+        let config = default_agent_config();
+        assert_eq!(config.max_steps, 12);
+        assert_eq!(config.completion.temperature, Some(0.7));
+        assert_eq!(
+            config.tools.tool_timeout_ms, 5_000,
+            "agent-only save must not pin tool defaults"
+        );
+        assert_eq!(config.tools.approval_timeout_ms, 9_000);
+
+        // Both sections saved: saved values win for both.
+        zk_contract_config::set_runtime_settings(&snapshot(
+            Some(agent_settings(12, 0.7)),
+            Some(tool_settings(3_000, 6_000)),
+        ))
+        .unwrap();
+        let config = default_agent_config();
+        assert_eq!(config.max_steps, 12);
+        assert_eq!(config.completion.temperature, Some(0.7));
+        assert_eq!(config.tools.tool_timeout_ms, 3_000);
+        assert_eq!(config.tools.approval_timeout_ms, 6_000);
+
+        // Programmatic entry point publishes both sections in one snapshot.
+        let programmatic = AgentRuntimeConfig {
+            max_steps: 5,
+            completion: CompletionConfig {
+                temperature: Some(0.55),
+                ..CompletionConfig::default()
+            },
+            tools: tool_settings(1_500, 2_500),
+            ..AgentRuntimeConfig::default()
+        };
         set_default_agent_config(programmatic).unwrap();
         let published = zk_contract_config::runtime_settings().unwrap().unwrap();
-        assert_eq!(published.agent.completion.temperature, Some(0.55));
-        assert_eq!(published.tools.tool_timeout_ms, 3_000);
-        assert_eq!(published.tools.approval_timeout_ms, 6_000);
-        let effective = default_agent_config();
-        assert_eq!(effective.completion.temperature, Some(0.55));
-        assert_eq!(effective.tools.tool_timeout_ms, 3_000);
+        assert_eq!(published.agent.as_ref().unwrap().max_steps, 5);
+        assert_eq!(published.tools.unwrap().tool_timeout_ms, 1_500);
+        let config = default_agent_config();
+        assert_eq!(config.max_steps, 5);
+        assert_eq!(config.completion.temperature, Some(0.55));
+        assert_eq!(config.tools.tool_timeout_ms, 1_500);
 
-        // Out-of-range values are rejected at publish time (UI surfaces it);
-        // the runtime clamp is covered by the contract tests.
-        let mut invalid = zk_contract_config::RuntimeSettings {
-            agent: zk_contract_config::AgentSettings::default(),
-            tools: zk_contract_config::ToolSettings {
-                tool_timeout_ms: 10,
-                ..zk_contract_config::ToolSettings::default()
-            },
-        };
-        assert!(zk_contract_config::set_runtime_settings(&invalid).is_err());
-        invalid.tools.tool_timeout_ms = 5_000;
-        invalid.tools.approval_timeout_ms = 9_000_000;
-        assert!(zk_contract_config::set_runtime_settings(&invalid).is_err());
+        // Invalid values inside a present section are rejected at publish time.
+        assert!(zk_contract_config::set_runtime_settings(&snapshot(
+            None,
+            Some(tool_settings(10, 300_000)),
+        ))
+        .is_err());
 
         // Restore so sibling tests keep seeing built-in defaults.
         zk_contract_config::clear_runtime_settings().unwrap();
-        zk_contract_agent::set_default_agent_settings(&zk_contract_config::AgentSettings::default())
-            .unwrap();
+        zk_contract_agent::clear_default_agent_settings().unwrap();
         std::env::remove_var("ZEOKEEL_AGENT_TEMPERATURE");
+        std::env::remove_var("ZEOKEEL_AGENT_MAX_STEPS");
         std::env::remove_var("ZEOKEEL_TOOL_TIMEOUT_MS");
         std::env::remove_var("ZEOKEEL_APPROVAL_TIMEOUT_MS");
     }

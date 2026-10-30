@@ -10,8 +10,9 @@ use serde_json::{json, Value};
 use tokio::sync::broadcast;
 use zk_contract_agent::AgentHookSink;
 use zk_contract_config::{AppSettings, ProviderKind, ToolSettings};
+use zk_contract_ipc::results::{ChatSendResult, MetaInfo};
 use zk_contract_ipc::{commands, CommandResponse, UiEvent};
-use zk_contract_session::Message;
+use zk_contract_session::{FileEntry, FileKind, Message, WorkspaceFilesResult};
 use zk_contract_tool::TurnContext;
 
 use crate::approval::ApprovalBroker;
@@ -161,15 +162,6 @@ pub(crate) fn should_publish_agent_settings(
     settings_file_exists && settings.agent != zk_contract_config::AgentSettings::default()
 }
 
-/// Same precedence rule as agent settings: a fresh install or default-only
-/// file must not override `ZEOKEEL_TOOL_TIMEOUT_MS`/`ZEOKEEL_APPROVAL_TIMEOUT_MS`.
-pub(crate) fn should_publish_tool_settings(
-    settings: &AppSettings,
-    settings_file_exists: bool,
-) -> bool {
-    settings_file_exists && settings.tools != ToolSettings::default()
-}
-
 /// Validate and publish `AppSettings.agent` to the contract registry the agent
 /// runtime reads each turn; install/remove the global hook sink accordingly.
 pub(crate) fn apply_agent_settings(settings: &AppSettings) -> Result<(), String> {
@@ -177,8 +169,16 @@ pub(crate) fn apply_agent_settings(settings: &AppSettings) -> Result<(), String>
         .agent
         .validate()
         .map_err(|error| format!("agent settings: {error}"))?;
-    zk_contract_agent::set_default_agent_settings(&settings.agent)
-        .map_err(|error| format!("agent settings: {error}"))?;
+    // Only an explicitly non-default agent section is published; a tools-only
+    // save (or a reset to defaults) must clear the registry so `ZEOKEEL_AGENT_*`
+    // env stays authoritative instead of being pinned by default values.
+    if settings.agent == zk_contract_config::AgentSettings::default() {
+        zk_contract_agent::clear_default_agent_settings()
+            .map_err(|error| format!("agent settings: {error}"))?;
+    } else {
+        zk_contract_agent::set_default_agent_settings(&settings.agent)
+            .map_err(|error| format!("agent settings: {error}"))?;
+    }
     if settings.agent.hooks.enabled {
         zk_contract_agent::set_agent_hook_sink(Some(Arc::new(DesktopHookSink)));
     } else {
@@ -187,11 +187,32 @@ pub(crate) fn apply_agent_settings(settings: &AppSettings) -> Result<(), String>
     Ok(())
 }
 
-/// Publish the non-secret runtime snapshot (`agent` + `tools` only).
+/// Build the non-secret runtime snapshot for the sections that should be
+/// published (only sections that were explicitly saved and are non-default).
 ///
-/// Provider config / `api_key` never enter the contract runtime registry.
-pub(crate) fn publish_runtime_settings(settings: &AppSettings) -> Result<(), String> {
-    zk_contract_config::set_runtime_settings(&zk_contract_config::RuntimeSettings::from(settings))
+/// Per-section `Option`s keep the env fallback alive: a tools-only save must
+/// not pin agent defaults, and vice versa. Provider config / `api_key` never
+/// enter the snapshot.
+pub(crate) fn runtime_snapshot_for(
+    settings: &AppSettings,
+    include_agent: bool,
+    include_tools: bool,
+) -> zk_contract_config::RuntimeSettings {
+    zk_contract_config::RuntimeSettings {
+        agent: include_agent
+            .then(|| settings.agent.clone())
+            .filter(|agent| *agent != zk_contract_config::AgentSettings::default()),
+        tools: include_tools
+            .then_some(settings.tools)
+            .filter(|tools| *tools != ToolSettings::default()),
+    }
+}
+
+/// Publish the non-secret runtime snapshot (`agent` + `tools` only).
+pub(crate) fn publish_runtime_settings(
+    snapshot: &zk_contract_config::RuntimeSettings,
+) -> Result<(), String> {
+    zk_contract_config::set_runtime_settings(snapshot)
         .map_err(|error| format!("settings publish: {error}"))
 }
 
@@ -211,22 +232,28 @@ pub(crate) fn apply_persisted_settings(
     if should_publish_agent_settings(&settings, file_exists) {
         apply_agent_settings(&settings)?;
     }
-    if should_publish_tool_settings(&settings, file_exists) {
-        publish_runtime_settings(&settings)?;
-        return Ok(Some(settings.tools));
+    let snapshot = runtime_snapshot_for(&settings, file_exists, file_exists);
+    if snapshot.agent.is_some() || snapshot.tools.is_some() {
+        publish_runtime_settings(&snapshot)?;
     }
-    Ok(None)
+    Ok(snapshot.tools)
 }
 
 /// Dispatch one command. Never panics; all failures become `CommandResponse::err`.
 pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandResponse {
     match name {
-        commands::META_GET => CommandResponse::ok(json!({
-            "edition": zk_composed::EDITION,
-            "packages": zk_composed::PACKAGES,
-            "version": env!("CARGO_PKG_VERSION"),
-            "agent_config_error": state.agent_config_error(),
-        })),
+        commands::META_GET => {
+            let meta = MetaInfo {
+                edition: zk_composed::EDITION.to_owned(),
+                version: env!("CARGO_PKG_VERSION").to_owned(),
+                packages: zk_composed::PACKAGES
+                    .iter()
+                    .map(|package| (*package).to_owned())
+                    .collect(),
+                agent_config_error: state.agent_config_error(),
+            };
+            CommandResponse::ok(serde_json::to_value(&meta).unwrap_or(Value::Null))
+        }
         commands::WORKSPACE_LIST => match state.runtime.sessions().list_workspaces() {
             Ok(list) => CommandResponse::ok(json!(list)),
             Err(error) => session_err(error),
@@ -368,7 +395,11 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             if let Err(error) = apply_agent_settings(&settings) {
                 return CommandResponse::err(error);
             }
-            if let Err(error) = publish_runtime_settings(&settings) {
+            // Publish only explicitly saved non-default sections (env fallback
+            // stays authoritative for untouched/default sections).
+            if let Err(error) =
+                publish_runtime_settings(&runtime_snapshot_for(&settings, true, true))
+            {
                 return CommandResponse::err(error);
             }
             if let Err(error) = state.apply_tool_settings(&settings.tools) {
@@ -396,6 +427,23 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 Err(error) => CommandResponse::err(error.to_string()),
             }
         }
+        commands::WORKSPACE_CHANGES => {
+            let Some(workspace_id) = payload.get("workspace_id").and_then(Value::as_str) else {
+                return CommandResponse::err("missing workspace_id");
+            };
+            match state.runtime.sessions().list_workspaces() {
+                Ok(workspaces) => match workspaces
+                    .iter()
+                    .find(|workspace| workspace.id == workspace_id)
+                {
+                    Some(workspace) => CommandResponse::ok(json!(
+                        crate::changes::workspace_changes(&workspace.path)
+                    )),
+                    None => CommandResponse::err("workspace/not-found"),
+                },
+                Err(error) => CommandResponse::err(error.to_string()),
+            }
+        }
         commands::WORKSPACE_FILES => {
             let Some(workspace_id) = payload.get("workspace_id").and_then(Value::as_str) else {
                 return CommandResponse::err("missing workspace_id");
@@ -406,7 +454,9 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                     .find(|workspace| workspace.id == workspace_id)
                 {
                     Some(workspace) => match list_workspace_files(&workspace.path) {
-                        Ok(items) => CommandResponse::ok(json!({ "items": items })),
+                        Ok(result) => CommandResponse::ok(
+                            serde_json::to_value(&result).unwrap_or(Value::Null),
+                        ),
                         Err(error) => CommandResponse::err(format!("workspace/files: {error}")),
                     },
                     None => CommandResponse::err("workspace/not-found"),
@@ -499,9 +549,9 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
 }
 
 /// Bounded, read-only file listing under one workspace root.
-fn list_workspace_files(root: &str) -> Result<Vec<Value>, String> {
+fn list_workspace_files(root: &str) -> Result<WorkspaceFilesResult, String> {
     const MAX_ENTRIES: usize = 300;
-    let mut items = Vec::new();
+    let mut items: Vec<FileEntry> = Vec::new();
     let mut stack = vec![(std::path::PathBuf::from(root), 0_usize)];
     while let Some((dir, depth)) = stack.pop() {
         if depth > 2 || items.len() >= MAX_ENTRIES {
@@ -525,20 +575,23 @@ fn list_workspace_files(root: &str) -> Result<Vec<Value>, String> {
                 continue;
             }
             let is_dir = entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false);
-            items.push(
-                json!({ "path": rel, "depth": depth, "kind": if is_dir { "dir" } else { "file" } }),
-            );
+            items.push(FileEntry {
+                path: rel,
+                depth: u32::try_from(depth).unwrap_or(u32::MAX),
+                kind: if is_dir {
+                    FileKind::Dir
+                } else {
+                    FileKind::File
+                },
+                badge: String::new(),
+            });
             if is_dir {
                 stack.push((path, depth.saturating_add(1)));
             }
         }
     }
-    items.sort_by(|a, b| {
-        let a_path = a.get("path").and_then(Value::as_str).unwrap_or("");
-        let b_path = b.get("path").and_then(Value::as_str).unwrap_or("");
-        a_path.cmp(b_path)
-    });
-    Ok(items)
+    items.sort_unstable_by_key(|entry| entry.path.clone());
+    Ok(WorkspaceFilesResult { items })
 }
 
 fn app_request(payload: &Value) -> CommandResponse {
@@ -981,6 +1034,7 @@ fn chat_send(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
         content: text.to_owned(),
         created_at_ms: now_ms(),
         status: "done".to_owned(),
+        usage: None,
     };
     if let Err(error) = sessions.append_message(&user_message) {
         return session_err(error);
@@ -1007,11 +1061,12 @@ fn chat_send(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
         return CommandResponse::err("session/busy: turn worker unavailable; retry");
     }
 
-    CommandResponse::ok(json!({
-        "stream_id": stream_id,
-        "conversation_id": conversation_id,
-        "workspace_id": workspace_id,
-    }))
+    let result = ChatSendResult {
+        stream_id,
+        conversation_id,
+        workspace_id,
+    };
+    CommandResponse::ok(serde_json::to_value(&result).unwrap_or(Value::Null))
 }
 
 /// Return the per-conversation worker sender, spawning the FIFO worker on demand.
@@ -1062,19 +1117,12 @@ fn run_turn(state: &Arc<AppState>, job: &TurnJob) {
         .run_stream_in_shared(&context, &job.stream_id, &job.text, sink);
     match result {
         Ok(reply) => {
-            let message = Message {
-                id: uuid::Uuid::new_v4().to_string(),
-                conversation_id: job.conversation_id.clone(),
-                role: "assistant".to_owned(),
-                content: reply.text,
-                created_at_ms: now_ms(),
-                status: if job.cancelled.load(Ordering::SeqCst) {
-                    "cancelled"
-                } else {
-                    "done"
-                }
-                .to_owned(),
+            let status = if job.cancelled.load(Ordering::SeqCst) {
+                "cancelled"
+            } else {
+                "done"
             };
+            let message = assistant_message(&job.conversation_id, reply.text, reply.usage, status);
             let _ = state.runtime.sessions().append_message(&message);
         }
         Err(error) => {
@@ -1085,12 +1133,34 @@ fn run_turn(state: &Arc<AppState>, job: &TurnJob) {
                 content: format!("错误：{error}"),
                 created_at_ms: now_ms(),
                 status: "error".to_owned(),
+                usage: None,
             };
             let _ = state.runtime.sessions().append_message(&message);
         }
     }
     if let Ok(mut streams) = state.streams.lock() {
         streams.remove(&job.stream_id);
+    }
+}
+
+/// Build the persisted assistant message for one finished turn.
+///
+/// Token usage travels with the reply (round-4): persisted so it survives
+/// restarts; absent usage stays `None` (SQL NULL).
+fn assistant_message(
+    conversation_id: &str,
+    text: String,
+    usage: Option<zk_contract_agent::AgentUsage>,
+    status: &str,
+) -> Message {
+    Message {
+        id: uuid::Uuid::new_v4().to_string(),
+        conversation_id: conversation_id.to_owned(),
+        role: "assistant".to_owned(),
+        content: text,
+        created_at_ms: now_ms(),
+        status: status.to_owned(),
+        usage,
     }
 }
 
@@ -1164,11 +1234,12 @@ mod tests {
         settings.provider.base_url = "https://upstream.example".to_owned();
         settings.agent.max_steps = 7;
         settings.tools.tool_timeout_ms = 5_000;
-        super::publish_runtime_settings(&settings).unwrap();
+        super::publish_runtime_settings(&super::runtime_snapshot_for(&settings, true, true))
+            .unwrap();
 
         let published = zk_contract_config::runtime_settings().unwrap().unwrap();
-        assert_eq!(published.agent.max_steps, 7);
-        assert_eq!(published.tools.tool_timeout_ms, 5_000);
+        assert_eq!(published.agent.as_ref().unwrap().max_steps, 7);
+        assert_eq!(published.tools.unwrap().tool_timeout_ms, 5_000);
         let json = serde_json::to_string(&published).unwrap();
         assert!(!json.contains("api_key"), "snapshot leaked api_key: {json}");
         assert!(
@@ -1183,22 +1254,37 @@ mod tests {
     }
 
     #[test]
-    fn boot_publishes_only_explicitly_saved_non_default_tool_settings() {
-        let default_settings = zk_contract_config::AppSettings::default();
-        assert!(!super::should_publish_tool_settings(
-            &default_settings,
-            false
-        ));
-        assert!(!super::should_publish_tool_settings(
-            &default_settings,
-            true
-        ));
+    fn runtime_snapshot_publishes_only_non_default_sections() {
+        let defaults = zk_contract_config::AppSettings::default();
+        let empty = super::runtime_snapshot_for(&defaults, true, true);
+        assert!(empty.agent.is_none(), "default agent section not published");
+        assert!(empty.tools.is_none(), "default tools section not published");
 
-        let mut custom = zk_contract_config::AppSettings::default();
-        custom.tools.tool_timeout_ms = 5_000;
-        assert!(!super::should_publish_tool_settings(&custom, false));
-        assert!(super::should_publish_tool_settings(&custom, true));
+        let mut tools_only = zk_contract_config::AppSettings::default();
+        tools_only.tools.tool_timeout_ms = 5_000;
+        let snapshot = super::runtime_snapshot_for(&tools_only, true, true);
+        assert!(
+            snapshot.agent.is_none(),
+            "tools-only save must not publish agent defaults"
+        );
+        assert_eq!(snapshot.tools.unwrap().tool_timeout_ms, 5_000);
 
+        let mut agent_only = zk_contract_config::AppSettings::default();
+        agent_only.agent.max_steps = 12;
+        let snapshot = super::runtime_snapshot_for(&agent_only, true, true);
+        assert_eq!(snapshot.agent.unwrap().max_steps, 12);
+        assert!(
+            snapshot.tools.is_none(),
+            "agent-only save must not publish tool defaults"
+        );
+
+        // Boot must respect file existence for both sections.
+        let nothing = super::runtime_snapshot_for(&agent_only, false, false);
+        assert!(nothing.agent.is_none() && nothing.tools.is_none());
+    }
+
+    #[test]
+    fn invalid_tool_settings_are_rejected_by_validate_settings() {
         let mut invalid = zk_contract_config::AppSettings::default();
         invalid.tools.tool_timeout_ms = 10;
         assert!(super::validate_settings(&invalid).is_err());
@@ -1246,6 +1332,25 @@ mod tests {
     }
 
     #[test]
+    fn assistant_message_persists_usage_and_is_optional() {
+        let usage = zk_contract_agent::AgentUsage {
+            input_tokens: 9,
+            output_tokens: 4,
+            total_tokens: 13,
+            cached_tokens: 0,
+            reasoning_tokens: 1,
+            cost_micros: None,
+        };
+        let with_usage = super::assistant_message("c1", "answer".to_owned(), Some(usage), "done");
+        assert_eq!(with_usage.usage, Some(usage));
+        assert_eq!(with_usage.status, "done");
+        assert_eq!(with_usage.role, "assistant");
+        let without = super::assistant_message("c1", "answer".to_owned(), None, "cancelled");
+        assert!(without.usage.is_none());
+        assert_eq!(without.status, "cancelled");
+    }
+
+    #[test]
     fn agent_settings_apply_to_the_runtime_registry_and_validate() {
         let mut settings = zk_contract_config::AppSettings::default();
         settings.agent.completion.temperature = Some(0.25);
@@ -1260,7 +1365,38 @@ mod tests {
         invalid.agent.completion.temperature = Some(9.0);
         assert!(super::apply_agent_settings(&invalid).is_err());
 
+        // Tools-only save (default agent section) must NOT pin defaults in the
+        // legacy registry: it clears it so ZEOKEEL_AGENT_* env stays authoritative.
+        let mut tools_only = zk_contract_config::AppSettings::default();
+        tools_only.tools.tool_timeout_ms = 5_000;
+        super::apply_agent_settings(&tools_only).unwrap();
+        assert!(
+            zk_contract_agent::default_agent_settings().is_none(),
+            "tools-only save must clear the agent registry"
+        );
+        // settings.set also publishes the per-section snapshot: agent None.
+        let snapshot = super::runtime_snapshot_for(&tools_only, true, true);
+        super::publish_runtime_settings(&snapshot).unwrap();
+        let published = zk_contract_config::runtime_settings().unwrap().unwrap();
+        assert!(
+            published.agent.is_none(),
+            "tools-only save must not publish an agent snapshot"
+        );
+        assert_eq!(published.tools.unwrap().tool_timeout_ms, 5_000);
+        zk_contract_config::clear_runtime_settings().unwrap();
+
+        // Save-custom then reset-to-default also clears the registry (env again).
+        let mut custom = zk_contract_config::AppSettings::default();
+        custom.agent.max_steps = 9;
+        super::apply_agent_settings(&custom).unwrap();
+        assert_eq!(
+            zk_contract_agent::default_agent_settings()
+                .unwrap()
+                .max_steps,
+            9
+        );
         super::apply_agent_settings(&zk_contract_config::AppSettings::default()).unwrap();
+        assert!(zk_contract_agent::default_agent_settings().is_none());
         zk_contract_agent::set_agent_hook_sink(None);
     }
 
@@ -1304,5 +1440,40 @@ mod tests {
         assert!(removed.ok);
         assert!(!home.join("skills/demo-skill").exists());
         std::fs::remove_dir_all(&home).unwrap();
+    }
+    #[test]
+    fn host_result_dtos_serialize_the_generated_contract_shapes() {
+        let meta = zk_contract_ipc::results::MetaInfo {
+            edition: "personal".to_owned(),
+            version: "0.1.0".to_owned(),
+            packages: vec!["zeokeel/desktop".to_owned()],
+            agent_config_error: None,
+        };
+        let meta_value = serde_json::to_value(&meta).unwrap();
+        assert_eq!(meta_value["edition"], "personal");
+        assert_eq!(meta_value["version"], "0.1.0");
+        assert!(meta_value["packages"].is_array());
+        assert!(meta_value.get("agent_config_error").is_some());
+
+        let chat = zk_contract_ipc::results::ChatSendResult {
+            stream_id: "stream-1".to_owned(),
+            conversation_id: "conversation-1".to_owned(),
+            workspace_id: "workspace-1".to_owned(),
+        };
+        let chat_value = serde_json::to_value(&chat).unwrap();
+        assert_eq!(chat_value["stream_id"], "stream-1");
+        assert_eq!(chat_value["conversation_id"], "conversation-1");
+        assert_eq!(chat_value["workspace_id"], "workspace-1");
+
+        let root = std::env::temp_dir().join(format!("zk-ipc-dto-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("main.rs"), "fn main() {}\n").unwrap();
+        let files = super::list_workspace_files(root.to_str().unwrap()).unwrap();
+        let files_value = serde_json::to_value(&files).unwrap();
+        assert!(files_value["items"].is_array());
+        assert_eq!(files_value["items"][0]["path"], "main.rs");
+        assert_eq!(files_value["items"][0]["kind"], "file");
+        assert!(files_value["items"][0]["badge"].is_string());
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

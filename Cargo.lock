@@ -8720,6 +8720,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "zk-contract-agent",
 ]
 
 [[package]]
@@ -9196,9 +9197,15 @@ name = "zk-srv-updates"
 version = "0.1.0"
 dependencies = [
  "axum",
- "serde",
+ "base64 0.22.1",
+ "ed25519-dalek",
+ "http-body-util",
  "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "tempfile",
  "tokio",
+ "tower",
  "zk-contract-server",
  "zk-kit-server",
 ]
@@ -9239,7 +9246,9 @@ version = "0.1.0"
 dependencies = [
  "dirs 6.0.0",
  "rusqlite",
+ "serde_json",
  "uuid",
+ "zk-contract-agent",
  "zk-contract-session",
 ]
 
