@@ -29,6 +29,39 @@ pub fn runner() -> Option<Arc<dyn SubagentRunner>> {
 /// Maximum delegation depth.
 pub const MAX_DEPTH: usize = 3;
 
+/// One subagent run visible to control tools.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct AgentInfo {
+    /// Stable child id.
+    pub id: String,
+    /// Parent conversation id.
+    pub parent: String,
+    /// Delegation depth.
+    pub depth: usize,
+    /// running | done | failed
+    pub status: String,
+    /// Original prompt (truncated by caller).
+    pub prompt: String,
+}
+
+static AGENTS: OnceLock<Mutex<Vec<AgentInfo>>> = OnceLock::new();
+fn agents() -> &'static Mutex<Vec<AgentInfo>> { AGENTS.get_or_init(|| Mutex::new(Vec::new())) }
+
+/// Register a started child.
+pub fn register(id: &str, parent: &str, depth: usize, prompt: &str) {
+    if let Ok(mut guard) = agents().lock() { guard.push(AgentInfo { id: id.to_owned(), parent: parent.to_owned(), depth, status: "running".to_owned(), prompt: prompt.chars().take(200).collect() }); }
+}
+
+/// Mark a child finished.
+pub fn finish(id: &str, ok: bool) {
+    if let Ok(mut guard) = agents().lock() {
+        if let Some(agent) = guard.iter_mut().find(|agent| agent.id == id) { agent.status = if ok { "done".to_owned() } else { "failed".to_owned() }; }
+    }
+}
+
+/// List known child runs (most recent last).
+#[must_use] pub fn list() -> Vec<AgentInfo> { agents().lock().map(|guard| guard.clone()).unwrap_or_default() }
+
 thread_local! {
     static DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }

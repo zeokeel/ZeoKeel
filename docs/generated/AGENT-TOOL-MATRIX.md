@@ -23,8 +23,8 @@ DSH reference: `research/dsh-agent-inventory.md` §2. Status is honest: implemen
 | schedule | tool.schedule | zeokeel/tool-schedule | partial | definitions only; no worker |
 | session-query | tool.session_query | zeokeel/tool-session-query | implemented | search/read |
 | subagent | tool.subagent | zeokeel/tool-subagent | partial | synchronous; no fork/control |
-| subagent-control | tool.subagent_control | zeokeel/tool-subagent-control | partial | list only; send/interrupt unavailable |
-| workflow | tool.workflow | zeokeel/tool-workflow | partial | linear only |
+| subagent-control | tool.subagent_control | zeokeel/tool-subagent-control | partial | real child registry list; send/interrupt unavailable |
+| workflow | tool.workflow | zeokeel/tool-workflow | implemented | linear + DAG topological order |
 | ralph | tool.ralph | zeokeel/tool-ralph | partial | bounded loop; no fresh context isolation |
 | working-directory | tool.working_directory | zeokeel/tool-working-directory | implemented |  |
 | workspace-dependencies | tool.workspace_dependencies | zeokeel/tool-workspace-dependencies | implemented |  |

@@ -248,14 +248,20 @@ impl zk_kit_subagent::SubagentRunner for RigSubagentRunner {
         if depth >= zk_kit_subagent::MAX_DEPTH { return Err("subagent depth limit reached".to_owned()); }
         let model = self.model.clone();
         let tools = self.tools.clone();
+        static SUBAGENT_SEQ: AtomicU64 = AtomicU64::new(1);
+        let id = format!("subagent-{}", SUBAGENT_SEQ.fetch_add(1, Ordering::SeqCst));
+        zk_kit_subagent::register(&id, &context.conversation_id, depth.saturating_add(1), prompt);
         let mut child_context = context.clone();
         child_context.conversation_id = format!("{}-sub-{}", context.conversation_id, depth.saturating_add(1));
         let prompt = prompt.to_owned();
+        let id_for_finish = id.clone();
         let handle = std::thread::spawn(move || {
             let agent = RigAgent::new(model, tools).map_err(|error| error.to_string())?.with_streaming(false);
             agent.run_in(&child_context, &prompt).map(|reply| reply.text).map_err(|error| error.to_string())
         });
-        handle.join().map_err(|_| "subagent thread panicked".to_owned())?
+        let result = handle.join().map_err(|_| "subagent thread panicked".to_owned())?;
+        zk_kit_subagent::finish(&id_for_finish, result.is_ok());
+        result
     }
 }
 

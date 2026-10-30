@@ -5,6 +5,7 @@ import type { Page } from "@playwright/test";
 async function newConversation(page: Page): Promise<void> {
   await page.getByRole("button", { name: "新建会话" }).last().click();
   await page.waitForLoadState("networkidle");
+  await page.waitForTimeout(150);
   await expect(page.getByRole("textbox").first()).toBeVisible();
 }
 
