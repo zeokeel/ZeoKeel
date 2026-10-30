@@ -24,8 +24,21 @@ fn forbidden_ip(ip: IpAddr) -> bool {
                 || v4.octets()[0] == 0
                 || (v4.octets()[0] == 100 && (64..=127).contains(&v4.octets()[1]))
                 || (v4.octets()[0] == 192 && v4.octets()[1] == 0 && v4.octets()[2] == 0)
+                // Benchmarking range (198.18.0.0/15) and reserved 240.0.0.0/4.
+                || (v4.octets()[0] == 198 && (v4.octets()[1] & 0xfe) == 18)
+                || v4.octets()[0] >= 240
         }
         IpAddr::V6(v6) => {
+            // IPv4-mapped IPv6 (::ffff:a.b.c.d) resolves to an IPv4 endpoint; apply
+            // the IPv4 policy first, otherwise loopback/private/metadata addresses
+            // slip through as "public" IPv6.
+            if let Some(mapped) = v6.to_ipv4_mapped() {
+                return forbidden_ip(IpAddr::V4(mapped));
+            }
+            // IPv4-compatible (deprecated) addresses map the same way.
+            if let Some(compatible) = v6.to_ipv4() {
+                return forbidden_ip(IpAddr::V4(compatible));
+            }
             v6.is_loopback()
                 || v6.is_unspecified()
                 || v6.is_unique_local()
@@ -41,8 +54,13 @@ fn resolve_public(url: &reqwest::Url) -> Option<std::net::SocketAddr> {
     if url.username() != "" || url.password().is_some() {
         return None;
     }
-    let host = url.host_str()?;
-    if host.eq_ignore_ascii_case("localhost") || host.ends_with(".local") {
+    // `host_str()` returns IPv6 literals in brackets; strip them so they are
+    // classified as addresses (not DNS names) before any network access.
+    let host = url
+        .host_str()?
+        .trim_start_matches('[')
+        .trim_end_matches(']');
+    if host.eq_ignore_ascii_case("localhost") || host.to_ascii_lowercase().ends_with(".local") {
         return None;
     }
     if let Ok(ip) = host.parse::<IpAddr>() {
@@ -88,6 +106,8 @@ impl Tool for WebFetchTool {
             let host = current
                 .host_str()
                 .ok_or_else(|| ToolError::InvalidArgs("URL has no host".to_owned()))?
+                .trim_start_matches('[')
+                .trim_end_matches(']')
                 .to_owned();
             let client = reqwest::blocking::Client::builder()
                 .timeout(Duration::from_secs(20))
@@ -149,6 +169,41 @@ mod tests {
             "http://192.168.1.1/",
             "http://[::1]/",
             "http://169.254.169.254/",
+        ] {
+            let parsed = reqwest::Url::parse(url).unwrap();
+            assert!(super::resolve_public(&parsed).is_none(), "{url}");
+        }
+    }
+
+    #[test]
+    fn rejects_ipv4_mapped_private_hosts() {
+        // SSRF bypass regression: ::ffff:a.b.c.d must be judged as IPv4.
+        for url in [
+            "http://[::ffff:127.0.0.1]/",
+            "http://[::ffff:10.0.0.1]/",
+            "http://[::ffff:172.20.0.1]/",
+            "http://[::ffff:192.168.1.1]/",
+            "http://[::ffff:169.254.169.254]/",
+            "http://[::ffff:100.100.100.200]/",
+            "http://[::ffff:198.18.0.1]/",
+        ] {
+            let parsed = reqwest::Url::parse(url).unwrap();
+            assert!(super::resolve_public(&parsed).is_none(), "{url}");
+        }
+    }
+
+    #[test]
+    fn allows_public_ipv4_mapped_host() {
+        let parsed = reqwest::Url::parse("http://[::ffff:8.8.8.8]/").unwrap();
+        assert!(super::resolve_public(&parsed).is_some());
+    }
+
+    #[test]
+    fn rejects_reserved_ipv4_ranges() {
+        for url in [
+            "http://198.18.0.1/",
+            "http://198.19.255.254/",
+            "http://240.0.0.1/",
         ] {
             let parsed = reqwest::Url::parse(url).unwrap();
             assert!(super::resolve_public(&parsed).is_none(), "{url}");

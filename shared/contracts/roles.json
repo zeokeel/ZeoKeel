@@ -6,14 +6,14 @@
     "cardinality": "singleton"
   },
   "agent.loop": {
-    "package": "zeokeel/agent-loop",
-    "crate_name": "zk-agent-loop",
+    "package": "zeokeel/agent-rig",
+    "crate_name": "zk-agent-rig",
     "contract": "zk-contract-agent",
     "cardinality": "singleton"
   },
   "llm.provider.default": {
-    "package": "zeokeel/llm-mock",
-    "crate_name": "zk-llm-mock",
+    "package": "zeokeel/llm-rig",
+    "crate_name": "zk-llm-rig",
     "contract": "zk-contract-llm",
     "cardinality": "singleton"
   },

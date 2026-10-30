@@ -1,9 +1,16 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
-use zk_llm_rig::{model_from, RigConfig};
+use zk_llm_rig::{model_from, unconfigured_model, RigConfig};
 
 #[test]
 fn empty_config_is_invalid() {
     assert!(model_from(&RigConfig::default()).is_err());
+}
+
+#[test]
+fn unconfigured_fallback_model_builds() {
+    // ADR-064: composed desktop must boot before provider settings are applied.
+    let model = unconfigured_model().unwrap();
+    let _ = model;
 }
 
 #[test]

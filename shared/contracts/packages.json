@@ -8,7 +8,7 @@
     ]
   },
   {
-    "id": "zeokeel/agent-loop",
+    "id": "zeokeel/agent-rig",
     "version": "0.1.0",
     "kind": "capability",
     "roles": [
@@ -16,7 +16,7 @@
     ]
   },
   {
-    "id": "zeokeel/llm-mock",
+    "id": "zeokeel/llm-rig",
     "version": "0.1.0",
     "kind": "capability",
     "roles": [

@@ -6,11 +6,13 @@ license.workspace = true
 
 [dependencies]
 reqwest = { workspace = true }
+rig-core = { workspace = true }
 serde_json = { workspace = true }
 zk-contract-llm = { path = "../../contracts/llm" }
 
 [dev-dependencies]
 axum = { workspace = true }
+futures = { workspace = true }
 tokio = { workspace = true }
 
 [lints]

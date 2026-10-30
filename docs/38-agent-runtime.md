@@ -1,6 +1,11 @@
 # 38 · Agent runtime（rig）
 
 > 真源：`agent.loop` = `packages/client/agent-rig`，模型 = `llm.provider.default`，工具 = `tool.*` 包。DSH 只作参考（`research/dsh-agent-inventory.md`），不运行 DSH。
+>
+> **组合状态（ADR-064，2026-10-31）**：`editions/personal.toml`（enterprise 继承）映射
+> `agent.loop = zeokeel/agent-rig`、个人版 `llm.provider.default = zeokeel/llm-rig`；
+> `packages/client/agent-loop` 只保留为最小演示/契约对拍，不进入 shipped 组合。未配置 provider 时
+> 桌面以占位模型启动，随后从 settings 热切换（失败输出诊断日志；`settings.set` 把错误回传 UI）。
 
 ## 1. 内核
 
@@ -20,12 +25,12 @@
 - `EventSink` 通过 `run_stream_in_shared(Arc<dyn EventSink>)` 传入，工具与审批可在执行中发事件；旧 `&dyn` 路径用缓冲 sink 兼容。
 - 每轮事件：TurnStarted → ApprovalRequested/Resolved → ToolCallStarted/Finished → TextDelta → TurnCompleted/Cancelled/Error。
 - 取消：rig 流式循环每项检查 `RigAgent.cancel()`；工具执行前检查取消；桌面 `chat.cancel` 调用 `Runtime::cancel_agent()`。工具超时可由 `ZEOKEEL_TOOL_TIMEOUT_MS` 配置（默认 120s）。非流式 provider 通过 50ms 轮询取消标志也可中断；审批超时由 `ZEOKEEL_APPROVAL_TIMEOUT_MS` 配置（默认 300s）。
-- 委派：subagent/workflow/ralph 复用同一 model/tools，但子会话 id 隔离为 `<conversation>-sub-<depth>`；最大深度 3。
+- 委派：subagent/workflow/ralph 复用同一 model/tools，但子会话 id 隔离为 `<conversation>-sub-<depth>`；最大深度 3。深度按会话 id 传递（子代理在新线程执行，不能只依赖线程本地状态），工具执行闭包内恢复深度后 `MAX_DEPTH` 才真正生效。
 
 ## 4. 工具矩阵
 
 - 已实现：`fs.read`、`fs.write`、`fs.edit`、`fs.search`、`bash`、`bash_persistent`、`job_output/list/kill`、`glob`、`grep`、`skill`、`web.fetch`、`working_directory`、`todo`、`present`、`load_workspace_dependencies`、`create_worktree`、`terminal`、`goal`、`schedule`、`pwsh`、`read_image`、`subagent`、`subagent_fork`、`workflow`、`ralph`、`ask_user_question`、`extract_json`、`read_document`（PDF/EPUB）、`session_search`、`web_search`、`pwsh_persistent`、`subagent_control`、`cordis`（禁用）、`agent_team`（实验禁用）；UI 已有审批卡、问题卡、provider 流式/取消；每个工具包至少一条行为测试，`scripts/agent-e2e.sh` 覆盖 9 条人机流程（审批/拒绝/取消/ask-user/bash/present/多步；retries=0）。
-- 部分/未实现：`agent-team`（未启用）、`call-timeout`（固定 120s 策略）、schedule 执行器、workflow 并行（DAG 已支持）、subagent fork/异步 control、pwsh persistent 平台支持。
+- 部分/未实现：`agent-team`（未启用）、`call-timeout`（固定 120s 策略）、workflow 并行（DAG 已支持）、subagent fork/异步 control、pwsh persistent 平台支持。`schedule` 执行器为 opt-in：仅当 `ZEOKEEL_ENABLE_SCHEDULE_AUTORUN=1` 时读取工作区 `.zeokeel/schedules.json` 并自动起 turn；条目必须带 `schedule` 工具写入的 `origin` 标记、按 `interval_seconds` 重复（cron 在创建时校验但不解释）。
 - 完整矩阵与测试状态以 `docs/generated/AGENT-TOOL-MATRIX.md` 为准。
 - 平台不支持必须返回明确错误，不得静默缺失。
 

@@ -7,8 +7,8 @@ edition `personal` · channel `official` · 55 packages
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
 | `agent.hooks` | `zeokeel/cap-hooks` | `zk-cap-hooks` | `zk-contract-agent` | singleton |
-| `agent.loop` | `zeokeel/agent-loop` | `zk-agent-loop` | `zk-contract-agent` | singleton |
-| `llm.provider.default` | `zeokeel/llm-mock` | `zk-llm-mock` | `zk-contract-llm` | singleton |
+| `agent.loop` | `zeokeel/agent-rig` | `zk-agent-rig` | `zk-contract-agent` | singleton |
+| `llm.provider.default` | `zeokeel/llm-rig` | `zk-llm-rig` | `zk-contract-llm` | singleton |
 | `media.audio` | `zeokeel/cap-audio` | `zk-cap-audio` | `zk-contract-agent` | singleton |
 | `media.image` | `zeokeel/cap-image` | `zk-cap-image` | `zk-contract-agent` | singleton |
 | `media.rerank` | `zeokeel/cap-rerank` | `zk-cap-rerank` | `zk-contract-agent` | singleton |

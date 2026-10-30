@@ -137,9 +137,37 @@ pub fn model_from(config: &RigConfig) -> Result<DynModel<Completion>, LlmError> 
     }
 }
 
+/// Base URL of the placeholder model used before a provider is configured.
+///
+/// It points at a closed local port so a turn started before configuration fails
+/// loudly at the transport layer instead of silently using a mock model.
+const UNCONFIGURED_BASE_URL: &str = "http://127.0.0.1:9/v1";
+
+/// Build a placeholder model for an install without provider configuration.
+///
+/// The composed desktop cannot start without a `DynModel`; persisted settings are
+/// applied immediately after `build()` via the settings hot-swap path (ADR-064).
+pub fn unconfigured_model() -> Result<DynModel<Completion>, LlmError> {
+    model_from(&RigConfig {
+        provider: "openai".to_owned(),
+        base_url: UNCONFIGURED_BASE_URL.to_owned(),
+        api_key: "unconfigured".to_owned(),
+        model: "unconfigured".to_owned(),
+    })
+}
+
 /// Default factory used by generated glue.
+///
+/// Resolves the provider from `ZEOKEEL_*` env; when nothing is configured it
+/// returns [`unconfigured_model`] so the desktop can boot and then apply persisted
+/// settings (ADR-064). A partially configured provider still returns an error so
+/// mistakes surface during startup.
 pub fn model() -> Result<DynModel<Completion>, LlmError> {
-    model_from(&RigConfig::from_env())
+    let config = RigConfig::from_env();
+    if config.base_url.trim().is_empty() && config.api_key.trim().is_empty() {
+        return unconfigured_model();
+    }
+    model_from(&config)
 }
 
 /// Legacy provider adapter kept for package contract compatibility.

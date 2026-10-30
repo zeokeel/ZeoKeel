@@ -139,6 +139,10 @@ impl RigAgent {
             let records_for_tool = Arc::clone(records);
             let sink_for_tool = Arc::clone(sink);
             let cancelled_for_tool = Arc::clone(&cancelled);
+            // Delegation depth of this conversation (0 for the root turn): a child
+            // conversation runs on another thread, so re-apply it inside the tool
+            // execution closure (see zk_kit_subagent::set_context_depth).
+            let tool_depth = zk_kit_subagent::context_depth(&context.conversation_id);
             out.push(DynamicTool::new(
                 name,
                 spec.description,
@@ -151,6 +155,7 @@ impl RigAgent {
                     let context = callback_context.clone();
                     let approval = Arc::clone(&approval);
                     let approval_name = approval_name.clone();
+                    let depth = tool_depth;
                     Box::pin(async move {
                         let records = Arc::clone(&records_for_tool);
                         if requires_approval {
@@ -207,7 +212,9 @@ impl RigAgent {
                         let outcome = tokio::time::timeout(
                             std::time::Duration::from_millis(timeout_ms),
                             tokio::task::spawn_blocking(move || {
-                                tool_for_call.call_json(&context_for_call, args)
+                                zk_kit_subagent::with_depth(depth, move || {
+                                    tool_for_call.call_json(&context_for_call, args)
+                                })
                             }),
                         )
                         .await;
@@ -492,18 +499,14 @@ impl zk_kit_subagent::SubagentRunner for RigSubagentRunner {
         let tools = self.tools.clone();
         static SUBAGENT_SEQ: AtomicU64 = AtomicU64::new(1);
         let id = format!("subagent-{}", SUBAGENT_SEQ.fetch_add(1, Ordering::SeqCst));
-        zk_kit_subagent::register(
-            &id,
-            &context.conversation_id,
-            depth.saturating_add(1),
-            prompt,
-        );
+        let child_depth = depth.saturating_add(1);
+        zk_kit_subagent::register(&id, &context.conversation_id, child_depth, prompt);
         let mut child_context = context.clone();
-        child_context.conversation_id = format!(
-            "{}-sub-{}",
-            context.conversation_id,
-            depth.saturating_add(1)
-        );
+        let child_conversation_id = format!("{}-sub-{child_depth}", context.conversation_id);
+        child_context.conversation_id = child_conversation_id.clone();
+        // The child runs on a new thread: persist its depth by conversation id so
+        // the child's DynamicTool callbacks (also on fresh threads) see it.
+        zk_kit_subagent::set_context_depth(&child_conversation_id, child_depth);
         let prompt = prompt.to_owned();
         let id_for_finish = id.clone();
         let handle = std::thread::spawn(move || {
@@ -515,9 +518,9 @@ impl zk_kit_subagent::SubagentRunner for RigSubagentRunner {
                 .map(|reply| reply.text)
                 .map_err(|error| error.to_string())
         });
-        let result = handle
-            .join()
-            .map_err(|_| "subagent thread panicked".to_owned())?;
+        let joined = handle.join();
+        zk_kit_subagent::clear_context_depth(&child_conversation_id);
+        let result = joined.map_err(|_| "subagent thread panicked".to_owned())?;
         zk_kit_subagent::finish(&id_for_finish, result.is_ok());
         result
     }
@@ -751,6 +754,58 @@ mod tests {
         ) -> Result<String, zk_contract_tool::ToolError> {
             Ok("content".to_owned())
         }
+    }
+
+    struct DepthTool;
+    impl Tool for DepthTool {
+        fn spec(&self) -> zk_contract_tool::ToolSpec {
+            zk_contract_tool::ToolSpec {
+                name: "depth.probe".to_owned(),
+                description: "reports the delegation depth seen by a tool callback".to_owned(),
+                parameters: serde_json::json!({"type":"object"}),
+                mutating: false,
+                requires_approval: false,
+            }
+        }
+        fn call(&self, _args: &str) -> Result<String, zk_contract_tool::ToolError> {
+            Err(zk_contract_tool::ToolError::InvalidArgs(
+                "depth.probe requires JSON".to_owned(),
+            ))
+        }
+        fn call_json(
+            &self,
+            _context: &TurnContext,
+            _args: serde_json::Value,
+        ) -> Result<String, zk_contract_tool::ToolError> {
+            Ok(zk_kit_subagent::current_depth().to_string())
+        }
+    }
+
+    #[test]
+    fn tool_callbacks_see_context_depth() {
+        zk_kit_subagent::set_context_depth("depth-test-conv", 2);
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("call-1", "depth.probe", serde_json::json!({})),
+            MockTurn::text("done"),
+        ]);
+        let agent = RigAgent::new(model.into(), vec![Arc::new(DepthTool)])
+            .unwrap()
+            .with_streaming(false);
+        let reply = agent
+            .run_in(
+                &TurnContext {
+                    conversation_id: "depth-test-conv".to_owned(),
+                    workspace_id: "w".to_owned(),
+                    workspace_root: ".".to_owned(),
+                },
+                "probe",
+            )
+            .unwrap();
+        zk_kit_subagent::clear_context_depth("depth-test-conv");
+        assert_eq!(
+            reply.tool_calls.first().map(|call| call.result.as_str()),
+            Some("2")
+        );
     }
 
     struct Gate(bool);

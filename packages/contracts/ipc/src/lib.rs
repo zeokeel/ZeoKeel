@@ -128,4 +128,6 @@ pub mod commands {
     pub const META_GET: &str = "meta.get";
     /// Inject enterprise gateway server URL/access token after login.
     pub const AUTH_CONFIGURE: &str = "auth.configure";
+    /// Clear enterprise gateway credentials after logout (local session is UI-owned).
+    pub const AUTH_LOGOUT: &str = "auth.logout";
 }

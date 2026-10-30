@@ -586,3 +586,10 @@ S0 验证尚未完成（见 `12`），这不是“未决架构问题”，而是
 **决策**：M4 应用窗口使用 Tauri `data_directory(<ZEOKEEL_HOME>/app-webviews/<app_id>)` + `incognito(true)` + 自定义 `zk-app://` origin + 导航闸门作为每应用存储隔离；不直接映射浏览器 partition（Tauri/WebView2/WKWebView 未提供跨平台显式 partition API）。每个 app 的 storage/cookie/cache 目录独立，窗口关闭不共享。
 **理由**：docs/04 §9 要求“独立 origin + 独立 partition”；Tauri 2 的跨平台等价能力是独立 data directory + incognito，加上 `zk-app://<app_id>/` origin 和导航限制，达到同等的存储/导航隔离。
 **后果**：审计检查点改为“data_directory 按 app_id 唯一 + incognito + origin/导航闸门”，不再要求不存在的 partition API；若未来 Tauri 提供 partition，再替换实现。
+
+
+### ADR-064 · shipped `agent.loop` 固定为 agent-rig（agent-loop 降级为演示）`accepted`
+
+**决策**（2026-10-31，用户指令）：`editions/personal.toml` 把 `agent.loop` 映射为 `zeokeel/agent-rig`、`llm.provider.default` 映射为 `zeokeel/llm-rig`；enterprise 继承该映射（网关包提供自己的 rig 适配）。`packages/client/agent-loop` 只保留为最小演示与契约 conformance 对拍实现。`docs/38` 是 agent 运行时唯一权威；`docs/05` §5 原口径（“M1 只依赖 rig-core / agent-rig 为 M5 可选”）被本 ADR 取代。rig 依赖仍只出现在 `zk-llm-rig`/`zk-agent-rig` 适配层，`zk-contract-*` 与 `zk-tool-*` 不依赖 rig（`docs/05` §5.1 铁律不变）。
+**理由**：用户 2026-10-31 指令要求 agent 功能完备、rig 能力全支持；M0 的 `agent-loop` 只实现了单轮 `TOOL fs.read` 文本协议，无法承载 `docs/38` 的工具、审批、取消、委派语义。继续以 `agent-loop` 作为 shipped 默认会让 `scripts/agent-e2e.sh` 的 dev-live 组合与用户实际构建分叉。
+**后果**：① 默认构建需要 rig model：`llm-rig` 在未配置 provider 时返回占位模型使桌面可启动，启动后从 settings 热切换，失败写诊断日志；`settings.set` 的 configure 失败回传 UI 错误（不再静默丢弃）。② enterprise 构建要求 `zk-llm-gateway` 提供 `model()`/`model_from_config()` rig 适配（由网关包任务交付），否则 enterprise 组合不编译。③ 新增 agent 能力只改 `agent-rig`/工具包并同步 `docs/38` 与 `docs/generated/AGENT-TOOL-MATRIX.md`。④ `profiles/dev-live.toml` 的覆盖与 default 等价，保留为本地 env 联调入口。

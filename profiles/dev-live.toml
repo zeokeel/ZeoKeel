@@ -3,6 +3,10 @@
 #   set -a; . ./.env.local; set +a
 #   zk compose --edition personal --profile dev-live --channel official
 #   cargo run -p zk-desktop -- --serve
+#
+# 兼容说明（ADR-064，2026-10-31）：personal×default 已默认映射
+# llm.provider.default=zk-llm-rig、agent.loop=zk-agent-rig，本 profile 的 [packages]
+# 覆盖与 default 等价，保留为历史入口；环境变量注入方式仍可用于本地联调。
 [profile]
 name = "dev-live"
 base = "default"
