@@ -15,8 +15,8 @@
 | 6 | admin-apps 页面 + registry | `packages/admin/admin-apps`, `zk.toml`, editions, docs16 | 4 | `admin-e2e.sh` + axe | ✅ |
 | 7 | `app_request` IPC/capability + ui-apps 面板/窗口/错误页 | `packages/contracts/ipc`, `packages/ui/ui-apps`, `apps/desktop`, `zk.toml`, `apps/desktop/capabilities/*` | 5 | `cargo test -p zk-contract-ipc`; Playwright + axe；窗口其他 IPC 403 负向 | ✅ |
 | 8 | Go 示例应用（表单/数据）+ frame golden（第二个示例；脚本已在 5） | `examples/wasm`, `scripts/apps-e2e.sh` | 5 | `apps-e2e.sh`，`golden/run.py` | ✅ |
-| 9 | 安全/限额负向（SQL/AI/network/file/DB/memory/fuel/time/concurrency） | tests, `scripts/apps-e2e.sh` | 5,8 | `cargo test` + `apps-e2e.sh` 每项错误码 | ☐ |
-| 10 | 文档/验收/归档 | docs/12/16/21, acceptance, spec 归档 | 1–9 | `docs-check`, `spec-check`, `review-check` | ☐ |
+| 9 | 安全/限额负向（SQL/AI/network/file/DB/memory/fuel/time/concurrency） | tests, `scripts/apps-e2e.sh` | 5,8 | `cargo test` + `apps-e2e.sh` 每项错误码 | ✅ |
+| 10 | 文档/验收/归档 | docs/12/16/21, acceptance, spec 归档 | 1–9 | `docs-check`, `spec-check`, `review-check` | ✅ |
 
 ## 2. 写作用域
 

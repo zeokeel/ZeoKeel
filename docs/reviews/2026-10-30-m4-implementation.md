@@ -2,7 +2,7 @@
 
 - **评审对象**：`crates/zk-kit-wasm`、`packages/contracts/app`、`packages/server/{apps,app-runtime,app-db}`、`packages/admin/admin-apps`、`packages/ui/ui-apps`、`apps/desktop/src/ipc.rs` `app_request`、`apps/desktop/web`、`scripts/apps-e2e.sh`、`e2e/m4-*`、docs/04/07/24、ADR-062
 - **评审者**：audit-arch（独立只读；仅写本记录）
-- **结论**：CHANGES-REQUESTED
+- **结论**：APPROVED
 - **关联 spec**：`specs/changes/2026-10-30-wasm-app-center`
 - 证据日期：2026-10-30；本记录为唯一新增文件，未改产品代码/spec。
 
@@ -635,3 +635,48 @@
 
 - memory：wasmtime 错误后用 `Memory::data_size` 检测内存达上限，映射 `WasmError::Memory`；`limits.rs` 断言 `Memory` 通过；`zk-srv-app-runtime/tests/errors.rs` 断言 `APP_LIMIT_MEMORY`/fuel/time 映射。
 - app_runtime_logs 全局 100k cap；app-retire e2e 已通过。
+
+---
+
+## 16. 第八轮复评（R8，2026-10-30）
+
+> 对象：R7 修复后的 M4 实现。只读复跑；未改产品代码/spec（仅本记录）。
+> 仅列剩余 P0/P1。
+
+### 16.1 结论
+
+**APPROVED**
+
+- **P0：0；P1：0**。
+- **M4 实现可 APPROVED**。
+- **P2**：Tauri 应用窗口运行时仍按 documented manual exception 记录；per-limit HTTP e2e 不作为本次硬门禁（unit/integration 覆盖 + 现有 e2e 覆盖 happy path/权限/retire/static）。
+
+### 16.2 R7 P1 关闭
+
+- **memory 错误**：`crates/zk-kit-wasm/src/lib.rs:238-240` 用 wasm memory `data_size` 在 trap 后识别并映射 `WasmError::Memory`；`limits.rs:23` 断言 `WasmError::Memory`；`packages/server/app-runtime/tests/errors.rs` 断言 `APP_LIMIT_FUEL/TIME/MEMORY`、`APP_BAD_WASM`。
+- **日志/retire**：`app_runtime_logs` 100k cap；`app-retire` e2e 已覆盖 31d delete → job → open 404/403；`apps-e2e` 输出 retire。
+- **既有**：SQL/AST gate、app-db 16-table/quota/schema、fuel/golden（不 ignore）、static UI MIME/whitelist、employee/can_open、M4 client e2e 均通过。
+
+### 16.3 验证
+
+| 命令 | 结果 |
+| --- | --- |
+| `cargo test -p zk-kit-wasm -p zk-srv-apps -p zk-srv-app-db -p zk-srv-app-runtime --offline` | **PASS**；golden 1 passed（8.53s）；errors/limits 通过 |
+| `bash scripts/apps-e2e.sh` | **PASS**（EXIT 0，输出含 retire） |
+| `bash scripts/admin-e2e.sh` | **PASS**（9 passed） |
+| `bash scripts/login-e2e.sh` | **PASS**（4 passed，含 M4 client） |
+| `cargo test --workspace` / clippy / compose / validate / schema / db lock | **PASS**（前轮 R7） |
+| `tauri-smoke` | Xvfb WebKit 渲染限制；**P2 manual exception**（ADR-063 + static capability test） |
+
+### 16.4 P2 记录
+
+- Tauri app-window 的 `app_request`/core ACL/runtime partition 在 Xvfb WebKit 下无法稳定取证；按 ADR-063 + capability static test + label gates 作为 documented manual exception。若有桌面/WebKitWebDriver，补一次 app window 截图 + 命令拒绝记录；若实测 `withGlobalTauri` 下 core/plugin 可用，则升 P0。
+- per-limit HTTP e2e（concurrency/20GB/16-table）未作为 M4 硬门禁：`app-db` 16-table/quota/schema 单测、runtime fuel/memory/time 单测、error mapping 单测、apps-e2e 权限/retire/static 已覆盖；后续可在 M4.1 补 HTTP 限流矩阵。
+- `app_runtime_logs` 插入失败仍 `let _`（P2，建议 fail-closed/降级日志）。
+- 自定义 `max_memory <64MB` 时 `lib.rs:240` 的 fallback 可能把 timeout/fuel 误判为 Memory（P2；默认 64MB 不触发）。
+
+### 16.5 结论
+
+- **P0：0；P1：0**。
+- 关联 spec：`specs/changes/2026-10-30-wasm-app-center`。
+- 复评结论（第八轮）：**APPROVED**

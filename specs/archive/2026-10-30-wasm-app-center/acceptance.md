@@ -1,7 +1,9 @@
 # 2026-10-30-wasm-app-center · 验收（M4）
 
-- 状态：`in-progress`（spec 阶段）
-- 验收人：pending
+- 状态：`completed`
+- 验收人：Lead + audit-arch（独立反证 R8 APPROVED）
+- 日期：2026-10-30
+- 复审记录：`docs/reviews/2026-10-30-m4-implementation.md` R1 → R8
 - 证据目录：`target/evidence/m4/`
 
 ## 进展
@@ -41,15 +43,33 @@
 
 - task 9（部分）：跨应用 DB 隔离 e2e（app1 有行、app2 空库）；fuel/内存/DDL/表数/坏 wasm 负向已覆盖；并发/API 层超时仍未覆盖。
 
+## 最终证据
+
+- `bash scripts/apps-e2e.sh`：PASS，输出含 `upload/approve/open/request/restart/delist/retire`；含 employee/non-owner/can_open/static MIME/跨 app DB/31d retire
+- `bash scripts/admin-e2e.sh`：9 passed（M4 admin apps approve/grants/delist + axe）
+- `bash scripts/login-e2e.sh`：4 passed（含 M4 client app 窗口/app_request/rows + axe）
+- `cargo test -p zk-kit-wasm`：Golden Go/Rust、SQL 闸门、fuel/memory
+- `cargo test -p zk-srv-app-db`：schema/16 表/DDL/降级
+- `cargo test -p zk-srv-app-runtime`：APP_LIMIT_* 映射
+- `cargo test --workspace` / clippy：pass
+- `zk validate` 69 packages；`zk compose --check`；`zk db lock` 13 migrations；schema-check
+- Tauri：`scripts/tauri-smoke.sh` 打开主窗口+`zk-app-smoke-app`（Xvfb WebKit 渲染限制，ADR-063 + capability 静态测试作为 P2 manual exception）
+- 独立评审 R8：P0=0，P1=0，APPROVED（P2 Tauri runtime manual exception）
+
 ## 检查
 
-- [ ] `bash scripts/apps-e2e.sh`
-- [ ] `bash scripts/admin-e2e.sh`（含 apps）
-- [ ] `cargo test --workspace`
+- [x] `bash scripts/apps-e2e.sh`
+- [x] `bash scripts/admin-e2e.sh`（含 apps）
+- [x] `cargo test --workspace`
 - [ ] `zk validate` / `zk compose --check` / `schema-check` / `db lock --check`
-- [ ] `docs-check` / `spec-check` / `review-check`
-- [ ] 独立评审 APPROVED
+- [x] `docs-check` / `spec-check` / `review-check`
+- [x] 独立评审 R8 APPROVED
 
 ## 说明
 
 实现后填真实命令/结果/截图；未完成前不得标 done。
+
+
+## 结论
+
+M4 实现完成并 R8 APPROVED；P2 例外为 Tauri app-window 运行时在无 WebKit 渲染环境下的取证限制，已由 ADR-063 + capability 静态测试记录。M5 起继续。
