@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "oem-deep",
+  "identity": {
+    "slug": "acme-deep", "product_name": "Acme Deep", "app_id": "com.acme.deep",
+    "company": "Acme", "copyright": "Acme", "deep_link_scheme": "acmedeep",
+    "app_origin_scheme": "acmedeep-app", "data_dir_name": "AcmeDeep", "product_home_dir": ".acmedeep",
+    "linux": { "maintainer": "Acme", "synopsis": "Acme Deep", "category": "Development" }
+  },
+  "brand": { "powered_by": "hide", "logo": { "light": "logo.svg", "dark": "logo-dark.svg" } },
+  "assets": { "accent": "#2563EB" }, "copy": {}, "defaults": { "server_url": "https://deep.acme.example" }
+}

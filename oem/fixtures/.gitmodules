@@ -1,3 +1,6 @@
 [submodule "customers/oem-demo"]
 	path = customers/oem-demo
 	url = ../demo-oem-acme
+[submodule "customers/oem-deep"]
+	path = customers/oem-deep
+	url = ../demo-oem-deep

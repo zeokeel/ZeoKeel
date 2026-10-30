@@ -1,0 +1,15 @@
+schema = 1
+id = "acme/brand"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "Deep OEM brand package fixture"
+
+[role]
+name = "brand.mark"
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "acme-brand" }

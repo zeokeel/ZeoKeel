@@ -1035,6 +1035,15 @@ fn channel_validate(index_dir: &Path) -> Result<()> {
         if entry.depth == "deep" {
             let packages = customer.join("packages");
             if !packages.is_dir() { bail!("channel {id}: deep requires packages/"); }
+            let mut count = 0_usize;
+            for entry in fs::read_dir(&packages)? {
+                let package = entry?.path();
+                if !package.is_dir() { continue; }
+                count = count.saturating_add(1);
+                for file in ["zk.toml", "README.md"] { if !package.join(file).is_file() { bail!("channel {id}: deep package missing {file}"); } }
+                if !package.join("src/lib.rs").is_file() || !package.join("tests").is_dir() { bail!("channel {id}: deep package must have src/lib.rs + tests/"); }
+            }
+            if count == 0 { bail!("channel {id}: deep packages/ is empty"); }
         }
         if !customer.join("oem.toml").is_file() { bail!("channel {id}: oem.toml missing"); }
     }

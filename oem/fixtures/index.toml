@@ -6,3 +6,10 @@ pin = "0a0cf60bd9d806cf6b3374b8835fb8d1d559cefaa78717409e61442ae1e30cba"
 edition = "enterprise"
 depth = "basic"
 owner = "demo"
+
+[channels.oem-deep]
+submodule = "customers/oem-deep"
+pin = "5c24d78c3fe16b257da08b1f2bdd1cacf57b96ade225e5e2285ab8eb61ad523e"
+edition = "enterprise"
+depth = "deep"
+owner = "demo"

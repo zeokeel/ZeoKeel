@@ -1,0 +1,33 @@
+name: release
+on:
+  workflow_dispatch:
+    inputs:
+      channel: { description: "official | oem-demo", required: true, default: official }
+      version: { description: "semver", required: true, default: "0.1.0" }
+jobs:
+  dist:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pnpm install --frozen-lockfile
+      - run: cargo build --release -p zk-server -p zk-desktop
+      - run: bash scripts/sbom.sh dist/sbom.json
+      - run: bash scripts/build-dist.sh "${{ inputs.channel }}" "${{ inputs.version }}" "dist/${{ inputs.version }}/${{ inputs.channel }}"
+      - run: bash scripts/oem-e2e.sh
+      - uses: actions/upload-artifact@v4
+        with: { name: "dist-${{ inputs.channel }}", path: "dist/${{ inputs.version }}/${{ inputs.channel }}" }
+  notarize:
+    if: ${{ secrets.MACOS_CERT_ID != '' }}
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "macOS notarize/staple enabled only when certificate secrets exist (ADR-037)"
+  upgrade-drill:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/upgrade-drill.sh --dry-run
