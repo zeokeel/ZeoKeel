@@ -102,7 +102,15 @@ impl RigAgent {
                         }
                     }
                     let args_text = serde_json::to_string(&args).unwrap_or_default();
-                    match tool.call_json(&context, args) {
+                    let tool_for_call = Arc::clone(&tool);
+                    let context_for_call = context.clone();
+                    let outcome = tokio::time::timeout(std::time::Duration::from_secs(120), tokio::task::spawn_blocking(move || tool_for_call.call_json(&context_for_call, args))).await;
+                    let outcome = match outcome {
+                        Ok(Ok(result)) => result,
+                        Ok(Err(error)) => Err(zk_contract_tool::ToolError::Io(format!("tool task failed: {error}"))),
+                        Err(_) => Err(zk_contract_tool::ToolError::Io("tool call timed out after 120s".to_owned())),
+                    };
+                    match outcome {
                         Ok(text) => {
                             if let Ok(mut guard) = records.lock() { guard.push(ToolCallRecord { name: approval_name.clone(), args: args_text, result: text.clone() }); }
                             Ok(ToolOutput::text(text))

@@ -19,7 +19,7 @@
 
 - `EventSink` 通过 `run_stream_in_shared(Arc<dyn EventSink>)` 传入，工具与审批可在执行中发事件；旧 `&dyn` 路径用缓冲 sink 兼容。
 - 每轮事件：TurnStarted → ApprovalRequested/Resolved → ToolCallStarted/Finished → TextDelta → TurnCompleted/Cancelled/Error。
-- 取消：当前 rig 运行是阻塞 future；取消需在下一轮把 `CancelToken` 传入 `Agent`（待实现，不得声称已完成）。工具执行前检查 cancellation。
+- 取消：rig 流式循环每项检查 `RigAgent.cancel()` 标志；桌面 `chat.cancel` 调用 `Runtime::cancel_agent()`；工具调用在 120s 超时保护内。非流式/await 路径无法中断，这是已知边界。
 
 ## 4. 工具矩阵
 
@@ -29,6 +29,6 @@
 
 ## 5. rig 能力释放
 
-- 已用：AgentBuilder、DynamicTool、preamble、max turns、run。
-- 待接：streaming（AgentRunner stream）、hooks（审批/观测）、memory（rig-memory）、extractor（structured output）、vector store、loaders、多 provider、图像/音频/转写/rerank。
+- 已用：AgentBuilder、DynamicTool、preamble、max turns、streaming（text delta）、取消标志、审批阻塞、工具超时。
+- 待接：hooks 全面观测、memory（rig-memory）、extractor、vector store、loaders、多 provider、图像/音频/转写/rerank。
 - 每项独立能力包/角色；未配置时 `CAPABILITY_UNAVAILABLE`。
