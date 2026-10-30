@@ -21,5 +21,5 @@
 ## P3 admin SPA (progress)
 
 - `apps/admin/web`（Vite/React）：登录、用户/角色、钱包调账、模型价格、审计、用量。
-- 本地 Playwright 实测：登录 → 创建 e2e-user → 钱包调账 → 保存价格；axe serious/critical = 0。
+- `bash scripts/admin-e2e.sh`：真实 PostgreSQL + server + 4 Playwright tests（建用户/钱包/价格/审计/用量/axe）全绿。
 - 服务端以 `/admin/` 提供静态资源；`ZEOKEEL_ADMIN_DIST` 可覆盖。
