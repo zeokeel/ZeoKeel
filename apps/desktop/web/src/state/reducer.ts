@@ -177,7 +177,7 @@ function bumpConversationMap(
 function streamingIndex(messages: ChatMessage[]): number {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (message !== undefined && message.role === "assistant" && message.status === "streaming") {
+    if (message?.role === "assistant" && message.status === "streaming") {
       return index;
     }
   }
@@ -199,25 +199,21 @@ function updateStreamingMessage(
 }
 
 function applyToolFinished(message: ChatMessage, name: string, result: string): ChatMessage {
-  let updated = false;
-  const toolCalls = message.toolCalls.map((tool) => {
-    if (!updated && tool.name === name && tool.status === "running") {
-      updated = true;
-      return { ...tool, result, status: "done" as const };
-    }
-    return tool;
-  });
-  if (updated) {
+  const runningIndex = message.toolCalls.findIndex((tool) => tool.name === name && tool.status === "running");
+  if (runningIndex >= 0) {
+    const toolCalls = message.toolCalls.map((tool, index) =>
+      index === runningIndex ? { ...tool, result, status: "done" as const } : tool,
+    );
     return { ...message, toolCalls };
   }
   const fallback: ToolCallView = {
-    id: `${message.id}-tool-${message.toolCalls.length}`,
+    id: `${message.id}-tool-${String(message.toolCalls.length)}`,
     name,
     args: "",
     result,
     status: "done",
   };
-  return { ...message, toolCalls: [...toolCalls, fallback] };
+  return { ...message, toolCalls: [...message.toolCalls, fallback] };
 }
 
 function applyAgentEvent(state: AppState, event: AgentEvent): AppState {
@@ -232,7 +228,7 @@ function applyAgentEvent(state: AppState, event: AgentEvent): AppState {
         event.reply.tool_calls.length === 0
           ? message.toolCalls
           : event.reply.tool_calls.map((tool, index) => ({
-              id: `${message.id}-tool-${index}`,
+              id: `${message.id}-tool-${String(index)}`,
               name: tool.name,
               args: tool.args,
               result: tool.result,
@@ -264,7 +260,7 @@ function applyAgentEvent(state: AppState, event: AgentEvent): AppState {
   if (event.type === "tool_call_started") {
     return updateStreamingMessage(state, (message) => {
       const tool: ToolCallView = {
-        id: `${message.id}-tool-${message.toolCalls.length}`,
+        id: `${message.id}-tool-${String(message.toolCalls.length)}`,
         name: event.name,
         args: event.args,
         result: null,
@@ -445,7 +441,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
     case "conversation_created": {
-      const workspaceId = action.conversation.workspace_id || state.activeWorkspaceId || "";
+      const workspaceId = action.conversation.workspace_id !== "" ? action.conversation.workspace_id : (state.activeWorkspaceId ?? "");
       const existing = state.conversationsByWorkspace[workspaceId] ?? [];
       const conversationsByWorkspace = {
         ...state.conversationsByWorkspace,
@@ -561,7 +557,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       let index = -1;
       for (let position = state.messages.length - 1; position >= 0; position -= 1) {
         const message = state.messages[position];
-        if (message !== undefined && message.role === "assistant") {
+        if (message?.role === "assistant") {
           index = position;
           break;
         }
@@ -634,33 +630,23 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "sidebar_toggled":
       return { ...state, sidebarOpen: action.open };
     case "question_answered": {
-      let changed = false;
       const messages = state.messages.map((message) => {
-        const questions = message.questions.map((question) => {
-          if (question.id !== action.questionId) {
-            return question;
-          }
-          changed = true;
-          return { ...question, answers: action.answers };
-        });
-        return changed && questions !== message.questions ? { ...message, questions } : message;
+        const questions = message.questions.map((question) =>
+          question.id === action.questionId ? { ...question, answers: action.answers } : question,
+        );
+        return questions === message.questions ? message : { ...message, questions };
       });
+      const changed = messages.some((message, index) => message !== state.messages[index]);
       return changed ? { ...state, messages } : state;
     }
     case "approval_decided": {
-      let changed = false;
       const messages = state.messages.map((message) => {
-        const approvals = message.approvals.map((approval) => {
-          if (approval.id !== action.approvalId) {
-            return approval;
-          }
-          changed = true;
-          return { ...approval, decision: action.decision };
-        });
-        return changed && approvals !== message.approvals
-          ? { ...message, approvals }
-          : message;
+        const approvals = message.approvals.map((approval) =>
+          approval.id === action.approvalId ? { ...approval, decision: action.decision } : approval,
+        );
+        return approvals === message.approvals ? message : { ...message, approvals };
       });
+      const changed = messages.some((message, index) => message !== state.messages[index]);
       return changed ? { ...state, messages } : state;
     }
     default:

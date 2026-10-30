@@ -49,10 +49,11 @@ function Harness(props: { onSaved: (settings: AppSettings) => void }) {
     settings,
     settingsOpen: open,
     actions: {
-      saveSettings: async (next: AppSettings) => {
+      saveSettings: (next: AppSettings): Promise<void> => {
         setSettings(next);
         props.onSaved(next);
         setOpen(false);
+        return Promise.resolve();
       },
       closeSettings: () => {
         setOpen(false);

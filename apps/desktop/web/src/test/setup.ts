@@ -8,9 +8,15 @@ afterEach(() => {
 // jsdom does not implement ResizeObserver; Radix primitives (tooltip/dialog) probe it.
 if (typeof globalThis.ResizeObserver === "undefined") {
   class ResizeObserverMock {
-    observe(): void {}
-    unobserve(): void {}
-    disconnect(): void {}
+    observe(): void {
+      void 0;
+    }
+    unobserve(): void {
+      void 0;
+    }
+    disconnect(): void {
+      void 0;
+    }
   }
   Object.defineProperty(globalThis, "ResizeObserver", {
     writable: true,
@@ -23,10 +29,10 @@ if (typeof window.matchMedia !== "function") {
     matches: false,
     media: query,
     onchange: null,
-    addListener: () => {},
-    removeListener: () => {},
-    addEventListener: () => {},
-    removeEventListener: () => {},
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
     dispatchEvent: () => false,
   });
   Object.defineProperty(window, "matchMedia", {

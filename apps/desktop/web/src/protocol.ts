@@ -49,7 +49,7 @@ function parseConversationRecord(value: Record<string, unknown>): Conversation |
     workspace_id: readString(value, "workspace_id") ?? "",
     title,
     created_at_ms: createdAt,
-    updated_at_ms: updatedAt === null ? createdAt : updatedAt,
+    updated_at_ms: updatedAt ?? createdAt,
   };
 }
 
@@ -81,7 +81,7 @@ function parseWorkspaceRecord(value: Record<string, unknown>): Workspace | null 
     title,
     is_default: isDefault,
     created_at_ms: createdAt,
-    updated_at_ms: updatedAt === null ? createdAt : updatedAt,
+    updated_at_ms: updatedAt ?? createdAt,
   };
 }
 
@@ -297,7 +297,7 @@ export function parseUiEvent(value: unknown): UiEvent | null {
   return { stream_id: streamId, seq, kind, payload: value["payload"] ?? null };
 }
 
-type CompletedReply = { text: string; tool_calls: ReplyToolCall[] };
+interface CompletedReply { text: string; tool_calls: ReplyToolCall[] }
 
 function parseCompletedReply(value: unknown): CompletedReply | null {
   if (!isRecord(value)) {
@@ -329,6 +329,9 @@ export function parseAgentEvent(value: unknown): AgentEvent | null {
     return null;
   }
   const type = readString(value, "type");
+  if (type === null) {
+    return null;
+  }
   switch (type) {
     case "turn_started": {
       const turnId = readString(value, "turn_id");

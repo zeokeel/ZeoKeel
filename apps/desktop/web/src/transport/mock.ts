@@ -46,7 +46,7 @@ let idCounter = 0;
 
 function nextId(prefix: string): string {
   idCounter += 1;
-  return `${prefix}-${idCounter}`;
+  return `${prefix}-${String(idCounter)}`;
 }
 
 function splitChunks(text: string, size: number): string[] {
@@ -213,7 +213,7 @@ export function createMockTransport(options: MockOptions = {}): Transport {
 
   const startTurn = (conversationId: string, text: string): string => {
     streamCounter += 1;
-    const streamId = `mock-stream-${streamCounter}`;
+    const streamId = `mock-stream-${String(streamCounter)}`;
     const steps = planTurn(text);
     const stream: StreamState = {
       streamId,
@@ -269,6 +269,7 @@ export function createMockTransport(options: MockOptions = {}): Transport {
   };
 
   const call = async (name: string, payload: Record<string, unknown>): Promise<unknown> => {
+    await Promise.resolve();
     switch (name) {
       case "meta.get":
         return { edition: "personal", version: MOCK_VERSION, packages: MOCK_PACKAGES };

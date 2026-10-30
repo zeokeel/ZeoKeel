@@ -18,7 +18,7 @@ export function createHttpTransport(): Transport {
         body: JSON.stringify({ name, payload }),
       });
       if (!response.ok) {
-        throw new Error(`IPC request failed with HTTP ${response.status}`);
+        throw new Error(`IPC request failed with HTTP ${String(response.status)}`);
       }
       const raw: unknown = await response.json();
       const parsed = parseCommandResponse(raw);
@@ -31,7 +31,7 @@ export function createHttpTransport(): Transport {
     subscribe(handler: (event: UiEvent) => void) {
       if (typeof EventSource === "undefined") {
         console.warn("[zk] EventSource unavailable; streaming events disabled");
-        return () => {};
+        return () => undefined;
       }
       const source = new EventSource(EVENTS_PATH);
       source.onmessage = (event: MessageEvent) => {

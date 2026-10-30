@@ -22,7 +22,7 @@ export function createTauriTransport(): Transport {
     subscribe(handler: (event: UiEvent) => void) {
       const api = window.__TAURI__;
       if (api === undefined) {
-        return () => {};
+        return () => undefined;
       }
       let disposed = false;
       let unlisten: (() => void) | null = null;

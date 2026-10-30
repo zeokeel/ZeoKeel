@@ -8,6 +8,6 @@ const NoopPage = () => null;
 export function AdminApp() {
   return <AdminShellSlot renderPage={(page: AdminPage) => {
     const Page = ADMIN_PAGES[page] ?? NoopPage;
-    return <Page onError={(message: string) => console.error(message)} />;
+    return <Page onError={(message: string) => { console.error(message); }} />;
   }} />;
 }

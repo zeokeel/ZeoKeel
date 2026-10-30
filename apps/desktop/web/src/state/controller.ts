@@ -25,7 +25,7 @@ let localIdCounter = 0;
 
 function nextLocalId(prefix: string): string {
   localIdCounter += 1;
-  return `${prefix}-${localIdCounter}`;
+  return `${prefix}-${String(localIdCounter)}`;
 }
 
 function friendlyError(error: unknown, locale: "zh-CN" | "en-US"): string {
@@ -90,6 +90,7 @@ export interface AppController {
   setDefaultWorkspace: (workspaceId: string) => void;
   removeWorkspace: (workspaceId: string, reassignTo?: string) => void;
   saveSettings: (settings: AppSettings) => Promise<void>;
+  applyServerUrl: (serverUrl: string) => void;
   decideApproval: (approvalId: string, decision: "approved" | "rejected") => void;
   answerQuestion: (questionId: string, answers: unknown) => void;
   setSettingsOpen: (open: boolean) => void;
@@ -105,7 +106,9 @@ export function useAppController(transport: Transport): AppController {
   const [state, dispatch] = useReducer(appReducer, null, createInitialState);
   const [bootAttempt, setBootAttempt] = useState(0);
   const stateRef = useRef(state);
-  stateRef.current = state;
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   const showToast = useCallback((message: string) => {
     dispatch({ type: "toast", message });
@@ -162,6 +165,7 @@ export function useAppController(transport: Transport): AppController {
 
   useEffect(() => {
     let cancelled = false;
+    const isCancelled = (): boolean => cancelled;
     void (async () => {
       try {
         const [metaRaw, workspacesRaw, settingsRaw] = await Promise.all([
@@ -169,7 +173,7 @@ export function useAppController(transport: Transport): AppController {
           transport.call("workspace.list", {}),
           transport.call("settings.get", {}),
         ]);
-        if (cancelled) {
+        if (isCancelled()) {
           return;
         }
         const workspaces = parseWorkspaces(workspacesRaw) ?? [];
@@ -178,7 +182,7 @@ export function useAppController(transport: Transport): AppController {
             return [workspace.id, await listWorkspaceConversations(workspace.id)];
           }),
         );
-        if (cancelled) {
+        if (isCancelled()) {
           return;
         }
         const conversationsByWorkspace: Record<string, Conversation[]> = {};
@@ -199,7 +203,7 @@ export function useAppController(transport: Transport): AppController {
           activeId: first === undefined ? null : first.id,
         });
       } catch (error: unknown) {
-        if (!cancelled) {
+        if (!isCancelled()) {
           dispatch({ type: "boot_failed", message: friendlyError(error, stateRef.current.settings.locale) });
         }
       }
@@ -251,13 +255,14 @@ export function useAppController(transport: Transport): AppController {
     const conversationId = state.activeConversationId;
     const workspaceId = state.activeWorkspaceId;
     let cancelled = false;
+    const isCancelled = (): boolean => cancelled;
     void (async () => {
       try {
         const data = await transport.call("session.messages", {
           workspace_id: workspaceId,
           conversation_id: conversationId,
         });
-        if (cancelled) {
+        if (isCancelled()) {
           return;
         }
         dispatch({
@@ -266,7 +271,7 @@ export function useAppController(transport: Transport): AppController {
           messages: parseMessages(data) ?? [],
         });
       } catch (error: unknown) {
-        if (!cancelled) {
+        if (!isCancelled()) {
           dispatch({
             type: "messages_failed",
             conversationId,
@@ -561,10 +566,11 @@ export function useAppController(transport: Transport): AppController {
   );
 
   const retrySend = useCallback(() => {
-    if (stateRef.current.lastSendText === null) {
+    const lastText = stateRef.current.lastSendText;
+    if (lastText === null) {
       return;
     }
-    runSend(stateRef.current.lastSendText ?? "", true);
+    runSend(lastText, true);
   }, [runSend]);
 
   const cancel = useCallback(() => {
@@ -607,6 +613,23 @@ export function useAppController(transport: Transport): AppController {
       showToast(translate(saved.locale, "settingsSaved"));
     },
     [transport, showToast],
+  );
+
+  const applyServerUrl = useCallback(
+    (serverUrl: string): void => {
+      void (async () => {
+        try {
+          const data = await transport.call("settings.set", {
+            settings: { ...stateRef.current.settings, server_url: serverUrl },
+          });
+          const saved = parseSettings(data);
+          dispatch({ type: "settings_saved", settings: saved });
+        } catch {
+          // Login already succeeded; persistence is retried on the next settings save.
+        }
+      })();
+    },
+    [transport],
   );
 
   const answerQuestion = useCallback(
@@ -667,6 +690,7 @@ export function useAppController(transport: Transport): AppController {
     setDefaultWorkspace,
     removeWorkspace,
     saveSettings,
+    applyServerUrl,
     decideApproval,
     answerQuestion,
     setSettingsOpen,

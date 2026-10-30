@@ -13,6 +13,8 @@ export interface OAuthMetadata {
   scopes: string[];
 }
 
+import { isRecord, readNumber, readString } from "@zeokeel/ui-kit";
+
 export interface OAuthTokens {
   access_token: string;
   refresh_token: string;
@@ -50,11 +52,12 @@ export function buildAuthorizeUrl(metadata: OAuthMetadata, challenge: string, st
 }
 
 function parseTokens(body: unknown, now: number): OAuthTokens {
-  if (typeof body !== "object" || body === null) throw new Error("OAUTH_BAD_RESPONSE");
-  const value = body as Record<string, unknown>;
-  if (typeof value["access_token"] !== "string" || typeof value["refresh_token"] !== "string") throw new Error("OAUTH_BAD_RESPONSE");
-  const expiresIn = typeof value["expires_in"] === "number" ? value["expires_in"] : 3600;
-  return { access_token: value["access_token"], refresh_token: value["refresh_token"], expires_at: now + expiresIn * 1000 };
+  if (!isRecord(body)) throw new Error("OAUTH_BAD_RESPONSE");
+  const access = readString(body, "access_token");
+  const refresh = readString(body, "refresh_token");
+  if (access === null || refresh === null) throw new Error("OAUTH_BAD_RESPONSE");
+  const expiresIn = readNumber(body, "expires_in") ?? 3600;
+  return { access_token: access, refresh_token: refresh, expires_at: now + expiresIn * 1000 };
 }
 
 export async function exchangeCode(metadata: OAuthMetadata, code: string, verifier: string, now = Date.now()): Promise<OAuthTokens> {
@@ -63,7 +66,7 @@ export async function exchangeCode(metadata: OAuthMetadata, code: string, verifi
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ grant_type: "authorization_code", code, client_id: metadata.clientId, redirect_uri: metadata.redirectUri, code_verifier: verifier }).toString(),
   });
-  if (!response.ok) throw new Error(`OAUTH_HTTP_${response.status}`);
+  if (!response.ok) throw new Error(`OAUTH_HTTP_${String(response.status)}`);
   return parseTokens(await response.json(), now);
 }
 
@@ -73,7 +76,7 @@ export async function refreshOAuthToken(metadata: OAuthMetadata, tokens: OAuthTo
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: tokens.refresh_token, client_id: metadata.clientId }).toString(),
   });
-  if (!response.ok) throw new Error(`OAUTH_HTTP_${response.status}`);
+  if (!response.ok) throw new Error(`OAUTH_HTTP_${String(response.status)}`);
   return parseTokens(await response.json(), now);
 }
 
@@ -87,10 +90,12 @@ export function parseOAuthTokens(raw: unknown): OAuthTokens | null {
   if (typeof raw !== "string") return null;
   try {
     const value: unknown = JSON.parse(raw);
-    if (typeof value !== "object" || value === null) return null;
-    const record = value as Record<string, unknown>;
-    return typeof record["access_token"] === "string" && typeof record["refresh_token"] === "string" && typeof record["expires_at"] === "number"
-      ? { access_token: record["access_token"], refresh_token: record["refresh_token"], expires_at: record["expires_at"] }
+    if (!isRecord(value)) return null;
+    const access = readString(value, "access_token");
+    const refresh = readString(value, "refresh_token");
+    const expiresAt = readNumber(value, "expires_at");
+    return access !== null && refresh !== null && expiresAt !== null
+      ? { access_token: access, refresh_token: refresh, expires_at: expiresAt }
       : null;
   } catch { return null; }
 }
@@ -109,9 +114,19 @@ export function takePendingAuth(): PendingAuth | null {
   sessionStorage.removeItem(PENDING_KEY);
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return null;
-    const value = parsed as Record<string, unknown>;
-    if (typeof value["connectorId"] !== "string" || typeof value["verifier"] !== "string" || typeof value["state"] !== "string" || typeof value["metadata"] !== "object" || value["metadata"] === null) return null;
-    return { connectorId: value["connectorId"], verifier: value["verifier"], state: value["state"], metadata: value["metadata"] as OAuthMetadata };
+    if (!isRecord(parsed)) return null;
+    const connectorId = readString(parsed, "connectorId");
+    const verifier = readString(parsed, "verifier");
+    const stateValue = readString(parsed, "state");
+    const rawMetadata = parsed["metadata"];
+    if (connectorId === null || verifier === null || stateValue === null || !isRecord(rawMetadata)) return null;
+    const authorizeUrl = readString(rawMetadata, "authorizeUrl");
+    const tokenUrl = readString(rawMetadata, "tokenUrl");
+    const clientId = readString(rawMetadata, "clientId");
+    const redirectUri = readString(rawMetadata, "redirectUri");
+    const rawScopes = rawMetadata["scopes"];
+    if (authorizeUrl === null || tokenUrl === null || clientId === null || redirectUri === null || !Array.isArray(rawScopes)) return null;
+    const scopes = rawScopes.flatMap((scope) => (typeof scope === "string" ? [scope] : []));
+    return { connectorId, verifier, state: stateValue, metadata: { authorizeUrl, tokenUrl, clientId, redirectUri, scopes } };
   } catch { return null; }
 }

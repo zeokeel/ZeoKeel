@@ -6,10 +6,28 @@
   "scripts": {
     "compose": "cargo run -p zk -- compose --edition personal --profile default --channel official",
     "e2e": "playwright test",
-    "e2e:report": "playwright show-report target/evidence/m1/playwright-report"
+    "e2e:report": "playwright show-report target/evidence/m1/playwright-report",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test:unit": "pnpm -r test:unit"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.11.0",
+    "@eslint/js": "^9.39.5",
     "@playwright/test": "1.64.1",
-    "@axe-core/playwright": "4.11.0"
-  }
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^9.39.4",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "jsdom": "^30.1.3",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.0.5"
+  },
+  "type": "module"
 }

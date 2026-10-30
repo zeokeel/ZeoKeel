@@ -11,6 +11,14 @@
 @source "../../../../packages/ui/ui-sessions/web/src";
 @source "../../../../packages/ui/ui-chat/web/src";
 @source "../../../../packages/ui/ui-settings/web/src";
+@source "../../../../packages/ui/ui-settings-provider/web/src";
+@source "../../../../packages/ui/ui-shell/web/src";
+@source "../../../../packages/ui/ui-inspector/web/src";
+@source "../../../../packages/ui/ui-commands/web/src";
+@source "../../../../packages/ui/ui-login/web/src";
+@source "../../../../packages/ui/ui-skills/web/src";
+@source "../../../../packages/ui/ui-connectors/web/src";
+@source "../../../../packages/ui/ui-apps/web/src";
 
 /* ---------- design tokens ---------- */
 

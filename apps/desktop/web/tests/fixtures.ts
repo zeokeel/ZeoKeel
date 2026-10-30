@@ -45,7 +45,7 @@ export function readyTransport(
     created += 1;
     const title = payload["title"];
     return {
-      id: `conv-created-${created}`,
+      id: `conv-created-${String(created)}`,
       workspace_id: payload["workspace_id"],
       title: typeof title === "string" ? title : "新会话",
       created_at_ms: 1,

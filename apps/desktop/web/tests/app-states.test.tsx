@@ -16,10 +16,10 @@ afterEach(() => {
 describe("app six states", () => {
   it("shows the loading state while bootstrapping", () => {
     const transport = new FakeTransport();
-    transport.handle("meta.get", () => new Promise(() => {}));
-    transport.handle("workspace.list", () => new Promise(() => {}));
-    transport.handle("session.list", () => new Promise(() => {}));
-    transport.handle("settings.get", () => new Promise(() => {}));
+    transport.handle("meta.get", () => new Promise(() => undefined));
+    transport.handle("workspace.list", () => new Promise(() => undefined));
+    transport.handle("session.list", () => new Promise(() => undefined));
+    transport.handle("settings.get", () => new Promise(() => undefined));
     renderApp(transport);
     expect(screen.getByText("正在启动 ZeoKeel…")).toBeTruthy();
   });

@@ -1,30 +1,75 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
+  SlotErrorBoundary,
   UiProvider,
+  isRecord,
+  readNumber,
+  readString,
+  type AppSettings,
   type BrandConfig,
   type UiValue,
 } from "@zeokeel/ui-kit";
 import { BRAND } from "./generated/brand";
-import { ChatSlot, CommandsSlot, AppsSlot, ConnectorsSlot, InspectorSlot, LoginSlot, SessionsSlot, SettingsProviderSlot, SettingsSlot, ShellSlot, SkillsSlot } from "./generated/registry";
+import { AppSurfaceSlot, AppsSlot, ChatSlot, CommandsSlot, ConnectorsSlot, InspectorSlot, LoginSlot, SessionsSlot, SettingsProviderSlot, SettingsSlot, ShellSlot, SkillsSlot } from "./generated/registry";
 import { translate } from "./i18n";
 import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
 import type { FileEntry, Transport } from "./types";
 import { parseFileEntries, parseUpdateRelease } from "./protocol";
-import { AppSurface } from "@zeokeel/ui-apps";
 import { downloadSkillArchive, fetchAppHtml, fetchApps, fetchConnectors, fetchSkills, fetchTombstones, openApp, sendInstallReceipt, toggleConnector, type AppItem, type ConnectorItem, type SkillItem } from "./store";
 import { buildAuthorizeUrl, createPkcePair, exchangeCode, parseOAuthTokens, refreshOAuthToken, savePendingAuth, takePendingAuth, tokenNeedsRefresh } from "./oauth";
 import { clearSession, fetchBootstrapInfo, loadGatewayModel, loadServerUrl, loadSession, login as loginRequest, refreshSession, saveGatewayModel, saveServerUrl, saveSession, type AuthSession } from "./auth";
 
+/** Channel default login address (C14/ADR-042); non-empty = locked address. */
+const CHANNEL_SERVER_URL: string = BRAND.serverUrl;
 
 function isMockMode(): boolean {
   return new URLSearchParams(window.location.search).get("mock") === "1";
 }
 
+function normalizeUrl(value: string): string {
+  return value.trim().replace(/\/$/, "");
+}
+
+/** Channel default > persisted settings > legacy localStorage default. */
+function resolveServerUrl(settingsUrl: string): string {
+  if (CHANNEL_SERVER_URL !== "") {
+    return normalizeUrl(CHANNEL_SERVER_URL);
+  }
+  const fromSettings = normalizeUrl(settingsUrl);
+  if (fromSettings !== "") {
+    return fromSettings;
+  }
+  return normalizeUrl(loadServerUrl());
+}
+
+interface SurfaceState {
+  html: string;
+  nonce: string;
+  appId: string;
+}
+
+interface SurfaceRequestPayload {
+  app_id: string;
+  method: string;
+  path: string;
+  query: string;
+  body_b64: string;
+  request_id: string;
+}
+
+interface SurfaceResponse {
+  status: number;
+  body_b64: string;
+}
+
 export function App(props: { transport: Transport }) {
   const controller = useAppController(props.transport);
+  const { state } = controller;
   const [session, setSession] = useState<AuthSession | null>(loadSession);
-  const [serverUrl, setServerUrl] = useState<string>(loadServerUrl);
+  const [sessionServerUrl, setSessionServerUrl] = useState<string | null>(() =>
+    loadSession() === null ? null : resolveServerUrl(controller.state.settings.server_url),
+  );
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginLoading, setLoginLoading] = useState(false);
   const [gatewayModels, setGatewayModels] = useState<string[]>([]);
@@ -36,32 +81,58 @@ export function App(props: { transport: Transport }) {
   const [apps, setApps] = useState<AppItem[]>([]);
   const [appOpened, setAppOpened] = useState<string | null>(null);
   const [appError, setAppError] = useState<string | null>(null);
-  const [appSurface, setAppSurface] = useState<{ html: string; nonce: string; appId: string } | null>(null);
-  const [installed, setInstalled] = useState<Array<{ name: string; version: string }>>([]);
+  const [appSurface, setAppSurface] = useState<SurfaceState | null>(null);
+  const [installed, setInstalled] = useState<{ name: string; version: string }[]>([]);
   const [contentError, setContentError] = useState<string | null>(null);
   const [contentBusy, setContentBusy] = useState<string | null>(null);
   const [authorized, setAuthorized] = useState<string[]>([]);
-  const { state } = controller;
+
+  const theme = useResolvedTheme(state.settings.theme);
+  const brand: BrandConfig = BRAND;
+  const t = useCallback(
+    (key: string, vars?: Record<string, string | number>): string =>
+      translate(state.settings.locale, key, vars),
+    [state.settings.locale],
+  );
+
+  // Channel default > persisted settings > legacy localStorage default (C14/ADR-042).
+  const activeServerUrl = resolveServerUrl(state.settings.server_url);
+
+  const logout = (): void => {
+    const current = session;
+    clearSession();
+    setSession(null);
+    setSessionServerUrl(null);
+    setGatewayModels([]);
+    setGatewayModel("");
+    setLoginError(null);
+    if (current !== null) {
+      void props.transport.call("auth.logout", { access_token: current.access_token }).catch(() => undefined);
+    }
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     const stateValue = params.get("state");
     if (code === null || stateValue === null) return;
     const pending = takePendingAuth();
-    if (pending === null || pending.state !== stateValue) return;
+    if (pending?.state !== stateValue) return;
     void exchangeCode(pending.metadata, code, pending.verifier)
       .then(async (tokens) => {
-        await props.transport.call("oauth.save", { connector_id: pending.connectorId, tokens }).catch((error: unknown) => console.log("oauth-save-failed", String(error)));
+        await props.transport.call("oauth.save", { connector_id: pending.connectorId, tokens }).catch((error: unknown) => { console.warn("[zk] oauth-save-failed", String(error)); });
         setAuthorized((values) => values.includes(pending.connectorId) ? values : [...values, pending.connectorId]);
         window.history.replaceState({}, "", window.location.pathname);
       })
-      .catch(() => { setContentError("OAUTH_FAILED"); });
-  }, []);
+      .catch(() => { setContentError(t("oauthFailed")); });
+  }, [props.transport, t]);
+
+  // Enterprise session: configure gateway, load catalog, refresh token (docs/19 §3.2, docs/38).
   useEffect(() => {
     if (state.meta.edition !== "enterprise" || session === null) return;
-    const url = serverUrl === "" ? state.settings.server_url : serverUrl;
+    const url = activeServerUrl;
     if (url === "") return;
-    void props.transport.call("auth.configure", { server_url: url, access_token: session.access_token, model: loadGatewayModel() }).catch(() => {});
+    void props.transport.call("auth.configure", { server_url: url, access_token: session.access_token, model: loadGatewayModel() }).catch(() => undefined);
     void Promise.all([fetchSkills(session, url), fetchConnectors(session, url), props.transport.call("skills.installed", {}), fetchTombstones(session, url), fetchApps(session, url)])
       .then(async ([skillItems, connectorItems, installedValue, tombstones, appItems]) => {
         setSkills(skillItems);
@@ -71,7 +142,7 @@ export function App(props: { transport: Transport }) {
         for (const connector of connectorItems) {
           if (connector.oauth === null) continue;
           const stored = await props.transport.call("oauth.load", { connector_id: connector.id }).catch(() => null);
-          const raw = typeof stored === "object" && stored !== null ? (stored as { tokens?: unknown }).tokens : null;
+          const raw = isRecord(stored) ? stored["tokens"] : null;
           let tokens = parseOAuthTokens(raw);
           if (tokens === null) continue;
           if (tokenNeedsRefresh(tokens)) {
@@ -81,12 +152,12 @@ export function App(props: { transport: Transport }) {
           if (tokens !== null) oauthIds.push(connector.id);
         }
         setAuthorized(oauthIds);
-        const rows = typeof installedValue === "object" && installedValue !== null ? (installedValue as { items?: unknown }).items : [];
+        const rows = isRecord(installedValue) ? installedValue["items"] : null;
         const local = Array.isArray(rows) ? rows.flatMap((row) => {
-          if (typeof row !== "object" || row === null) return [];
-          const name = (row as { name?: unknown }).name;
-          const version = (row as { version?: unknown }).version;
-          return typeof name === "string" && typeof version === "string" ? [{ name, version }] : [];
+          if (!isRecord(row)) return [];
+          const name = readString(row, "name");
+          const version = readString(row, "version");
+          return name !== null && version !== null ? [{ name, version }] : [];
         }) : [];
         for (const entry of local) {
           if (tombstones.includes(entry.name)) {
@@ -95,24 +166,38 @@ export function App(props: { transport: Transport }) {
         }
         setInstalled(local.filter((entry) => !tombstones.includes(entry.name)));
       })
-      .catch((error: unknown) => { setContentError(error instanceof Error ? error.message : "catalog failed"); });
+      .catch((error: unknown) => { setContentError(error instanceof Error ? error.message : t("contentLoadFailed")); });
     const refreshMs = Math.max(session.expires_in, 60) * 800;
     const timer = window.setTimeout(() => {
       void refreshSession(session, url)
         .then((next) => {
           saveSession(next);
           setSession(next);
-          void props.transport.call("auth.configure", { server_url: url, access_token: next.access_token, model: loadGatewayModel() }).catch(() => {});
+          void props.transport.call("auth.configure", { server_url: url, access_token: next.access_token, model: loadGatewayModel() }).catch(() => undefined);
         })
         .catch(() => { clearSession(); setSession(null); });
     }, refreshMs);
     return () => { window.clearTimeout(timer); };
-  }, [state.meta.edition, session, serverUrl, state.settings.server_url, props.transport]);
-  const theme = useResolvedTheme(state.settings.theme);
-  const brand: BrandConfig = BRAND;
+  }, [state.meta.edition, session, activeServerUrl, props.transport, t]);
 
-  const t = (key: string, vars?: Record<string, string | number>): string =>
-    translate(state.settings.locale, key, vars);
+  // Policy/catalog may change server-side; refresh it on every authenticated start (not only login).
+  useEffect(() => {
+    if (state.meta.edition !== "enterprise" || session === null || activeServerUrl === "") return;
+    let cancelled = false;
+    const isCancelled = (): boolean => cancelled;
+    void fetchBootstrapInfo(session, activeServerUrl)
+      .then((info) => {
+        if (isCancelled()) return;
+        setGatewayModels(info.models);
+        const model = info.defaultModel === "" ? loadGatewayModel() : info.defaultModel;
+        if (model !== "") {
+          setGatewayModel(model);
+          saveGatewayModel(model);
+        }
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [state.meta.edition, session, activeServerUrl]);
 
   const ui: UiValue = {
     t,
@@ -154,7 +239,22 @@ export function App(props: { transport: Transport }) {
       closeSettings: () => {
         controller.setSettingsOpen(false);
       },
-      saveSettings: controller.saveSettings,
+      saveSettings: (next: AppSettings): Promise<void> => {
+        const requiresRelogin =
+          session !== null &&
+          normalizeUrl(next.server_url) !== "" &&
+          normalizeUrl(next.server_url) !== normalizeUrl(state.settings.server_url) &&
+          normalizeUrl(next.server_url) !== (sessionServerUrl ?? "");
+        return controller.saveSettings(next).then(() => {
+          if (requiresRelogin) {
+            clearSession();
+            setSession(null);
+            setSessionServerUrl(null);
+            setGatewayModels([]);
+            setLoginError(t("settingsReloginRequired"));
+          }
+        });
+      },
       toggleSidebar: controller.toggleSidebar,
       retryBoot: controller.retryBoot,
       retryMessages: controller.retryMessages,
@@ -163,36 +263,51 @@ export function App(props: { transport: Transport }) {
     },
   };
 
-  if (state.meta.edition === "enterprise" && state.boot === "ready" && session === null && LoginSlot !== null) {
+  if (state.meta.edition === "enterprise" && state.boot === "ready" && session === null) {
     const submit = (input: { serverUrl?: string; username: string; password: string; deviceName: string }): void => {
-      const serverUrl = input.serverUrl ?? state.settings.server_url;
+      // The first-run address is persisted to settings so it is not asked again (docs/19 §3.3).
+      const target = normalizeUrl(input.serverUrl ?? activeServerUrl);
+      if (target === "") {
+        setLoginError(t("loginServerRequired"));
+        return;
+      }
       setLoginLoading(true);
       setLoginError(null);
-      void loginRequest(serverUrl, input.username, input.password, input.deviceName)
+      void loginRequest(target, input.username, input.password, input.deviceName)
         .then((next) => {
           saveSession(next);
-          saveServerUrl(serverUrl);
-          setServerUrl(serverUrl);
-          void fetchBootstrapInfo(next, serverUrl)
+          saveServerUrl(target);
+          setSessionServerUrl(target);
+          controller.applyServerUrl(target);
+          void fetchBootstrapInfo(next, target)
             .then((info) => {
               setGatewayModels(info.models);
               const model = info.defaultModel === "" ? loadGatewayModel() : info.defaultModel;
               setGatewayModel(model);
               if (model !== "") saveGatewayModel(model);
-              return props.transport.call("auth.configure", { server_url: serverUrl, access_token: next.access_token, model });
+              return props.transport.call("auth.configure", { server_url: target, access_token: next.access_token, model });
             })
-            .catch(() => {});
+            .catch(() => undefined);
           setSession(next);
         })
-        .catch((error: unknown) => { setLoginError(error instanceof Error ? error.message : "login failed"); })
+        .catch((error: unknown) => { setLoginError(error instanceof Error ? error.message : t("loginFailed")); })
         .finally(() => { setLoginLoading(false); });
     };
     return (
       <UiProvider value={ui}>
-        <LoginSlot serverUrl={state.settings.server_url.trim() === "" ? null : state.settings.server_url} channelLocked={false} loading={loginLoading} error={loginError} onSubmit={submit} />
+        <LoginSlot
+          key={activeServerUrl}
+          serverUrl={activeServerUrl === "" ? null : activeServerUrl}
+          channelLocked={CHANNEL_SERVER_URL !== ""}
+          loading={loginLoading}
+          error={loginError}
+          onSubmit={submit}
+        />
       </UiProvider>
     );
   }
+
+  const effectiveUrl = activeServerUrl;
 
   return (
     <UiProvider value={ui}>
@@ -200,6 +315,7 @@ export function App(props: { transport: Transport }) {
         controller={controller}
         ui={ui}
         transport={props.transport}
+        serverUrl={effectiveUrl}
         gatewayModels={gatewayModels}
         gatewayModel={gatewayModel}
         updateText={updateText}
@@ -211,63 +327,65 @@ export function App(props: { transport: Transport }) {
         contentBusy={contentBusy}
         onInstall={(item) => {
           if (session === null) return;
-          const url = serverUrl === "" ? state.settings.server_url : serverUrl;
           setContentBusy(item.name);
           setContentError(null);
-          void downloadSkillArchive(session, url, item)
+          void downloadSkillArchive(session, effectiveUrl, item)
             .then((archive) => props.transport.call("skills.install", { name: item.name, version: item.version, archive_base64: archive.archive_base64 }))
             .then((result) => {
-              const tree = typeof result === "object" && result !== null && typeof (result as { tree_sha256?: unknown }).tree_sha256 === "string"
-                ? (result as { tree_sha256: string }).tree_sha256
-                : undefined;
-              if (typeof tree !== "string") throw new Error("missing tree_sha256");
-              return sendInstallReceipt(session, url, item, tree);
+              const tree = isRecord(result) ? readString(result, "tree_sha256") : null;
+              if (tree === null) throw new Error("missing tree_sha256");
+              return sendInstallReceipt(session, effectiveUrl, item, tree);
             })
             .then(() => { setInstalled((values) => [...values.filter((entry) => entry.name !== item.name), { name: item.name, version: item.version }]); })
-            .catch((error: unknown) => { setContentError(error instanceof Error ? error.message : "install failed"); })
+            .catch((error: unknown) => { setContentError(error instanceof Error ? error.message : t("contentInstallFailed")); })
             .finally(() => { setContentBusy(null); });
         }}
         authorized={authorized}
         onAuthorize={(item) => {
-          if (item.oauth === null || item.oauth === undefined) return;
+          if (item.oauth === null) return;
           void createPkcePair().then((pair) => {
             const stateValue = crypto.randomUUID();
             const metadata = { authorizeUrl: item.oauth?.authorizeUrl ?? "", tokenUrl: item.oauth?.tokenUrl ?? "", clientId: item.oauth?.clientId ?? "", redirectUri: item.oauth?.redirectUri ?? "", scopes: item.oauth?.scopes ?? [] };
-            if (metadata.authorizeUrl === "" || metadata.tokenUrl === "") { setContentError("OAUTH_NOT_CONFIGURED"); return; }
+            if (metadata.authorizeUrl === "" || metadata.tokenUrl === "") { setContentError(t("oauthNotConfigured")); return; }
             savePendingAuth({ connectorId: item.id, verifier: pair.verifier, state: stateValue, metadata });
             window.location.assign(buildAuthorizeUrl(metadata, pair.challenge, stateValue));
-          }).catch(() => { setContentError("OAUTH_FAILED"); });
+          }).catch(() => { setContentError(t("oauthFailed")); });
         }}
         apps={apps}
         appOpened={appOpened}
         appError={appError}
         surface={appSurface}
-      onCloseSurface={() => { setAppSurface(null); }}
-      onSurfaceRequest={(request) => props.transport.call("app_request", request)}
-      onOpenApp={(item) => {
+        onCloseSurface={() => { setAppSurface(null); }}
+        onSurfaceRequest={(request) => props.transport.call("app_request", {
+          app_id: request.app_id,
+          method: request.method,
+          path: request.path,
+          query: request.query,
+          body_b64: request.body_b64,
+          request_id: request.request_id,
+        })}
+        onOpenApp={(item) => {
           if (session === null) return;
-          const url = serverUrl === "" ? state.settings.server_url : serverUrl;
           setAppError(null);
-          void openApp(session, url, item)
+          void openApp(session, effectiveUrl, item)
             .then(async (result) => {
-              setAppOpened(`已打开 ${item.name} v${result.version}`);
+              setAppOpened(t("appsOpened", { name: item.name, version: result.version }));
               const tauri = window.__TAURI__;
               if (tauri !== undefined) {
                 await tauri.core.invoke("open_app_window", { appId: item.appId, entry: result.entry });
                 return;
               }
-              const html = await fetchAppHtml(session, url, item, result.entry);
+              const html = await fetchAppHtml(session, effectiveUrl, item, result.entry);
               setAppSurface({ html, nonce: crypto.randomUUID(), appId: item.appId });
             })
-            .catch((error: unknown) => setAppError(error instanceof Error ? error.message : "打开失败"));
+            .catch((error: unknown) => { setAppError(error instanceof Error ? error.message : t("appsOpenFailed")); });
         }}
         onToggleConnector={(item) => {
           if (session === null) return;
-          const url = serverUrl === "" ? state.settings.server_url : serverUrl;
-          void toggleConnector(session, url, item)
-            .then(() => fetchConnectors(session, url))
+          void toggleConnector(session, effectiveUrl, item)
+            .then(() => fetchConnectors(session, effectiveUrl))
             .then(setConnectors)
-            .catch((error: unknown) => { setContentError(error instanceof Error ? error.message : "connector failed"); });
+            .catch((error: unknown) => { setContentError(error instanceof Error ? error.message : t("connectorFailed")); });
         }}
         onCheckUpdate={state.meta.edition === "personal" ? () => {
           setUpdateBusy(true);
@@ -284,33 +402,66 @@ export function App(props: { transport: Transport }) {
           setGatewayModel(model);
           saveGatewayModel(model);
           if (session !== null) {
-            const url = serverUrl === "" ? state.settings.server_url : serverUrl;
-            void props.transport.call("auth.configure", { server_url: url, access_token: session.access_token, model }).catch(() => {});
+            void props.transport.call("auth.configure", { server_url: effectiveUrl, access_token: session.access_token, model }).catch(() => undefined);
           }
         }}
+        showServerUrl={state.meta.edition === "enterprise"}
+        serverUrlLocked={CHANNEL_SERVER_URL !== ""}
+        onLogout={logout}
       />
     </UiProvider>
   );
 }
 
-function AppShell(props: { controller: AppController; ui: UiValue; transport: Transport; gatewayModels: string[]; gatewayModel: string; onSelectGatewayModel: (model: string) => void; updateText: string | null; updateBusy: boolean; onCheckUpdate?: (() => void) | undefined;
-  skills: SkillItem[]; connectors: ConnectorItem[]; installed: Array<{ name: string; version: string }>; contentError: string | null; contentBusy: string | null;
-  onInstall: (item: SkillItem) => void; onAuthorize: (item: ConnectorItem) => void; onToggleConnector: (item: ConnectorItem) => void; authorized: string[]; apps: AppItem[]; appOpened: string | null; appError: string | null; onOpenApp: (item: AppItem) => void;
-  surface: { html: string; nonce: string; appId: string } | null; onCloseSurface: () => void; onSurfaceRequest: (request: { app_id: string; method: string; path: string; query: string; body_b64: string; request_id: string }) => Promise<unknown> }) {
-  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel, updateText, updateBusy, onCheckUpdate, skills, connectors, installed, contentError, contentBusy, onInstall, onAuthorize, onToggleConnector, authorized, apps, appOpened, appError, onOpenApp, surface, onCloseSurface, onSurfaceRequest } = props;
+interface AppShellProps {
+  controller: AppController;
+  ui: UiValue;
+  transport: Transport;
+  serverUrl: string;
+  gatewayModels: string[];
+  gatewayModel: string;
+  onSelectGatewayModel: (model: string) => void;
+  updateText: string | null;
+  updateBusy: boolean;
+  onCheckUpdate?: (() => void) | undefined;
+  skills: SkillItem[];
+  connectors: ConnectorItem[];
+  installed: { name: string; version: string }[];
+  contentError: string | null;
+  contentBusy: string | null;
+  onInstall: (item: SkillItem) => void;
+  onAuthorize: (item: ConnectorItem) => void;
+  onToggleConnector: (item: ConnectorItem) => void;
+  authorized: string[];
+  apps: AppItem[];
+  appOpened: string | null;
+  appError: string | null;
+  onOpenApp: (item: AppItem) => void;
+  surface: SurfaceState | null;
+  onCloseSurface: () => void;
+  onSurfaceRequest: (request: SurfaceRequestPayload) => Promise<unknown>;
+  showServerUrl: boolean;
+  serverUrlLocked: boolean;
+  onLogout: () => void;
+}
+
+function AppShell(props: AppShellProps) {
+  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel, updateText, updateBusy, onCheckUpdate, skills, connectors, installed, contentError, contentBusy, onInstall, onAuthorize, onToggleConnector, authorized, apps, appOpened, appError, onOpenApp, surface, onCloseSurface, onSurfaceRequest, showServerUrl, serverUrlLocked, onLogout } = props;
   const t = ui.t;
   const state = controller.state;
+  const enterprise = state.meta.edition === "enterprise";
   const [commandsOpen, setCommandsOpen] = useState(false);
   const [panel, setPanel] = useState<"skills" | "connectors" | "apps" | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<"files" | "changes" | "terminal">("files");
   const [files, setFiles] = useState<FileEntry[]>([]);
   useEffect(() => {
-    if (!inspectorOpen || ui.activeWorkspaceId === null) { setFiles([]); return; }
+    if (!inspectorOpen || ui.activeWorkspaceId === null) { return; }
     let cancelled = false;
+    const isCancelled = (): boolean => cancelled;
     void transport.call("workspace.files", { workspace_id: ui.activeWorkspaceId })
-      .then((value) => { if (!cancelled) setFiles(parseFileEntries(value) ?? []); })
-      .catch(() => { if (!cancelled) setFiles([]); });
+      .then((value) => { if (!isCancelled()) setFiles(parseFileEntries(value) ?? []); })
+      .catch(() => { if (!isCancelled()) setFiles([]); });
     return () => { cancelled = true; };
   }, [inspectorOpen, ui.activeWorkspaceId, transport]);
   useEffect(() => {
@@ -338,9 +489,13 @@ function AppShell(props: { controller: AppController; ui: UiValue; transport: Tr
     { id: "toggle-sidebar", title: t("sidebarToggle"), group: t("workspaceActions") },
     { id: "open-settings", title: t("settingsTitle"), group: t("settings") },
     { id: "toggle-inspector", title: t("inspectorToggle"), group: t("workspaceActions") },
-    { id: "open-skills", title: "技能", group: t("workspaceActions") },
-    { id: "open-connectors", title: "连接器", group: t("workspaceActions") },
-    { id: "open-apps", title: "应用", group: t("workspaceActions") },
+    ...(enterprise
+      ? [
+          { id: "open-skills", title: t("panelSkills"), group: t("workspaceActions") },
+          { id: "open-connectors", title: t("panelConnectors"), group: t("workspaceActions") },
+          { id: "open-apps", title: t("panelApps"), group: t("workspaceActions") },
+        ]
+      : []),
   ];
   const runCommand = (id: string): void => {
     if (id === "new-conversation") ui.actions.createConversation();
@@ -358,6 +513,18 @@ function AppShell(props: { controller: AppController; ui: UiValue; transport: Tr
     ui.meta.packages.length === 0
       ? t("metaPackagesEmpty")
       : t("metaLine", { version: ui.meta.version, packages: ui.meta.packages.length });
+  const visibleFiles = inspectorOpen && ui.activeWorkspaceId !== null ? files : [];
+  const handleSurfaceRequest = (request: SurfaceRequestPayload): Promise<SurfaceResponse> => {
+    const appId = surface === null ? "" : surface.appId;
+    if (appId === "") {
+      return Promise.resolve({ status: 500, body_b64: "" });
+    }
+    return onSurfaceRequest({ ...request, app_id: appId }).then((value) => {
+      const status = isRecord(value) ? readNumber(value, "status") : null;
+      const body = isRecord(value) ? readString(value, "body_b64") : null;
+      return { status: status ?? 500, body_b64: body ?? "" };
+    });
+  };
   return (
     <>
     <ShellSlot
@@ -374,16 +541,43 @@ function AppShell(props: { controller: AppController; ui: UiValue; transport: Tr
       workspacePath={activeWorkspace === undefined ? t("noConversation") : activeWorkspace.path}
       toast={state.toast}
       workspaceError={ui.workspaceError}
-      navigation={<SessionsSlot />}
-      conversation={<ChatSlot key={ui.activeWorkspaceId === null ? "none" : ui.activeWorkspaceId} />}
-      settings={<SettingsSlot gatewayModels={gatewayModels} gatewayModel={gatewayModel} onSelectGatewayModel={onSelectGatewayModel} onCheckUpdate={onCheckUpdate} updateText={updateText} updateBusy={updateBusy} renderProvider={SettingsProviderSlot} />}
-      surface={surface === null ? null : <AppSurface html={surface.html} nonce={surface.nonce} onClose={onCloseSurface} onRequest={(request) => { const result = onSurfaceRequest({ app_id: surface.appId, ...request }); return result.then((value) => { const record = typeof value === "object" && value !== null ? value as { status?: unknown; body_b64?: unknown } : {}; return { status: typeof record.status === "number" ? record.status : 500, body_b64: typeof record.body_b64 === "string" ? record.body_b64 : "" }; }); }} />}
-      overlay={<>
-        <SkillsSlot open={panel === "skills"} items={skills} installed={installed} busy={contentBusy} error={contentError} onInstall={onInstall} onClose={() => { setPanel(null); }} />
-        <ConnectorsSlot open={panel === "connectors"} items={connectors} error={contentError} authorized={authorized} onAuthorize={onAuthorize} onToggle={onToggleConnector} onClose={() => { setPanel(null); }} />
-        <AppsSlot open={panel === "apps"} items={apps} error={appError} opened={appOpened} onOpenApp={onOpenApp} onClose={() => { setPanel(null); }} />
-      </>}
-      inspector={<InspectorSlot open={inspectorOpen} tab={inspectorTab} files={files} changes={[]} onTab={setInspectorTab} onClose={() => { setInspectorOpen(false); }} />}
+      navigation={<SlotErrorBoundary name="ui.sessions"><SessionsSlot /></SlotErrorBoundary>}
+      conversation={<SlotErrorBoundary name="ui.chat"><ChatSlot key={ui.activeWorkspaceId ?? "none"} /></SlotErrorBoundary>}
+      settings={(
+        <SlotErrorBoundary name="ui.settings">
+          <SettingsSlot
+            key={state.settingsOpen ? "open" : "closed"}
+            gatewayModels={gatewayModels}
+            gatewayModel={gatewayModel}
+            onSelectGatewayModel={onSelectGatewayModel}
+            onCheckUpdate={onCheckUpdate}
+            updateText={updateText}
+            updateBusy={updateBusy}
+            renderProvider={SettingsProviderSlot}
+            showServerUrl={showServerUrl}
+            serverUrlLocked={serverUrlLocked}
+            onLogout={onLogout}
+          />
+        </SlotErrorBoundary>
+      )}
+      surface={surface === null ? null : (
+        <SlotErrorBoundary name="ui.app.surface">
+          <AppSurfaceSlot
+            html={surface.html}
+            nonce={surface.nonce}
+            onClose={onCloseSurface}
+            onRequest={handleSurfaceRequest}
+          />
+        </SlotErrorBoundary>
+      )}
+      overlay={enterprise ? (
+        <>
+          <SlotErrorBoundary name="ui.skills"><SkillsSlot open={panel === "skills"} items={skills} installed={installed} busy={contentBusy} error={contentError} onInstall={onInstall} onClose={() => { setPanel(null); }} /></SlotErrorBoundary>
+          <SlotErrorBoundary name="ui.connectors"><ConnectorsSlot open={panel === "connectors"} items={connectors} error={contentError} authorized={authorized} onAuthorize={onAuthorize} onToggle={onToggleConnector} onClose={() => { setPanel(null); }} /></SlotErrorBoundary>
+          <SlotErrorBoundary name="ui.apps"><AppsSlot open={panel === "apps"} items={apps} error={appError} opened={appOpened} onOpenApp={onOpenApp} onClose={() => { setPanel(null); }} /></SlotErrorBoundary>
+        </>
+      ) : null}
+      inspector={<SlotErrorBoundary name="ui.inspector"><InspectorSlot open={inspectorOpen} tab={inspectorTab} files={visibleFiles} changes={[]} onTab={setInspectorTab} onClose={() => { setInspectorOpen(false); }} /></SlotErrorBoundary>}
       inspectorOpen={inspectorOpen}
       onToggleInspector={() => { setInspectorOpen((value) => !value); }}
       onRetryBoot={ui.actions.retryBoot}
@@ -392,7 +586,7 @@ function AppShell(props: { controller: AppController; ui: UiValue; transport: Tr
       onOpenCommands={() => { setCommandsOpen(true); }}
       onCreateWorkspace={(path, title) => { ui.actions.createWorkspace(path, title); }}
     />
-    <CommandsSlot open={commandsOpen} commands={commands} onRun={runCommand} onClose={() => { setCommandsOpen(false); }} />
+    <SlotErrorBoundary name="ui.commands"><CommandsSlot key={commandsOpen ? "open" : "closed"} open={commandsOpen} commands={commands} onRun={runCommand} onClose={() => { setCommandsOpen(false); }} /></SlotErrorBoundary>
     </>
   );
 }

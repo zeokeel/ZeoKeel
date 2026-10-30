@@ -33,6 +33,7 @@ async function emitAgent(
 ): Promise<void> {
   await act(async () => {
     transport.emitAgent("stream-1", seq, agentEvent);
+    await Promise.resolve();
   });
 }
 
@@ -118,10 +119,11 @@ describe("chat flow", () => {
 
   it("ignores unknown event kinds with a warning", async () => {
     const transport = readyTransport([]);
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     await bootAndSend(transport, "你好");
     await act(async () => {
       transport.emit({ stream_id: "stream-1", seq: 9, kind: "heartbeat", payload: {} });
+      await Promise.resolve();
     });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("ignored unsupported event kind"));
     expect(screen.getByRole("button", { name: "停止生成" })).toBeTruthy();

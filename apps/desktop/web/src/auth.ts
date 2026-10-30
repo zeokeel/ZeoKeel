@@ -1,3 +1,5 @@
+import { isRecord, readNumber, readString } from "@zeokeel/ui-kit";
+
 /** Enterprise auth session (M2 P4). Tokens stay in local storage for now; keychain later. */
 export interface AuthSession {
   access_token: string;
@@ -18,17 +20,18 @@ export function loadSession(): AuthSession | null {
     const raw = localStorage.getItem(KEY);
     if (raw === null) return null;
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return null;
-    const value = parsed as Record<string, unknown>;
-    if (typeof value["access_token"] !== "string" || typeof value["refresh_token"] !== "string") return null;
+    if (!isRecord(parsed)) return null;
+    const access = readString(parsed, "access_token");
+    const refresh = readString(parsed, "refresh_token");
+    if (access === null || refresh === null) return null;
     return {
-      access_token: value["access_token"],
-      refresh_token: value["refresh_token"],
-      expires_in: typeof value["expires_in"] === "number" ? value["expires_in"] : 900,
-      user_id: typeof value["user_id"] === "string" ? value["user_id"] : "",
-      role: typeof value["role"] === "string" ? value["role"] : "employee",
-      username: typeof value["username"] === "string" ? value["username"] : "",
-      device_name: typeof value["device_name"] === "string" ? value["device_name"] : "",
+      access_token: access,
+      refresh_token: refresh,
+      expires_in: readNumber(parsed, "expires_in") ?? 900,
+      user_id: readString(parsed, "user_id") ?? "",
+      role: readString(parsed, "role") ?? "employee",
+      username: readString(parsed, "username") ?? "",
+      device_name: readString(parsed, "device_name") ?? "",
     };
   } catch {
     return null;
@@ -60,6 +63,14 @@ export function saveGatewayModel(model: string): void {
   localStorage.setItem(MODEL_KEY, model);
 }
 
+function parseTokenResponse(body: unknown): { access_token: string; refresh_token: string; expires_in: number } | null {
+  if (!isRecord(body)) return null;
+  const access = readString(body, "access_token");
+  const refresh = readString(body, "refresh_token");
+  if (access === null || refresh === null) return null;
+  return { access_token: access, refresh_token: refresh, expires_in: readNumber(body, "expires_in") ?? 900 };
+}
+
 export interface BootstrapInfo {
   defaultModel: string;
   models: string[];
@@ -71,14 +82,15 @@ export async function fetchBootstrapInfo(session: AuthSession, serverUrl: string
   });
   if (!response.ok) return { defaultModel: "", models: [] };
   const body: unknown = await response.json();
-  if (typeof body !== "object" || body === null) return { defaultModel: "", models: [] };
-  const gateway = (body as { gateway?: { default_model?: unknown; models?: unknown } }).gateway;
-  const defaultModel = typeof gateway?.default_model === "string" ? gateway.default_model : "";
-  const models = Array.isArray(gateway?.models)
-    ? gateway.models.flatMap((item) => {
-        if (typeof item !== "object" || item === null) return [];
-        const id = (item as { id?: unknown }).id;
-        return typeof id === "string" ? [id] : [];
+  if (!isRecord(body)) return { defaultModel: "", models: [] };
+  const gateway = body["gateway"];
+  if (!isRecord(gateway)) return { defaultModel: "", models: [] };
+  const defaultModel = readString(gateway, "default_model") ?? "";
+  const rawModels = gateway["models"];
+  const models = Array.isArray(rawModels)
+    ? rawModels.flatMap((item) => {
+        const id = isRecord(item) ? readString(item, "id") : null;
+        return id === null ? [] : [id];
       })
     : [];
   return { defaultModel, models };
@@ -90,16 +102,12 @@ export async function refreshSession(session: AuthSession, serverUrl: string): P
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ refresh_token: session.refresh_token, device_id: session.device_name || "client" }),
   });
-  const body = (await response.json()) as { ok?: boolean; error?: string; access_token?: string; refresh_token?: string; expires_in?: number };
-  if (!response.ok || body.ok === false || typeof body.access_token !== "string" || typeof body.refresh_token !== "string") {
-    throw new Error(body.error ?? `HTTP ${response.status}`);
+  const body: unknown = await response.json();
+  const tokens = parseTokenResponse(body);
+  if (!response.ok || tokens === null) {
+    throw new Error(isRecord(body) ? (readString(body, "error") ?? `HTTP ${String(response.status)}`) : `HTTP ${String(response.status)}`);
   }
-  return {
-    ...session,
-    access_token: body.access_token,
-    refresh_token: body.refresh_token,
-    expires_in: typeof body.expires_in === "number" ? body.expires_in : 900,
-  };
+  return { ...session, ...tokens };
 }
 
 export async function login(serverUrl: string, username: string, password: string, deviceName: string): Promise<AuthSession> {
@@ -108,17 +116,17 @@ export async function login(serverUrl: string, username: string, password: strin
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ username, password, device_id: deviceName }),
   });
-  const body = (await response.json()) as { ok?: boolean; error?: string; access_token?: string; refresh_token?: string; expires_in?: number; user?: { id?: string; role?: string; username?: string } };
-  if (!response.ok || body.ok === false || typeof body.access_token !== "string" || typeof body.refresh_token !== "string") {
-    throw new Error(body.error ?? `HTTP ${response.status}`);
+  const body: unknown = await response.json();
+  const tokens = parseTokenResponse(body);
+  if (!response.ok || tokens === null) {
+    throw new Error(isRecord(body) ? (readString(body, "error") ?? `HTTP ${String(response.status)}`) : `HTTP ${String(response.status)}`);
   }
+  const user = isRecord(body) && isRecord(body["user"]) ? body["user"] : null;
   return {
-    access_token: body.access_token,
-    refresh_token: body.refresh_token,
-    expires_in: typeof body.expires_in === "number" ? body.expires_in : 900,
-    user_id: body.user?.id ?? "",
-    role: body.user?.role ?? "employee",
-    username: body.user?.username ?? username,
+    ...tokens,
+    user_id: user === null ? "" : (readString(user, "id") ?? ""),
+    role: user === null ? "employee" : (readString(user, "role") ?? "employee"),
+    username: user === null ? username : (readString(user, "username") ?? username),
     device_name: deviceName,
   };
 }

@@ -1,6 +1,5 @@
 import {
   defaultSettings,
-  type AppSettings,
   type Conversation,
   type UiActions,
   type UiValue,
@@ -8,7 +7,7 @@ import {
 } from "@zeokeel/ui-kit";
 import { translate } from "../src/i18n";
 
-const noop = () => {};
+const noop = (): void => undefined;
 
 export const testWorkspace: Workspace = {
   id: "ws-home",
@@ -77,7 +76,7 @@ export function testUi(overrides: TestUiOverrides = {}): UiValue {
       selectConversation: noop,
       openSettings: noop,
       closeSettings: noop,
-      saveSettings: async (_settings: AppSettings) => {},
+      saveSettings: (): Promise<void> => Promise.resolve(),
       toggleSidebar: noop,
       retryBoot: noop,
       retryMessages: noop,

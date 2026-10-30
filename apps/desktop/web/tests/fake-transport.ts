@@ -3,7 +3,7 @@ import type { Transport, UiEvent } from "../src/types";
 type Handler = (payload: Record<string, unknown>) => unknown;
 
 export class FakeTransport implements Transport {
-  readonly calls: Array<{ name: string; payload: Record<string, unknown> }> = [];
+  readonly calls: { name: string; payload: Record<string, unknown> }[] = [];
   readonly failures = new Map<string, string>();
 
   private readonly handlers = new Map<string, Handler>();
@@ -47,7 +47,7 @@ export class FakeTransport implements Transport {
     this.emit({ stream_id: streamId, seq, kind: "agent", payload: agentEvent });
   }
 
-  callsFor(name: string): Array<Record<string, unknown>> {
+  callsFor(name: string): Record<string, unknown>[] {
     return this.calls.filter((call) => call.name === name).map((call) => call.payload);
   }
 }

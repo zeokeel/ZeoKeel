@@ -1,4 +1,5 @@
 /** Enterprise content catalog (skills/connectors) API client. */
+import { isRecord } from "@zeokeel/ui-kit";
 import type { AuthSession } from "./auth";
 
 export interface SkillItem {
@@ -23,7 +24,7 @@ export interface ConnectorItem {
 }
 
 function record(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+  return isRecord(value) ? value : null;
 }
 
 function text(value: unknown): string | null {
@@ -38,7 +39,7 @@ export async function fetchSkills(session: AuthSession, serverUrl: string): Prom
   const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/skills`, {
     headers: { authorization: `Bearer ${session.access_token}` },
   });
-  if (!response.ok) throw new Error(`skills HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`skills HTTP ${String(response.status)}`);
   const body: unknown = await response.json();
   const items = record(body)?.["items"];
   if (!Array.isArray(items)) return [];
@@ -58,7 +59,7 @@ export async function fetchConnectors(session: AuthSession, serverUrl: string): 
   const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/connectors`, {
     headers: { authorization: `Bearer ${session.access_token}` },
   });
-  if (!response.ok) throw new Error(`connectors HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`connectors HTTP ${String(response.status)}`);
   const body: unknown = await response.json();
   const items = record(body)?.["items"];
   if (!Array.isArray(items)) return [];
@@ -94,7 +95,7 @@ export async function downloadSkillArchive(session: AuthSession, serverUrl: stri
   const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/skills/${encodeURIComponent(item.name)}/${encodeURIComponent(item.version)}/archive`, {
     headers: { authorization: `Bearer ${session.access_token}` },
   });
-  if (!response.ok) throw new Error(`skills download HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`skills download HTTP ${String(response.status)}`);
   const header = response.headers.get("x-zeokeel-skill-sha256");
   if (header !== null && header !== item.sha256) throw new Error("CHECKSUM_MISMATCH");
   const bytes = new Uint8Array(await response.arrayBuffer());
@@ -110,7 +111,7 @@ export async function toggleConnector(session: AuthSession, serverUrl: string, i
     method: "POST",
     headers: { authorization: `Bearer ${session.access_token}` },
   });
-  if (!response.ok) throw new Error(`connector HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`connector HTTP ${String(response.status)}`);
 }
 
 export async function fetchTombstones(session: AuthSession, serverUrl: string): Promise<string[]> {
@@ -129,14 +130,14 @@ export async function sendInstallReceipt(session: AuthSession, serverUrl: string
     headers: { authorization: `Bearer ${session.access_token}`, "content-type": "application/json" },
     body: JSON.stringify({ tree_sha256: treeSha256 }),
   });
-  if (!response.ok) throw new Error(`install receipt HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`install receipt HTTP ${String(response.status)}`);
 }
 
 export interface AppItem { appId: string; name: string; description: string; version: string; access: string }
 
 export async function fetchApps(session: AuthSession, serverUrl: string): Promise<AppItem[]> {
   const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/apps`, { headers: { authorization: `Bearer ${session.access_token}` } });
-  if (!response.ok) throw new Error(`apps HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`apps HTTP ${String(response.status)}`);
   const body: unknown = await response.json();
   const items = record(body)?.["items"];
   if (!Array.isArray(items)) return [];
@@ -153,12 +154,12 @@ export async function fetchApps(session: AuthSession, serverUrl: string): Promis
 
 export async function openApp(session: AuthSession, serverUrl: string, item: AppItem): Promise<{ version: string; entry: string }> {
   const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/apps/${encodeURIComponent(item.appId)}/open`, { method: "POST", headers: { authorization: `Bearer ${session.access_token}` } });
-  if (!response.ok) throw new Error(`open HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`open HTTP ${String(response.status)}`);
   const version = response.headers.get("x-zeokeel-app-version") ?? item.version;
   let entry = "index.html";
   try {
     const body: unknown = await response.json();
-    const manifest = typeof body === "object" && body !== null ? (body as { ui_manifest?: unknown }).ui_manifest : undefined;
+    const manifest = isRecord(body) ? body["ui_manifest"] : undefined;
     if (typeof manifest === "string") {
       const parsed: unknown = JSON.parse(manifest);
       if (Array.isArray(parsed) && typeof parsed[0] === "string") entry = parsed[0];
@@ -169,6 +170,6 @@ export async function openApp(session: AuthSession, serverUrl: string, item: App
 
 export async function fetchAppHtml(session: AuthSession, serverUrl: string, item: AppItem, entry = "index.html"): Promise<string> {
   const response = await fetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/apps/${encodeURIComponent(item.appId)}/assets/${encodeURIComponent(entry)}`, { headers: { authorization: `Bearer ${session.access_token}` } });
-  if (!response.ok) throw new Error(`app asset HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`app asset HTTP ${String(response.status)}`);
   return response.text();
 }
