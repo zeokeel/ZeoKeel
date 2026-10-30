@@ -34,11 +34,34 @@
 - 完整矩阵与测试状态以 `docs/generated/AGENT-TOOL-MATRIX.md` 为准。
 - 平台不支持必须返回明确错误，不得静默缺失。
 
-## 5. rig 能力释放
+## 5. rig 能力释放矩阵（2026-10-31 round 3）
 
-- 已用：AgentBuilder、DynamicTool、preamble、max turns、streaming（text delta）、取消标志、审批阻塞、工具超时。
-- 已接：rig-memory（`ZEOKEEL_AGENT_MEMORY_DIR`）、rig extractor（`extract_json` 工具）。
-- 已接多 provider：openai/deepseek/anthropic/ollama（`ZEOKEEL_RIG_PROVIDER`）。
-- 设置保存后通过 `RigAgent::configure_model` 热切换 rig model（无需重启）；单测 `configure_model_hot_swaps`。
-- 待接：hooks 全面观测、extractor、vector store、loaders、图像/音频/转写/rerank。
-- 每项独立能力包/角色；未配置时 `CAPABILITY_UNAVAILABLE`。
+### 5.1 已用/已接
+
+- Agent 循环：AgentBuilder、DynamicTool（JSON Schema）、preamble、max turns、streaming（text/tool-call/tool-result）、取消标志、审批阻塞、工具超时；`RigAgent::configure_model` 热切换 model（`configure_model_hot_swaps`）。
+- 多 provider：openai/deepseek/anthropic/ollama（`llm-rig`）；enterprise 由 `llm-gateway` 的 rig Responses 适配（`model()`/`model_from_config`）。
+- Extractor：`extract_json` 工具（`rig_agent::extractor`，retries=2）。
+- Loaders：`read_document`（PDF/EPUB，独立实现；rig `pdf`/`epub` feature 未启用）。
+
+### 5.2 本轮新增（round 3）
+
+| 能力 | 实现 | 配置/接口 |
+| --- | --- | --- |
+| Completion 参数 | `agent-rig` 每轮把配置写进 rig `AgentBuilder`（`temperature`/`max_tokens`/`tool_choice`）与 `GenerationOptions`（`top_p`/`seed`/`stop`/`parallel_tool_calls`/`reasoning`/`cache`） | `AgentRuntimeConfig`（`agent-rig::config`）：`with_agent_config` / `configure_agent` / 进程级 `set_default_agent_config`；env 兜底 `ZEOKEEL_AGENT_TEMPERATURE/_MAX_TOKENS/_TOP_P/_SEED/_STOP/_TOOL_CHOICE/_PARALLEL_TOOL_CALLS/_REASONING_EFFORT/_PROMPT_CACHE`。优先级：显式配置 > env > 内建默认（不强制 sampling，保持 provider 默认）。**契约字段待 T22 解冻后搬入 `AppSettings.agent`**（schema 已报 Lead）。 |
+| Usage | 流式 `FinalResponse` 与非流式 `PromptResponse` 都取 rig `Usage`（input/output/total/cached/cache_creation/reasoning/cost） | `RigAgent::last_usage() -> Option<UsageSnapshot>`；hook `TurnCompleted{usage}`。**`AgentReply.usage` / UI 持久化待 T22 契约**。 |
+| 多轮 memory | `rig-memory` DirStore + conversation 持久化；每轮自动回放该 conversation 历史 | `AgentRuntimeConfig.memory{enabled,dir}`；目录优先级 `dir` > `ZEOKEEL_AGENT_MEMORY_DIR` > `$ZEOKEEL_HOME/agent-memory`；无目录时发 `MemoryUnavailable` hook（不静默）。 |
+| Hooks | `HookSink` 结构化事件：TurnStarted/TurnCompleted(usage/cancelled)/ToolStarted/ToolFinished/ApprovalRequested/ApprovalResolved/MemoryUnavailable/TurnFailed；可选 JSONL 追加 | `RigAgent::with_hook_sink`；`AgentRuntimeConfig.hooks{enabled,log}` / `ZEOKEEL_AGENT_HOOKS_ENABLED/_LOG`；`cap-hooks` 动态 availability（host 可 `set_available` 覆盖）。 |
+| Vector/embeddings | `cap-vector`：rig embedding model + 进程内 cosine 索引（insert/insert_many/search/clear/len） | `configure(DynModel<Embedding>)`、`configure_from_env()`（`ZEOKEEL_EMBEDDING_BASE_URL/_API_KEY/_MODEL/_DIMS`）、`unconfigure()`；未配置时 `available()==false` + `unavailable_reason()` + `CAPABILITY_UNAVAILABLE`。`llm-rig::embedding_model()` 提供个人版 embedding model。**注：cap-vector 成为第三个 rig 适配包，ADR-007「只有两个适配层」的措辞需补 ADR。** |
+| 媒体/rerank/转写 | 诚实不可用：`available()==false` + `unavailable_reason()`（rig `audio`/`image` feature 未启用、无 rerank/transcription provider）；`set_available` 留给未来 provider | `cap-audio/cap-image/cap-rerank/cap-transcription`；错误码 `CAPABILITY_UNAVAILABLE`。 |
+
+### 5.3 仍未接（明确 gap）
+
+- **契约层**（T22 冻结中，本轮不改 contracts）：`AppSettings.agent` 字段、`AgentReply.usage`、`AgentEvent` usage/hook 事件、`Agent::configure_agent` trait 方法；桌面 settings loader 调 `zk_agent_rig::set_default_agent_config(...)`，登录/设置后调 `Runtime::configure_llm` + `configure_agent`；cap-vector 需桌面在 provider 配置后调用 `zk_cap_vector::configure(zk_llm_rig::embedding_model()?)`（enterprise 网关无 embeddings 路由，保持不可用）。
+- **真实历史回放 vs 会话 DB**：当前多轮靠 rig-memory 目录日志；`SessionStore::messages_in` 回放仍缺（需桌面把历史注入 prompt 或统一由 memory 承担）。
+- rig 的 run-state 序列化/`Recorder`/`observe`/`telemetry`/`effect`、loaders（reader features）、媒体 provider、`ModelCatalog` 上下文窗口/压缩仍未接。
+- `cap-vector` 索引为进程内（重启丢失）；SQLite 持久化待后续。
+
+### 5.4 能力可用性契约
+
+- 每个能力包必须提供动态 `available()`；不可用时给出 `unavailable_reason()`，host 侧统一映射 `CAPABILITY_UNAVAILABLE`，不得静默缺失或假装可用。
+- 参考实现：`cap-hooks`（默认可用，env/host 可关）、`cap-vector`（配置 embedding 后可用）、`cap-{audio,image,rerank,transcription}`（诚实不可用 + 原因）。

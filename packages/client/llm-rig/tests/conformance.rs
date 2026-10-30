@@ -24,3 +24,27 @@ fn configured_model_builds() {
     .unwrap();
     let _ = model;
 }
+
+#[test]
+fn embedding_model_builds_from_explicit_config() {
+    let model = zk_llm_rig::embedding_model_from_config(
+        "http://127.0.0.1:1/v1",
+        "test-key",
+        "text-embedding-3-small",
+        Some(256),
+    )
+    .unwrap();
+    assert_eq!(model.id(), Some("text-embedding-3-small"));
+}
+
+#[test]
+fn embedding_model_requires_provider_config() {
+    assert!(zk_llm_rig::embedding_model_from_config("", "key", "model", None).is_err());
+    assert!(
+        zk_llm_rig::embedding_model_from_config("http://127.0.0.1:1/v1", "", "model", None)
+            .is_err()
+    );
+    assert!(
+        zk_llm_rig::embedding_model_from_config("http://127.0.0.1:1/v1", "key", "", None).is_err()
+    );
+}

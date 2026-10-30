@@ -3,7 +3,7 @@
 //! @capability llm.provider.rig
 #![forbid(unsafe_code)]
 
-use rig_core::operation::Completion;
+use rig_core::operation::{Completion, Embedding};
 use rig_core::providers::openai::OpenAIConfig;
 use rig_core::DynModel;
 use zk_contract_llm::{LlmError, LlmProvider};
@@ -168,6 +168,83 @@ pub fn model() -> Result<DynModel<Completion>, LlmError> {
         return unconfigured_model();
     }
     model_from(&config)
+}
+
+/// Default embedding model id for OpenAI-compatible endpoints.
+pub const DEFAULT_EMBEDDING_MODEL: &str = "text-embedding-3-small";
+
+/// Build an embedding model for an OpenAI-compatible endpoint.
+///
+/// `base_url` must be the API root (e.g. `https://api.openai.com/v1`); `dims`
+/// asks providers that support shortening output vectors for that width.
+///
+/// # Errors
+///
+/// [`LlmError::InvalidRequest`] when the endpoint, key or model is empty.
+pub fn embedding_model_from_config(
+    base_url: &str,
+    api_key: &str,
+    model: &str,
+    dims: Option<usize>,
+) -> Result<DynModel<Embedding>, LlmError> {
+    if base_url.trim().is_empty() {
+        return Err(LlmError::InvalidRequest(
+            "embedding base_url is empty (set ZEOKEEL_EMBEDDING_BASE_URL)".to_owned(),
+        ));
+    }
+    if api_key.trim().is_empty() {
+        return Err(LlmError::InvalidRequest(
+            "embedding api_key is empty (set ZEOKEEL_EMBEDDING_API_KEY)".to_owned(),
+        ));
+    }
+    if model.trim().is_empty() {
+        return Err(LlmError::InvalidRequest(
+            "embedding model is empty (set ZEOKEEL_EMBEDDING_MODEL)".to_owned(),
+        ));
+    }
+    let client = OpenAIConfig::new(api_key.trim().to_owned())
+        .with_base_url(base_url.trim_end_matches('/').to_owned())
+        .client();
+    Ok(client.embedding(model.trim().to_owned(), dims).into())
+}
+
+/// Build the personal-edition embedding model from `ZEOKEEL_EMBEDDING_*`
+/// (falling back to the main provider's OpenAI-compatible endpoint/key).
+///
+/// # Errors
+///
+/// As [`embedding_model_from_config`] when no embedding endpoint/key/model is
+/// configured, and [`LlmError::InvalidRequest`] for an invalid dims value.
+pub fn embedding_model() -> Result<DynModel<Embedding>, LlmError> {
+    let base_url = env_first(&[
+        "ZEOKEEL_EMBEDDING_BASE_URL",
+        "ZEOKEEL_OPENAI_BASE_URL",
+        "ZEOKEEL_DEV_OPENAI_BASE_URL",
+    ]);
+    let api_key = env_first(&[
+        "ZEOKEEL_EMBEDDING_API_KEY",
+        "ZEOKEEL_OPENAI_API_KEY",
+        "ZEOKEEL_DEV_OPENAI_API_KEY",
+    ]);
+    let model = {
+        let model = env_first(&["ZEOKEEL_EMBEDDING_MODEL"]);
+        if model.is_empty() {
+            DEFAULT_EMBEDDING_MODEL.to_owned()
+        } else {
+            model
+        }
+    };
+    let dims = {
+        let value = env_first(&["ZEOKEEL_EMBEDDING_DIMS"]);
+        if value.is_empty() {
+            None
+        } else {
+            Some(value.parse::<usize>().map_err(|error| {
+                LlmError::InvalidRequest(format!("ZEOKEEL_EMBEDDING_DIMS: {error}"))
+            })?)
+        }
+    };
+    embedding_model_from_config(&base_url, &api_key, &model, dims)
 }
 
 /// Legacy provider adapter kept for package contract compatibility.

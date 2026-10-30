@@ -1,16 +1,26 @@
 //! rig-agent based runtime (`agent.loop`).
 #![forbid(unsafe_code)]
 
+mod config;
+mod hooks;
+
+pub use config::{
+    default_agent_config, set_default_agent_config, AgentRuntimeConfig, CompletionConfig,
+    HooksConfig, MemoryConfig, PromptCache, ReasoningEffort, ToolChoiceConfig,
+};
+pub use hooks::{HookEvent, HookSink, UsageSnapshot};
+
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use futures::StreamExt;
 use rig_agent::agent::MultiTurnStreamItem;
 use rig_agent::streaming::{Item, StreamEvent};
 use rig_agent::AgentBuilder;
 use rig_core::completion::message::{AssistantContent, ToolCall};
-use rig_core::message::ToolName;
+use rig_core::completion::{CacheRetention, Effort, GenerationOptions};
+use rig_core::message::{ToolChoice, ToolName};
 use rig_core::operation::Completion;
 use rig_core::tool::{DynamicTool, ToolExecutionError, ToolOutput};
 use rig_core::DynModel;
@@ -27,6 +37,27 @@ pub type ModelFactory =
     Arc<dyn Fn(&str, &str, &str, &str) -> Result<DynModel<Completion>, String> + Send + Sync>;
 
 static APPROVAL_SEQ: AtomicU64 = AtomicU64::new(1);
+static GLOBAL_HOOK_SINK: OnceLock<Mutex<Option<Arc<dyn HookSink>>>> = OnceLock::new();
+
+fn global_hook_slot() -> &'static Mutex<Option<Arc<dyn HookSink>>> {
+    GLOBAL_HOOK_SINK.get_or_init(|| Mutex::new(None))
+}
+
+/// Install a process-wide hook sink (desktop event bridge / JSONL recorder).
+///
+/// Agents created afterwards use it by default; [`RigAgent::with_hook_sink`]
+/// still overrides it per instance. Passing `None` clears it.
+pub fn set_global_hook_sink(sink: Option<Arc<dyn HookSink>>) {
+    if let Ok(mut slot) = global_hook_slot().lock() {
+        *slot = sink;
+    }
+}
+
+/// The process-wide hook sink, when installed.
+#[must_use]
+pub fn global_hook_sink() -> Option<Arc<dyn HookSink>> {
+    global_hook_slot().lock().ok().and_then(|slot| slot.clone())
+}
 
 /// rig-backed agent.
 pub struct RigAgent {
@@ -36,8 +67,9 @@ pub struct RigAgent {
     preamble: String,
     approval: Arc<dyn ApprovalGate>,
     streaming: bool,
-    memory_dir: Option<PathBuf>,
-    max_steps: usize,
+    config: Arc<Mutex<AgentRuntimeConfig>>,
+    hook_sink: Option<Arc<dyn HookSink>>,
+    last_usage: Arc<Mutex<Option<UsageSnapshot>>>,
     cancelled: Arc<AtomicBool>,
     runtime: tokio::runtime::Runtime,
 }
@@ -59,12 +91,9 @@ impl RigAgent {
             streaming: std::env::var("ZEOKEEL_AGENT_STREAMING")
                 .map(|value| value != "0")
                 .unwrap_or(true),
-            memory_dir: std::env::var_os("ZEOKEEL_AGENT_MEMORY_DIR").map(PathBuf::from),
-            max_steps: std::env::var("ZEOKEEL_AGENT_MAX_STEPS")
-                .ok()
-                .and_then(|value| value.parse::<usize>().ok())
-                .unwrap_or(MAX_STEPS)
-                .clamp(1, 200),
+            config: Arc::new(Mutex::new(default_agent_config())),
+            hook_sink: global_hook_sink(),
+            last_usage: Arc::new(Mutex::new(None)),
             cancelled: Arc::new(AtomicBool::new(false)),
             runtime,
         })
@@ -72,16 +101,71 @@ impl RigAgent {
 
     /// Override max model/tool steps.
     #[must_use]
-    pub fn with_max_steps(mut self, max_steps: usize) -> Self {
-        self.max_steps = max_steps.clamp(1, 200);
+    pub fn with_max_steps(self, max_steps: usize) -> Self {
+        if let Ok(mut config) = self.config.lock() {
+            config.max_steps = max_steps.clamp(1, 200);
+        }
         self
+    }
+
+    /// Install the full runtime config (sampling, memory, hooks, max steps).
+    ///
+    /// The config is snapshotted again on every turn, so a later
+    /// [`Self::configure_agent`] or global [`set_default_agent_config`] applies
+    /// to the next turn without rebuilding the agent.
+    #[must_use]
+    pub fn with_agent_config(mut self, config: AgentRuntimeConfig) -> Self {
+        self.config = Arc::new(Mutex::new(config));
+        self
+    }
+
+    /// Replace the runtime config for the next turn.
+    ///
+    /// # Errors
+    ///
+    /// [`AgentRuntimeConfig::validate`] rejects out-of-range values before they
+    /// are stored.
+    pub fn configure_agent(&self, config: AgentRuntimeConfig) -> Result<(), AgentError> {
+        config.validate().map_err(AgentError::Invalid)?;
+        let mut guard = self
+            .config
+            .lock()
+            .map_err(|_| AgentError::Invalid("agent config lock poisoned".to_owned()))?;
+        *guard = config;
+        Ok(())
     }
 
     /// Enable rig-memory conversation persistence in `dir`.
     #[must_use]
-    pub fn with_memory_dir(mut self, dir: PathBuf) -> Self {
-        self.memory_dir = Some(dir);
+    pub fn with_memory_dir(self, dir: PathBuf) -> Self {
+        if let Ok(mut config) = self.config.lock() {
+            config.memory.enabled = true;
+            config.memory.dir = dir.to_string_lossy().to_string();
+        }
         self
+    }
+
+    /// Install an observable lifecycle hook sink.
+    #[must_use]
+    pub fn with_hook_sink(mut self, sink: Arc<dyn HookSink>) -> Self {
+        self.hook_sink = Some(sink);
+        self
+    }
+
+    /// The usage reported by the most recent completed turn, when the provider
+    /// reported any (before the contract exposes it through `AgentReply`).
+    #[must_use]
+    pub fn last_usage(&self) -> Option<UsageSnapshot> {
+        self.last_usage.lock().ok().and_then(|guard| *guard)
+    }
+
+    /// The config snapshot used for the next turn (tests/diagnostics).
+    #[must_use]
+    pub fn config(&self) -> AgentRuntimeConfig {
+        self.config
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
     }
 
     /// Disable token streaming (tests/scripted providers).
@@ -115,10 +199,16 @@ impl RigAgent {
     fn dynamic_tools(
         &self,
         context: &TurnContext,
+        turn_id: &str,
         records: &Arc<Mutex<Vec<ToolCallRecord>>>,
         sink: &Arc<dyn EventSink>,
+        hooks_config: &HooksConfig,
+        hook_sink: Option<&Arc<dyn HookSink>>,
     ) -> Vec<DynamicTool> {
         let cancelled = Arc::clone(&self.cancelled);
+        let turn_id = turn_id.to_owned();
+        let hooks_config = hooks_config.clone();
+        let hook_sink = hook_sink.cloned();
         let mut out = Vec::with_capacity(self.tools.len());
         for tool in &self.tools {
             let spec = tool.spec();
@@ -139,6 +229,9 @@ impl RigAgent {
             let records_for_tool = Arc::clone(records);
             let sink_for_tool = Arc::clone(sink);
             let cancelled_for_tool = Arc::clone(&cancelled);
+            let turn_id_for_tool = turn_id.clone();
+            let hooks_for_tool = hooks_config.clone();
+            let hook_sink_for_tool = hook_sink.clone();
             // Delegation depth of this conversation (0 for the root turn): a child
             // conversation runs on another thread, so re-apply it inside the tool
             // execution closure (see zk_kit_subagent::set_context_depth).
@@ -151,6 +244,9 @@ impl RigAgent {
                     let records_for_tool = Arc::clone(&records_for_tool);
                     let sink_for_tool = Arc::clone(&sink_for_tool);
                     let cancelled_for_tool = Arc::clone(&cancelled_for_tool);
+                    let turn_id_for_tool = turn_id_for_tool.clone();
+                    let hooks_for_tool = hooks_for_tool.clone();
+                    let hook_sink_for_tool = hook_sink_for_tool.clone();
                     let tool = Arc::clone(&callback_tool);
                     let context = callback_context.clone();
                     let approval = Arc::clone(&approval);
@@ -168,6 +264,15 @@ impl RigAgent {
                                 args: args_text.clone(),
                                 reason: "mutating tool".to_owned(),
                             });
+                            hooks::emit_hook(
+                                &hooks_for_tool,
+                                hook_sink_for_tool.as_ref(),
+                                &HookEvent::ApprovalRequested {
+                                    turn_id: turn_id_for_tool.clone(),
+                                    approval_id: approval_id.clone(),
+                                    tool: approval_name.clone(),
+                                },
+                            );
                             let allowed = approval.decide(
                                 &approval_id,
                                 &approval_name,
@@ -175,13 +280,22 @@ impl RigAgent {
                                 "mutating tool",
                             );
                             sink_for_tool.emit(AgentEvent::ApprovalResolved {
-                                approval_id,
+                                approval_id: approval_id.clone(),
                                 decision: if allowed {
                                     ApprovalDecision::AllowOnce
                                 } else {
                                     ApprovalDecision::Reject
                                 },
                             });
+                            hooks::emit_hook(
+                                &hooks_for_tool,
+                                hook_sink_for_tool.as_ref(),
+                                &HookEvent::ApprovalResolved {
+                                    turn_id: turn_id_for_tool.clone(),
+                                    approval_id,
+                                    allowed,
+                                },
+                            );
                             if !allowed {
                                 let result = "denied by approval policy".to_owned();
                                 if let Ok(mut guard) = records.lock() {
@@ -202,6 +316,15 @@ impl RigAgent {
                             name: approval_name.clone(),
                             args: args_text.clone(),
                         });
+                        hooks::emit_hook(
+                            &hooks_for_tool,
+                            hook_sink_for_tool.as_ref(),
+                            &HookEvent::ToolStarted {
+                                turn_id: turn_id_for_tool.clone(),
+                                tool: approval_name.clone(),
+                                args: args_text.clone(),
+                            },
+                        );
                         let tool_for_call = Arc::clone(&tool);
                         let context_for_call = context.clone();
                         let timeout_ms = std::env::var("ZEOKEEL_TOOL_TIMEOUT_MS")
@@ -233,6 +356,16 @@ impl RigAgent {
                                     name: approval_name.clone(),
                                     result: text.clone(),
                                 });
+                                hooks::emit_hook(
+                                    &hooks_for_tool,
+                                    hook_sink_for_tool.as_ref(),
+                                    &HookEvent::ToolFinished {
+                                        turn_id: turn_id_for_tool.clone(),
+                                        tool: approval_name.clone(),
+                                        is_error: false,
+                                        result_chars: text.chars().count(),
+                                    },
+                                );
                                 if let Ok(mut guard) = records.lock() {
                                     guard.push(ToolCallRecord {
                                         name: approval_name.clone(),
@@ -248,6 +381,16 @@ impl RigAgent {
                                     name: approval_name.clone(),
                                     result: result.clone(),
                                 });
+                                hooks::emit_hook(
+                                    &hooks_for_tool,
+                                    hook_sink_for_tool.as_ref(),
+                                    &HookEvent::ToolFinished {
+                                        turn_id: turn_id_for_tool.clone(),
+                                        tool: approval_name.clone(),
+                                        is_error: true,
+                                        result_chars: result.chars().count(),
+                                    },
+                                );
                                 if let Ok(mut guard) = records.lock() {
                                     guard.push(ToolCallRecord {
                                         name: approval_name.clone(),
@@ -268,13 +411,31 @@ impl RigAgent {
     fn run_rig(
         &self,
         context: &TurnContext,
+        turn_id: &str,
         input: &str,
         sink: &Arc<dyn EventSink>,
     ) -> Result<AgentReply, AgentError> {
+        let config = self
+            .config
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default();
+        let hooks_config = config.hooks.clone();
+        let hook_sink = self.hook_sink.clone();
+        if let Ok(mut usage) = self.last_usage.lock() {
+            *usage = None;
+        }
         let records = Arc::new(Mutex::new(Vec::<ToolCallRecord>::new()));
-        let tools = self.dynamic_tools(context, &records, sink);
+        let tools = self.dynamic_tools(
+            context,
+            turn_id,
+            &records,
+            sink,
+            &hooks_config,
+            hook_sink.as_ref(),
+        );
         self.cancelled.store(false, Ordering::SeqCst);
-        let max_steps = self.max_steps;
+        let max_steps = config.max_steps.clamp(1, 200);
         let preamble = format!(
             "{}\n\n{}\n\n{}",
             self.preamble,
@@ -286,7 +447,7 @@ impl RigAgent {
             .lock()
             .map(|guard| guard.clone())
             .map_err(|_| AgentError::Invalid("model lock poisoned".to_owned()))?;
-        let mut builder = AgentBuilder::new(model)
+        let builder = AgentBuilder::new(model)
             .name("zeokeel")
             .preamble(preamble)
             .context(format!(
@@ -295,21 +456,33 @@ impl RigAgent {
             ))
             .default_max_turns(max_steps)
             .dynamic_tools(tools);
-        if let Some(dir) = &self.memory_dir {
-            std::fs::create_dir_all(dir)
+        let mut builder = apply_completion_config(builder, &config.completion);
+        if let Some(dir) = config.memory_dir() {
+            std::fs::create_dir_all(&dir)
                 .map_err(|error| AgentError::Invalid(format!("memory dir: {error}")))?;
-            let store = rig_memory::DirStore::open(dir)
+            let store = rig_memory::DirStore::open(&dir)
                 .map_err(|error| AgentError::Invalid(format!("memory store: {error}")))?;
             builder = builder
                 .memory(store)
                 .conversation(context.conversation_id.clone());
+        } else if config.memory.enabled {
+            hooks::emit_hook(
+                &hooks_config,
+                hook_sink.as_ref(),
+                &HookEvent::MemoryUnavailable {
+                    turn_id: turn_id.to_owned(),
+                    reason: "no memory directory configured (set agent.memory.dir or $ZEOKEEL_HOME/agent-memory)"
+                        .to_owned(),
+                },
+            );
         }
         let agent = builder.build();
-        let response = if self.streaming {
+        let (text, usage) = if self.streaming {
             self.runtime
                 .block_on(async {
                     let mut stream = agent.prompt(input).stream();
                     let mut final_text: Option<String> = None;
+                    let mut final_usage: Option<UsageSnapshot> = None;
                     while let Some(item) = stream.next().await {
                         if self.cancelled.load(Ordering::SeqCst) {
                             break;
@@ -321,6 +494,7 @@ impl RigAgent {
                                 sink.emit(AgentEvent::TextDelta { delta: text });
                             }
                             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                                final_usage = Some(UsageSnapshot::from(response.usage()));
                                 final_text = Some(response.output());
                             }
                             Ok(_) => {}
@@ -328,29 +502,42 @@ impl RigAgent {
                         }
                     }
                     if self.cancelled.load(Ordering::SeqCst) {
-                        Ok(final_text.unwrap_or_default())
+                        Ok((final_text.unwrap_or_default(), final_usage))
                     } else {
                         final_text
+                            .map(|text| (text, final_usage))
                             .ok_or_else(|| "agent stream ended without a final response".to_owned())
                     }
                 })
                 .map_err(map_provider_error)?
         } else {
             let cancelled = Arc::clone(&self.cancelled);
-            self.runtime.block_on(async move {
-                let future = async move { agent.prompt(input).await.map(|response| response.to_string()) };
-                let mut future = Box::pin(future);
-                loop {
-                    tokio::select! {
-                        result = &mut future => return result.map_err(|error| map_provider_error(error.to_string())),
-                        () = tokio::time::sleep(std::time::Duration::from_millis(50)) => {
-                            if cancelled.load(Ordering::SeqCst) { return Err(AgentError::Invalid("AGENT_CANCELLED".to_owned())); }
+            self.runtime
+                .block_on(async move {
+                    let future = async move {
+                        agent.prompt(input).await.map(|response| {
+                            (
+                                response.output(),
+                                Some(UsageSnapshot::from(response.usage())),
+                            )
+                        })
+                    };
+                    let mut future = Box::pin(future);
+                    loop {
+                        tokio::select! {
+                            result = &mut future => return result.map_err(|error| map_provider_error(error.to_string())),
+                            () = tokio::time::sleep(std::time::Duration::from_millis(50)) => {
+                                if cancelled.load(Ordering::SeqCst) {
+                                    return Err(AgentError::Invalid("AGENT_CANCELLED".to_owned()));
+                                }
+                            }
                         }
                     }
-                }
-            })?
+                })?
         };
-        let text = response;
+        if let Ok(mut guard) = self.last_usage.lock() {
+            *guard = usage;
+        }
         let calls = records
             .lock()
             .map(|guard| guard.clone())
@@ -359,6 +546,79 @@ impl RigAgent {
             text,
             tool_calls: calls,
         })
+    }
+}
+
+/// Apply configurable completion parameters to the rig agent builder.
+fn apply_completion_config(mut builder: AgentBuilder, config: &CompletionConfig) -> AgentBuilder {
+    if let Some(temperature) = config.temperature {
+        builder = builder.temperature(temperature);
+    }
+    if let Some(max_tokens) = config.max_tokens {
+        builder = builder.max_tokens(max_tokens);
+    }
+    builder = builder.tool_choice(map_tool_choice(&config.tool_choice));
+    let mut options = GenerationOptions::new();
+    let mut has_option = false;
+    if let Some(top_p) = config.top_p {
+        options = options.top_p(top_p);
+        has_option = true;
+    }
+    if let Some(seed) = config.seed {
+        options = options.seed(seed);
+        has_option = true;
+    }
+    if !config.stop.is_empty() {
+        options = options.stop(config.stop.clone());
+        has_option = true;
+    }
+    if let Some(parallel) = config.parallel_tool_calls {
+        options = options.parallel_tool_calls(parallel);
+        has_option = true;
+    }
+    if let Some(effort) = config.reasoning_effort {
+        options = options.reasoning(map_reasoning(effort));
+        has_option = true;
+    }
+    if let Some(cache) = config.prompt_cache {
+        options = options.cache(map_cache(cache));
+        has_option = true;
+    }
+    if has_option {
+        builder = builder.options(options);
+    }
+    builder
+}
+
+fn map_tool_choice(choice: &ToolChoiceConfig) -> ToolChoice {
+    match choice {
+        ToolChoiceConfig::Auto => ToolChoice::Auto,
+        ToolChoiceConfig::None => ToolChoice::None,
+        ToolChoiceConfig::Required => ToolChoice::Required,
+        ToolChoiceConfig::Specific(names) => ToolChoice::Specific {
+            function_names: names
+                .iter()
+                .filter_map(|name| ToolName::new(name.clone()).ok())
+                .collect(),
+        },
+    }
+}
+
+fn map_reasoning(effort: ReasoningEffort) -> Effort {
+    match effort {
+        ReasoningEffort::Minimal => Effort::Minimal,
+        ReasoningEffort::Low => Effort::Low,
+        ReasoningEffort::Medium => Effort::Medium,
+        ReasoningEffort::High => Effort::High,
+        ReasoningEffort::XHigh => Effort::XHigh,
+        ReasoningEffort::Max => Effort::Max,
+    }
+}
+
+fn map_cache(cache: PromptCache) -> CacheRetention {
+    match cache {
+        PromptCache::Short => CacheRetention::Short,
+        PromptCache::Long => CacheRetention::Long,
     }
 }
 
@@ -426,25 +686,67 @@ impl Agent for RigAgent {
         input: &str,
         sink: Arc<dyn EventSink>,
     ) -> Result<AgentReply, AgentError> {
+        let config = self.config();
+        let hooks_config = config.hooks.clone();
+        let hook_sink = self.hook_sink.clone();
         sink.emit(AgentEvent::TurnStarted {
             turn_id: turn_id.to_owned(),
         });
+        hooks::emit_hook(
+            &hooks_config,
+            hook_sink.as_ref(),
+            &HookEvent::TurnStarted {
+                turn_id: turn_id.to_owned(),
+                conversation_id: context.conversation_id.clone(),
+                workspace_id: context.workspace_id.clone(),
+            },
+        );
         zk_kit_events::set_sink(Arc::clone(&sink));
-        let result = self.run_rig(context, input, &sink);
+        let result = self.run_rig(context, turn_id, input, &sink);
         zk_kit_events::clear();
         match result {
             Ok(reply) if self.cancelled.load(Ordering::SeqCst) => {
                 sink.emit(AgentEvent::TurnCancelled);
+                hooks::emit_hook(
+                    &hooks_config,
+                    hook_sink.as_ref(),
+                    &HookEvent::TurnCompleted {
+                        turn_id: turn_id.to_owned(),
+                        usage: self.last_usage(),
+                        cancelled: true,
+                        text_chars: reply.text.chars().count(),
+                    },
+                );
                 Ok(reply)
             }
             Ok(reply) => {
                 sink.emit(AgentEvent::TurnCompleted {
                     reply: reply.clone(),
                 });
+                hooks::emit_hook(
+                    &hooks_config,
+                    hook_sink.as_ref(),
+                    &HookEvent::TurnCompleted {
+                        turn_id: turn_id.to_owned(),
+                        usage: self.last_usage(),
+                        cancelled: false,
+                        text_chars: reply.text.chars().count(),
+                    },
+                );
                 Ok(reply)
             }
             Err(_) if self.cancelled.load(Ordering::SeqCst) => {
                 sink.emit(AgentEvent::TurnCancelled);
+                hooks::emit_hook(
+                    &hooks_config,
+                    hook_sink.as_ref(),
+                    &HookEvent::TurnCompleted {
+                        turn_id: turn_id.to_owned(),
+                        usage: self.last_usage(),
+                        cancelled: true,
+                        text_chars: 0,
+                    },
+                );
                 Ok(AgentReply {
                     text: String::new(),
                     tool_calls: Vec::new(),
@@ -454,6 +756,14 @@ impl Agent for RigAgent {
                 sink.emit(AgentEvent::Error {
                     message: error.to_string(),
                 });
+                hooks::emit_hook(
+                    &hooks_config,
+                    hook_sink.as_ref(),
+                    &HookEvent::TurnFailed {
+                        turn_id: turn_id.to_owned(),
+                        message: error.to_string(),
+                    },
+                );
                 Err(error)
             }
         }
@@ -1004,5 +1314,259 @@ mod tests {
             reply.tool_calls.first().map(|call| call.result.as_str()),
             Some("content")
         );
+    }
+
+    fn context() -> TurnContext {
+        TurnContext {
+            conversation_id: "c".to_owned(),
+            workspace_id: "w".to_owned(),
+            workspace_root: ".".to_owned(),
+        }
+    }
+
+    fn tool_usage(input: u64, output: u64) -> Usage {
+        let mut usage = Usage::default();
+        usage.input_tokens = Some(input);
+        usage.output_tokens = Some(output);
+        usage.total_tokens = Some(input.saturating_add(output));
+        usage
+    }
+
+    struct RecordingHooks(StdMutex<Vec<HookEvent>>);
+    impl HookSink for RecordingHooks {
+        fn on_event(&self, event: &HookEvent) {
+            if let Ok(mut guard) = self.0.lock() {
+                guard.push(event.clone());
+            }
+        }
+    }
+
+    #[test]
+    fn completion_config_reaches_the_rig_request() {
+        let model = MockCompletionModel::from_turns([MockTurn::text("done")]);
+        let config = AgentRuntimeConfig {
+            completion: CompletionConfig {
+                temperature: Some(0.3),
+                max_tokens: Some(128),
+                top_p: Some(0.9),
+                seed: Some(7),
+                stop: vec!["END".to_owned()],
+                tool_choice: ToolChoiceConfig::None,
+                parallel_tool_calls: Some(true),
+                reasoning_effort: Some(ReasoningEffort::Medium),
+                prompt_cache: Some(PromptCache::Short),
+            },
+            memory: MemoryConfig {
+                enabled: false,
+                dir: String::new(),
+            },
+            hooks: HooksConfig {
+                enabled: false,
+                log: String::new(),
+            },
+            max_steps: 4,
+        };
+        let agent = RigAgent::new(model.clone().into(), Vec::new())
+            .unwrap()
+            .with_streaming(false)
+            .with_agent_config(config);
+        agent.run_in(&context(), "hi").unwrap();
+
+        let request = model.requests().first().cloned().expect("request captured");
+        assert_eq!(request.temperature, Some(0.3));
+        assert_eq!(request.max_tokens, Some(128));
+        assert_eq!(request.tool_choice, Some(ToolChoice::None));
+        let options = request.options;
+        assert_eq!(options.top_p, Some(0.9));
+        assert_eq!(options.seed, Some(7));
+        assert_eq!(options.stop, vec!["END".to_owned()]);
+        assert_eq!(options.parallel_tool_calls, Some(true));
+        assert_eq!(
+            options.reasoning,
+            Some(rig_core::completion::Reasoning::Effort(Effort::Medium))
+        );
+        assert_eq!(options.cache, Some(CacheRetention::Short));
+    }
+
+    #[test]
+    fn completion_config_is_validated_before_use() {
+        let mut config = AgentRuntimeConfig::default();
+        config.completion.temperature = Some(3.0);
+        assert!(config.validate().is_err());
+        let model = MockCompletionModel::from_turns([MockTurn::text("done")]);
+        let agent = RigAgent::new(model.into(), Vec::new())
+            .unwrap()
+            .with_streaming(false);
+        assert!(agent.configure_agent(config).is_err());
+        assert!(agent.config().completion.temperature.is_none());
+    }
+
+    #[test]
+    fn usage_is_captured_from_the_final_response() {
+        let model =
+            MockCompletionModel::from_turns([MockTurn::text("done").with_usage(tool_usage(11, 5))]);
+        let hooks = Arc::new(RecordingHooks(StdMutex::new(Vec::new())));
+        let agent = RigAgent::new(model.into(), Vec::new())
+            .unwrap()
+            .with_streaming(false)
+            .with_hook_sink(hooks.clone());
+        agent.run_in(&context(), "hi").unwrap();
+        let usage = agent.last_usage().expect("usage captured");
+        assert_eq!(usage.input_tokens, Some(11));
+        assert_eq!(usage.output_tokens, Some(5));
+        assert_eq!(usage.total_tokens, Some(16));
+        let events = hooks.0.lock().unwrap();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            HookEvent::TurnCompleted {
+                usage: Some(UsageSnapshot {
+                    input_tokens: Some(11),
+                    ..
+                }),
+                cancelled: false,
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn hooks_emit_turn_and_tool_lifecycle() {
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("call-1", "fs.read", serde_json::json!({"path":"a.txt"})),
+            MockTurn::text("done").with_usage(tool_usage(3, 2)),
+        ]);
+        let hooks = Arc::new(RecordingHooks(StdMutex::new(Vec::new())));
+        let agent = RigAgent::new(model.into(), vec![Arc::new(TestTool { approval: false })])
+            .unwrap()
+            .with_streaming(false)
+            .with_hook_sink(hooks.clone());
+        agent.run_in(&context(), "read").unwrap();
+        let events = hooks.0.lock().unwrap();
+        assert!(matches!(
+            events.first(),
+            Some(HookEvent::TurnStarted { .. })
+        ));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            HookEvent::ToolStarted { tool, .. } if tool == "fs.read"
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            HookEvent::ToolFinished {
+                is_error: false,
+                ..
+            }
+        )));
+        assert!(matches!(
+            events.last(),
+            Some(HookEvent::TurnCompleted {
+                cancelled: false,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn approval_hooks_fire_around_the_gate() {
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("call-1", "fs.read", serde_json::json!({"path":"a.txt"})),
+            MockTurn::text("done"),
+        ]);
+        let hooks = Arc::new(RecordingHooks(StdMutex::new(Vec::new())));
+        let agent = RigAgent::new(model.into(), vec![Arc::new(TestTool { approval: true })])
+            .unwrap()
+            .with_streaming(false)
+            .with_approval(Arc::new(Gate(false)))
+            .with_hook_sink(hooks.clone());
+        agent.run_in(&context(), "read").unwrap();
+        let events = hooks.0.lock().unwrap();
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, HookEvent::ApprovalRequested { .. })));
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, HookEvent::ApprovalResolved { allowed: false, .. })));
+    }
+
+    #[test]
+    fn memory_persists_a_conversation_when_configured() {
+        let dir = std::env::temp_dir().join(format!(
+            "zk-agent-memory-{}-{}",
+            std::process::id(),
+            APPROVAL_SEQ.fetch_add(1, Ordering::SeqCst)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let model = MockCompletionModel::from_turns([
+            MockTurn::text("first answer"),
+            MockTurn::text("second answer"),
+        ]);
+        let agent = RigAgent::new(model.into(), Vec::new())
+            .unwrap()
+            .with_streaming(false)
+            .with_agent_config(AgentRuntimeConfig {
+                memory: MemoryConfig {
+                    enabled: true,
+                    dir: dir.to_string_lossy().to_string(),
+                },
+                hooks: HooksConfig {
+                    enabled: false,
+                    log: String::new(),
+                },
+                ..AgentRuntimeConfig::default()
+            });
+        agent.run_in(&context(), "first").unwrap();
+        assert!(
+            tree_has_files(&dir),
+            "rig-memory must persist the conversation under {dir:?}"
+        );
+        agent.run_in(&context(), "second").unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn tree_has_files(dir: &std::path::Path) -> bool {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return false;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if tree_has_files(&path) {
+                    return true;
+                }
+            } else if path.is_file() {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[test]
+    fn memory_unavailable_is_reported_when_no_directory_is_configured() {
+        let model = MockCompletionModel::from_turns([MockTurn::text("done")]);
+        let hooks = Arc::new(RecordingHooks(StdMutex::new(Vec::new())));
+        let agent = RigAgent::new(model.into(), Vec::new())
+            .unwrap()
+            .with_streaming(false)
+            .with_agent_config(AgentRuntimeConfig {
+                memory: MemoryConfig {
+                    enabled: true,
+                    dir: String::new(),
+                },
+                hooks: HooksConfig {
+                    enabled: true,
+                    log: String::new(),
+                },
+                ..AgentRuntimeConfig::default()
+            })
+            .with_hook_sink(hooks.clone());
+        if agent.config().memory_dir().is_some() {
+            // A developer shell exported ZEOKEEL_HOME/ZEOKEEL_AGENT_MEMORY_DIR.
+            return;
+        }
+        agent.run_in(&context(), "hi").unwrap();
+        let events = hooks.0.lock().unwrap();
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, HookEvent::MemoryUnavailable { .. })));
     }
 }
