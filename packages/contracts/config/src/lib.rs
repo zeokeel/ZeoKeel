@@ -53,11 +53,14 @@ pub struct AppSettings {
     pub locale: String,
     /// Auto-approve read-only tools (M1 default true for fs.read).
     pub auto_approve_read_only: bool,
+    /// Enterprise login server URL (personal edition: empty).
+    #[serde(default)]
+    pub server_url: String,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
-        Self { schema: 1, provider: ProviderConfig::default(), theme: "auto".to_owned(), locale: "zh-CN".to_owned(), auto_approve_read_only: true }
+        Self { schema: 1, provider: ProviderConfig::default(), theme: "auto".to_owned(), locale: "zh-CN".to_owned(), auto_approve_read_only: true, server_url: String::new() }
     }
 }
 

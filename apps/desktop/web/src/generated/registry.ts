@@ -22,3 +22,4 @@ export const CommandsSlot = c2["commands.palette"];
 export const InspectorSlot = c3["inspector.panel"];
 export const SessionsSlot = c4["sessions.sidebar"];
 export const SettingsSlot = c5["settings.dialog"];
+export function LoginSlot(_props: { serverUrl: string | null; channelLocked: boolean; loading: boolean; error: string | null; onSubmit: (input: { serverUrl?: string; username: string; password: string; deviceName: string }) => void }) { return null; }

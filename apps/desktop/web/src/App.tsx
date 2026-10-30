@@ -15,11 +15,12 @@ import {
   type UiValue,
 } from "@zeokeel/ui-kit";
 import { BRAND } from "./generated/brand";
-import { ChatSlot, SessionsSlot, SettingsSlot } from "./generated/registry";
+import { ChatSlot, LoginSlot, SessionsSlot, SettingsSlot } from "./generated/registry";
 import { translate } from "./i18n";
 import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
 import type { Transport } from "./types";
+import { loadSession, login as loginRequest, saveSession, type AuthSession } from "./auth";
 
 const tooltipClass = "z-50 rounded-surface bg-foreground px-2 py-1 text-[12px] text-background";
 const iconButtonClass =
@@ -31,6 +32,9 @@ function isMockMode(): boolean {
 
 export function App(props: { transport: Transport }) {
   const controller = useAppController(props.transport);
+  const [session, setSession] = useState<AuthSession | null>(loadSession);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginLoading, setLoginLoading] = useState(false);
   const { state } = controller;
   const theme = useResolvedTheme(state.settings.theme);
   const brand: BrandConfig = BRAND;
@@ -85,6 +89,23 @@ export function App(props: { transport: Transport }) {
       decideApproval: controller.decideApproval,
     },
   };
+
+  if (state.meta.edition === "enterprise" && state.boot === "ready" && session === null && LoginSlot !== null) {
+    const submit = (input: { serverUrl?: string; username: string; password: string; deviceName: string }): void => {
+      const serverUrl = input.serverUrl ?? state.settings.server_url;
+      setLoginLoading(true);
+      setLoginError(null);
+      void loginRequest(serverUrl, input.username, input.password, input.deviceName)
+        .then((next) => { saveSession(next); setSession(next); })
+        .catch((error: unknown) => { setLoginError(error instanceof Error ? error.message : "login failed"); })
+        .finally(() => { setLoginLoading(false); });
+    };
+    return (
+      <UiProvider value={ui}>
+        <LoginSlot serverUrl={state.settings.server_url.trim() === "" ? null : state.settings.server_url} channelLocked={false} loading={loginLoading} error={loginError} onSubmit={submit} />
+      </UiProvider>
+    );
+  }
 
   return (
     <UiProvider value={ui}>

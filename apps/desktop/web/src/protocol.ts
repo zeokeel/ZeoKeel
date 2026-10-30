@@ -216,6 +216,7 @@ export function parseSettings(value: unknown): AppSettings {
     locale: readLocale(value["locale"]) ?? base.locale,
     auto_approve_read_only:
       readBoolean(value, "auto_approve_read_only") ?? base.auto_approve_read_only,
+    server_url: readString(value, "server_url") ?? base.server_url,
   };
 }
 

@@ -68,4 +68,4 @@
 
 ## Login UI package
 
-- `@zeokeel/ui-login`（`ui.login`）：官方首配地址/OEM 锁定地址、账号密码、错误内联、loading/密码显隐；未接 app（下一步）。
+- `@zeokeel/ui-login` 已接入 desktop（仅 enterprise edition 渲染）；`scripts/login-e2e.sh` 首配→登录→进入 app 通过，axe 0 serious/critical。

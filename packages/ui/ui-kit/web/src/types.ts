@@ -30,6 +30,8 @@ export interface AppSettings {
   theme: Theme;
   locale: Locale;
   auto_approve_read_only: boolean;
+  /** Enterprise login server URL (personal edition: empty). */
+  server_url: string;
 }
 
 /** Mirrors `zk_contract_session::Workspace`. */
@@ -149,5 +151,6 @@ export function defaultSettings(): AppSettings {
     theme: "auto",
     locale: "zh-CN",
     auto_approve_read_only: true,
+    server_url: "",
   };
 }

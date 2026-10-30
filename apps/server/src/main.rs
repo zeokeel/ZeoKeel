@@ -5,6 +5,7 @@
 #![forbid(unsafe_code)]
 
 use axum::Router;
+use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 use zk_kit_server::ensure_bootstrap_admin;
 use zk_srv_http::{connect, router_from, state};
@@ -64,6 +65,17 @@ async fn serve(app: Router) -> Result<(), String> {
         "/admin",
         ServeDir::new(&admin_dist).not_found_service(ServeFile::new(admin_index)),
     );
+    // Native clients do not need CORS; allow an explicit dev origin for Playwright only.
+    let app = if let Ok(origin) = std::env::var("ZEOKEEL_DEV_CORS_ORIGIN") {
+        app.layer(
+            CorsLayer::new()
+                .allow_origin(origin.parse::<axum::http::HeaderValue>().map_err(|error| error.to_string())?)
+                .allow_methods([axum::http::Method::GET, axum::http::Method::POST])
+                .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::AUTHORIZATION]),
+        )
+    } else {
+        app
+    };
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .map_err(|error| format!("bind {addr}: {error}"))?;

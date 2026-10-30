@@ -12,6 +12,7 @@ export interface SettingsForm {
   theme: Theme;
   locale: Locale;
   autoApproveReadOnly: boolean;
+  serverUrl: string;
 }
 
 export type SettingsFieldError = string | null;
@@ -39,6 +40,7 @@ export function toForm(settings: AppSettings): SettingsForm {
     theme: settings.theme,
     locale: settings.locale,
     autoApproveReadOnly: settings.auto_approve_read_only,
+    serverUrl: settings.server_url,
   };
 }
 
@@ -62,5 +64,6 @@ export function formToSettings(form: SettingsForm, schema: number): AppSettings 
     theme: form.theme,
     locale: form.locale,
     auto_approve_read_only: form.autoApproveReadOnly,
+    server_url: form.serverUrl.trim(),
   };
 }
