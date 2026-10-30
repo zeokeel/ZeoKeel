@@ -19,7 +19,7 @@ rows = [
  ("web search","tool.web_search","zeokeel/tool-web-search","implemented","DuckDuckGo/HTTPS provider env"),
  ("skill","tool.skill","zeokeel/tool-skill","implemented","read-only"),
  ("goal","tool.goal","zeokeel/tool-goal","partial","no round driver"),
- ("schedule","tool.schedule","zeokeel/tool-schedule","partial","definitions only; no worker"),
+ ("schedule","tool.schedule","zeokeel/tool-schedule","implemented","desktop scheduler executes due intervals"),
  ("session-query","tool.session_query","zeokeel/tool-session-query","implemented","search/read"),
  ("subagent","tool.subagent","zeokeel/tool-subagent","partial","synchronous; no async control"),
  ("subagent_fork","tool.subagent_fork","zeokeel/tool-subagent-fork","implemented","forks current conversation context"),

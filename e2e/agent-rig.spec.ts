@@ -99,4 +99,24 @@ test.describe("personal rig agent (real serve + fake upstream)", () => {
     await expect(page.getByText("已完成工具调用并通过审批。").last()).toBeVisible();
     await page.screenshot({ path: "target/evidence/agent-rig/multi-step.png" });
   });
+  test("settings hot-swap switches the model provider", async ({ page }) => {
+    const upstream2 = process.env["ZEOKEEL_AGENT_UPSTREAM2"];
+    test.skip(upstream2 === undefined, "second upstream not configured");
+    await page.goto("/", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: /设置|Settings/ }).first().click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel("Provider 类型").selectOption("open_ai_compatible");
+    await dialog.getByLabel("Base URL").fill(upstream2 ?? "");
+    await dialog.getByLabel("模型").fill("test-model");
+    await dialog.getByRole("button", { name: /保存|Save/ }).click();
+    await expect(dialog).toBeHidden({ timeout: 20_000 });
+    await newConversation(page);
+    const composer = page.getByRole("textbox").first();
+    await composer.fill("hello");
+    await page.keyboard.press("Enter");
+    await expect(page.getByText("second provider").last()).toBeVisible({ timeout: 30_000 });
+  });
+
+
 });

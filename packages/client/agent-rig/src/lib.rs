@@ -34,6 +34,7 @@ pub struct RigAgent {
     approval: Arc<dyn ApprovalGate>,
     streaming: bool,
     memory_dir: Option<PathBuf>,
+    max_steps: usize,
     cancelled: Arc<AtomicBool>,
     runtime: tokio::runtime::Runtime,
 }
@@ -46,7 +47,14 @@ impl RigAgent {
             .enable_all()
             .build()
             .map_err(|error| AgentError::Invalid(format!("tokio runtime: {error}")))?;
-        Ok(Self { model: Arc::new(Mutex::new(model)), model_factory: None, tools, preamble, approval: Arc::new(zk_kit_approval::GlobalGate), streaming: std::env::var("ZEOKEEL_AGENT_STREAMING").map(|value| value != "0").unwrap_or(true), memory_dir: std::env::var_os("ZEOKEEL_AGENT_MEMORY_DIR").map(PathBuf::from), cancelled: Arc::new(AtomicBool::new(false)), runtime })
+        Ok(Self { model: Arc::new(Mutex::new(model)), model_factory: None, tools, preamble, approval: Arc::new(zk_kit_approval::GlobalGate), streaming: std::env::var("ZEOKEEL_AGENT_STREAMING").map(|value| value != "0").unwrap_or(true), memory_dir: std::env::var_os("ZEOKEEL_AGENT_MEMORY_DIR").map(PathBuf::from), max_steps: std::env::var("ZEOKEEL_AGENT_MAX_STEPS").ok().and_then(|value| value.parse::<usize>().ok()).unwrap_or(MAX_STEPS).clamp(1, 200), cancelled: Arc::new(AtomicBool::new(false)), runtime })
+    }
+
+    /// Override max model/tool steps.
+    #[must_use]
+    pub fn with_max_steps(mut self, max_steps: usize) -> Self {
+        self.max_steps = max_steps.clamp(1, 200);
+        self
     }
 
     /// Enable rig-memory conversation persistence in `dir`.
@@ -159,13 +167,14 @@ impl RigAgent {
         let records = Arc::new(Mutex::new(Vec::<ToolCallRecord>::new()));
         let tools = self.dynamic_tools(context, &records, sink);
         self.cancelled.store(false, Ordering::SeqCst);
+        let max_steps = self.max_steps;
         let preamble = format!("{}\n\n{}\n\n{}", self.preamble, tool_guidance(&self.tools), workspace_instructions(context));
         let model = self.model.lock().map(|guard| guard.clone()).map_err(|_| AgentError::Invalid("model lock poisoned".to_owned()))?;
         let mut builder = AgentBuilder::new(model)
             .name("zeokeel")
             .preamble(preamble)
             .context(format!("Workspace: {}\nConversation: {}", context.workspace_root, context.conversation_id))
-            .default_max_turns(MAX_STEPS)
+            .default_max_turns(max_steps)
             .dynamic_tools(tools);
         if let Some(dir) = &self.memory_dir {
             std::fs::create_dir_all(dir).map_err(|error| AgentError::Invalid(format!("memory dir: {error}")))?;
@@ -438,6 +447,18 @@ mod tests {
         let reply = agent.run_in(&TurnContext { conversation_id: "c".to_owned(), workspace_id: "w".to_owned(), workspace_root: ".".to_owned() }, "read").unwrap();
         assert_eq!(reply.tool_calls.len(), 1);
         assert!(reply.tool_calls.first().map(|call| call.result.contains("denied")).unwrap_or(false));
+    }
+
+    #[test]
+    fn max_steps_maps_to_agent_error() {
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("c1", "fs.read", serde_json::json!({"path":"a"})),
+            MockTurn::tool_call("c2", "fs.read", serde_json::json!({"path":"a"})),
+            MockTurn::tool_call("c3", "fs.read", serde_json::json!({"path":"a"})),
+        ]);
+        let agent = RigAgent::new(model.into(), vec![Arc::new(TestTool { approval: false })]).unwrap().with_streaming(false).with_max_steps(2);
+        let result = agent.run_in(&TurnContext { conversation_id: "c".to_owned(), workspace_id: "w".to_owned(), workspace_root: ".".to_owned() }, "loop");
+        assert!(matches!(result, Err(AgentError::Invalid(message)) if message == "AGENT_MAX_STEPS"));
     }
 
     #[test]

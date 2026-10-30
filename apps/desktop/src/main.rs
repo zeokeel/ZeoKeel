@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 mod approval;
+mod automation;
 mod events;
 mod ipc;
 mod serve;
@@ -92,6 +93,8 @@ fn main() {
             std::process::exit(1);
         }
     };
+
+    automation::start(Arc::clone(&state));
 
     if serve_mode {
         let addr = std::env::var("ZEOKEEL_SERVE_ADDR").unwrap_or_else(|_| "127.0.0.1:8788".to_owned());
