@@ -67,11 +67,15 @@ zk-tool-fs-edit = { path = "../../packages/client/tool-fs-edit" }
 zk-tool-fs-search = { path = "../../packages/client/tool-fs-search" }
 zk-tool-fs-write = { path = "../../packages/client/tool-fs-write" }
 zk-tool-glob = { path = "../../packages/client/tool-glob" }
+zk-tool-goal = { path = "../../packages/client/tool-goal" }
 zk-tool-grep = { path = "../../packages/client/tool-grep" }
 zk-tool-job-kill = { path = "../../packages/client/tool-job-kill" }
 zk-tool-job-list = { path = "../../packages/client/tool-job-list" }
 zk-tool-job-output = { path = "../../packages/client/tool-job-output" }
 zk-tool-present = { path = "../../packages/client/tool-present" }
+zk-tool-pwsh = { path = "../../packages/client/tool-pwsh" }
+zk-tool-read-image = { path = "../../packages/client/tool-read-image" }
+zk-tool-schedule = { path = "../../packages/client/tool-schedule" }
 zk-tool-skill = { path = "../../packages/client/tool-skill" }
 zk-tool-terminal = { path = "../../packages/client/tool-terminal" }
 zk-tool-todo = { path = "../../packages/client/tool-todo" }

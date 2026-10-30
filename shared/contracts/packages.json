@@ -320,6 +320,14 @@
     ]
   },
   {
+    "id": "zeokeel/tool-goal",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.goal"
+    ]
+  },
+  {
     "id": "zeokeel/tool-grep",
     "version": "0.1.0",
     "kind": "capability",
@@ -357,6 +365,30 @@
     "kind": "capability",
     "roles": [
       "tool.present"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-pwsh",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.pwsh"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-read-image",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.read_image"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-schedule",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.schedule"
     ]
   },
   {

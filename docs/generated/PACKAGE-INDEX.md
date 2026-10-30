@@ -2,7 +2,7 @@
 
 # Package Index
 
-edition `enterprise` · channel `official` · 63 packages
+edition `enterprise` · channel `official` · 67 packages
 
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
@@ -46,11 +46,15 @@ edition `enterprise` · channel `official` · 63 packages
 | `tool.fs.search` | `zeokeel/tool-fs-search` | `zk-tool-fs-search` | `zk-contract-tool` | singleton |
 | `tool.fs.write` | `zeokeel/tool-fs-write` | `zk-tool-fs-write` | `zk-contract-tool` | singleton |
 | `tool.glob` | `zeokeel/tool-glob` | `zk-tool-glob` | `zk-contract-tool` | singleton |
+| `tool.goal` | `zeokeel/tool-goal` | `zk-tool-goal` | `zk-contract-tool` | singleton |
 | `tool.grep` | `zeokeel/tool-grep` | `zk-tool-grep` | `zk-contract-tool` | singleton |
 | `tool.jobs.kill` | `zeokeel/tool-job-kill` | `zk-tool-job-kill` | `zk-contract-tool` | singleton |
 | `tool.jobs.list` | `zeokeel/tool-job-list` | `zk-tool-job-list` | `zk-contract-tool` | singleton |
 | `tool.jobs.output` | `zeokeel/tool-job-output` | `zk-tool-job-output` | `zk-contract-tool` | singleton |
 | `tool.present` | `zeokeel/tool-present` | `zk-tool-present` | `zk-contract-tool` | singleton |
+| `tool.pwsh` | `zeokeel/tool-pwsh` | `zk-tool-pwsh` | `zk-contract-tool` | singleton |
+| `tool.read_image` | `zeokeel/tool-read-image` | `zk-tool-read-image` | `zk-contract-tool` | singleton |
+| `tool.schedule` | `zeokeel/tool-schedule` | `zk-tool-schedule` | `zk-contract-tool` | singleton |
 | `tool.skill` | `zeokeel/tool-skill` | `zk-tool-skill` | `zk-contract-tool` | singleton |
 | `tool.terminal` | `zeokeel/tool-terminal` | `zk-tool-terminal` | `zk-contract-tool` | singleton |
 | `tool.todo` | `zeokeel/tool-todo` | `zk-tool-todo` | `zk-contract-tool` | singleton |

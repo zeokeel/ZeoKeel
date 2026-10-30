@@ -239,6 +239,12 @@
     "contract": "zk-contract-tool",
     "cardinality": "singleton"
   },
+  "tool.goal": {
+    "package": "zeokeel/tool-goal",
+    "crate_name": "zk-tool-goal",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
   "tool.grep": {
     "package": "zeokeel/tool-grep",
     "crate_name": "zk-tool-grep",
@@ -266,6 +272,24 @@
   "tool.present": {
     "package": "zeokeel/tool-present",
     "crate_name": "zk-tool-present",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.pwsh": {
+    "package": "zeokeel/tool-pwsh",
+    "crate_name": "zk-tool-pwsh",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.read_image": {
+    "package": "zeokeel/tool-read-image",
+    "crate_name": "zk-tool-read-image",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
+  "tool.schedule": {
+    "package": "zeokeel/tool-schedule",
+    "crate_name": "zk-tool-schedule",
     "contract": "zk-contract-tool",
     "cardinality": "singleton"
   },

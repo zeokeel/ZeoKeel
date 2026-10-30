@@ -8382,6 +8382,7 @@ dependencies = [
  "zk-tool-job-output",
  "zk-tool-present",
  "zk-tool-skill",
+ "zk-tool-terminal",
  "zk-tool-todo",
  "zk-tool-web-fetch",
  "zk-tool-working-directory",
@@ -9056,6 +9057,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-tool-goal"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zk-contract-tool",
+ "zk-kit-tools",
+]
+
+[[package]]
 name = "zk-tool-grep"
 version = "0.1.0"
 dependencies = [
@@ -9093,6 +9103,34 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-present"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zk-contract-tool",
+ "zk-kit-tools",
+]
+
+[[package]]
+name = "zk-tool-pwsh"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zk-contract-tool",
+ "zk-kit-tools",
+]
+
+[[package]]
+name = "zk-tool-read-image"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "serde_json",
+ "zk-contract-tool",
+ "zk-kit-tools",
+]
+
+[[package]]
+name = "zk-tool-schedule"
 version = "0.1.0"
 dependencies = [
  "serde_json",

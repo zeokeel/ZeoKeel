@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-schedule"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Persistent schedule tool (create/list/update/delete)"
+
+[role]
+name = "tool.schedule"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-schedule" }
