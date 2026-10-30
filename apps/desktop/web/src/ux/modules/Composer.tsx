@@ -9,6 +9,9 @@ export interface ComposerProps {
   onStop: () => void;
   streaming: boolean;
   disabled: boolean;
+  /** Reserved for post-M1 (steer/queue); not implemented in the skeleton. */
+  deliveryMode?: "send" | "steer";
+  attempt?: number;
 }
 
 export function Composer(props: ComposerProps) {

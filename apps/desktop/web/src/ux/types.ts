@@ -17,7 +17,7 @@ export interface ToolView {
   name: string;
   detail: string;
   time: string;
-  status: "running" | "done" | "error";
+  status: "preparing" | "running" | "done" | "error" | "cancelled";
   args: string;
   result: string;
 }
@@ -31,7 +31,7 @@ export interface ApprovalView {
   tool: string;
   args: string;
   reason: string;
-  decision: "pending" | "approved" | "rejected";
+  decision: "pending" | "allowed-once" | "rejected";
 }
 export interface MessageView {
   id: string;

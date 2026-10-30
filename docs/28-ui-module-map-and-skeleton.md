@@ -34,16 +34,17 @@
 
 | slotId | 角色 | 包 | skeleton component | props（M1 约定） |
 | --- | --- | --- | --- | --- |
-| `ui.shell` | `ui.shell` | `@zeokeel/ui-shell` | `AppShell` | `navigation/conversation/composer/inspector/overlays` |
+| `ui.shell`（骨架，M1 不接入） | `ui.shell` | `@zeokeel/ui-shell` | `AppShell` | `navigation/conversation/composer/inspector/overlays` |
 | `ui.sessions` | `ui.slot.sessions` | `@zeokeel/ui-sessions` | `Sidebar` | 现有 |
 | `ui.chat` | `ui.slot.chat` | `@zeokeel/ui-chat` | `ChatView` | 现有 |
-| `ui.inspector` | `ui.slot.inspector` | `@zeokeel/ui-inspector` | `InspectorPanel` | `open/tab/onTab/onClose/files/changes` |
-| `ui.commands` | `ui.slot.commands` | `@zeokeel/ui-commands` | `CommandPalette` | `open/onClose/commands/onRun` |
+| `ui.inspector`（骨架，M1 不接入） | `ui.slot.inspector` | `@zeokeel/ui-inspector` | `InspectorPanel` | `open/tab/onTab/onClose/files/changes` |
+| `ui.commands`（骨架，M1 不接入） | `ui.slot.commands` | `@zeokeel/ui-commands` | `CommandPalette` | `open/onClose/commands/onRun` |
 | `ui.settings` | `ui.slot.settings` | `@zeokeel/ui-settings` | `SettingsDialog` | 现有 |
 
-- 新包先只提供**空壳组件 + props 类型 + README 功能说明**；`zk compose` 生成 registry，app 可逐步接入。
+- 新包先只提供**空壳组件 + props 类型 + README 功能说明**；`zk compose` 生成 registry，**M1 app 不接入**（M1 active slot 仍只有 sessions/chat/settings）。
 - ui-shell 是可选目标：M1 现有 app 薄壳继续工作；`ui-shell` 骨架用于后续把布局从 app 移入包。
 - 工具/计划/审批的独立 slot 预留（`ui.toolcall`/`ui.approval`/`ui.plan`），M1 不建独立包。
+- **冲突裁决**：`docs/16/19` 的“M1 只有 3 active slot”优先；`ui.shell/ui.inspector/ui.commands` 是已建骨架、post-M1 接入，不计 M1 验收。docs/16 表里 6 个 slot 是“已注册/骨架”，§2.2 的 M1 active 仍 3 个。
 
 ## 4. 交互行为（UX 骨架目标）
 
@@ -55,8 +56,11 @@
 ### Conversation + Composer
 - 消息：用户右侧 low-contrast pill；助手无气泡；流式光标；取消保留内容 + “已取消”；错误内联。
 - 工具行：单行折叠（状态点/name/关键参数/耗时），点击展开 args/result；Shift 点击展开全部。
-- 计划卡：步骤状态 + 进度 + 可折叠；审批 inline takeover（允许一次/拒绝/超时）。
+- 工具状态 M2 补齐 `preparing/running/done/error/cancelled`；审批决策命名后续映射 DSH `allowed-once/rejected`（M1 API 仍 `approved`）。
+- **Plan/Todo（M2 占位）**：DSH 的 plan 是 Markdown 审阅 + Todo dock，不是步骤数组；M1 不实现，UX 骨架里的步骤卡标 “Todo · M2”。
+- **审批（M1 inline 占位）**：允许一次/拒绝；DSH 的 composer takeover/持久策略/超时 post-M1；不要宣称 M1 有完整审批。
 - Composer：Enter 发送、Shift+Enter 换行、IME 安全；`/` 命令 popup、`@` 文件引用、附件、模型下拉、上下文占用、发送/停止。
+- Composer 的 `deliveryMode/attempt/queue/attachments` 为 post-M1 预留，不在 M1 承诺。
 - 空态/加载/错误/离线/流式中/已取消六态。
 
 ### Inspector
@@ -79,9 +83,18 @@
   ZeoKeel 的 `ui-commands` 暂定“`/` 菜单 + 快捷键参考 + 可选全局面板”；全局 ⌘K 是产品增强，不是 DSH 复刻。
 - DSH **右栏是 per-session docking surface**（normal/fullscreen、tab 不销毁、宽度由 frame 管）；ZeoKeel M1 只做固定宽度单栏、折叠；
   多 tab/拖拽/多 pane 后置。
-- DSH **设置**分 Account/General/Models + Plugins 子页；ZeoKeel M1 单 dialog 分节，分页/插件清单后置。
+- DSH **设置**顶级页是 Account / General / Models / Built-in plugins；Subagent/Web search/Agent loop/Shell 挂在侧栏 Plugins 页下，Session log 是 General 一行；ZeoKeel M1 单 dialog 分节，分页/插件清单后置。
 - DSH **主题**是 Host bootstrap + token；ZeoKeel 沿用 app token/`data-theme`，不引入运行期主题包。
 - DSH **插件市场运行期装包**与 C2 冲突，ZeoKeel 不采用；Settings 插件仅只读清单（后续）。
+
+## 4.6 待裁决项的当前决定
+
+1. **Plan**：M1 不做 plan mode；步骤卡降级为 “Todo · M2” 占位（DSH 的 plan 是文档审阅，不是步骤数组）。
+2. **Approval**：M1 inline 占位（允许一次/拒绝），post-M1 再谈 composer takeover/持久策略/超时。
+3. **工具/审批 DTO**：按 DSH 词汇补齐 `preparing/running/done/error/cancelled`；审批决策后续 `allowed-once/rejected`，M1 API 保持 `approved` 并映射。
+4. **Jobs/Subagent/Deliverables**：骨架入口灰显/隐藏，不实现；不建包。
+5. **Composer**：M1 不做 deliveryMode/queue/attachments 完整状态，类型只预留。
+6. **Slot/M1 范围**：M1 仍只有 `ui.sessions/ui.chat/ui.settings` 三个 active slot；`ui.shell/ui.inspector/ui.commands` 是骨架，不接入 M1。
 
 ## 5. 骨架验收（本轮）
 

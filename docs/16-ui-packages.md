@@ -66,7 +66,7 @@ order = 10
 | `ui.inspector` | `ui.slot.inspector` | `inspector.panel` | 右侧检查器（骨架） |
 | `ui.commands` | `ui.slot.commands` | `commands.palette` | 命令面板（骨架） |
 
-M1 生成器现在支持 `ui.sessions/chat/settings/shell/inspector/commands`；新增 slot 必须同时改 `tools/zk` 的 `slot_binding` 与本文，否则 `registry.ts` 不生成。
+M1 **active** slot 仍只有 `ui.sessions/chat/settings`；`ui.shell/inspector/commands` 已建骨架、`zk compose` 会注册但 app 未接入（post-M1）；新增 slot 必须同时改 `tools/zk` 的 `slot_binding` 与本文，否则 `registry.ts` 不生成。
 
 ### 2.3 生成器行为（M1 实际）
 

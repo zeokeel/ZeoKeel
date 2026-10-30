@@ -6,7 +6,7 @@ function ToolRow({ tool, expanded, onToggle }: { tool: ToolView; expanded: boole
   return (
     <div className="rounded-sm border border-border/60">
       <button type="button" onClick={onToggle} aria-expanded={expanded} className="flex w-full items-center gap-2 px-2 py-[5px] text-start font-mono text-[11px] hover:bg-foreground/[0.03]">
-        <span className={`h-1.5 w-1.5 shrink-0 rounded-capsule ${tool.status === "running" ? "bg-live" : tool.status === "error" ? "bg-destructive" : "bg-border"}`} />
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-capsule ${tool.status === "running" || tool.status === "preparing" ? "bg-live" : tool.status === "error" ? "bg-destructive" : "bg-border"}`} />
         <span className="w-[72px] shrink-0 text-foreground">{tool.name}</span>
         <span className="min-w-0 flex-1 truncate text-muted-foreground">{tool.detail}</span>
         <span className="shrink-0 text-muted-foreground">{tool.time}</span>
@@ -25,7 +25,7 @@ function ToolRow({ tool, expanded, onToggle }: { tool: ToolView; expanded: boole
 function PlanCard({ steps }: { steps: PlanStep[] }) {
   return (
     <div className="rounded-document border border-border bg-background px-2.5 py-2">
-      <div className="flex items-center gap-2 text-[11px]"><span className="font-medium text-foreground">计划</span><span className="text-muted-foreground">{steps.filter((s) => s.status === "done").length}/{steps.length}</span><span className="ms-auto flex items-center gap-1 text-[10px] text-muted-foreground"><Icon name="spark" size={11} />自动继续</span></div>
+      <div className="flex items-center gap-2 text-[11px]"><span className="font-medium text-foreground">待办</span><span className="rounded-capsule bg-muted px-1 text-[9px] text-muted-foreground">M2 占位</span><span className="text-muted-foreground">{steps.filter((s) => s.status === "done").length}/{steps.length}</span><span className="ms-auto flex items-center gap-1 text-[10px] text-muted-foreground"><Icon name="spark" size={11} />自动继续</span></div>
       <div className="mt-1.5 grid gap-1 text-[11px]">
         {steps.map((step) => (
           <div key={step.id} className="flex items-center gap-1.5">
@@ -38,16 +38,16 @@ function PlanCard({ steps }: { steps: PlanStep[] }) {
   );
 }
 
-function ApprovalCard({ approval, onDecision }: { approval: ApprovalView; onDecision: (d: "approved" | "rejected") => void }) {
+function ApprovalCard({ approval, onDecision }: { approval: ApprovalView; onDecision: (d: "allowed-once" | "rejected") => void }) {
   return (
     <div role="group" aria-label="需要审批" className="rounded-document bg-muted px-2.5 py-2">
-      <div className="flex items-center gap-2"><strong className="text-[12px] font-medium">需要审批</strong><span className="ms-auto text-[11px] text-muted-foreground">{approval.decision === "pending" ? "等待决定" : approval.decision === "approved" ? "已允许" : "已拒绝"}</span></div>
+      <div className="flex items-center gap-2"><strong className="text-[12px] font-medium">需要审批</strong><span className="ms-auto text-[11px] text-muted-foreground">{approval.decision === "pending" ? "等待决定" : approval.decision === "allowed-once" ? "已允许一次" : "已拒绝"}</span></div>
       <p className="mt-1 font-mono text-[11px]">{approval.tool}</p>
       <pre className="mt-0.5 whitespace-pre-wrap font-mono text-[10px] text-muted-foreground">{approval.args}</pre>
       <p className="mt-1 text-[11px] text-muted-foreground">{approval.reason}</p>
       {approval.decision === "pending" ? (
         <div className="mt-2 flex gap-1.5">
-          <button type="button" onClick={() => onDecision("approved")} className="rounded-control bg-foreground px-2.5 py-1 text-[11px] font-medium text-background">允许一次</button>
+          <button type="button" onClick={() => onDecision("allowed-once")} className="rounded-control bg-foreground px-2.5 py-1 text-[11px] font-medium text-background">允许一次</button>
           <button type="button" onClick={() => onDecision("rejected")} className="rounded-control border border-border px-2.5 py-1 text-[11px]">拒绝</button>
         </div>
       ) : null}
@@ -59,7 +59,7 @@ export interface ConversationProps {
   messages: MessageView[];
   expandedTools: Record<string, boolean>;
   onToggleTool: (id: string) => void;
-  onDecision: (id: string, d: "approved" | "rejected") => void;
+  onDecision: (id: string, d: "allowed-once" | "rejected") => void;
   onSuggestion: (text: string) => void;
 }
 

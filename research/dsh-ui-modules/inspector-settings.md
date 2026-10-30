@@ -13,7 +13,7 @@
 4. **设置保存有两种节奏**：General/主题/会话日志是即时写；Models 是卡片内 Apply，Subagent/Agent loop/Shell/Web search 是页面级 Save；全部用 revision 栅栏防并发覆盖（`dsh-client-ui-settings-general/README.md:46`；`dsh-client-ui-settings-models/README.md:38,94`；`dsh-client-ui-settings-subagent/README.md:32`）。
 5. **右栏宽度不是 tab 状态**：宽度/轨道由 frame 管，Seat 只收 `width/viewportWidth`；宽度把手只在“已展开 + 普通呈现”出现；窄于 768px 自动全屏（`dsh-client-ui-sidebar-right/lib/types/client/shell/SidebarRight.d.ts:112`；`dsh-client-ui-sidebar-right/README.md:39,48`）。
 6. **主题 = Host 设置 + token 样式表 + 首屏 bootstrap**；`light/dark/system`、文本/代码/终端三套字号与字体；第三方主题只能覆盖同名 alias token，且没有完整性校验（`dsh-client-ui-theme/README.md:12,32,42,46,131`）。
-7. **插件市场是运行期装包**（pnpm/插件 Loader，安装后重组），与 ZeoKeel C2“构建期组合、运行期不加载插件”直接冲突；Settings 的 Plugin list 只是只读清单（`dsh-client-ui-plugin-manager/README.md:42,55,63`；`dsh-client-ui-settings-plugin-inventory/README.md:12,98`；`docs/16-ui-packages.md:11`；`docs/27-ui-design-system.md:61`）。
+7. **插件市场是运行期装包**（pnpm/插件 Loader，安装后重组），与 ZeoKeel C2“构建期组合、运行期不加载插件”直接冲突；Settings 的 Plugin list 只是只读清单（`dsh-client-ui-plugin-manager/README.md:42,55,63`；`dsh-client-ui-settings-plugin-inventory/README.md:12,98`；`docs/16-ui-packages.md:11`；`docs/27-ui-design-system.md:64`）。
 8. **DSH 没有“变更/Changes”tab**：右栏只有 guide/files/text/terminal/browser 等类型；ZeoKeel 的“变更”是自有模块，不能从 DSH 找现成交互（`dsh-client-ui-sidebar-files/README.md:29`；`dsh-client-ui-sidebar-documentpreview/README.md:31`；`dsh-client-ui-sidebar-terminal/README.md:46`；`dsh-client-ui-sidebar-browser/README.md:28`）。
 
 ## 1. 模块清单与组件树
@@ -233,38 +233,39 @@ ui-theme
 
 ## 4. 给 ZeoKeel 的模块拆分建议
 
-### 4.1 建议边界
+### 4.1 建议边界（对齐 docs/27 §3 + docs/28 骨架）
 
 | 建议模块 | 职责 | 从 DSH 可借鉴的事实 | 不建议照搬 |
 |---|---|---|---|
-| `@zeokeel/ui-inspector` | 会话绑定的右栏容器 + tab registry + files/changes/terminal | 两段注册、per-session surface、collapse 不销毁、close handler、20–80% split、窄窗全屏 | `dsh-resource://` 地址协议、dockkit 依赖、localStorage key 形态、Electron webview |
-| `@zeokeel/ui-commands` | 命令注册/解析/弹窗/action；composer `/` | `leadingInput`/`popupSelect`/`action`/`execute` 四路、contributions/decorations、附件限制 | 直接复制 host `commands.list` 协议；DSH 没有全局 palette |
-| `@zeokeel/ui-settings` | General / Models / Plugins / Account(企业) 分节 + 保存状态 + schema 校验 | 即时写 vs 卡片 Apply vs 页面 Save；revision 冲突；Host 为最终校验 | 把 Subagent/Shell/Agent loop/Web search 全塞进 Settings 顶级导航（DSH 实际在侧栏 Plugins） |
-| `@zeokeel/ui-theme` | token + light/dark/system + 三套字号/字体 + 首屏 bootstrap | 单一 snapshot；Host 设置持久化；token 消费；终端跟随 | DSH `--dsw-*` 命名/视觉；第三方主题“无完整性校验”的扩展点 |
-| 插件清单/市场 | 只读 built-in 清单；M2 企业商店 | Settings 只读 inventory；Plugins 页可管理是运行期安装 | **不要**移植 runtime plugin install/market（违反 C2） |
+| `@zeokeel/ui-shell`（`docs/27-ui-design-system.md:52`；`docs/28-ui-module-map-and-skeleton.md:21,28`） | AppShell + header/status/overlay + 主题 token | 单一不可变 snapshot；Host 设置持久化；首屏 bootstrap；token 消费 | DSH `--dsw-*` 命名/视觉；把主题做成独立运行期包 |
+| `@zeokeel/ui-inspector`（`docs/27-ui-design-system.md:53`；`docs/28-ui-module-map-and-skeleton.md:25,40`） | M1 固定宽度单栏 + tabs 文件/变更/终端 + 折叠；后续真实文件树/终端 | 两段 tab 注册、per-session surface、collapse 不销毁、close handler、文件树懒加载/终端恢复 | M1 就做 per-session 多 pane/split/float/fullscreen；dockkit、localStorage key、Electron webview |
+| `@zeokeel/ui-commands`（`docs/27-ui-design-system.md:54`；`docs/28-ui-module-map-and-skeleton.md:26,41`） | 全局 overlay 骨架；M1 ⌘K + 命令列表 + 键盘提示 | composer `/` 菜单、`leadingInput/popupSelect/action/execute` 四路、`Mod+/` 快捷键参考 | 声称 DSH 有全局 ⌘K；DSH 事实只支持 `/` + 快捷键参考；⌘K 是 ZeoKeel 产品增强 |
+| `@zeokeel/ui-settings`（`docs/27-ui-design-system.md:51`；`docs/28-ui-module-map-and-skeleton.md:27,42`） | M1 单 dialog 内部分节：provider/base_url/model/key、主题、语言、审批只读 | 即时写 vs 卡片 Apply vs 页面 Save；revision 冲突；Host 最终校验 | DSH 的 Settings/Plugins 双层分页；运行期插件安装器 |
+| 主题（**不单独建 `ui-theme` 包**）（`docs/27-ui-design-system.md:52`；`docs/28-ui-module-map-and-skeleton.md:28`） | token/`data-theme` 放 app 或 ui-shell；M1 light/dark/system | Host bootstrap + ThemeSnapshot + token 消费；终端跟随 | 把 DSH `ui-theme` 拆成 ZeoKeel 独立包；照搬 `--dsw-*` |
+| 插件清单/市场 | 后续只读 built-in 清单；M2 企业商店 | Settings 只读 inventory；Plugins 页可管理是运行期安装 | **不要**移植 runtime plugin install/market（违反 C2） |
 
-### 4.2 M1 顺序（按现有 ZeoKeel 约束）
+### 4.2 M1 顺序（按 docs/28 骨架；先处理文档冲突）
 
-**硬约束**：`docs/16-ui-packages.md:57-63` 说明 M1 只生成 `ui.sessions/ui.chat/ui.settings` 三个 slot；新增 slot 必须同时改 `tools/zk` 的 slot_binding 与文档。`docs/19-client-ux-flows.md:61` 也冻结“M1 仅实现这三个 slot”。因此右栏不能悄悄加入 M1。
+**当前文档状态**：`docs/16-ui-packages.md:24-26,58-69` 已列 `ui-shell/ui-inspector/ui-commands`，并写明生成器支持 `ui.sessions/chat/settings/shell/inspector/commands`；`docs/27-ui-design-system.md:52-54` 已列三包；`docs/28-ui-module-map-and-skeleton.md:37-45,62-68,86-91` 已冻结骨架验收（空壳 + mock + 截图，不做真实功能）。
+
+**冲突（spec 前必须由文档 owner 统一，C19）**：`docs/16-ui-packages.md:12` 仍写 `App.tsx` 只取 `SessionsSlot/ChatSlot/SettingsSlot`，`:13-14` 仍写 M1 不使用 `ui-shell`；`docs/19-client-ux-flows.md:61` 仍冻结“M1 仅实现三个 slot”。这与 `docs/16` §2 / `docs/27` / `docs/28` 的六 slot 骨架冲突。本报告按 docs/28 的骨架给建议，不替 owner 选边。另：`docs/28-ui-module-map-and-skeleton.md:82` 写“设置分 Account/General/Models + Plugins 子页”不够精确——Settings 的 Plugins 是只读 Built-in plugins，四个官方配置页在侧栏 Plugins；建议 spec 前修正。
 
 | 优先级 | 做什么 | 为什么 |
 |---|---|---|
-| **M1 必做** | `ui-settings` 内部分节（General/Models/只读 Plugins 清单；Account 留给企业版）+ 保存中/失败/冲突/需重登状态 + 现有 provider 配置 | 已有 slot；`docs/19-client-ux-flows.md:49` 要求这些状态；M1 当前正是 provider 配置。Plugins 只展示构建期包清单，不做 DSH 式安装器（C2） |
-| **M1 必做** | `ui-theme` 先做 token 层 + light/dark/system + 文本/代码/终端字号；**暂不拆包**，留在 app 基础设施 | `docs/16-ui-packages.md:79` 明确 i18n/theme 仍在 app；先稳定 token，再谈包 |
-| **M1 可做（小）** | `/` 命令菜单最小版放在 `ui-chat` composer 内；先支持 action + 简单 popup，不做全局命令面板 | `docs/16-ui-packages.md:22` composer 在 ui-chat；DSH 也没有全局 palette |
-| **M1 只做设计/契约** | `ui-inspector` 的 tab registry 接口、session 绑定、持久化 key、关闭/恢复语义；不落 UI | 新 slot 需先改 `docs/16` §2.2 + `docs/19` §2；否则违反 M1 冻结 |
-| **M1.x（slot 批准后）** | 文件树（懒加载/刷新/watch）+ 文本/Markdown/代码预览 + 单终端 tab | DSH 最成熟、依赖最少；先不做 split/float/browser/PDF/Office |
-| **post-M1** | 变更/diff tab、分屏/浮动、浏览器、PDF/Office/Excel 富预览、完整快捷键录制 | “变更”DSH 没有；浏览器在 ZeoKeel 是 Tauri webview，不能照搬 Electron；富预览成本高 |
-| **M2（企业）** | 技能/连接器/应用商店 + 只读插件清单 | C2 禁止运行期插件加载；DSH 的 Discover 是运行期装包，不适用 |
+| **M1 骨架** | `ui-shell` AppShell 空壳；`ui-inspector` InspectorPanel（3 个固定 tab + `⌘B` 折叠 + 窄窗收起 + mock 文件/变更/终端）；`ui-commands` CommandPalette（`⌘K` + 命令列表 + 键盘提示 + mock）；`ui-settings` 单 dialog 分节；主题 token 进 app/ui-shell | docs/28 §3/§4/§5；M1 只做可点击骨架，不接后端（`docs/28-ui-module-map-and-skeleton.md:44,62-68,86-91`） |
+| **M1.x 真实交互** | 文件树懒加载/刷新/watch；文本/Markdown/代码预览；终端 tab（mock→真实 PTY）；设置保存/校验/冲突状态 | DSH 最成熟、依赖最少；先不做 split/float/browser/PDF/Office（`dsh-client-ui-sidebar-files/README.md:38,46,50`；`dsh-client-ui-sidebar-terminal/README.md:30,34,36`） |
+| **post-M1** | 变更/diff tab、per-session 多 pane/split/float/fullscreen、浏览器、PDF/Office/Excel 富预览、完整快捷键录制 | “变更”DSH 没有（`docs/28-ui-module-map-and-skeleton.md:77`）；DSH 的 per-session 多 pane 是 post-M1 目标（`docs/28-ui-module-map-and-skeleton.md:80-81`）；浏览器在 ZeoKeel 是 Tauri webview |
+| **M2（企业）** | 技能/连接器/应用商店 + 只读插件清单 | C2 禁止运行期插件加载；DSH Discover 是运行期装包，不适用（`docs/16-ui-packages.md:11`；`docs/27-ui-design-system.md:64`） |
 
-**M1 最小右栏建议**（若产品坚持 M1 就要可见）：只读文件树 + 文本预览 + 单终端；不做分屏/浮动/浏览器/富预览；先改文档加 `ui.inspector` slot，再写 spec。不要先写 UI 再补文档（C12/C19）。
+**M1 右栏的取舍**：docs/28 明确 M1 只做固定宽度单栏、折叠，多 tab/拖拽/多 pane 后置（`docs/28-ui-module-map-and-skeleton.md:80-81`）。因此 DSH 的 per-session 布局、20–80% split、fullscreen、宽度拖拽都只能作为 **post-M1 事实参考**，不进入 M1 验收；M1 的“tabs 文件/变更/终端”是固定三个 tab，不是任意多 tab。
+
 
 ## 5. 待确认问题（5 个）
 
 1. **右栏绑定粒度**：DSH 是 per-session（每会话独立布局）；ZeoKeel C18 以 workspace 为会话归属。右栏布局应按 session 还是 workspace 持久化？切换同一 workspace 的不同会话时，文件树/终端是否保留？（DSH 事实：`dsh-client-ui-sidebar-right/README.md:74`）
-2. **“命令面板”定义**：ZeoKeel 要的是 composer `/` 命令（DSH `ui-commands`），还是 VS Code/Spotlight 式全局命令面板？若后者，DSH 没有可复用事实，需要新设计；若前者，M1 是否只做 action + 少量 popup？
+2. **“命令面板”定义**：`docs/28-ui-module-map-and-skeleton.md:26,41,78-79` 暂定 `ui-commands` = `⌘K` 骨架 + `/` 菜单 + 快捷键参考，但 DSH 没有可核实的全局 `⌘K`。请确认 M1 的 `⌘K` 只是空壳入口（不执行真实命令），还是同时做 `/` 命令执行？若要做真实命令，host command 协议是否已就绪？
 3. **设置分组**：接受 DSH 的实际分组（Settings 只有 Account/General/Models/Built-in plugins；Subagent/Web search/Agent loop/Shell 在侧栏 Plugins），还是按本任务列的 9 个“设置分页”？另外 `plugins` 是只读清单还是可管理？（DSH 事实：`dsh-client-ui-settings-general/README.md:30`；`dsh-client-ui-plugin-manager/README.md:73`）
-4. **插件市场与 C2**：个人版是否明确“不做运行期插件市场”，只保留构建期插件清单？企业版 M2 商店是否只做技能/连接器/应用，不做 DSH 式 bundle 安装/开关？（C2：`docs/16-ui-packages.md:11`；`docs/27-ui-design-system.md:61`）
+4. **插件市场与 C2**：个人版是否明确“不做运行期插件市场”，只保留构建期插件清单？企业版 M2 商店是否只做技能/连接器/应用，不做 DSH 式 bundle 安装/开关？（C2：`docs/16-ui-packages.md:11`；`docs/27-ui-design-system.md:64`）
 5. **主题与 OEM accent**：`docs/19-client-ux-flows.md:131` 写“OEM accent”，但 `docs/27-ui-design-system.md:14-16` 规定唯一 live accent 是 blue-500、品牌色只存在于官方 logo；二者冲突。ZeoKeel 是否允许 OEM accent token？若允许，需要改 27 并定义可覆盖 token 白名单；若不允许，需改 19。另：是否采用 DSH 式语义 token 分层（不照搬 `--dsw-*` 名称）？
 
 ## 6. 未验证 / 调研边界

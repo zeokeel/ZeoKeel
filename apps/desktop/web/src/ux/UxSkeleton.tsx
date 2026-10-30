@@ -34,7 +34,7 @@ export function UxSkeleton() {
   const [settings, setSettings] = useState(false);
   const [composerText, setComposerText] = useState("");
   const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({});
-  const [decision, setDecision] = useState<"pending" | "approved" | "rejected">("pending");
+  const [decision, setDecision] = useState<"pending" | "allowed-once" | "rejected">("pending");
   const [messages, setMessages] = useState<MessageView[]>(() => {
     if (screen === "empty") return [];
     if (screen === "cancelled") return MESSAGES.map((m) => (m.id === "m2" ? { ...m, status: "cancelled" as const } : m));

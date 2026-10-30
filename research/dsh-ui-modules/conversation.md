@@ -12,10 +12,10 @@
 1. **DSH 把"会话装配"和"目标渲染"分成两层**：`ui-conversation` 只做 target-neutral 的 event/view registry、按 Session 绑定、输入状态与 shell；`ui-chat` 才注册 Chat 的 Definition/snapshot/View/渲染器（`$PKG/dsh-client-ui-conversation/README.md:14,31`；`$PKG/dsh-client-ui-chat/README.md:13`）。ZeoKeel 的 `@zeokeel/ui-chat` 目前把这两层合在一个包内（`packages/ui/ui-chat/web/src/index.tsx:6`），这是 M1 的主要差距。
 2. **Composer 不是单一输入框，而是"常驻 shell + takeover 链"**：审批通过 `conversation.composer` chain 整体接管；计划 chip、GoalBar、Todo、Queue、统计、附件栏、触发菜单各自占独立 slot（conversation:85,97,120-163；plan:52；goal:46）。
 3. **工具呈现是"树 + 按 wire tool name 的 keyed 视图"**：Runtime 拥有 call/result 配对与递归 `subCalls`，UI 只按工具名分发原子卡；未注册工具走通用卡（tool:12,36,68,72）。
-4. **审批是临时的 allow-once / reject**，持久权限策略与超时归 Host；面板只是等待 Host waterfall 的一个可回答请求（approval:11,36；approval `slots.d.ts:48,52,78`）。
+4. **审批是临时的 allow-once / reject**，持久权限策略归 Host；超时机制在客户端 README 未描述（[未验证]）；面板只是等待 Host waterfall 的一个可回答请求（approval:11,36；approval `slots.d.ts:48,52,78`）。
 5. **DSH 的 plan 不是步骤清单**：`/plan` 进入 plan mode，`exit_plan_mode` 提交 Markdown，右侧栏 review + turnTail 卡片；步骤清单属于独立的 Todo dock（plan:32,36,52；conversation:85）。
 6. **Jobs / Subagent / Deliverables 都是边缘插件**：Jobs 在 Session header actions，Subagent 在 header lineage + 资源 tab，Deliverables 在 `conversation.chat.turnTail` + 右栏 review tab（jobs:48；subagent:28,30；deliverables:67）。
-7. **对 ZeoKeel**：M1 对话域不应新增 slot（shell/inspector/commands 属 `docs/28` 的独立交互面）；先在 `@zeokeel/ui-chat` 内按 conversation/composer/tool/approval 四块拆目录与数据契约，post-M1 再按"第二消费者/替换需求/T21 keyed slot"逐块升格为包（依据 `docs/27:44,50-58`；`docs/19:61`；`docs/16:60-64`）。
+7. **对 ZeoKeel**：M1 对话域不应新增 slot（shell/inspector/commands 属 `docs/28` 的独立交互面）；先在 `@zeokeel/ui-chat` 内按 conversation/composer/tool/approval 四块拆目录与数据契约，post-M1 再按"第二消费者/替换需求/T21 keyed slot"逐块升格为包（依据 `docs/27:44,46-62`；`docs/19:61`；`docs/16:60-64`）。
 
 ## 1. 模块清单与组件树
 
@@ -108,7 +108,7 @@ app shell / ui-layout root
 - **选择**：聚焦审批详情区后 Enter=allow once、Escape=reject；Reject 按钮聚焦时 Enter 保留按钮原生 reject；输入控件/IME 保留自己的按键（approval:21）。
 - **决策值**：`allowed-once | rejected`；一个 request 被撤回或替换后不能再次作答，旧失败也不能解锁新请求（approval:21；approval `slots.d.ts:48,78`）。
 - **详情**：可选 `conversation.approval.detail` 渲染关联 Tool call；`PendingApproval` 暴露 `key`、`callId`、`reason`、`displayReason`、`answerable`、`answer`、`delegate`、`abort`（approval `slots.d.ts:52-96`）。
-- **超时/记住选择**：DSH 客户端 README 明确"只支持 allow-once 与 reject；持久权限策略归 Host 侧审批包"，**客户端没有超时、记住范围、风险级别 UI**（approval:36）。ZeoKeel `docs/19:103-105` 要求"剩余时间、超时默认拒绝、延长一次；允许一次/始终允许（本会话）/拒绝；记住范围"，这是 ZeoKeel 自有需求，不能从 DSH 客户端推得。
+- **超时/记住选择**：DSH 客户端 README 明确"只支持 allow-once 与 reject；持久权限策略归 Host 侧审批包"，**客户端 README 未描述超时、记住范围、风险级别 UI**（approval:36；超时是否以 withdrawal 投影表现 [未验证]）。ZeoKeel `docs/19:103-105` 要求"剩余时间、超时默认拒绝、延长一次；允许一次/始终允许（本会话）/拒绝；记住范围"，这是 ZeoKeel 自有需求，不能从 DSH 客户端推得。
 - Auto denial 优先于专用视图，且不暴露原始参数（tool:86）。
 
 ### 2.5 计划卡状态
@@ -169,7 +169,7 @@ Union：`ConversationNode`（records:256）。Chat 另有 view-only kind：`chat
 
 - `GoalSnapshot { id, revision, objective, phase, blockedReason?, maxGoalRounds }`；`GoalPhase = active|paused|blocked|complete`；`GoalActivation = armed|disarmed`（goal `types.d.ts:38,47-58`）。
 - `GoalBar` props：`goal: GoalSnapshot|null|undefined`（undefined=能力缺失/加载中，null=未设置）、`activation?`、四个 mutation verbs（goal `GoalBar.d.ts:13-19`）。
-- 动词 `onEdit/onPause/onResume/onClear`，CAS 以投影 ref 为陈旧保护，单飞；失败 inline（goal:46；goal `slots.d.ts`）。
+- 动词 `onEdit/onPause/onResume/onClear`，CAS 以投影 ref 为陈旧保护，单飞；失败 inline（goal:46；goal `slots.d.ts:45-56`）。
 - 渲染：loading/absent/complete/cleared 不渲染；active+armed 给 pause，active-disarmed/paused 给 resume（goal:28,36）。
 - `/goal` 运行投影为 `Command input` 气泡，不创建 user/message 或 model turn（goal:32,46）。
 
