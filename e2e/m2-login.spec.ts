@@ -14,7 +14,7 @@ test.describe("M2 enterprise login (real server + enterprise composition)", () =
     await page.getByLabel("账号").fill("admin");
     await page.getByLabel("密码").fill("admin-pass");
     await page.getByRole("button", { name: "登录" }).click();
-    await expect(page.getByText("今天想完成什么？")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: "命令面板" }).first()).toBeVisible({ timeout: 15_000 });
     await page.screenshot({ path: "target/evidence/m2/login.png" });
     const axe = await new AxeBuilder({ page }).analyze();
     const serious = axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical");

@@ -74,3 +74,7 @@
 
 - `packages/client/llm-gateway`（`llm.provider.default` enterprise）：只 POST `/v1/responses`，无上游 key；假 server 测试解析 output_text 通过。
 - 登录成功后 desktop 调 `auth.configure` 注入 server_url/access_token；personal 构建为 no-op。仍缺：bootstrap 模型目录、refresh 后重注入。
+
+## Enterprise gateway chat
+
+- `scripts/login-e2e.sh` 增加 fake upstream + pricing + wallet 充值，`e2e/m2-gateway-chat.spec.ts`：登录 → 新建会话 → 发送 → gateway provider → `/v1/responses` → 文本返回；axe 0 serious/critical。

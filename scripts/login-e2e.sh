@@ -2,15 +2,33 @@
 # Enterprise login e2e: enterprise compose + real auth server + serve UI.
 set -euo pipefail
 DB="zk_login_e2e_$$"; ROLE="zk_login_role_$$"
-SERVER_PORT="${ZEOKEEL_LOGIN_SERVER_PORT:-8795}"; UI_PORT="${ZEOKEEL_LOGIN_UI_PORT:-8789}"
+SERVER_PORT="${ZEOKEEL_LOGIN_SERVER_PORT:-8795}"; UI_PORT="${ZEOKEEL_LOGIN_UI_PORT:-8789}"; UPSTREAM_PORT="${ZEOKEEL_LOGIN_UPSTREAM_PORT:-8796}"
 cleanup() {
   [[ -n "${UI_PID:-}" ]] && kill "$UI_PID" >/dev/null 2>&1 || true
   [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" >/dev/null 2>&1 || true
+  [[ -n "${UPSTREAM_PID:-}" ]] && kill "$UPSTREAM_PID" >/dev/null 2>&1 || true
   sudo -u postgres dropdb --if-exists --force "$DB" >/dev/null 2>&1 || true
   sudo -u postgres psql -Atq -c "DROP ROLE IF EXISTS $ROLE" >/dev/null 2>&1 || true
   cargo run -q -p zk -- compose --edition personal --profile default --channel official >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
+cat > /tmp/zk-login-upstream.py <<'PYUP'
+from http.server import BaseHTTPRequestHandler, HTTPServer
+class H(BaseHTTPRequestHandler):
+    def do_POST(self):
+        length = int(self.headers.get("content-length", "0"))
+        self.rfile.read(length)
+        body = b'{"id":"resp_gateway","output":[{"content":[{"type":"output_text","text":"gateway hello"}]}],"usage":{"input_tokens":10,"output_tokens":20}}'
+        self.send_response(200)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+    def log_message(self, *args):
+        pass
+HTTPServer(("127.0.0.1", int(__import__("sys").argv[1])), H).serve_forever()
+PYUP
+python3 /tmp/zk-login-upstream.py "$UPSTREAM_PORT" >/dev/null 2>&1 & UPSTREAM_PID=$!
 cargo run -q -p zk -- compose --edition enterprise --profile default --channel official >/dev/null
 cargo build -q -p zk-server -p zk-desktop
 pnpm --dir apps/desktop/web build >/dev/null
@@ -19,12 +37,23 @@ sudo -u postgres createdb -O "$ROLE" "$DB"
 ZEOKEEL_DATABASE_URL="postgres://$ROLE:$ROLE@127.0.0.1:5432/$DB" \
 ZEOKEEL_SERVER_ADDR="127.0.0.1:$SERVER_PORT" \
 ZEOKEEL_BOOTSTRAP_ADMIN_PASSWORD="admin-pass" \
+ZEOKEEL_MONTHLY_GRANT_MICROS="500000" \
+ZEOKEEL_UPSTREAM_BASE_URL="http://127.0.0.1:$UPSTREAM_PORT/v1" \
+ZEOKEEL_UPSTREAM_API_KEY="test-upstream-key" \
 ZEOKEEL_DEV_CORS_ORIGIN="http://127.0.0.1:$UI_PORT" \
 ./target/debug/zk-server >/tmp/zk-login-server.log 2>&1 & SERVER_PID=$!
 rm -rf target/evidence/m2/login-home; mkdir -p target/evidence/m2/login-home
+for _ in $(seq 1 60); do curl -fsS "http://127.0.0.1:$SERVER_PORT/healthz" >/dev/null 2>&1 && break; sleep 0.5; done
 ZEOKEEL_HOME=target/evidence/m2/login-home ZEOKEEL_SERVE_ADDR="127.0.0.1:$UI_PORT" \
 ./target/debug/zk-desktop --serve >/tmp/zk-login-desktop.log 2>&1 & UI_PID=$!
 for _ in $(seq 1 40); do curl -fsS "http://127.0.0.1:$UI_PORT/healthz" >/dev/null 2>&1 && break; sleep 0.5; done
+curl -fsS "http://127.0.0.1:$SERVER_PORT/readyz" >/dev/null
+ADMIN=$(curl -fsS -c /tmp/zk-login-admin.cookies -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/auth/login" -H 'content-type: application/json' -d '{"username":"admin","password":"admin-pass"}')
+CSRF=$(printf '%s' "$ADMIN" | python3 -c 'import json,sys;print(json.load(sys.stdin)["csrf_token"])')
+curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X PUT "http://127.0.0.1:$SERVER_PORT/api/admin/pricing/deepseek-chat" -H 'content-type: application/json' -d '{"input_per_1k_micros":1000,"output_per_1k_micros":2000}' >/dev/null
+USERS=$(curl -fsS -b /tmp/zk-login-admin.cookies "http://127.0.0.1:$SERVER_PORT/api/admin/users")
+ADMIN_ID=$(printf '%s' "$USERS" | python3 -c 'import json,sys;print([u["id"] for u in json.load(sys.stdin)["users"] if u["username"]=="admin"][0])')
+curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/wallet/$ADMIN_ID/adjust" -H 'content-type: application/json' -d '{"delta_micros":1000000,"reason":"login e2e grant","idempotency_key":"login-e2e-grant"}' >/dev/null
 ZEOKEEL_LOGIN_URL="http://127.0.0.1:$UI_PORT" ZEOKEEL_LOGIN_SERVER="http://127.0.0.1:$SERVER_PORT" \
-  pnpm exec playwright test e2e/m2-login.spec.ts --reporter=line
+  pnpm exec playwright test e2e/m2-login.spec.ts e2e/m2-gateway-chat.spec.ts --reporter=line
 echo "login e2e ok"
