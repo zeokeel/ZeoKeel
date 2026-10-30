@@ -7,6 +7,13 @@
     "slot": "admin.page.audit"
   },
   {
+    "component": "page.connectors",
+    "order": 10,
+    "package": "zeokeel/admin-connectors",
+    "role": "admin.page.connectors",
+    "slot": "admin.page.connectors"
+  },
+  {
     "component": "page.jobs",
     "order": 10,
     "package": "zeokeel/admin-jobs",

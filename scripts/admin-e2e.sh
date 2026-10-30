@@ -30,5 +30,5 @@ PYZIP
 mkdir -p target/evidence/m2/admin target/evidence/m3
 export ZEOKEEL_SKILL_ZIP=/tmp/zk-admin-skill.zip
 ZEOKEEL_ADMIN_URL="$BASE/admin" ZEOKEEL_ADMIN_PASSWORD="admin-pass" \
-  pnpm exec playwright test e2e/m2-admin.spec.ts e2e/m3-admin-skills.spec.ts --reporter=line
+  pnpm exec playwright test e2e/m2-admin.spec.ts e2e/m3-admin-skills.spec.ts e2e/m3-admin-connectors.spec.ts --reporter=line
 echo "admin e2e ok"

@@ -8,6 +8,13 @@
 
 ## 1. 自动验证（实现后填写真实结果）
 
+### task 6 evidence (2026-10-30)
+
+- `bash scripts/srv-store-test.sh`：创建 connector → 全员 grants → OAuth public client → 客户端目录含 OAuth → enable/disable → 删除；`store ok: content schema + skill archive + connectors`
+- `secret` 配置被 400 拒绝；目录不含 secret/token（ADR-060）
+- `bash scripts/admin-e2e.sh`：8 passed（M2 6 + M3 skills/connectors）
+- 截图：`target/evidence/m3/admin-connectors.png`
+
 ### task 5 evidence (2026-10-30)
 
 - `bash scripts/admin-e2e.sh`：7 passed（M2 6 + M3 skills 1）

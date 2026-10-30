@@ -11,6 +11,12 @@
     "contract": "zk-contract-admin-ui",
     "cardinality": "singleton"
   },
+  "admin.page.connectors": {
+    "package": "zeokeel/admin-connectors",
+    "crate_name": "zk-admin-admin-connectors",
+    "contract": "zk-contract-admin-ui",
+    "cardinality": "singleton"
+  },
   "admin.page.jobs": {
     "package": "zeokeel/admin-jobs",
     "crate_name": "zk-admin-admin-jobs",
@@ -87,6 +93,12 @@
     "package": "zeokeel/auth",
     "crate_name": "zk-srv-auth-local",
     "contract": "zk-contract-auth",
+    "cardinality": "singleton"
+  },
+  "srv.connectors": {
+    "package": "zeokeel/connectors",
+    "crate_name": "zk-srv-connectors",
+    "contract": "zk-contract-connector",
     "cardinality": "singleton"
   },
   "srv.content": {

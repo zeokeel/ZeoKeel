@@ -10,7 +10,7 @@
 | 3 | `zk-srv-content` 内核 | `packages/server/content/` | 2 | `bash scripts/srv-store-test.sh` | ✅ |
 | 4 | `zk-srv-skills` 归档元数据/目录/下载 | `packages/server/skills/` | 3 | `bash scripts/srv-store-test.sh` | ✅ |
 | 5 | admin skills 页面 + registry 接线 | `packages/admin/admin-skills/`, `apps/admin/web/src/app.tsx`, `tools/zk/src/main.rs`, `apps/desktop/web/src/app.css`, `docs/16` | 4 | `zk compose --edition enterprise --profile default --channel official --check`, `pnpm --dir apps/admin/web build` | ✅ |
-| 6 | connectors 契约/服务端/页面 | `packages/server/connectors/`, `packages/admin/admin-connectors/`, `apps/admin/web/src/app.tsx` | 4 | `bash scripts/srv-store-test.sh`, `pnpm --dir apps/admin/web build` | ☐ |
+| 6 | connectors 契约/服务端/页面 | `packages/server/connectors/`, `packages/admin/admin-connectors/`, `apps/admin/web/src/app.tsx` | 4 | `bash scripts/srv-store-test.sh`, `pnpm --dir apps/admin/web build` | ✅ |
 | 7 | 客户端 `ui-skills`/`ui-connectors` 安装/冲突/删除/OAuth | `packages/ui/ui-skills/`, `packages/ui/ui-connectors/`, `apps/desktop/web/src/{App,protocol,auth}.ts(x)`, `tools/zk/src/main.rs`, `apps/desktop/web/package.json` | 4,6 | `pnpm --dir apps/desktop/web test`, `pnpm --dir apps/desktop/web build` | ☐ |
 | 8 | 客户端恶意 zip / 树哈希 / OAuth 测试 | `packages/ui/ui-skills/tests/`, `packages/ui/ui-connectors/tests/`, `crates/zk-kit-content/tests/` | 7 | `pnpm --dir apps/desktop/web test` | ☐ |
 | 9 | 管理台 e2e + axe + admin-e2e 接入 | `e2e/m3-admin-skills.spec.ts`, `e2e/m3-admin-connectors.spec.ts`, `scripts/admin-e2e.sh` | 5,6 | `bash scripts/admin-e2e.sh`, `pnpm exec playwright test e2e/m3-*.spec.ts` | ☐ |

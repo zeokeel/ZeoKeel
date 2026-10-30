@@ -57,5 +57,22 @@ CODE=$(curl -sS -b /tmp/zk-store-admin.cookies -H "X-CSRF-Token: $CSRF" -o /dev/
 [[ "$CODE" == "200" ]]
 CATALOG=$(curl -fsS "$BASE/api/client/v1/skills" -H "Authorization: Bearer $ADMIN_JWT")
 [[ "$(printf '%s' "$CATALOG" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["items"]))')" == "0" ]]
+CONN=$(curl -fsS -b /tmp/zk-store-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/admin/connectors" -H 'content-type: application/json' -d '{"name":"demo-mcp","transport":"http","config":{}}')
+CONN_ID=$(printf '%s' "$CONN" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
+CODE=$(curl -sS -b /tmp/zk-store-admin.cookies -H "X-CSRF-Token: $CSRF" -o /dev/null -w '%{http_code}' -X POST "$BASE/api/admin/connectors" -H 'content-type: application/json' -d '{"name":"bad-secret","transport":"http","config":{"api_key":"x"}}')
+[[ "$CODE" == "400" ]]
+CODE=$(curl -sS -b /tmp/zk-store-admin.cookies -H "X-CSRF-Token: $CSRF" -o /dev/null -w '%{http_code}' -X PUT "$BASE/api/admin/connectors/$CONN_ID/grants" -H 'content-type: application/json' -d '{"grants":[{"grantee":"all","can_enable":true}]}')
+[[ "$CODE" == "200" ]]
+CODE=$(curl -sS -b /tmp/zk-store-admin.cookies -H "X-CSRF-Token: $CSRF" -o /dev/null -w '%{http_code}' -X POST "$BASE/api/admin/connectors/$CONN_ID/oauth" -H 'content-type: application/json' -d '{"client_id":"public-client","scopes":["mcp"],"redirect_uri":"http://127.0.0.1/callback"}')
+[[ "$CODE" == "200" ]]
+CATALOG=$(curl -fsS "$BASE/api/client/v1/connectors" -H "Authorization: Bearer $ADMIN_JWT")
+[[ "$(printf '%s' "$CATALOG" | python3 -c 'import json,sys;print(json.load(sys.stdin)["items"][0]["oauth"]["client_id"])')" == "public-client" ]]
+[[ "$(printf '%s' "$CATALOG" | python3 -c 'import json,sys;d=json.load(sys.stdin)["items"][0];assert "secret" not in str(d) and "token" not in str(d).lower()')" == "" ]]
+CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/client/v1/connectors/$CONN_ID/enable" -H "Authorization: Bearer $ADMIN_JWT")
+[[ "$CODE" == "200" ]]
+CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/client/v1/connectors/$CONN_ID/disable" -H "Authorization: Bearer $ADMIN_JWT")
+[[ "$CODE" == "200" ]]
+CODE=$(curl -sS -b /tmp/zk-store-admin.cookies -H "X-CSRF-Token: $CSRF" -o /dev/null -w '%{http_code}' -X DELETE "$BASE/api/admin/connectors/$CONN_ID")
+[[ "$CODE" == "200" ]]
 PGPASSWORD="$ROLE" psql "postgres://$ROLE:$ROLE@127.0.0.1:5432/$DB" -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_name IN ('contents','content_releases','content_grants','content_deployments','content_installs');" | grep -qx 5
-echo "store ok: content schema wired + skill upload/download"
+echo "store ok: content schema + skill archive + connectors"

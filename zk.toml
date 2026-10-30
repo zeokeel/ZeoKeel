@@ -52,6 +52,11 @@ contract = "zk-contract-server"
 cardinality = "singleton"
 editions = ["enterprise"]
 
+[roles."admin.page.connectors"]
+contract = "zk-contract-admin-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
 [roles."admin.page.skills"]
 contract = "zk-contract-admin-ui"
 cardinality = "singleton"
@@ -114,6 +119,11 @@ editions = ["personal"]
 
 [roles."srv.skills"]
 contract = "zk-contract-skill"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[roles."srv.connectors"]
+contract = "zk-contract-connector"
 cardinality = "singleton"
 editions = ["enterprise"]
 

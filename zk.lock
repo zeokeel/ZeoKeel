@@ -50,6 +50,11 @@
       "version": "0010_content",
       "package": "packages/server/content/migrations/0010_content.sql",
       "checksum": "c1674b7f4310dd64a50df5f8573f145715d3fa236d760f12def5c0cf381ccce3"
+    },
+    {
+      "version": "0011_connectors",
+      "package": "packages/server/connectors/migrations/0011_connectors.sql",
+      "checksum": "4c6eb028fcfb89784647d529c228cd828a9be4e065630e3078fb669af601318a"
     }
   ]
 }

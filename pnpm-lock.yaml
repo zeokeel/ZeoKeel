@@ -178,6 +178,9 @@ importers:
       '@zeokeel/admin-audit':
         specifier: workspace:*
         version: link:../../../packages/admin/admin-audit/web
+      '@zeokeel/admin-connectors':
+        specifier: workspace:*
+        version: link:../../../packages/admin/admin-connectors/web
       '@zeokeel/admin-jobs':
         specifier: workspace:*
         version: link:../../../packages/admin/admin-jobs/web
@@ -311,6 +314,19 @@ importers:
         version: 5.0.5(jsdom@30.1.3)(vite@8.3.5(jiti@2.7.0))
 
   packages/admin/admin-audit/web:
+    dependencies:
+      '@zeokeel/admin-ui-kit':
+        specifier: workspace:*
+        version: link:../../ui-kit/web
+      react:
+        specifier: ^19
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+
+  packages/admin/admin-connectors/web:
     dependencies:
       '@zeokeel/admin-ui-kit':
         specifier: workspace:*

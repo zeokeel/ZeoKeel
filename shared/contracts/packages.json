@@ -16,6 +16,14 @@
     ]
   },
   {
+    "id": "zeokeel/admin-connectors",
+    "version": "0.1.0",
+    "kind": "ui",
+    "roles": [
+      "admin.page.connectors"
+    ]
+  },
+  {
     "id": "zeokeel/admin-jobs",
     "version": "0.1.0",
     "kind": "ui",
@@ -117,6 +125,14 @@
     "kind": "service",
     "roles": [
       "srv.auth.session"
+    ]
+  },
+  {
+    "id": "zeokeel/connectors",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "srv.connectors"
     ]
   },
   {
