@@ -354,3 +354,68 @@ M5 的 channel validate/verify、OEM fixture、updates 端点、dist 脚本和 p
 
 - 关联 spec：`specs/changes/2026-10-30-oem-delivery`。
 - 复评结论（第四轮）：**CHANGES-REQUESTED**
+
+---
+
+## 11. 第五轮复评（R5，2026-10-30）
+
+> 对象：R4 修复后的 M5 实现。只读复跑；未改产品代码/spec（仅本记录）。
+> 仅列剩余 P0/P1；环境阻塞项另标 P2/manual。
+
+### 11.1 结论
+
+**CHANGES REQUIRED（CHANGES-REQUESTED）**
+
+- **P0：0**。R4 P0 build-dist 已修复。
+- **P1：1 组（可本地修）**：`channel_validate` 仍不校验 channel.json 的 `id` 与 index id 一致、logo 符号链接逃逸。
+- **P2/manual（环境阻塞）**：Docker/三平台安装包/公证/真实升级/SBOM。
+
+### 11.2 已关闭
+
+- **build-dist**：先创建 fallback client，再算 assets/sha；实测 `bash scripts/build-dist.sh official 0.1.0 /tmp/zk-dist-r5` **PASS**，`CLIENT-RELEASE.assets` 非空（name/sha256/size）。
+- **channel_validate**：改用 `validate_channel_dir` 共享 id/logo/256KB/script/http/powered_by/deny_unknown_fields；oem-e2e channel validate PASS。
+- **deep OEM**：oem-e2e 的 `zk plan`/`compose --edition oem-deep --channel oem-deep --check`/`cargo test -p acme-brand` PASS。
+- **portal/1:1/verify**：portal OEM、版本 409、dist/SHA/SBOM/二进制扫描 PASS。
+
+### 11.3 剩余 P1（可本地修）
+
+1. **`channel_validate` 未校验 `channel.json.id` == index key**
+   - `tools/zk/src/main.rs:1069` 调 `validate_channel_dir(id, &customer)`，但 `validate_channel_dir` 内部只校验 `file.id` 的正则/长度，不比较 `id` 参数；`oem/fixtures` 的 `channel.json.id` 若与 `index.toml` key 不一致仍可通过。
+   - 影响：渠道 id 是 manifest/更新/门户的键；不一致会导致 build/channel/portal 身份错配。
+   - 修：`if file.id != channel { bail!(...) }`，补 fixture 负向（index key ≠ channel.json.id）。
+
+2. **logo 符号链接逃逸**
+   - `validate_channel_dir` 只查 `..`/绝对/http/256KB/script，不 `canonicalize`，也不 `symlink_metadata` 拒绝 symlink；`dir.join(logo)` 可指向渠道目录外文件，`zk compose` 会把外部 SVG 复制进 `public/brand/`。
+   - docs/09 §3 明确要求 canonicalize 后在渠道目录内、拒绝符号链接逃逸。
+   - 修：`canonicalize` 后 `starts_with(dir.canonicalize())`；拒绝 symlink；补 symlink 逃逸负向。
+
+### 11.4 P2/manual（环境阻塞，不判 P1）
+
+- 真实 Docker image save/load/compose、PG 备份/PITR。
+- 三平台 Tauri 安装包与 Windows SHA 实测；`release.yml` installers job 仍 echo 模板。
+- macOS notarize/staple（证书未配；job echo）。
+- 真实升级/回滚；`upgrade-drill --docker` 仍只 echo。
+- 真实 CycloneDX SBOM；当前 SBOM/README 占位。
+- 真实 OEM 镜像/安装包二进制残留扫描（当前 fixture 负向）。
+
+这些必须由有 Docker/证书/平台 runner 的环境执行；acceptance 标 `UNVERIFIED`，不得写 complete。
+
+### 11.5 R5 证据
+
+| 命令 | 结果 |
+| --- | --- |
+| `bash scripts/build-dist.sh official 0.1.0 /tmp/zk-dist-r5` | **PASS**；assets 非空 |
+| `bash scripts/oem-e2e.sh` | **PASS**：deep plan/compose/acme-brand + verify/residue |
+| `bash scripts/updates-e2e.sh` | **PASS**：manifest/version reject/oem portal |
+| `bash scripts/upgrade-drill.sh --dry-run` | **PASS（dry-run）**：local fallback + sha；docker 模拟 |
+| `cargo test --workspace` / clippy | **PASS** |
+| `zk validate` / `channel validate` / `compose official --check` | **PASS**：71 packages/2 channels/16 files |
+
+### 11.6 结论
+
+- **P0：0；P1：1 组**（channel id 一致性、logo symlink）。
+- **P2/manual**：见 11.4。
+- **M5 实现仍不可 APPROVED**：修 P1 后可复评；环境项作为 P2/manual。
+
+- 关联 spec：`specs/changes/2026-10-30-oem-delivery`。
+- 复评结论（第五轮）：**CHANGES-REQUESTED**

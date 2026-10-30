@@ -566,6 +566,7 @@ fn validate_channel_dir(channel: &str, dir: &Path) -> Result<ChannelFile> {
     let display_name = if file.identity.product_name.trim().is_empty() { file.brand.name.trim() } else { file.identity.product_name.trim() };
     if display_name.is_empty() { bail!("channel {channel}: identity.product_name is required"); }
     if file.id.is_empty() || file.id.len() > 32 || !file.id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') { bail!("channel {channel}: bad id"); }
+    if file.id != channel { bail!("channel {channel}: channel.json id {} != index key", file.id); }
     if !file.identity.slug.is_empty() && !file.identity.slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') { bail!("channel {channel}: bad identity.slug"); }
     if !file.identity.app_id.is_empty() && (!file.identity.app_id.contains('.') || file.identity.app_id.contains(' ')) { bail!("channel {channel}: bad identity.app_id"); }
     if !matches!(file.brand.powered_by.as_str(), "show" | "hide") { bail!("channel {channel}: brand.powered_by must be show|hide"); }
@@ -573,6 +574,10 @@ fn validate_channel_dir(channel: &str, dir: &Path) -> Result<ChannelFile> {
         if logo.is_empty() || logo.contains("..") || logo.starts_with('/') || logo.starts_with("http:") || logo.starts_with("https:") { bail!("channel {channel}: unsafe logo path {logo}"); }
         let logo_path = dir.join(logo);
         if !logo_path.is_file() { bail!("channel {channel}: logo file missing: {}", logo_path.display()); }
+        if fs::symlink_metadata(&logo_path)?.file_type().is_symlink() { bail!("channel {channel}: logo symlink forbidden"); }
+        let canonical_dir = dir.canonicalize()?;
+        let canonical_logo = logo_path.canonicalize()?;
+        if !canonical_logo.starts_with(&canonical_dir) { bail!("channel {channel}: logo escapes channel dir"); }
         let meta = fs::metadata(&logo_path)?;
         if meta.len() > 256 * 1024 { bail!("channel {channel}: logo too large"); }
         let text = fs::read_to_string(&logo_path).unwrap_or_default().replace("http://www.w3.org/2000/svg", "");
@@ -1639,4 +1644,40 @@ fn scan_forbidden_dirs(dir: &Path, root: &Path, bad: &mut Vec<String>) -> Result
         }
     }
     Ok(())
+}
+
+
+#[cfg(test)]
+mod channel_tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+    use std::path::PathBuf;
+
+    fn fixture(id_in_json: &str) -> PathBuf {
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("zk-channel-test-{stamp}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("logo.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>").unwrap();
+        std::fs::write(dir.join("logo-dark.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>").unwrap();
+        let body = format!(r##"{{"schema":1,"id":"{id_in_json}","identity":{{"slug":"x","product_name":"X","app_id":"com.x.y","deep_link_scheme":"x","app_origin_scheme":"x-app","data_dir_name":"X","product_home_dir":".x"}},"brand":{{"powered_by":"hide","logo":{{"light":"logo.svg","dark":"logo-dark.svg"}}}},"assets":{{"accent":"#000000"}},"defaults":{{"server_url":""}},"copy":{{}}}}"##);
+        std::fs::write(dir.join("channel.json"), body).unwrap();
+        dir
+    }
+
+    #[test]
+    fn rejects_id_mismatch() {
+        let dir = fixture("other-id");
+        assert!(super::validate_channel_dir("expected-id", &dir).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn rejects_symlink_logo() {
+        let dir = fixture("good-id");
+        let outside = std::env::temp_dir().join("zk-channel-outside.svg");
+        std::fs::write(&outside, "<svg></svg>").unwrap();
+        std::fs::remove_file(dir.join("logo.svg")).unwrap();
+        #[cfg(unix)] std::os::unix::fs::symlink(&outside, dir.join("logo.svg")).unwrap();
+        assert!(super::validate_channel_dir("good-id", &dir).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }
