@@ -8,6 +8,12 @@
 
 ## 1. 自动验证（实现后填写真实结果）
 
+### M3 implementation review fixes (2026-10-30)
+
+- P0-1：`safe_component` 拒绝 `.`/`..`/前导点/`:`/斜杠；`skills.remove` 恶意 name 测试验证不删除已安装技能。
+- P0-2：`srv-store-test.sh` 的 Python 断言不再包在 `[[ ... == "" ]]`；失败会非零退出；connector 断言排除合法 `token_url`/`authorize_url`。
+- P1：enterprise compose `--check` 重新生成后绿；移除不存在的 `zk api --check` 依赖；`zk-kit-content` 拒绝 Windows drive 并钉真实 tree hash golden；浏览器安装前校验归档 SHA-256；admin/login e2e 整体 exit 0。
+
 ### task 8 evidence (partial, 2026-10-30)
 
 - `cargo test -p zk-desktop installs_valid_archive`：valid zip 安装且 tree_sha256 64 位；重复 409；`../evil` 拒绝；zip symlink 拒绝；remove 清理目录。

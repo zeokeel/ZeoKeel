@@ -98,6 +98,9 @@ export async function downloadSkillArchive(session: AuthSession, serverUrl: stri
   const header = response.headers.get("x-zeokeel-skill-sha256");
   if (header !== null && header !== item.sha256) throw new Error("CHECKSUM_MISMATCH");
   const bytes = new Uint8Array(await response.arrayBuffer());
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const actual = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  if (actual !== item.sha256) throw new Error("CHECKSUM_MISMATCH");
   return { archive_base64: toBase64(bytes), sha256: item.sha256 };
 }
 

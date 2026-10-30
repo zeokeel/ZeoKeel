@@ -79,7 +79,7 @@ grep -qi "x-zeokeel-skill-sha256: $SHA" /tmp/zk-archive.headers
 python3 -c 'import zipfile; z=zipfile.ZipFile("/tmp/zk-downloaded.zip"); assert z.read("SKILL.md").startswith(b"# demo")'
 
 CATALOG=$(curl -fsS "$BASE/api/client/v1/skills" -H "Authorization: Bearer $ADMIN_JWT")
-[[ "$(printf '%s' "$CATALOG" | python3 -c 'import json,sys;d=json.load(sys.stdin)["items"];assert len(d)==2;assert [i["version"] for i in d if i["name"]=="demo-skill"][0]=="1.0.0"')" == "" ]]
+printf '%s' "$CATALOG" | python3 -c 'import json,sys;d=json.load(sys.stdin)["items"];assert len(d)==2;assert [i["version"] for i in d if i["name"]=="demo-skill"][0]=="1.0.0"' 
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/client/v1/skills/demo-skill/1.0.0/install" -H "Authorization: Bearer $ADMIN_JWT" -H 'content-type: application/json' -d '{"tree_sha256":"'$(printf 'a%.0s' {1..64})'"}')
 [[ "$CODE" == "200" ]]
 CODE=$(curl -sS -b /tmp/zk-store-admin.cookies -H "X-CSRF-Token: $CSRF" -o /dev/null -w '%{http_code}' -X DELETE "$BASE/api/admin/skills/$SKILL_ID")
@@ -87,7 +87,7 @@ CODE=$(curl -sS -b /tmp/zk-store-admin.cookies -H "X-CSRF-Token: $CSRF" -o /dev/
 TOMB=$(curl -fsS "$BASE/api/client/v1/skills/tombstones" -H "Authorization: Bearer $ADMIN_JWT")
 [[ "$(printf '%s' "$TOMB" | python3 -c 'import json,sys;print("demo-skill" in json.load(sys.stdin)["items"])')" == "True" ]]
 CATALOG=$(curl -fsS "$BASE/api/client/v1/skills" -H "Authorization: Bearer $ADMIN_JWT")
-[[ "$(printf '%s' "$CATALOG" | python3 -c 'import json,sys;d=json.load(sys.stdin)["items"];assert len(d)==1 and d[0]["name"]=="alice-skill"')" == "" ]]
+printf '%s' "$CATALOG" | python3 -c 'import json,sys;d=json.load(sys.stdin)["items"];assert len(d)==1 and d[0]["name"]=="alice-skill"' 
 CONN=$(curl -fsS -b /tmp/zk-store-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/admin/connectors" -H 'content-type: application/json' -d '{"name":"demo-mcp","transport":"http","config":{}}')
 CONN_ID=$(printf '%s' "$CONN" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
 CODE=$(curl -sS -b /tmp/zk-store-admin.cookies -H "X-CSRF-Token: $CSRF" -o /dev/null -w '%{http_code}' -X POST "$BASE/api/admin/connectors" -H 'content-type: application/json' -d '{"name":"bad-secret","transport":"http","config":{"api_key":"x"}}')
@@ -98,7 +98,7 @@ CODE=$(curl -sS -b /tmp/zk-store-admin.cookies -H "X-CSRF-Token: $CSRF" -o /dev/
 [[ "$CODE" == "200" ]]
 CATALOG=$(curl -fsS "$BASE/api/client/v1/connectors" -H "Authorization: Bearer $ADMIN_JWT")
 [[ "$(printf '%s' "$CATALOG" | python3 -c 'import json,sys;print(json.load(sys.stdin)["items"][0]["oauth"]["client_id"])')" == "public-client" ]]
-[[ "$(printf '%s' "$CATALOG" | python3 -c 'import json,sys;d=json.load(sys.stdin)["items"][0];assert "secret" not in str(d) and "token" not in str(d).lower()')" == "" ]]
+printf '%s' "$CATALOG" | python3 -c 'import json,sys;d=json.load(sys.stdin)["items"][0];assert "secret" not in d;oauth=d.get("oauth") or {};assert "access_token" not in oauth and "refresh_token" not in oauth and "client_secret" not in oauth' 
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/client/v1/connectors/$CONN_ID/enable" -H "Authorization: Bearer $ADMIN_JWT")
 [[ "$CODE" == "200" ]]
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/client/v1/connectors/$CONN_ID/disable" -H "Authorization: Bearer $ADMIN_JWT")

@@ -44,7 +44,7 @@
 - [ ] `pnpm --dir apps/desktop/web test`
 - [ ] `zk validate`
 - [ ] `zk compose --edition enterprise --profile default --channel official --check`
-- [ ] `zk api --edition enterprise --profile default --channel official --check`
+- [ ] `zk validate` / `zk compose --check`（zk api 尚未实现，M3 不依赖）
 - [ ] `bash scripts/schema-check.sh`
 - [ ] `zk capability --check`
 - [ ] 无手改 `@generated`

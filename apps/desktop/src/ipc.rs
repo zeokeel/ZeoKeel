@@ -256,7 +256,13 @@ fn skill_root() -> Result<std::path::PathBuf, String> {
 }
 
 fn safe_component(value: &str) -> bool {
-    !value.is_empty() && value.len() <= 128 && value.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    !value.is_empty()
+        && value.len() <= 128
+        && value != "."
+        && value != ".."
+        && !value.starts_with('.')
+        && !value.contains(':')
+        && value.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
 }
 
 fn install_skill(payload: &Value) -> CommandResponse {
@@ -587,6 +593,13 @@ mod tests {
 
         let link = install("link-skill", "1.0.0", &zip_symlink_bytes());
         assert_eq!(link["ok"], serde_json::Value::Bool(false), "{link}");
+
+        for hostile in [".", "..", ".hidden", "C:evil", "a/b"] {
+            assert!(!super::safe_component(hostile), "{hostile}");
+            let response = super::remove_skill(&serde_json::json!({ "name": hostile }));
+            assert!(!response.ok, "{hostile}");
+        }
+        assert!(home.join("skills/demo-skill/1.0.0/SKILL.md").is_file(), "hostile remove must not delete installed skills");
 
         let removed = super::remove_skill(&serde_json::json!({ "name": "demo-skill" }));
         assert!(removed.ok);
