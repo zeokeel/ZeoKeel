@@ -5,12 +5,11 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-rig-core = { workspace = true }
 thiserror = { workspace = true }
-zk-llm-rig = { path = "../llm-rig" }
+zk-kit-media = { path = "../../../crates/zk-kit-media" }
 
 [dev-dependencies]
-futures = { workspace = true }
+zk-kit-media = { path = "../../../crates/zk-kit-media", features = ["test-support"] }
 
 [lints]
 workspace = true

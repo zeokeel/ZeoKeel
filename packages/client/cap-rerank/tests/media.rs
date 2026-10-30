@@ -1,16 +1,13 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)] // test-only
-//! Rerank capability tests with a deterministic in-process model (rig
-//! `Local<Rerank>` wire + fake transport): query/documents reach the model and
-//! ranked scores come back without any network or provider.
+//! Rerank capability tests with the kit's deterministic in-process model (no
+//! network, no provider): query/documents reach the model and ranked scores
+//! come back.
 
 use std::sync::{Mutex, MutexGuard};
 
-use futures::stream;
-use rig_core::driver::{Exchange, Local, Model, Opened, Opening, Step, Transport};
-use rig_core::operation::{Rerank, RerankRequest};
-use rig_core::rerank::{RerankResponse, RerankResult};
-use rig_core::DynModel;
 use zk_cap_rerank::{RerankError, RerankHit};
+use zk_kit_media::test_support::fake_rerank_model;
+use zk_kit_media::MediaConfig;
 
 static LOCK: Mutex<()> = Mutex::new(());
 
@@ -19,42 +16,10 @@ fn guard() -> MutexGuard<'static, ()> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-#[derive(Clone)]
-struct FakeRerankTransport;
-
-impl Transport<Local<Rerank>> for FakeRerankTransport {
-    fn send(&self, payload: RerankRequest, _exchange: Exchange) -> Opening<Step<Rerank>> {
-        let mut results: Vec<RerankResult> = payload
-            .documents
-            .iter()
-            .enumerate()
-            .map(|(index, document)| RerankResult {
-                index,
-                document: Some(document.clone()),
-                relevance_score: if document.contains(&payload.query) {
-                    1.0
-                } else {
-                    0.0
-                },
-            })
-            .collect();
-        results.sort_by(|left, right| right.relevance_score.total_cmp(&left.relevance_score));
-        let mut response = RerankResponse::new(results);
-        response.model = Some("fake-rerank-model".to_owned());
-        Opening::ready(Opened::new(stream::once(
-            async move { Ok(Step::End(response)) },
-        )))
-    }
-}
-
-fn fake_model() -> DynModel<Rerank> {
-    Model::new(Local::<Rerank>::new("fake-provider"), FakeRerankTransport).into()
-}
-
 #[test]
 fn configured_capability_reranks_documents() {
     let _guard = guard();
-    zk_cap_rerank::configure(fake_model()).unwrap();
+    zk_cap_rerank::configure(fake_rerank_model()).unwrap();
     assert!(zk_cap_rerank::available());
     assert_eq!(zk_cap_rerank::unavailable_reason(), None);
 
@@ -103,7 +68,7 @@ fn configure_from_env_is_optional() {
 #[test]
 fn configure_from_config_rejects_openai_rerank() {
     let _guard = guard();
-    let config = zk_llm_rig::MediaConfig::new("openai", "http://127.0.0.1:1/v1", "test-key", "");
+    let config = MediaConfig::new("openai", "http://127.0.0.1:1/v1", "test-key", "");
     match zk_cap_rerank::configure_from_config(&config).unwrap_err() {
         RerankError::Config(message) => {
             assert!(message.contains("no rerank endpoint"), "{message}");

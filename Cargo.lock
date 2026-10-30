@@ -8433,10 +8433,8 @@ dependencies = [
 name = "zk-cap-audio"
 version = "0.1.0"
 dependencies = [
- "futures",
- "rig-core",
  "thiserror 1.0.69",
- "zk-llm-rig",
+ "zk-kit-media",
 ]
 
 [[package]]
@@ -8447,41 +8445,32 @@ version = "0.1.0"
 name = "zk-cap-image"
 version = "0.1.0"
 dependencies = [
- "futures",
- "rig-core",
  "thiserror 1.0.69",
- "zk-llm-rig",
+ "zk-kit-media",
 ]
 
 [[package]]
 name = "zk-cap-rerank"
 version = "0.1.0"
 dependencies = [
- "futures",
- "rig-core",
  "thiserror 1.0.69",
- "zk-llm-rig",
+ "zk-kit-media",
 ]
 
 [[package]]
 name = "zk-cap-transcription"
 version = "0.1.0"
 dependencies = [
- "futures",
- "rig-core",
  "thiserror 1.0.69",
- "zk-llm-rig",
+ "zk-kit-media",
 ]
 
 [[package]]
 name = "zk-cap-vector"
 version = "0.1.0"
 dependencies = [
- "futures",
- "rig-core",
- "serde_json",
  "thiserror 1.0.69",
- "tokio",
+ "zk-kit-media",
 ]
 
 [[package]]
@@ -8859,6 +8848,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-kit-media"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "rig-core",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
 name = "zk-kit-questions"
 version = "0.1.0"
 dependencies = [
@@ -8956,8 +8955,6 @@ name = "zk-llm-rig"
 version = "0.1.0"
 dependencies = [
  "rig-core",
- "thiserror 1.0.69",
- "tokio",
  "zk-contract-llm",
 ]
 

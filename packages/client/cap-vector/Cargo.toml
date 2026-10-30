@@ -5,13 +5,11 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-futures = { workspace = true }
-rig-core = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true }
+zk-kit-media = { path = "../../../crates/zk-kit-media" }
 
 [dev-dependencies]
-serde_json = { workspace = true }
+zk-kit-media = { path = "../../../crates/zk-kit-media", features = ["test-support"] }
 
 [lints]
 workspace = true

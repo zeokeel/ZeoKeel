@@ -1,25 +1,28 @@
 //! Audio-transcription capability (`media.transcription`).
 //!
-//! Backed by rig-core's OpenAI-compatible `transcription` model. The
-//! capability is **dynamically available**: [`available`] is true only after a
-//! transcription model is configured ([`configure`], [`configure_from_config`],
-//! or [`configure_from_env`] with `ZEOKEEL_TRANSCRIPTION_*`).
-//! [`unavailable_reason`] gives the honest reason otherwise, and
-//! [`UNAVAILABLE`] is the closed code hosts surface instead of silently
-//! dropping the feature.
+//! @capability media.transcription
 //!
-//! The package stores no audio: callers pass bytes ([`transcribe`]) or a path
-//! ([`transcribe_file`]) and get the transcript back.
+//! Backed by the shared [`zk_kit_media`] adapter (rig-core `transcription`,
+//! OpenAI-compatible). The capability is **dynamically available**:
+//! [`available`] is true only after a transcription model is configured
+//! ([`configure`], [`configure_from_config`], or [`configure_from_env`] with
+//! `ZEOKEEL_TRANSCRIPTION_*`). [`unavailable_reason`] gives the honest reason
+//! otherwise, and [`UNAVAILABLE`] is the closed code hosts surface instead of
+//! silently dropping the feature.
+//!
+//! Host wiring: the personal-edition boot calls the generated
+//! `zk_composed::configure_capabilities_from_env()` (which calls
+//! [`configure_from_env`]); the enterprise client never configures media
+//! providers (AI only through the gateway, C7/ADR-031). The package stores no
+//! audio: callers pass bytes ([`transcribe`]) or a path ([`transcribe_file`])
+//! and get the transcript back.
 #![forbid(unsafe_code)]
 
 use std::path::Path;
-use std::sync::{Mutex, OnceLock};
 
-use rig_core::operation::Transcription;
-use rig_core::transcription::TranscriptionRequestBuilder;
-use rig_core::DynModel;
-use zk_llm_rig::{
-    block_on, transcription_model, transcription_model_from_config, MediaConfig, MediaError,
+use zk_kit_media::{
+    transcribe_audio, transcription_model, transcription_model_from_config, MediaConfig,
+    MediaError, MediaKind, ModelSlot, TranscriptionModel,
 };
 
 /// Closed unavailability code hosts surface instead of silently dropping the feature.
@@ -63,16 +66,13 @@ pub struct Transcript {
     pub model: Option<String>,
 }
 
-static MODEL: OnceLock<Mutex<Option<DynModel<Transcription>>>> = OnceLock::new();
-
-fn model_slot() -> &'static Mutex<Option<DynModel<Transcription>>> {
-    MODEL.get_or_init(|| Mutex::new(None))
-}
+static MODEL: ModelSlot<TranscriptionModel> = ModelSlot::new();
 
 fn map_media_error(error: MediaError) -> TranscriptionError {
     match error {
         MediaError::Unconfigured(message) => TranscriptionError::Unavailable(message),
         MediaError::Config(message) => TranscriptionError::Config(message),
+        MediaError::Provider(message) => TranscriptionError::Provider(message),
         MediaError::Runtime(message) => TranscriptionError::Runtime(message),
     }
 }
@@ -80,10 +80,7 @@ fn map_media_error(error: MediaError) -> TranscriptionError {
 /// Whether a transcription model is configured.
 #[must_use]
 pub fn available() -> bool {
-    model_slot()
-        .lock()
-        .map(|guard| guard.is_some())
-        .unwrap_or(false)
+    MODEL.is_configured()
 }
 
 /// Why transcription is unavailable, or `None` when it is available.
@@ -92,44 +89,37 @@ pub fn unavailable_reason() -> Option<String> {
     if available() {
         return None;
     }
-    Some(
-        "no transcription model configured: call zk_cap_transcription::configure(model), \
-         configure_from_config(&zk_llm_rig::MediaConfig), or set \
-         ZEOKEEL_TRANSCRIPTION_API_KEY/ZEOKEEL_TRANSCRIPTION_BASE_URL/ZEOKEEL_TRANSCRIPTION_MODEL \
-         and call configure_from_env()"
-            .to_owned(),
-    )
+    Some(MediaKind::Transcription.unavailable_reason())
 }
 
 /// Install the transcription model used by [`transcribe`].
 ///
 /// # Errors
 ///
-/// [`TranscriptionError::Config`] when the model lock is poisoned.
-pub fn configure(model: DynModel<Transcription>) -> Result<(), TranscriptionError> {
-    let mut guard = model_slot()
-        .lock()
-        .map_err(|_| TranscriptionError::Config("transcription model lock poisoned".to_owned()))?;
-    *guard = Some(model);
-    Ok(())
+/// [`TranscriptionError::Config`] when the model slot lock is poisoned.
+pub fn configure(model: TranscriptionModel) -> Result<(), TranscriptionError> {
+    MODEL.set(model).map_err(map_media_error)
 }
 
 /// Build and install a transcription model from explicit [`MediaConfig`].
 ///
 /// # Errors
 ///
-/// As [`zk_llm_rig::transcription_model_from_config`], plus
-/// [`TranscriptionError::Config`] for a poisoned model lock.
+/// As [`zk_kit_media::transcription_model_from_config`], plus
+/// [`TranscriptionError::Config`] for a poisoned model slot.
 pub fn configure_from_config(config: &MediaConfig) -> Result<(), TranscriptionError> {
     configure(transcription_model_from_config(config).map_err(map_media_error)?)
 }
 
 /// Configure from `ZEOKEEL_TRANSCRIPTION_*`; `Ok(false)` when no API key is set.
 ///
+/// This is the entry point the personal-edition boot uses through
+/// `zk_composed::configure_capabilities_from_env()`.
+///
 /// # Errors
 ///
 /// [`TranscriptionError::Config`] for an invalid base URL/provider, and as
-/// [`configure`] for a poisoned model lock.
+/// [`configure`] for a poisoned model slot.
 pub fn configure_from_env() -> Result<bool, TranscriptionError> {
     match transcription_model() {
         Ok(model) => {
@@ -145,13 +135,9 @@ pub fn configure_from_env() -> Result<bool, TranscriptionError> {
 ///
 /// # Errors
 ///
-/// [`TranscriptionError::Config`] when the model lock is poisoned.
+/// [`TranscriptionError::Config`] when the model slot lock is poisoned.
 pub fn unconfigure() -> Result<(), TranscriptionError> {
-    let mut guard = model_slot()
-        .lock()
-        .map_err(|_| TranscriptionError::Config("transcription model lock poisoned".to_owned()))?;
-    *guard = None;
-    Ok(())
+    MODEL.clear().map_err(map_media_error)
 }
 
 /// Transcribe encoded audio bytes.
@@ -162,20 +148,14 @@ pub fn unconfigure() -> Result<(), TranscriptionError> {
 /// # Errors
 ///
 /// [`TranscriptionError::Unavailable`] when no model is configured,
-/// [`TranscriptionError::Config`] for empty audio or a poisoned model lock,
-/// [`TranscriptionError::Provider`] when the provider call fails, and
-/// [`TranscriptionError::Runtime`] when the shared runtime cannot start.
+/// [`TranscriptionError::Config`] for empty audio, [`TranscriptionError::Provider`]
+/// when the provider call fails, and [`TranscriptionError::Runtime`] when the
+/// shared runtime cannot start.
 pub fn transcribe(data: &[u8], filename: &str) -> Result<Transcript, TranscriptionError> {
     if data.is_empty() {
         return Err(TranscriptionError::Config("audio data is empty".to_owned()));
     }
-    let model = {
-        let guard = model_slot().lock().map_err(|_| {
-            TranscriptionError::Config("transcription model lock poisoned".to_owned())
-        })?;
-        guard.clone()
-    };
-    let Some(model) = model else {
+    let Some(model) = MODEL.get().map_err(map_media_error)? else {
         return Err(TranscriptionError::Unavailable(
             unavailable_reason().unwrap_or_default(),
         ));
@@ -188,18 +168,13 @@ pub fn transcribe(data: &[u8], filename: &str) -> Result<Transcript, Transcripti
             name.to_owned()
         }
     };
-    let request = TranscriptionRequestBuilder::new(data.to_vec())
-        .filename(filename)
-        .build();
-    let response = block_on(model.call(request))
-        .map_err(map_media_error)?
-        .map_err(|error| TranscriptionError::Provider(error.to_string()))?;
+    let output = transcribe_audio(&model, data, &filename).map_err(map_media_error)?;
     Ok(Transcript {
-        text: response.text,
-        language: response.language,
-        duration: response.duration,
-        provider: response.provider,
-        model: response.model,
+        text: output.text,
+        language: output.language,
+        duration: output.duration,
+        provider: output.provider,
+        model: output.model,
     })
 }
 

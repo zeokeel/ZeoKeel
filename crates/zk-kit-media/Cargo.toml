@@ -1,0 +1,18 @@
+[package]
+name = "zk-kit-media"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+futures = { workspace = true }
+rig-core = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[features]
+# Compiles the deterministic in-process models used by capability tests.
+test-support = []
+
+[lints]
+workspace = true

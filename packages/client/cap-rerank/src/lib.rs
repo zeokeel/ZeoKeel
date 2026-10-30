@@ -1,22 +1,29 @@
 //! Document-reranking capability (`media.rerank`).
 //!
-//! Backed by rig-core's rerank model. rig-core 0.45 has no OpenAI rerank
-//! endpoint (`RerankQuirks::unsupported`), so `MediaKind::Rerank` defaults to
-//! Voyage AI, the only provider it ships a rerank wire for; the OpenAI-compatible
-//! path returns a typed configuration error instead of pretending to work.
+//! @capability media.rerank
+//!
+//! Backed by the shared [`zk_kit_media`] adapter. rig-core 0.45 has no OpenAI
+//! rerank endpoint (`RerankQuirks::unsupported`), so `MediaKind::Rerank`
+//! defaults to Voyage AI, the only provider it ships a rerank wire for; the
+//! OpenAI-compatible path returns a typed configuration error instead of
+//! pretending to work.
 //!
 //! The capability is **dynamically available**: [`available`] is true only
 //! after a rerank model is configured ([`configure`], [`configure_from_config`],
 //! or [`configure_from_env`] with `ZEOKEEL_RERANK_*`). [`unavailable_reason`]
 //! gives the honest reason otherwise, and [`UNAVAILABLE`] is the closed code
 //! hosts surface instead of silently dropping the feature.
+//!
+//! Host wiring: the personal-edition boot calls the generated
+//! `zk_composed::configure_capabilities_from_env()` (which calls
+//! [`configure_from_env`]); the enterprise client never configures media
+//! providers (AI only through the gateway, C7/ADR-031).
 #![forbid(unsafe_code)]
 
-use std::sync::{Mutex, OnceLock};
-
-use rig_core::operation::{Rerank, RerankRequest};
-use rig_core::DynModel;
-use zk_llm_rig::{block_on, rerank_model, rerank_model_from_config, MediaConfig, MediaError};
+use zk_kit_media::{
+    rerank_documents, rerank_model, rerank_model_from_config, MediaConfig, MediaError, MediaKind,
+    ModelSlot, RerankModel,
+};
 
 /// Closed unavailability code hosts surface instead of silently dropping the feature.
 pub const UNAVAILABLE: &str = "CAPABILITY_UNAVAILABLE";
@@ -52,16 +59,13 @@ pub struct RerankHit {
     pub document: Option<String>,
 }
 
-static MODEL: OnceLock<Mutex<Option<DynModel<Rerank>>>> = OnceLock::new();
-
-fn model_slot() -> &'static Mutex<Option<DynModel<Rerank>>> {
-    MODEL.get_or_init(|| Mutex::new(None))
-}
+static MODEL: ModelSlot<RerankModel> = ModelSlot::new();
 
 fn map_media_error(error: MediaError) -> RerankError {
     match error {
         MediaError::Unconfigured(message) => RerankError::Unavailable(message),
         MediaError::Config(message) => RerankError::Config(message),
+        MediaError::Provider(message) => RerankError::Provider(message),
         MediaError::Runtime(message) => RerankError::Runtime(message),
     }
 }
@@ -69,10 +73,7 @@ fn map_media_error(error: MediaError) -> RerankError {
 /// Whether a rerank model is configured.
 #[must_use]
 pub fn available() -> bool {
-    model_slot()
-        .lock()
-        .map(|guard| guard.is_some())
-        .unwrap_or(false)
+    MODEL.is_configured()
 }
 
 /// Why reranking is unavailable, or `None` when it is available.
@@ -81,44 +82,37 @@ pub fn unavailable_reason() -> Option<String> {
     if available() {
         return None;
     }
-    Some(
-        "no rerank model configured: call zk_cap_rerank::configure(model), \
-         configure_from_config(&zk_llm_rig::MediaConfig), or set \
-         ZEOKEEL_RERANK_API_KEY/ZEOKEEL_RERANK_BASE_URL/ZEOKEEL_RERANK_MODEL \
-         (provider voyageai) and call configure_from_env()"
-            .to_owned(),
-    )
+    Some(MediaKind::Rerank.unavailable_reason())
 }
 
 /// Install the rerank model used by [`rerank`].
 ///
 /// # Errors
 ///
-/// [`RerankError::Config`] when the model lock is poisoned.
-pub fn configure(model: DynModel<Rerank>) -> Result<(), RerankError> {
-    let mut guard = model_slot()
-        .lock()
-        .map_err(|_| RerankError::Config("rerank model lock poisoned".to_owned()))?;
-    *guard = Some(model);
-    Ok(())
+/// [`RerankError::Config`] when the model slot lock is poisoned.
+pub fn configure(model: RerankModel) -> Result<(), RerankError> {
+    MODEL.set(model).map_err(map_media_error)
 }
 
 /// Build and install a rerank model from explicit [`MediaConfig`].
 ///
 /// # Errors
 ///
-/// As [`zk_llm_rig::rerank_model_from_config`], plus [`RerankError::Config`]
-/// for a poisoned model lock.
+/// As [`zk_kit_media::rerank_model_from_config`], plus [`RerankError::Config`]
+/// for a poisoned model slot.
 pub fn configure_from_config(config: &MediaConfig) -> Result<(), RerankError> {
     configure(rerank_model_from_config(config).map_err(map_media_error)?)
 }
 
 /// Configure from `ZEOKEEL_RERANK_*`; `Ok(false)` when no API key is configured.
 ///
+/// This is the entry point the personal-edition boot uses through
+/// `zk_composed::configure_capabilities_from_env()`.
+///
 /// # Errors
 ///
 /// [`RerankError::Config`] for an invalid base URL/provider, and as
-/// [`configure`] for a poisoned model lock.
+/// [`configure`] for a poisoned model slot.
 pub fn configure_from_env() -> Result<bool, RerankError> {
     match rerank_model() {
         Ok(model) => {
@@ -134,13 +128,9 @@ pub fn configure_from_env() -> Result<bool, RerankError> {
 ///
 /// # Errors
 ///
-/// [`RerankError::Config`] when the model lock is poisoned.
+/// [`RerankError::Config`] when the model slot lock is poisoned.
 pub fn unconfigure() -> Result<(), RerankError> {
-    let mut guard = model_slot()
-        .lock()
-        .map_err(|_| RerankError::Config("rerank model lock poisoned".to_owned()))?;
-    *guard = None;
-    Ok(())
+    MODEL.clear().map_err(map_media_error)
 }
 
 /// Rank `documents` by relevance to `query`, highest first.
@@ -150,9 +140,9 @@ pub fn unconfigure() -> Result<(), RerankError> {
 /// # Errors
 ///
 /// [`RerankError::Unavailable`] when no model is configured,
-/// [`RerankError::Config`] for an empty query or a poisoned model lock,
-/// [`RerankError::Provider`] when the provider call fails, and
-/// [`RerankError::Runtime`] when the shared runtime cannot start.
+/// [`RerankError::Config`] for an empty query, [`RerankError::Provider`] when
+/// the provider call fails, and [`RerankError::Runtime`] when the shared
+/// runtime cannot start.
 pub fn rerank(query: &str, documents: &[String]) -> Result<Vec<RerankHit>, RerankError> {
     let query = query.trim();
     if query.is_empty() {
@@ -161,31 +151,18 @@ pub fn rerank(query: &str, documents: &[String]) -> Result<Vec<RerankHit>, Reran
     if documents.is_empty() {
         return Ok(Vec::new());
     }
-    let model = {
-        let guard = model_slot()
-            .lock()
-            .map_err(|_| RerankError::Config("rerank model lock poisoned".to_owned()))?;
-        guard.clone()
-    };
-    let Some(model) = model else {
+    let Some(model) = MODEL.get().map_err(map_media_error)? else {
         return Err(RerankError::Unavailable(
             unavailable_reason().unwrap_or_default(),
         ));
     };
-    let request = RerankRequest {
-        query: query.to_owned(),
-        documents: documents.to_vec(),
-    };
-    let response = block_on(model.call(request))
-        .map_err(map_media_error)?
-        .map_err(|error| RerankError::Provider(error.to_string()))?;
-    Ok(response
-        .results
+    let outputs = rerank_documents(&model, query, documents).map_err(map_media_error)?;
+    Ok(outputs
         .into_iter()
-        .map(|result| RerankHit {
-            index: result.index,
-            score: result.relevance_score,
-            document: result.document,
+        .map(|output| RerankHit {
+            index: output.index,
+            score: output.score,
+            document: output.document,
         })
         .collect())
 }

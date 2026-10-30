@@ -1,16 +1,13 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)] // test-only
-//! Image capability tests with a deterministic in-process model (rig
-//! `Local<ImageGeneration>` wire + fake transport): prompt/size reach the model
-//! and bytes/encoding/provider come back without any network or provider.
+//! Image capability tests with the kit's deterministic in-process model (no
+//! network, no provider): prompt/size reach the model and bytes/encoding/
+//! provider come back.
 
 use std::sync::{Mutex, MutexGuard};
 
-use futures::stream;
-use rig_core::driver::{Exchange, Local, Model, Opened, Opening, Step, Transport};
-use rig_core::image_generation::{ImageGenerationRequest, ImageGenerationResponse};
-use rig_core::operation::ImageGeneration;
-use rig_core::DynModel;
 use zk_cap_image::{GeneratedImage, ImageEncoding, ImageError};
+use zk_kit_media::test_support::{fake_image_model, FAKE_PROVIDER};
+use zk_kit_media::MediaConfig;
 
 static LOCK: Mutex<()> = Mutex::new(());
 
@@ -25,43 +22,17 @@ fn png_with(prompt: &str, width: u32, height: u32) -> Vec<u8> {
     bytes
 }
 
-#[derive(Clone)]
-struct FakeImageTransport;
-
-impl Transport<Local<ImageGeneration>> for FakeImageTransport {
-    fn send(
-        &self,
-        payload: ImageGenerationRequest,
-        _exchange: Exchange,
-    ) -> Opening<Step<ImageGeneration>> {
-        let bytes = png_with(&payload.prompt, payload.width, payload.height);
-        let mut response = ImageGenerationResponse::new(bytes);
-        response.model = Some("fake-image-model".to_owned());
-        Opening::ready(Opened::new(stream::once(
-            async move { Ok(Step::End(response)) },
-        )))
-    }
-}
-
-fn fake_model() -> DynModel<ImageGeneration> {
-    Model::new(
-        Local::<ImageGeneration>::new("fake-provider"),
-        FakeImageTransport,
-    )
-    .into()
-}
-
 #[test]
 fn configured_capability_generates_image_bytes() {
     let _guard = guard();
-    zk_cap_image::configure(fake_model()).unwrap();
+    zk_cap_image::configure(fake_image_model()).unwrap();
     assert!(zk_cap_image::available());
     assert_eq!(zk_cap_image::unavailable_reason(), None);
 
     let generated: GeneratedImage = zk_cap_image::generate("a mountain lake", 64, 32).unwrap();
     assert_eq!(generated.encoding, ImageEncoding::Png);
     assert_eq!(generated.encoding.mime_type(), "image/png");
-    assert_eq!(generated.provider, "fake-provider");
+    assert_eq!(generated.provider, FAKE_PROVIDER);
     assert_eq!(generated.model.as_deref(), Some("fake-image-model"));
     // The fake echoes prompt/size into the bytes, proving the request reached
     // the model.
@@ -82,7 +53,7 @@ fn configured_capability_generates_image_bytes() {
 #[test]
 fn empty_prompt_is_rejected_before_the_model() {
     let _guard = guard();
-    zk_cap_image::configure(fake_model()).unwrap();
+    zk_cap_image::configure(fake_image_model()).unwrap();
     match zk_cap_image::generate("   ", 128, 128).unwrap_err() {
         ImageError::Config(message) => assert!(message.contains("prompt is empty"), "{message}"),
         other => panic!("expected Config, got {other:?}"),
@@ -104,7 +75,7 @@ fn configure_from_env_is_optional() {
 #[test]
 fn configure_from_config_maps_model_errors() {
     let _guard = guard();
-    let error = zk_cap_image::configure_from_config(&zk_llm_rig::MediaConfig::default())
+    let error = zk_cap_image::configure_from_config(&MediaConfig::default())
         .expect_err("unconfigured media config must fail");
     match error {
         ImageError::Unavailable(message) => {

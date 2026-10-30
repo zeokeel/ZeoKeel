@@ -1,23 +1,26 @@
 //! Speech-synthesis capability (`media.audio`).
 //!
-//! Backed by rig-core's OpenAI-compatible `audio_generation` (TTS) model; the
-//! workspace enables rig's `audio` feature. The capability is **dynamically
-//! available**: [`available`] is true only after an audio model is configured
-//! ([`configure`], [`configure_from_config`], or [`configure_from_env`] with
-//! `ZEOKEEL_AUDIO_*`). [`unavailable_reason`] gives the honest reason
-//! otherwise, and [`UNAVAILABLE`] is the closed code hosts surface instead of
-//! silently dropping the feature.
+//! @capability media.audio
 //!
-//! The package stores no assets: [`synthesize`] returns the audio bytes to the
-//! caller.
+//! Backed by the shared [`zk_kit_media`] adapter (rig-core `audio_generation`,
+//! OpenAI-compatible TTS; the workspace enables rig's `audio` feature). The
+//! capability is **dynamically available**: [`available`] is true only after an
+//! audio model is configured ([`configure`], [`configure_from_config`], or
+//! [`configure_from_env`] with `ZEOKEEL_AUDIO_*`). [`unavailable_reason`] gives
+//! the honest reason otherwise, and [`UNAVAILABLE`] is the closed code hosts
+//! surface instead of silently dropping the feature.
+//!
+//! Host wiring: the personal-edition boot calls the generated
+//! `zk_composed::configure_capabilities_from_env()` (which calls
+//! [`configure_from_env`]); the enterprise client never configures media
+//! providers (AI only through the gateway, C7/ADR-031). The package stores no
+//! assets: [`synthesize`] returns the audio bytes to the caller.
 #![forbid(unsafe_code)]
 
-use std::sync::{Mutex, OnceLock};
-
-use rig_core::audio_generation::AudioGenerationRequestBuilder;
-use rig_core::operation::AudioGeneration;
-use rig_core::DynModel;
-use zk_llm_rig::{audio_model, audio_model_from_config, block_on, MediaConfig, MediaError};
+use zk_kit_media::{
+    audio_model, audio_model_from_config, synthesize_audio, AudioModel, MediaConfig, MediaError,
+    MediaKind, ModelSlot,
+};
 
 /// Closed unavailability code hosts surface instead of silently dropping the feature.
 pub const UNAVAILABLE: &str = "CAPABILITY_UNAVAILABLE";
@@ -53,16 +56,13 @@ pub struct GeneratedAudio {
     pub model: Option<String>,
 }
 
-static MODEL: OnceLock<Mutex<Option<DynModel<AudioGeneration>>>> = OnceLock::new();
-
-fn model_slot() -> &'static Mutex<Option<DynModel<AudioGeneration>>> {
-    MODEL.get_or_init(|| Mutex::new(None))
-}
+static MODEL: ModelSlot<AudioModel> = ModelSlot::new();
 
 fn map_media_error(error: MediaError) -> AudioError {
     match error {
         MediaError::Unconfigured(message) => AudioError::Unavailable(message),
         MediaError::Config(message) => AudioError::Config(message),
+        MediaError::Provider(message) => AudioError::Provider(message),
         MediaError::Runtime(message) => AudioError::Runtime(message),
     }
 }
@@ -70,10 +70,7 @@ fn map_media_error(error: MediaError) -> AudioError {
 /// Whether an audio model is configured.
 #[must_use]
 pub fn available() -> bool {
-    model_slot()
-        .lock()
-        .map(|guard| guard.is_some())
-        .unwrap_or(false)
+    MODEL.is_configured()
 }
 
 /// Why speech synthesis is unavailable, or `None` when it is available.
@@ -82,44 +79,37 @@ pub fn unavailable_reason() -> Option<String> {
     if available() {
         return None;
     }
-    Some(
-        "no audio model configured: call zk_cap_audio::configure(model), \
-         configure_from_config(&zk_llm_rig::MediaConfig), or set \
-         ZEOKEEL_AUDIO_API_KEY/ZEOKEEL_AUDIO_BASE_URL/ZEOKEEL_AUDIO_MODEL and call \
-         configure_from_env()"
-            .to_owned(),
-    )
+    Some(MediaKind::Audio.unavailable_reason())
 }
 
 /// Install the audio model used by [`synthesize`].
 ///
 /// # Errors
 ///
-/// [`AudioError::Config`] when the model lock is poisoned.
-pub fn configure(model: DynModel<AudioGeneration>) -> Result<(), AudioError> {
-    let mut guard = model_slot()
-        .lock()
-        .map_err(|_| AudioError::Config("audio model lock poisoned".to_owned()))?;
-    *guard = Some(model);
-    Ok(())
+/// [`AudioError::Config`] when the model slot lock is poisoned.
+pub fn configure(model: AudioModel) -> Result<(), AudioError> {
+    MODEL.set(model).map_err(map_media_error)
 }
 
 /// Build and install an audio model from explicit [`MediaConfig`].
 ///
 /// # Errors
 ///
-/// As [`zk_llm_rig::audio_model_from_config`], plus [`AudioError::Config`]
-/// for a poisoned model lock.
+/// As [`zk_kit_media::audio_model_from_config`], plus [`AudioError::Config`]
+/// for a poisoned model slot.
 pub fn configure_from_config(config: &MediaConfig) -> Result<(), AudioError> {
     configure(audio_model_from_config(config).map_err(map_media_error)?)
 }
 
 /// Configure from `ZEOKEEL_AUDIO_*`; `Ok(false)` when no API key is configured.
 ///
+/// This is the entry point the personal-edition boot uses through
+/// `zk_composed::configure_capabilities_from_env()`.
+///
 /// # Errors
 ///
 /// [`AudioError::Config`] for an invalid base URL/provider, and as
-/// [`configure`] for a poisoned model lock.
+/// [`configure`] for a poisoned model slot.
 pub fn configure_from_env() -> Result<bool, AudioError> {
     match audio_model() {
         Ok(model) => {
@@ -135,13 +125,9 @@ pub fn configure_from_env() -> Result<bool, AudioError> {
 ///
 /// # Errors
 ///
-/// [`AudioError::Config`] when the model lock is poisoned.
+/// [`AudioError::Config`] when the model slot lock is poisoned.
 pub fn unconfigure() -> Result<(), AudioError> {
-    let mut guard = model_slot()
-        .lock()
-        .map_err(|_| AudioError::Config("audio model lock poisoned".to_owned()))?;
-    *guard = None;
-    Ok(())
+    MODEL.clear().map_err(map_media_error)
 }
 
 /// Synthesize speech for `text` in provider `voice`.
@@ -149,9 +135,9 @@ pub fn unconfigure() -> Result<(), AudioError> {
 /// # Errors
 ///
 /// [`AudioError::Unavailable`] when no model is configured,
-/// [`AudioError::Config`] for empty text/voice or a poisoned model lock,
-/// [`AudioError::Provider`] when the provider call fails, and
-/// [`AudioError::Runtime`] when the shared runtime cannot start.
+/// [`AudioError::Config`] for empty text/voice, [`AudioError::Provider`] when
+/// the provider call fails, and [`AudioError::Runtime`] when the shared
+/// runtime cannot start.
 pub fn synthesize(text: &str, voice: &str) -> Result<GeneratedAudio, AudioError> {
     let text = text.trim();
     if text.is_empty() {
@@ -163,24 +149,15 @@ pub fn synthesize(text: &str, voice: &str) -> Result<GeneratedAudio, AudioError>
             "audio voice is empty (pass the provider voice id, e.g. `alloy`)".to_owned(),
         ));
     }
-    let model = {
-        let guard = model_slot()
-            .lock()
-            .map_err(|_| AudioError::Config("audio model lock poisoned".to_owned()))?;
-        guard.clone()
-    };
-    let Some(model) = model else {
+    let Some(model) = MODEL.get().map_err(map_media_error)? else {
         return Err(AudioError::Unavailable(
             unavailable_reason().unwrap_or_default(),
         ));
     };
-    let request = AudioGenerationRequestBuilder::new(text, voice).build();
-    let response = block_on(model.call(request))
-        .map_err(map_media_error)?
-        .map_err(|error| AudioError::Provider(error.to_string()))?;
+    let output = synthesize_audio(&model, text, voice).map_err(map_media_error)?;
     Ok(GeneratedAudio {
-        bytes: response.audio,
-        provider: response.provider,
-        model: response.model,
+        bytes: output.bytes,
+        provider: output.provider,
+        model: output.model,
     })
 }

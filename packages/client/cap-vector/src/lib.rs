@@ -1,24 +1,29 @@
 //! Vector store / embeddings capability (`vector.store`).
 //!
-//! Backed by rig-core embedding models and an in-process cosine index. The
+//! @capability vector.store
+//!
+//! Backed by the shared [`zk_kit_media`] embedding adapter (rig-core
+//! OpenAI-compatible embeddings) and an in-process cosine index. The
 //! capability is **dynamically available**: [`available`] is true only after an
 //! embedding model is configured (explicitly via [`configure`], or through
 //! [`configure_from_env`] with an OpenAI-compatible embedding endpoint).
 //! [`unavailable_reason`] gives the honest reason otherwise, and
 //! [`UNAVAILABLE`] is the closed error code hosts surface.
 //!
-//! This package is an adapter: rig types stay out of the contracts and out of
-//! the agent/tool packages (ADR-007), but this is a third rig adapter next to
-//! `zk-llm-rig` / `zk-agent-rig`; the ADR's "only two adapters" wording needs an
-//! amendment (reported to the Lead).
+//! The rig adaptation lives in `crates/zk-kit-media` (`kit.media`), so this
+//! package does not depend on `rig-core` or `zk-llm-rig` (C4/C17). Host wiring:
+//! the personal-edition boot calls the generated
+//! `zk_composed::configure_capabilities_from_env()` (which calls
+//! [`configure_from_env`]); the enterprise client never configures providers
+//! (C7/ADR-031; the gateway has no embeddings route), so it stays unavailable.
 #![forbid(unsafe_code)]
 
-use std::sync::{Mutex, OnceLock, RwLock};
+use std::sync::{OnceLock, RwLock};
 
-use rig_core::embeddings::Embedding as Vector;
-use rig_core::operation::Embedding;
-use rig_core::providers::openai::OpenAIConfig;
-use rig_core::DynModel;
+use zk_kit_media::{
+    embed_text, embedding_model_from_config, EmbeddingConfig, EmbeddingError, EmbeddingModel,
+    MediaError, ModelSlot,
+};
 
 /// Closed unavailability code.
 pub const UNAVAILABLE: &str = "CAPABILITY_UNAVAILABLE";
@@ -58,37 +63,35 @@ struct StoredDocument {
     vector: Vec<f64>,
 }
 
-static MODEL: OnceLock<Mutex<Option<DynModel<Embedding>>>> = OnceLock::new();
+static MODEL: ModelSlot<EmbeddingModel> = ModelSlot::new();
 static DOCUMENTS: OnceLock<RwLock<Vec<StoredDocument>>> = OnceLock::new();
-static RUNTIME: OnceLock<Result<tokio::runtime::Runtime, String>> = OnceLock::new();
-
-fn model_slot() -> &'static Mutex<Option<DynModel<Embedding>>> {
-    MODEL.get_or_init(|| Mutex::new(None))
-}
 
 fn documents() -> &'static RwLock<Vec<StoredDocument>> {
     DOCUMENTS.get_or_init(|| RwLock::new(Vec::new()))
 }
 
-fn runtime() -> Result<&'static tokio::runtime::Runtime, VectorError> {
-    RUNTIME
-        .get_or_init(|| {
-            tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .map_err(|error| format!("tokio runtime: {error}"))
-        })
-        .as_ref()
-        .map_err(|error| VectorError::Embedding(error.clone()))
+fn map_media_error(error: MediaError) -> VectorError {
+    match error {
+        MediaError::Unconfigured(message) => VectorError::Unavailable(message),
+        MediaError::Config(message) => VectorError::Config(message),
+        MediaError::Provider(message) => VectorError::Embedding(message),
+        MediaError::Runtime(message) => VectorError::Embedding(message),
+    }
+}
+
+fn map_embedding_error(error: EmbeddingError) -> VectorError {
+    match error {
+        EmbeddingError::Unconfigured(message) => VectorError::Unavailable(message),
+        EmbeddingError::Config(message) => VectorError::Config(message),
+        EmbeddingError::Provider(message) => VectorError::Embedding(message),
+        EmbeddingError::Runtime(message) => VectorError::Embedding(message),
+    }
 }
 
 /// Whether an embedding model has been configured.
 #[must_use]
 pub fn available() -> bool {
-    model_slot()
-        .lock()
-        .map(|guard| guard.is_some())
-        .unwrap_or(false)
+    MODEL.is_configured()
 }
 
 /// Why the capability is unavailable, or `None` when it is available.
@@ -110,12 +113,8 @@ pub fn unavailable_reason() -> Option<String> {
 /// # Errors
 ///
 /// [`VectorError::Config`] when the model cannot be stored.
-pub fn configure(model: DynModel<Embedding>) -> Result<(), VectorError> {
-    let mut guard = model_slot()
-        .lock()
-        .map_err(|_| VectorError::Config("vector model lock poisoned".to_owned()))?;
-    *guard = Some(model);
-    Ok(())
+pub fn configure(model: EmbeddingModel) -> Result<(), VectorError> {
+    MODEL.set(model).map_err(map_media_error)
 }
 
 /// Remove the embedding model and drop stored documents.
@@ -128,10 +127,7 @@ pub fn configure(model: DynModel<Embedding>) -> Result<(), VectorError> {
 /// [`VectorError::Config`] when the model lock is poisoned;
 /// [`VectorError::Store`] when the store lock is poisoned.
 pub fn unconfigure() -> Result<(), VectorError> {
-    let mut model = model_slot()
-        .lock()
-        .map_err(|_| VectorError::Config("vector model lock poisoned".to_owned()))?;
-    *model = None;
+    MODEL.clear().map_err(map_media_error)?;
     documents()
         .write()
         .map_err(|_| VectorError::Store("vector index lock poisoned".to_owned()))?
@@ -147,40 +143,20 @@ pub fn unconfigure() -> Result<(), VectorError> {
 /// not configured (the capability stays unavailable with
 /// [`unavailable_reason`]).
 ///
+/// This is the entry point the personal-edition boot uses through
+/// `zk_composed::configure_capabilities_from_env()`.
+///
 /// # Errors
 ///
-/// [`VectorError::Config`] for an invalid base URL/dimensions or a poisoned
-/// model slot.
+/// [`VectorError::Config`] for an invalid base URL/dimensions, and
+/// [`VectorError::Config`] for a poisoned model slot.
 pub fn configure_from_env() -> Result<bool, VectorError> {
-    let base_url = env("ZEOKEEL_EMBEDDING_BASE_URL");
-    let api_key = env("ZEOKEEL_EMBEDDING_API_KEY");
-    let model = env("ZEOKEEL_EMBEDDING_MODEL");
-    if base_url.is_empty() || api_key.is_empty() || model.is_empty() {
+    let config = EmbeddingConfig::from_env().map_err(map_embedding_error)?;
+    if !config.is_configured() {
         return Ok(false);
     }
-    if !(base_url.starts_with("http://") || base_url.starts_with("https://")) {
-        return Err(VectorError::Config(format!(
-            "ZEOKEEL_EMBEDDING_BASE_URL is not an http(s) URL: `{base_url}`"
-        )));
-    }
-    let dims =
-        match env("ZEOKEEL_EMBEDDING_DIMS") {
-            value if value.is_empty() => None,
-            value => Some(value.parse::<usize>().map_err(|error| {
-                VectorError::Config(format!("ZEOKEEL_EMBEDDING_DIMS: {error}"))
-            })?),
-        };
-    let client = OpenAIConfig::new(api_key)
-        .with_base_url(base_url.trim_end_matches('/').to_owned())
-        .client();
-    configure(client.embedding(model, dims).into())?;
+    configure(embedding_model_from_config(&config).map_err(map_embedding_error)?)?;
     Ok(true)
-}
-
-fn env(key: &str) -> String {
-    std::env::var(key)
-        .map(|value| value.trim().to_owned())
-        .unwrap_or_default()
 }
 
 /// Insert (or replace) one document, embedding it with the configured model.
@@ -273,21 +249,12 @@ pub fn len() -> usize {
 }
 
 fn embed(text: &str) -> Result<Vec<f64>, VectorError> {
-    let model = {
-        let guard = model_slot()
-            .lock()
-            .map_err(|_| VectorError::Config("vector model lock poisoned".to_owned()))?;
-        guard.clone()
-    };
-    let Some(model) = model else {
+    let Some(model) = MODEL.get().map_err(map_media_error)? else {
         return Err(VectorError::Unavailable(
             unavailable_reason().unwrap_or_default(),
         ));
     };
-    let vector: Vector = runtime()?
-        .block_on(async move { model.embed_text(text).await })
-        .map_err(|error| VectorError::Embedding(error.to_string()))?;
-    Ok(vector.vec)
+    embed_text(&model, text).map_err(map_embedding_error)
 }
 
 /// Cosine similarity; `0.0` when either vector is empty or not the same width.

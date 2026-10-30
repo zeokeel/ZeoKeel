@@ -1,23 +1,27 @@
 //! Image generation capability (`media.image`).
 //!
-//! Backed by rig-core's OpenAI-compatible `image_generation` model; the
-//! workspace enables rig's `image` feature. The capability is **dynamically
-//! available**: [`available`] is true only after an image model is configured
-//! ([`configure`], [`configure_from_config`], or [`configure_from_env`] with
-//! `ZEOKEEL_IMAGE_*`). [`unavailable_reason`] gives the honest reason
-//! otherwise, and [`UNAVAILABLE`] is the closed code hosts surface instead of
-//! silently dropping the feature.
+//! @capability media.image
 //!
-//! The package stores no assets: [`generate`] returns the encoded bytes and
-//! their detected [`ImageEncoding`] to the caller.
+//! Backed by the shared [`zk_kit_media`] adapter (rig-core `image_generation`,
+//! OpenAI-compatible; the workspace enables rig's `image` feature). The
+//! capability is **dynamically available**: [`available`] is true only after an
+//! image model is configured ([`configure`], [`configure_from_config`], or
+//! [`configure_from_env`] with `ZEOKEEL_IMAGE_*`). [`unavailable_reason`] gives
+//! the honest reason otherwise, and [`UNAVAILABLE`] is the closed code hosts
+//! surface instead of silently dropping the feature.
+//!
+//! Host wiring: the personal-edition boot calls the generated
+//! `zk_composed::configure_capabilities_from_env()` (which calls
+//! [`configure_from_env`]); the enterprise client never configures media
+//! providers (AI only through the gateway, C7/ADR-031). The package stores no
+//! assets: [`generate`] returns the encoded bytes and their detected
+//! [`ImageEncoding`] to the caller.
 #![forbid(unsafe_code)]
 
-use std::sync::{Mutex, OnceLock};
-
-use rig_core::image_generation::ImageGenerationRequestBuilder;
-use rig_core::operation::ImageGeneration;
-use rig_core::DynModel;
-use zk_llm_rig::{block_on, image_model, image_model_from_config, MediaConfig, MediaError};
+use zk_kit_media::{
+    generate_image, image_model, image_model_from_config, ImageModel, MediaConfig, MediaError,
+    MediaKind, ModelSlot,
+};
 
 /// Closed unavailability code hosts surface instead of silently dropping the feature.
 pub const UNAVAILABLE: &str = "CAPABILITY_UNAVAILABLE";
@@ -108,16 +112,13 @@ pub struct GeneratedImage {
     pub model: Option<String>,
 }
 
-static MODEL: OnceLock<Mutex<Option<DynModel<ImageGeneration>>>> = OnceLock::new();
-
-fn model_slot() -> &'static Mutex<Option<DynModel<ImageGeneration>>> {
-    MODEL.get_or_init(|| Mutex::new(None))
-}
+static MODEL: ModelSlot<ImageModel> = ModelSlot::new();
 
 fn map_media_error(error: MediaError) -> ImageError {
     match error {
         MediaError::Unconfigured(message) => ImageError::Unavailable(message),
         MediaError::Config(message) => ImageError::Config(message),
+        MediaError::Provider(message) => ImageError::Provider(message),
         MediaError::Runtime(message) => ImageError::Runtime(message),
     }
 }
@@ -125,10 +126,7 @@ fn map_media_error(error: MediaError) -> ImageError {
 /// Whether an image model is configured.
 #[must_use]
 pub fn available() -> bool {
-    model_slot()
-        .lock()
-        .map(|guard| guard.is_some())
-        .unwrap_or(false)
+    MODEL.is_configured()
 }
 
 /// Why image generation is unavailable, or `None` when it is available.
@@ -137,44 +135,37 @@ pub fn unavailable_reason() -> Option<String> {
     if available() {
         return None;
     }
-    Some(
-        "no image model configured: call zk_cap_image::configure(model), \
-         configure_from_config(&zk_llm_rig::MediaConfig), or set \
-         ZEOKEEL_IMAGE_API_KEY/ZEOKEEL_IMAGE_BASE_URL/ZEOKEEL_IMAGE_MODEL and call \
-         configure_from_env()"
-            .to_owned(),
-    )
+    Some(MediaKind::Image.unavailable_reason())
 }
 
 /// Install the image model used by [`generate`].
 ///
 /// # Errors
 ///
-/// [`ImageError::Config`] when the model lock is poisoned.
-pub fn configure(model: DynModel<ImageGeneration>) -> Result<(), ImageError> {
-    let mut guard = model_slot()
-        .lock()
-        .map_err(|_| ImageError::Config("image model lock poisoned".to_owned()))?;
-    *guard = Some(model);
-    Ok(())
+/// [`ImageError::Config`] when the model slot lock is poisoned.
+pub fn configure(model: ImageModel) -> Result<(), ImageError> {
+    MODEL.set(model).map_err(map_media_error)
 }
 
 /// Build and install an image model from explicit [`MediaConfig`].
 ///
 /// # Errors
 ///
-/// As [`zk_llm_rig::image_model_from_config`], plus [`ImageError::Config`]
-/// for a poisoned model lock.
+/// As [`zk_kit_media::image_model_from_config`], plus [`ImageError::Config`]
+/// for a poisoned model slot.
 pub fn configure_from_config(config: &MediaConfig) -> Result<(), ImageError> {
     configure(image_model_from_config(config).map_err(map_media_error)?)
 }
 
 /// Configure from `ZEOKEEL_IMAGE_*`; `Ok(false)` when no API key is configured.
 ///
+/// This is the entry point the personal-edition boot uses through
+/// `zk_composed::configure_capabilities_from_env()`.
+///
 /// # Errors
 ///
 /// [`ImageError::Config`] for an invalid base URL/provider, and as
-/// [`configure`] for a poisoned model lock.
+/// [`configure`] for a poisoned model slot.
 pub fn configure_from_env() -> Result<bool, ImageError> {
     match image_model() {
         Ok(model) => {
@@ -190,13 +181,9 @@ pub fn configure_from_env() -> Result<bool, ImageError> {
 ///
 /// # Errors
 ///
-/// [`ImageError::Config`] when the model lock is poisoned.
+/// [`ImageError::Config`] when the model slot lock is poisoned.
 pub fn unconfigure() -> Result<(), ImageError> {
-    let mut guard = model_slot()
-        .lock()
-        .map_err(|_| ImageError::Config("image model lock poisoned".to_owned()))?;
-    *guard = None;
-    Ok(())
+    MODEL.clear().map_err(map_media_error)
 }
 
 /// Generate one image from `prompt` at `width`×`height`.
@@ -204,36 +191,24 @@ pub fn unconfigure() -> Result<(), ImageError> {
 /// # Errors
 ///
 /// [`ImageError::Unavailable`] when no model is configured,
-/// [`ImageError::Config`] for an empty prompt or a poisoned model lock,
-/// [`ImageError::Provider`] when the provider call fails, and
-/// [`ImageError::Runtime`] when the shared runtime cannot start.
+/// [`ImageError::Config`] for an empty prompt, [`ImageError::Provider`] when
+/// the provider call fails, and [`ImageError::Runtime`] when the shared
+/// runtime cannot start.
 pub fn generate(prompt: &str, width: u32, height: u32) -> Result<GeneratedImage, ImageError> {
     let prompt = prompt.trim();
     if prompt.is_empty() {
         return Err(ImageError::Config("image prompt is empty".to_owned()));
     }
-    let model = {
-        let guard = model_slot()
-            .lock()
-            .map_err(|_| ImageError::Config("image model lock poisoned".to_owned()))?;
-        guard.clone()
-    };
-    let Some(model) = model else {
+    let Some(model) = MODEL.get().map_err(map_media_error)? else {
         return Err(ImageError::Unavailable(
             unavailable_reason().unwrap_or_default(),
         ));
     };
-    let request = ImageGenerationRequestBuilder::new(prompt)
-        .width(width)
-        .height(height)
-        .build();
-    let response = block_on(model.call(request))
-        .map_err(map_media_error)?
-        .map_err(|error| ImageError::Provider(error.to_string()))?;
+    let output = generate_image(&model, prompt, width, height).map_err(map_media_error)?;
     Ok(GeneratedImage {
-        encoding: ImageEncoding::from_bytes(&response.image),
-        bytes: response.image,
-        provider: response.provider,
-        model: response.model,
+        encoding: ImageEncoding::from_bytes(&output.bytes),
+        bytes: output.bytes,
+        provider: output.provider,
+        model: output.model,
     })
 }

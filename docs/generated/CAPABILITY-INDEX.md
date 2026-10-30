@@ -2,7 +2,7 @@
 
 # Capability Index
 
-39 capabilities
+45 capabilities
 
 | id | path |
 | --- | --- |
@@ -33,6 +33,7 @@
 | `kit.events` | `crates/zk-kit-events/src/lib.rs` |
 | `kit.extractor` | `crates/zk-kit-extractor/src/lib.rs` |
 | `kit.jobs` | `crates/zk-kit-jobs/src/lib.rs` |
+| `kit.media` | `crates/zk-kit-media/src/lib.rs` |
 | `kit.questions` | `crates/zk-kit-questions/src/lib.rs` |
 | `kit.server` | `crates/zk-kit-server/src/lib.rs` |
 | `kit.session` | `crates/zk-kit-session/src/lib.rs` |
@@ -41,7 +42,12 @@
 | `llm.provider.default` | `packages/client/llm-mock/src/lib.rs` |
 | `llm.provider.openai_compatible` | `packages/client/llm-openai-compatible/src/lib.rs` |
 | `llm.provider.rig` | `packages/client/llm-rig/src/lib.rs` |
+| `media.audio` | `packages/client/cap-audio/src/lib.rs` |
+| `media.image` | `packages/client/cap-image/src/lib.rs` |
+| `media.rerank` | `packages/client/cap-rerank/src/lib.rs` |
+| `media.transcription` | `packages/client/cap-transcription/src/lib.rs` |
 | `store.session.sqlite` | `packages/client/store-session-sqlite/src/lib.rs` |
 | `store.settings.json` | `packages/client/store-settings-json/src/lib.rs` |
 | `tool.fs` | `packages/client/tool-fs/src/lib.rs` |
+| `vector.store` | `packages/client/cap-vector/src/lib.rs` |
 | `wasm.runtime` | `crates/zk-kit-wasm/src/lib.rs` |
