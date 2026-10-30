@@ -1,442 +1,442 @@
 [
   {
     "id": "zeokeel/cap-hooks",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "agent.hooks"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/agent-rig",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "agent.loop"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/client-update-github",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "client.update"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/llm-rig",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "llm.provider.default"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/cap-audio",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "media.audio"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/cap-image",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "media.image"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/cap-rerank",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "media.rerank"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/cap-transcription",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "media.transcription"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/store-session-sqlite",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "store.session"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/store-settings-json",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "store.settings"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-agent-team",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.agent_team"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-ask-user",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.ask_user"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-bash",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.bash"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-bash-persistent",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.bash_persistent"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-cordis",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.cordis"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-extract",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.extract"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-fs",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.fs"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-fs-edit",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.fs.edit"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-fs-search",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.fs.search"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-fs-write",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.fs.write"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-glob",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.glob"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-goal",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.goal"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-grep",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.grep"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-job-kill",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.jobs.kill"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-job-list",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.jobs.list"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-job-output",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.jobs.output"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-present",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.present"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-pwsh",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.pwsh"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-pwsh-persistent",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.pwsh_persistent"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-ralph",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.ralph"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-read-document",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.read_document"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-read-image",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.read_image"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-schedule",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.schedule"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-session-query",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.session_query"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-skill",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.skill"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-subagent",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.subagent"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-subagent-control",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.subagent_control"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-subagent-fork",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.subagent_fork"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-terminal",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.terminal"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-todo",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.todo"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-web-fetch",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.web.fetch"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-web-search",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.web_search"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-workflow",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.workflow"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-working-directory",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.working_directory"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-workspace-dependencies",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.workspace_dependencies"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/tool-worktree",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "tool.worktree"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/ui-kit",
-    "version": "0.1.0",
     "kind": "ui",
     "roles": [
       "ui.kit"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/ui-shell",
-    "version": "0.1.0",
     "kind": "ui",
     "roles": [
       "ui.shell"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/ui-chat",
-    "version": "0.1.0",
     "kind": "ui",
     "roles": [
       "ui.slot.chat"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/ui-commands",
-    "version": "0.1.0",
     "kind": "ui",
     "roles": [
       "ui.slot.commands"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/ui-inspector",
-    "version": "0.1.0",
     "kind": "ui",
     "roles": [
       "ui.slot.inspector"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/ui-sessions",
-    "version": "0.1.0",
     "kind": "ui",
     "roles": [
       "ui.slot.sessions"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/ui-settings",
-    "version": "0.1.0",
     "kind": "ui",
     "roles": [
       "ui.slot.settings"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/ui-settings-provider",
-    "version": "0.1.0",
     "kind": "ui",
     "roles": [
       "ui.slot.settings-provider"
-    ]
+    ],
+    "version": "0.1.0"
   },
   {
     "id": "zeokeel/cap-vector",
-    "version": "0.1.0",
     "kind": "capability",
     "roles": [
       "vector.store"
-    ]
+    ],
+    "version": "0.1.0"
   }
 ]

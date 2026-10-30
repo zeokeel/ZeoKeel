@@ -1,85 +1,85 @@
 {
-  "schema": 1,
   "migrations": [
     {
-      "version": "0001_core",
+      "checksum": "f7bb3c427b92b84ae1b9f6a6dc1786a3c9810f746df2594d0bf4bc35bae0c35b",
       "package": "packages/server/http/migrations/0001_core.sql",
-      "checksum": "f7bb3c427b92b84ae1b9f6a6dc1786a3c9810f746df2594d0bf4bc35bae0c35b"
+      "version": "0001_core"
     },
     {
-      "version": "0002_auth",
+      "checksum": "c1235ba67dd6d4225850bf859d0221f8b0f7a9be235123753e6c3c537e2effa9",
       "package": "packages/server/auth/migrations/0002_auth.sql",
-      "checksum": "c1235ba67dd6d4225850bf859d0221f8b0f7a9be235123753e6c3c537e2effa9"
+      "version": "0002_auth"
     },
     {
-      "version": "0003_wallet",
+      "checksum": "b7bb82dd9e2a3f218da4de1511216dfbef9a4c6dd3dc93f66b257261b7e96306",
       "package": "packages/server/wallet/migrations/0003_wallet.sql",
-      "checksum": "b7bb82dd9e2a3f218da4de1511216dfbef9a4c6dd3dc93f66b257261b7e96306"
+      "version": "0003_wallet"
     },
     {
-      "version": "0004_pricing",
+      "checksum": "f9ddb3d692b8812232674a2a41206c4e9296bbc4639625842145d3270fd55e62",
       "package": "packages/server/pricing/migrations/0004_pricing.sql",
-      "checksum": "f9ddb3d692b8812232674a2a41206c4e9296bbc4639625842145d3270fd55e62"
+      "version": "0004_pricing"
     },
     {
-      "version": "0005_gateway",
+      "checksum": "c66d46bac3762f24e6fa9230b2617d9170690eadc00a1311667c6443c5881506",
       "package": "packages/server/gateway/migrations/0005_gateway.sql",
-      "checksum": "c66d46bac3762f24e6fa9230b2617d9170690eadc00a1311667c6443c5881506"
+      "version": "0005_gateway"
     },
     {
-      "version": "0006_audit",
+      "checksum": "61ca84f98d46a69490b0d04add0dc22addd28447c978638e83a0199bb563dc16",
       "package": "packages/server/audit/migrations/0006_audit.sql",
-      "checksum": "61ca84f98d46a69490b0d04add0dc22addd28447c978638e83a0199bb563dc16"
+      "version": "0006_audit"
     },
     {
-      "version": "0007_settings",
+      "checksum": "603042fac422e9cd5b22d61cdcf09d801283297e660dfcd5b153d0c8f22540cf",
       "package": "packages/server/settings/migrations/0007_settings.sql",
-      "checksum": "603042fac422e9cd5b22d61cdcf09d801283297e660dfcd5b153d0c8f22540cf"
+      "version": "0007_settings"
     },
     {
-      "version": "0008_jobs",
+      "checksum": "5e28726a5abb6455e746dc679b13e30f0b7d8c7878e00c10e12e7c57668093d8",
       "package": "packages/server/jobs/migrations/0008_jobs.sql",
-      "checksum": "5e28726a5abb6455e746dc679b13e30f0b7d8c7878e00c10e12e7c57668093d8"
+      "version": "0008_jobs"
     },
     {
-      "version": "0009_lockout",
+      "checksum": "d66ecba26666e108de941c8e03ae42bfe8a9bbbc3a7de6056e7a89c8c8afad8e",
       "package": "packages/server/auth/migrations/0009_lockout.sql",
-      "checksum": "d66ecba26666e108de941c8e03ae42bfe8a9bbbc3a7de6056e7a89c8c8afad8e"
+      "version": "0009_lockout"
     },
     {
-      "version": "0010_content",
+      "checksum": "c1674b7f4310dd64a50df5f8573f145715d3fa236d760f12def5c0cf381ccce3",
       "package": "packages/server/content/migrations/0010_content.sql",
-      "checksum": "c1674b7f4310dd64a50df5f8573f145715d3fa236d760f12def5c0cf381ccce3"
+      "version": "0010_content"
     },
     {
-      "version": "0011_connectors",
+      "checksum": "4c6eb028fcfb89784647d529c228cd828a9be4e065630e3078fb669af601318a",
       "package": "packages/server/connectors/migrations/0011_connectors.sql",
-      "checksum": "4c6eb028fcfb89784647d529c228cd828a9be4e065630e3078fb669af601318a"
+      "version": "0011_connectors"
     },
     {
-      "version": "0012_apps",
+      "checksum": "5a4c861530fd75ca4b5e7bd0cbc8641605aaf324757c2dec4c23d7f06d2426ae",
       "package": "packages/server/apps/migrations/0012_apps.sql",
-      "checksum": "5a4c861530fd75ca4b5e7bd0cbc8641605aaf324757c2dec4c23d7f06d2426ae"
+      "version": "0012_apps"
     },
     {
-      "version": "0013_app_logs",
+      "checksum": "190bff80a9e0071e8c124835500752e23febe55073aff111238df8586b6145eb",
       "package": "packages/server/apps/migrations/0013_app_logs.sql",
-      "checksum": "190bff80a9e0071e8c124835500752e23febe55073aff111238df8586b6145eb"
+      "version": "0013_app_logs"
     },
     {
-      "version": "0014_wallet_overdraft",
+      "checksum": "28096b8f8fe119e56b8972321c64e204314caef001af951133f9fed6a2af1959",
       "package": "packages/server/wallet/migrations/0014_wallet_overdraft.sql",
-      "checksum": "28096b8f8fe119e56b8972321c64e204314caef001af951133f9fed6a2af1959"
+      "version": "0014_wallet_overdraft"
     },
     {
-      "version": "0015_gateway_routing",
+      "checksum": "0f963e26a98e4e4383c3a7a6a296728b587c01a29eda326360ec41f4b548d614",
       "package": "packages/server/gateway/migrations/0015_gateway_routing.sql",
-      "checksum": "0f963e26a98e4e4383c3a7a6a296728b587c01a29eda326360ec41f4b548d614"
+      "version": "0015_gateway_routing"
     },
     {
-      "version": "0016_auth_session",
+      "checksum": "3298a0b63431ecc2d57b532618800be3c7ef6efe448433b8f7e24643be6894d8",
       "package": "packages/server/auth/migrations/0016_auth_session.sql",
-      "checksum": "3298a0b63431ecc2d57b532618800be3c7ef6efe448433b8f7e24643be6894d8"
+      "version": "0016_auth_session"
     }
-  ]
+  ],
+  "schema": 1
 }

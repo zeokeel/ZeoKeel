@@ -1,332 +1,332 @@
 {
   "agent.hooks": {
-    "package": "zeokeel/cap-hooks",
-    "crate_name": "zk-cap-hooks",
+    "cardinality": "singleton",
     "contract": "zk-contract-agent",
-    "cardinality": "singleton"
+    "crate_name": "zk-cap-hooks",
+    "package": "zeokeel/cap-hooks"
   },
   "agent.loop": {
-    "package": "zeokeel/agent-rig",
-    "crate_name": "zk-agent-rig",
+    "cardinality": "singleton",
     "contract": "zk-contract-agent",
-    "cardinality": "singleton"
+    "crate_name": "zk-agent-rig",
+    "package": "zeokeel/agent-rig"
   },
   "client.update": {
-    "package": "zeokeel/client-update-github",
-    "crate_name": "zk-client-update-github",
+    "cardinality": "singleton",
     "contract": "zk-contract-update",
-    "cardinality": "singleton"
+    "crate_name": "zk-client-update-github",
+    "package": "zeokeel/client-update-github"
   },
   "llm.provider.default": {
-    "package": "zeokeel/llm-rig",
-    "crate_name": "zk-llm-rig",
+    "cardinality": "singleton",
     "contract": "zk-contract-llm",
-    "cardinality": "singleton"
+    "crate_name": "zk-llm-rig",
+    "package": "zeokeel/llm-rig"
   },
   "media.audio": {
-    "package": "zeokeel/cap-audio",
-    "crate_name": "zk-cap-audio",
+    "cardinality": "singleton",
     "contract": "zk-contract-agent",
-    "cardinality": "singleton"
+    "crate_name": "zk-cap-audio",
+    "package": "zeokeel/cap-audio"
   },
   "media.image": {
-    "package": "zeokeel/cap-image",
-    "crate_name": "zk-cap-image",
+    "cardinality": "singleton",
     "contract": "zk-contract-agent",
-    "cardinality": "singleton"
+    "crate_name": "zk-cap-image",
+    "package": "zeokeel/cap-image"
   },
   "media.rerank": {
-    "package": "zeokeel/cap-rerank",
-    "crate_name": "zk-cap-rerank",
+    "cardinality": "singleton",
     "contract": "zk-contract-agent",
-    "cardinality": "singleton"
+    "crate_name": "zk-cap-rerank",
+    "package": "zeokeel/cap-rerank"
   },
   "media.transcription": {
-    "package": "zeokeel/cap-transcription",
-    "crate_name": "zk-cap-transcription",
+    "cardinality": "singleton",
     "contract": "zk-contract-agent",
-    "cardinality": "singleton"
+    "crate_name": "zk-cap-transcription",
+    "package": "zeokeel/cap-transcription"
   },
   "store.session": {
-    "package": "zeokeel/store-session-sqlite",
-    "crate_name": "zk-store-session-sqlite",
+    "cardinality": "singleton",
     "contract": "zk-contract-session",
-    "cardinality": "singleton"
+    "crate_name": "zk-store-session-sqlite",
+    "package": "zeokeel/store-session-sqlite"
   },
   "store.settings": {
-    "package": "zeokeel/store-settings-json",
-    "crate_name": "zk-store-settings-json",
+    "cardinality": "singleton",
     "contract": "zk-contract-config",
-    "cardinality": "singleton"
+    "crate_name": "zk-store-settings-json",
+    "package": "zeokeel/store-settings-json"
   },
   "tool.agent_team": {
-    "package": "zeokeel/tool-agent-team",
-    "crate_name": "zk-tool-agent-team",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-agent-team",
+    "package": "zeokeel/tool-agent-team"
   },
   "tool.ask_user": {
-    "package": "zeokeel/tool-ask-user",
-    "crate_name": "zk-tool-ask-user",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-ask-user",
+    "package": "zeokeel/tool-ask-user"
   },
   "tool.bash": {
-    "package": "zeokeel/tool-bash",
-    "crate_name": "zk-tool-bash",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-bash",
+    "package": "zeokeel/tool-bash"
   },
   "tool.bash_persistent": {
-    "package": "zeokeel/tool-bash-persistent",
-    "crate_name": "zk-tool-bash-persistent",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-bash-persistent",
+    "package": "zeokeel/tool-bash-persistent"
   },
   "tool.cordis": {
-    "package": "zeokeel/tool-cordis",
-    "crate_name": "zk-tool-cordis",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-cordis",
+    "package": "zeokeel/tool-cordis"
   },
   "tool.extract": {
-    "package": "zeokeel/tool-extract",
-    "crate_name": "zk-tool-extract",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-extract",
+    "package": "zeokeel/tool-extract"
   },
   "tool.fs": {
-    "package": "zeokeel/tool-fs",
-    "crate_name": "zk-tool-fs",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-fs",
+    "package": "zeokeel/tool-fs"
   },
   "tool.fs.edit": {
-    "package": "zeokeel/tool-fs-edit",
-    "crate_name": "zk-tool-fs-edit",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-fs-edit",
+    "package": "zeokeel/tool-fs-edit"
   },
   "tool.fs.search": {
-    "package": "zeokeel/tool-fs-search",
-    "crate_name": "zk-tool-fs-search",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-fs-search",
+    "package": "zeokeel/tool-fs-search"
   },
   "tool.fs.write": {
-    "package": "zeokeel/tool-fs-write",
-    "crate_name": "zk-tool-fs-write",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-fs-write",
+    "package": "zeokeel/tool-fs-write"
   },
   "tool.glob": {
-    "package": "zeokeel/tool-glob",
-    "crate_name": "zk-tool-glob",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-glob",
+    "package": "zeokeel/tool-glob"
   },
   "tool.goal": {
-    "package": "zeokeel/tool-goal",
-    "crate_name": "zk-tool-goal",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-goal",
+    "package": "zeokeel/tool-goal"
   },
   "tool.grep": {
-    "package": "zeokeel/tool-grep",
-    "crate_name": "zk-tool-grep",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-grep",
+    "package": "zeokeel/tool-grep"
   },
   "tool.jobs.kill": {
-    "package": "zeokeel/tool-job-kill",
-    "crate_name": "zk-tool-job-kill",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-job-kill",
+    "package": "zeokeel/tool-job-kill"
   },
   "tool.jobs.list": {
-    "package": "zeokeel/tool-job-list",
-    "crate_name": "zk-tool-job-list",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-job-list",
+    "package": "zeokeel/tool-job-list"
   },
   "tool.jobs.output": {
-    "package": "zeokeel/tool-job-output",
-    "crate_name": "zk-tool-job-output",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-job-output",
+    "package": "zeokeel/tool-job-output"
   },
   "tool.present": {
-    "package": "zeokeel/tool-present",
-    "crate_name": "zk-tool-present",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-present",
+    "package": "zeokeel/tool-present"
   },
   "tool.pwsh": {
-    "package": "zeokeel/tool-pwsh",
-    "crate_name": "zk-tool-pwsh",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-pwsh",
+    "package": "zeokeel/tool-pwsh"
   },
   "tool.pwsh_persistent": {
-    "package": "zeokeel/tool-pwsh-persistent",
-    "crate_name": "zk-tool-pwsh-persistent",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-pwsh-persistent",
+    "package": "zeokeel/tool-pwsh-persistent"
   },
   "tool.ralph": {
-    "package": "zeokeel/tool-ralph",
-    "crate_name": "zk-tool-ralph",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-ralph",
+    "package": "zeokeel/tool-ralph"
   },
   "tool.read_document": {
-    "package": "zeokeel/tool-read-document",
-    "crate_name": "zk-tool-read-document",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-read-document",
+    "package": "zeokeel/tool-read-document"
   },
   "tool.read_image": {
-    "package": "zeokeel/tool-read-image",
-    "crate_name": "zk-tool-read-image",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-read-image",
+    "package": "zeokeel/tool-read-image"
   },
   "tool.schedule": {
-    "package": "zeokeel/tool-schedule",
-    "crate_name": "zk-tool-schedule",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-schedule",
+    "package": "zeokeel/tool-schedule"
   },
   "tool.session_query": {
-    "package": "zeokeel/tool-session-query",
-    "crate_name": "zk-tool-session-query",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-session-query",
+    "package": "zeokeel/tool-session-query"
   },
   "tool.skill": {
-    "package": "zeokeel/tool-skill",
-    "crate_name": "zk-tool-skill",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-skill",
+    "package": "zeokeel/tool-skill"
   },
   "tool.subagent": {
-    "package": "zeokeel/tool-subagent",
-    "crate_name": "zk-tool-subagent",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-subagent",
+    "package": "zeokeel/tool-subagent"
   },
   "tool.subagent_control": {
-    "package": "zeokeel/tool-subagent-control",
-    "crate_name": "zk-tool-subagent-control",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-subagent-control",
+    "package": "zeokeel/tool-subagent-control"
   },
   "tool.subagent_fork": {
-    "package": "zeokeel/tool-subagent-fork",
-    "crate_name": "zk-tool-subagent-fork",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-subagent-fork",
+    "package": "zeokeel/tool-subagent-fork"
   },
   "tool.terminal": {
-    "package": "zeokeel/tool-terminal",
-    "crate_name": "zk-tool-terminal",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-terminal",
+    "package": "zeokeel/tool-terminal"
   },
   "tool.todo": {
-    "package": "zeokeel/tool-todo",
-    "crate_name": "zk-tool-todo",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-todo",
+    "package": "zeokeel/tool-todo"
   },
   "tool.web.fetch": {
-    "package": "zeokeel/tool-web-fetch",
-    "crate_name": "zk-tool-web-fetch",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-web-fetch",
+    "package": "zeokeel/tool-web-fetch"
   },
   "tool.web_search": {
-    "package": "zeokeel/tool-web-search",
-    "crate_name": "zk-tool-web-search",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-web-search",
+    "package": "zeokeel/tool-web-search"
   },
   "tool.workflow": {
-    "package": "zeokeel/tool-workflow",
-    "crate_name": "zk-tool-workflow",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-workflow",
+    "package": "zeokeel/tool-workflow"
   },
   "tool.working_directory": {
-    "package": "zeokeel/tool-working-directory",
-    "crate_name": "zk-tool-working-directory",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-working-directory",
+    "package": "zeokeel/tool-working-directory"
   },
   "tool.workspace_dependencies": {
-    "package": "zeokeel/tool-workspace-dependencies",
-    "crate_name": "zk-tool-workspace-dependencies",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-workspace-dependencies",
+    "package": "zeokeel/tool-workspace-dependencies"
   },
   "tool.worktree": {
-    "package": "zeokeel/tool-worktree",
-    "crate_name": "zk-tool-worktree",
+    "cardinality": "singleton",
     "contract": "zk-contract-tool",
-    "cardinality": "singleton"
+    "crate_name": "zk-tool-worktree",
+    "package": "zeokeel/tool-worktree"
   },
   "ui.kit": {
-    "package": "zeokeel/ui-kit",
-    "crate_name": "zk-ui-kit",
+    "cardinality": "singleton",
     "contract": "zk-contract-ui",
-    "cardinality": "singleton"
+    "crate_name": "zk-ui-kit",
+    "package": "zeokeel/ui-kit"
   },
   "ui.shell": {
-    "package": "zeokeel/ui-shell",
-    "crate_name": "zk-ui-shell",
+    "cardinality": "singleton",
     "contract": "zk-contract-ui",
-    "cardinality": "singleton"
+    "crate_name": "zk-ui-shell",
+    "package": "zeokeel/ui-shell"
   },
   "ui.slot.chat": {
-    "package": "zeokeel/ui-chat",
-    "crate_name": "zk-ui-chat",
+    "cardinality": "singleton",
     "contract": "zk-contract-ui",
-    "cardinality": "singleton"
+    "crate_name": "zk-ui-chat",
+    "package": "zeokeel/ui-chat"
   },
   "ui.slot.commands": {
-    "package": "zeokeel/ui-commands",
-    "crate_name": "zk-ui-commands",
+    "cardinality": "singleton",
     "contract": "zk-contract-ui",
-    "cardinality": "singleton"
+    "crate_name": "zk-ui-commands",
+    "package": "zeokeel/ui-commands"
   },
   "ui.slot.inspector": {
-    "package": "zeokeel/ui-inspector",
-    "crate_name": "zk-ui-inspector",
+    "cardinality": "singleton",
     "contract": "zk-contract-ui",
-    "cardinality": "singleton"
+    "crate_name": "zk-ui-inspector",
+    "package": "zeokeel/ui-inspector"
   },
   "ui.slot.sessions": {
-    "package": "zeokeel/ui-sessions",
-    "crate_name": "zk-ui-sessions",
+    "cardinality": "singleton",
     "contract": "zk-contract-ui",
-    "cardinality": "singleton"
+    "crate_name": "zk-ui-sessions",
+    "package": "zeokeel/ui-sessions"
   },
   "ui.slot.settings": {
-    "package": "zeokeel/ui-settings",
-    "crate_name": "zk-ui-settings",
+    "cardinality": "singleton",
     "contract": "zk-contract-ui",
-    "cardinality": "singleton"
+    "crate_name": "zk-ui-settings",
+    "package": "zeokeel/ui-settings"
   },
   "ui.slot.settings-provider": {
-    "package": "zeokeel/ui-settings-provider",
-    "crate_name": "zk-ui-settings-provider",
+    "cardinality": "singleton",
     "contract": "zk-contract-ui",
-    "cardinality": "singleton"
+    "crate_name": "zk-ui-settings-provider",
+    "package": "zeokeel/ui-settings-provider"
   },
   "vector.store": {
-    "package": "zeokeel/cap-vector",
-    "crate_name": "zk-cap-vector",
+    "cardinality": "singleton",
     "contract": "zk-contract-agent",
-    "cardinality": "singleton"
+    "crate_name": "zk-cap-vector",
+    "package": "zeokeel/cap-vector"
   }
 }
