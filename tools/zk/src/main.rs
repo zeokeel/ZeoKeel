@@ -1620,22 +1620,8 @@ fn channel_validate(index_dir: &Path) -> Result<()> {
         if !matches!(entry.depth.as_str(), "basic" | "deep") {
             bail!("channel {id}: bad depth");
         }
+        resolve_index_pin(index_dir, id, entry)?;
         let customer = index_dir.join(&entry.submodule);
-        if let Some(gitlink) = gitlink_hash(index_dir, &entry.submodule) {
-            if gitlink != entry.pin {
-                bail!(
-                    "channel {id}: pin mismatch (submodule gitlink {gitlink}, index pin {})",
-                    entry.pin
-                );
-            }
-        } else {
-            let actual_pin = dir_hash(&customer)?;
-            if actual_pin != entry.pin {
-                bail!(
-                    "channel {id}: pin mismatch (non-git index fallback: directory hash {actual_pin})"
-                );
-            }
-        }
         let gitmodules = fs::read_to_string(index_dir.join(".gitmodules")).unwrap_or_default();
         if !gitmodules.contains(&entry.submodule) {
             bail!("channel {id}: .gitmodules missing submodule path");
@@ -1818,6 +1804,72 @@ fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     haystack
         .windows(needle.len())
         .any(|window| window == needle)
+}
+
+/// Whether the OEM index itself is a git repository.
+///
+/// `.git` may be a directory, a file (worktree/submodule), or discovered by
+/// `git rev-parse` when the index is nested inside a larger checkout.
+fn is_git_index(index_dir: &Path) -> bool {
+    if index_dir.join(".git").exists() {
+        return true;
+    }
+    let Some(path) = index_dir.to_str() else {
+        return false;
+    };
+    let output = std::process::Command::new("git")
+        .args(["-C", path, "rev-parse", "--show-toplevel"])
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .output();
+    let Ok(output) = output else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let root = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if root.is_empty() {
+        return false;
+    }
+    match (
+        std::fs::canonicalize(root),
+        std::fs::canonicalize(index_dir),
+    ) {
+        (Ok(root), Ok(index)) => root == index,
+        _ => false,
+    }
+}
+
+/// Enforce the pin for one OEM index entry.
+///
+/// A git index must carry a tracked gitlink (mode `160000`) exactly matching the
+/// pin; there is deliberately **no directory-hash fallback** for git indexes.
+/// Only non-git fixture/export directories use [`dir_hash`].
+fn resolve_index_pin(index_dir: &Path, id: &str, entry: &OemChannel) -> Result<()> {
+    if is_git_index(index_dir) {
+        let Some(gitlink) = gitlink_hash(index_dir, &entry.submodule) else {
+            bail!(
+                "channel {id}: git index requires a tracked gitlink (mode 160000); no directory-hash fallback"
+            );
+        };
+        if gitlink != entry.pin {
+            bail!(
+                "channel {id}: pin mismatch (submodule gitlink {gitlink}, index pin {})",
+                entry.pin
+            );
+        }
+        return Ok(());
+    }
+    let customer = index_dir.join(&entry.submodule);
+    let actual_pin = dir_hash(&customer)?;
+    if actual_pin != entry.pin {
+        bail!(
+            "channel {id}: pin mismatch (fixture fallback: non-git index directory hash {actual_pin}, index pin {})",
+            entry.pin
+        );
+    }
+    Ok(())
 }
 
 /// Resolve an OEM submodule pin from the index repository's gitlink (mode 160000).
@@ -2890,6 +2942,135 @@ mod pin_tests {
             .success());
         assert_eq!(gitlink_hash(&dir, "customer").as_deref(), Some(hash));
         assert_eq!(gitlink_hash(&dir, "missing"), None);
+    }
+}
+
+#[cfg(test)]
+mod channel_pin_tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)] // test-only
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+
+    fn fixture() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../oem/fixtures")
+    }
+
+    fn temp_copy(name: &str) -> PathBuf {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("zk-channel-pin-{name}-{stamp}"));
+        copy_tree(&fixture(), &dir).unwrap();
+        dir
+    }
+
+    fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(dst)?;
+        for entry in std::fs::read_dir(src)? {
+            let entry = entry?;
+            let target = dst.join(entry.file_name());
+            if entry.file_type()?.is_dir() {
+                copy_tree(&entry.path(), &target)?;
+            } else {
+                std::fs::copy(entry.path(), target)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn git(dir: &Path, args: &[&str]) {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .status()
+            .expect("git available");
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    const GITLINK_PIN: &str = "2222222222222222222222222222222222222222";
+
+    fn set_forty_char_pins(dir: &Path) {
+        let mut root: toml::Value =
+            toml::from_str(&std::fs::read_to_string(dir.join("index.toml")).expect("index.toml"))
+                .expect("parse index.toml");
+        let Some(channels) = root.get_mut("channels").and_then(toml::Value::as_table_mut) else {
+            panic!("index.toml channels table");
+        };
+        for (_, entry) in channels.iter_mut() {
+            let Some(table) = entry.as_table_mut() else {
+                panic!("index.toml channel table");
+            };
+            table.insert(
+                "pin".to_owned(),
+                toml::Value::String(GITLINK_PIN.to_owned()),
+            );
+        }
+        std::fs::write(
+            dir.join("index.toml"),
+            toml::to_string(&root).expect("serialize index.toml"),
+        )
+        .expect("write index.toml");
+    }
+
+    fn gitlinks(dir: &Path, mutate: impl Fn(&str) -> String) {
+        let index: super::OemIndex =
+            toml::from_str(&std::fs::read_to_string(dir.join("index.toml")).expect("index.toml"))
+                .expect("parse index.toml");
+        for entry in index.channels.values() {
+            let hash = mutate(&entry.pin);
+            git(
+                dir,
+                &[
+                    "update-index",
+                    "--add",
+                    "--cacheinfo",
+                    &format!("160000,{hash},{}", entry.submodule),
+                ],
+            );
+        }
+    }
+
+    #[test]
+    fn non_git_fixture_falls_back_to_directory_hash() {
+        super::channel_validate(&fixture()).expect("non-git fixture fallback");
+    }
+
+    #[test]
+    fn git_index_without_gitlink_is_rejected_without_dir_hash_fallback() {
+        let dir = temp_copy("no-gitlink");
+        git(&dir, &["init", "-q"]);
+        let error = super::channel_validate(&dir).unwrap_err().to_string();
+        assert!(
+            error.contains("git index requires a tracked gitlink"),
+            "{error}"
+        );
+        assert!(!error.contains("directory hash"), "{error}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn git_index_gitlink_mismatch_is_rejected() {
+        let dir = temp_copy("mismatch");
+        git(&dir, &["init", "-q"]);
+        set_forty_char_pins(&dir);
+        gitlinks(&dir, |_| {
+            "1111111111111111111111111111111111111111".to_owned()
+        });
+        let error = super::channel_validate(&dir).unwrap_err().to_string();
+        assert!(error.contains("pin mismatch"), "{error}");
+        assert!(error.contains("submodule gitlink"), "{error}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn git_index_with_matching_gitlinks_passes() {
+        let dir = temp_copy("match");
+        git(&dir, &["init", "-q"]);
+        set_forty_char_pins(&dir);
+        gitlinks(&dir, str::to_owned);
+        super::channel_validate(&dir).expect("matching gitlinks");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }
 

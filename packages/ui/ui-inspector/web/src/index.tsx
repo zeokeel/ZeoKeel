@@ -66,7 +66,12 @@ export function InspectorPanel(props: InspectorPanelProps) {
             {props.changesWarning !== null ? <p role="status" className="mb-1 text-muted-foreground">{t("inspectorChangesWarning", { message: props.changesWarning })}</p> : null}
             {props.changes.length === 0
               ? <p>{t("inspectorChangesEmpty")}</p>
-              : props.changes.map((change) => <p key={change.path}>{change.path} +{String(change.add)} −{String(change.del)}</p>)}
+              : props.changes.map((change) => (
+                <p key={change.path} aria-label={t("inspectorChangesItem", { path: change.path, add: change.add, del: change.del })}>
+                  <span className="text-muted-foreground">{t("inspectorChangesFile")} </span>
+                  {change.path} +{String(change.add)} −{String(change.del)}
+                </p>
+              ))}
           </>
         ) : null}
         {props.tab === "terminal" ? <p className="font-mono">{t("inspectorTerminalSkeleton")}</p> : null}

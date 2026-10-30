@@ -19,7 +19,8 @@ export default defineConfig({
     video: "off",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 820 } } }],
-  webServer: [
+  // External-harness specs (e.g. scripts/client-upgrade-e2e.sh) start their own server/UI.
+  webServer: process.env["ZEOKEEL_E2E_NO_WEBSERVER"] === "1" ? [] : [
     {
       command: "pnpm --dir apps/desktop/web build && pnpm --dir apps/desktop/web exec vite preview --host 127.0.0.1 --port 4173",
       url: `${MOCK_URL}/`,

@@ -3,7 +3,7 @@
 
 use axum::body::Body;
 use axum::extract::{Request, State};
-use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -15,8 +15,9 @@ use sqlx::PgPool;
 use zk_contract_server::ServerModule;
 pub use zk_kit_server::AppState;
 use zk_kit_server::{
-    brand_snapshot, client_version, content_etag, if_none_match, min_client_version, parse_semver,
-    permissions_for_role, require_admin, ServerError,
+    brand_snapshot, client_channel, client_version, content_etag, if_none_match,
+    min_client_version, min_client_version_for_channel, parse_semver, permissions_for_role,
+    require_admin, ServerError,
 };
 
 /// Stable API version for the cross-major `/api/meta/*` surface (`docs/04` §2).
@@ -39,17 +40,46 @@ fn is_client_business_path(path: &str) -> bool {
     )
 }
 
-fn upgrade_required(current: Option<&str>, reason: &str) -> Response {
+fn request_id_for(headers: &HeaderMap) -> String {
+    headers
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && value.len() <= 128)
+        .map(str::to_owned)
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
+}
+
+fn attach_request_id(response: &mut Response, request_id: &str) {
+    if response.headers().get("x-request-id").is_none() {
+        if let Ok(value) = HeaderValue::from_str(request_id) {
+            response
+                .headers_mut()
+                .insert(HeaderName::from_static("x-request-id"), value);
+        }
+    }
+}
+
+fn upgrade_required(
+    current: Option<&str>,
+    reason: &str,
+    minimum: &str,
+    request_id: &str,
+) -> Response {
     let body = json!({
         "error": {
             "code": "CLIENT_TOO_OLD",
             "message": reason,
+            "retryable": false,
+            "request_id": request_id,
             "current": current,
-            "minimum": min_client_version(),
+            "minimum": minimum,
             "portal_url": "/portal",
         }
     });
-    (StatusCode::UPGRADE_REQUIRED, Json(body)).into_response()
+    let mut response = (StatusCode::UPGRADE_REQUIRED, Json(body)).into_response();
+    attach_request_id(&mut response, request_id);
+    response
 }
 
 /// Gate `/api/client/v1/*` on the `X-ZeoKeel-Client` semver.
@@ -57,33 +87,47 @@ fn upgrade_required(current: Option<&str>, reason: &str) -> Response {
 /// Missing or malformed headers fail closed with 426 so the client can show the
 /// forced-upgrade surface; login/refresh/bootstrap and stable surfaces pass.
 /// A client without the header cannot prove it is new enough for business calls.
+/// The minimum is resolved per channel (env/brand) with a global fallback; the
+/// request id is read from `X-Request-Id` or generated and echoed on responses.
 pub async fn client_version_gate(request: Request, next: Next) -> Response {
+    let request_id = request_id_for(request.headers());
     // CORS preflights never carry custom request headers; let the CORS layer
     // answer them, otherwise a browser client cannot reach the business surface.
     if request.method() == axum::http::Method::OPTIONS
         || !is_client_business_path(request.uri().path())
     {
-        return next.run(request).await;
+        let mut response = next.run(request).await;
+        attach_request_id(&mut response, &request_id);
+        return response;
     }
+    let channel = client_channel(request.headers());
+    let minimum = min_client_version_for_channel(channel.as_deref());
     let current = client_version(request.headers());
     let Some(version) = current.as_deref().and_then(parse_semver) else {
         return upgrade_required(
             current.as_deref(),
             "X-ZeoKeel-Client header is missing or invalid",
+            &minimum,
+            &request_id,
         );
     };
-    let minimum = min_client_version();
     let Some(minimum_version) = parse_semver(&minimum) else {
         // The kit helper validates env overrides and falls back to 0.1.0.
-        return next.run(request).await;
+        let mut response = next.run(request).await;
+        attach_request_id(&mut response, &request_id);
+        return response;
     };
     if version < minimum_version {
         return upgrade_required(
             current.as_deref(),
             "client version is below the minimum supported version",
+            &minimum,
+            &request_id,
         );
     }
-    next.run(request).await
+    let mut response = next.run(request).await;
+    attach_request_id(&mut response, &request_id);
+    response
 }
 
 /// Stable module descriptor.
@@ -329,18 +373,35 @@ mod tests {
             .layer(axum::middleware::from_fn(client_version_gate))
     }
 
-    async fn call(app: Router, path: &str, header: Option<&str>) -> (StatusCode, Vec<u8>) {
+    async fn call_with_request_id(
+        app: Router,
+        path: &str,
+        header: Option<&str>,
+        request_id: Option<&str>,
+    ) -> (StatusCode, HeaderMap, Vec<u8>) {
         let mut builder = Request::builder().uri(path);
         if let Some(value) = header {
             builder = builder.header("x-zeokeel-client", value);
         }
+        if let Some(value) = request_id {
+            builder = builder.header("x-request-id", value);
+        }
         let request = builder.body(Body::empty()).expect("request");
         let response = app.oneshot(request).await.expect("response");
         let status = response.status();
+        let headers = response.headers().clone();
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("body");
-        (status, bytes.to_vec())
+        (status, headers, bytes.to_vec())
+    }
+
+    async fn call(
+        app: Router,
+        path: &str,
+        header: Option<&str>,
+    ) -> (StatusCode, HeaderMap, Vec<u8>) {
+        call_with_request_id(app, path, header, None).await
     }
 
     #[tokio::test]
@@ -366,7 +427,7 @@ mod tests {
     async fn old_client_is_rejected_on_business_surface_with_json_426() {
         let minimum = min_client_version();
         assert_ne!(minimum, "0.0.0", "test assumes a positive minimum");
-        let (status, body) = call(
+        let (status, headers, body) = call(
             gate_router(),
             "/api/client/v1/workspaces",
             Some("0.0.0;official;linux-x64;test"),
@@ -375,26 +436,90 @@ mod tests {
         assert_eq!(status, StatusCode::UPGRADE_REQUIRED);
         assert_eq!(error_code(&body), "CLIENT_TOO_OLD");
         let value: Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(value["error"]["retryable"], false);
         assert_eq!(value["error"]["current"], "0.0.0");
         assert_eq!(value["error"]["minimum"], minimum);
         assert_eq!(value["error"]["portal_url"], "/portal");
+        let request_id = value["error"]["request_id"].as_str().expect("request id");
+        assert!(!request_id.is_empty());
+        assert_eq!(
+            headers
+                .get("x-request-id")
+                .and_then(|value| value.to_str().ok()),
+            Some(request_id)
+        );
+    }
+
+    #[tokio::test]
+    async fn incoming_request_id_is_echoed_in_header_and_body() {
+        let (status, headers, body) = call_with_request_id(
+            gate_router(),
+            "/api/client/v1/workspaces",
+            Some("0.0.0;official;linux-x64;test"),
+            Some("req-round6-test"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UPGRADE_REQUIRED);
+        assert_eq!(
+            headers
+                .get("x-request-id")
+                .and_then(|value| value.to_str().ok()),
+            Some("req-round6-test")
+        );
+        let value: Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(value["error"]["request_id"], "req-round6-test");
     }
 
     #[tokio::test]
     async fn current_client_passes_business_surface() {
         let minimum = min_client_version();
         let header = format!("{minimum};official;linux-x64;test");
-        let (status, _body) = call(gate_router(), "/api/client/v1/workspaces", Some(&header)).await;
+        let (status, _headers, _body) =
+            call(gate_router(), "/api/client/v1/workspaces", Some(&header)).await;
         assert_eq!(status, StatusCode::OK);
     }
 
     #[tokio::test]
     async fn missing_or_invalid_header_fails_closed_with_426() {
         for header in [None, Some("not-semver;official;linux-x64;test")] {
-            let (status, body) = call(gate_router(), "/api/client/v1/workspaces", header).await;
+            let (status, headers, body) =
+                call(gate_router(), "/api/client/v1/workspaces", header).await;
             assert_eq!(status, StatusCode::UPGRADE_REQUIRED, "{header:?}");
             assert_eq!(error_code(&body), "CLIENT_TOO_OLD", "{header:?}");
+            assert!(
+                headers.get("x-request-id").is_some(),
+                "request id must be echoed for {header:?}"
+            );
         }
+    }
+
+    #[tokio::test]
+    async fn per_channel_min_version_overrides_global_fallback() {
+        let channel = "round6-http-channel";
+        let key = zk_kit_server::channel_min_version_env_key(channel);
+        std::env::set_var(&key, "9.9.9");
+        let channel_header = format!("0.2.0;{channel};linux-x64;test");
+        let result = call(
+            gate_router(),
+            "/api/client/v1/workspaces",
+            Some(&channel_header),
+        )
+        .await;
+        std::env::remove_var(&key);
+        let (status, _headers, body) = result;
+        assert_eq!(status, StatusCode::UPGRADE_REQUIRED);
+        let value: Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(value["error"]["minimum"], "9.9.9");
+
+        let global = min_client_version();
+        let official_header = format!("{global};official;linux-x64;test");
+        let (status, _headers, _body) = call(
+            gate_router(),
+            "/api/client/v1/workspaces",
+            Some(&official_header),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
     }
 
     #[tokio::test]
@@ -405,7 +530,7 @@ mod tests {
             "/api/client/v1/config/bootstrap",
         ] {
             for header in [None, Some("0.0.0;official;linux-x64;test")] {
-                let (status, _body) = call(gate_router(), path, header).await;
+                let (status, _headers, _body) = call(gate_router(), path, header).await;
                 assert_eq!(status, StatusCode::OK, "{path} {header:?}");
             }
         }
@@ -419,7 +544,7 @@ mod tests {
             "/api/updates/manifest",
         ] {
             for header in [None, Some("0.0.0;official;linux-x64;test")] {
-                let (status, _body) = call(gate_router(), path, header).await;
+                let (status, _headers, _body) = call(gate_router(), path, header).await;
                 assert_eq!(status, StatusCode::OK, "{path} {header:?}");
             }
         }
