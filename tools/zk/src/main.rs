@@ -2,7 +2,7 @@
 //! ZeoKeel `zk` composition CLI (minimal M0 subset).
 //!
 //! Commands: `validate`, `compose [--check]`, `plan`, `capability [--check]`,
-//! `find <kw>`, `lint [--duplicates]`.
+//! `find <kw>`, `lint [--duplicates]`, `db lock [--check]`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -49,6 +49,16 @@ fn run() -> Result<()> {
             find(&root, &keyword)
         }
         "lint" => lint(&root, rest.iter().any(|a| a == "--duplicates")),
+        "db" => {
+            let sub = rest.first().map(String::as_str).unwrap_or("");
+            if sub.is_empty() {
+                bail!("usage: zk db lock [--check]");
+            }
+            if sub != "lock" {
+                bail!("unknown db subcommand: {sub}");
+            }
+            db_lock(&root, rest.iter().any(|a| a == "--check"))
+        }
         other => bail!("unknown command: {other}"),
     }
 }
@@ -923,6 +933,64 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
     ));
     out.push_str("    Ok(Runtime { agent, sessions, settings })\n}\n");
     Ok(out)
+}
+
+fn db_lock(root: &Path, check: bool) -> Result<()> {
+    use sha2::{Digest, Sha256};
+    #[derive(serde::Serialize)]
+    struct LockMigration { version: String, package: String, checksum: String }
+    #[derive(serde::Serialize)]
+    struct LockFile { schema: u32, migrations: Vec<LockMigration> }
+
+    fn collect(root: &Path, dir: &Path, out: &mut Vec<(String, String, String)>) -> Result<()> {
+        if !dir.is_dir() { return Ok(()); }
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                collect(root, &path, out)?;
+                continue;
+            }
+            if path.extension().and_then(|value| value.to_str()) != Some("sql") {
+                continue;
+            }
+            let file_name = path.file_name().and_then(|value| value.to_str()).unwrap_or_default();
+            let version = file_name.trim_end_matches(".sql").to_owned();
+            let package = path.strip_prefix(root).map(|value| value.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+            let content = fs::read(&path)?;
+            let mut hash = Sha256::new();
+            hash.update(&content);
+            out.push((version, package, format!("{:x}", hash.finalize())));
+        }
+        Ok(())
+    }
+
+    let mut migrations = Vec::new();
+    collect(root, &root.join("packages"), &mut migrations)?;
+    migrations.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut seen = BTreeSet::new();
+    for (version, _, _) in &migrations {
+        if !seen.insert(version.clone()) {
+            bail!("duplicate migration version: {version}");
+        }
+    }
+    let lock = LockFile {
+        schema: 1,
+        migrations: migrations.into_iter().map(|(version, package, checksum)| LockMigration { version, package, checksum }).collect(),
+    };
+    let rendered = format!("{}\n", serde_json::to_string_pretty(&lock)?);
+    let path = root.join("zk.lock");
+    if check {
+        let current = fs::read_to_string(&path).with_context(|| "zk.lock missing; run zk db lock")?;
+        if current != rendered {
+            bail!("zk.lock out of date; run zk db lock");
+        }
+        println!("db lock: up to date ({} migrations)", lock.migrations.len());
+        return Ok(());
+    }
+    fs::write(&path, rendered)?;
+    println!("db lock: wrote {} migrations", lock.migrations.len());
+    Ok(())
 }
 
 fn brand_ts(resolved: &Resolved) -> String {

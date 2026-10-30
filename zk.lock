@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "migrations": [
+    {
+      "version": "0001_core",
+      "package": "packages/server/http/migrations/0001_core.sql",
+      "checksum": "f7bb3c427b92b84ae1b9f6a6dc1786a3c9810f746df2594d0bf4bc35bae0c35b"
+    },
+    {
+      "version": "0002_auth",
+      "package": "packages/server/auth/migrations/0002_auth.sql",
+      "checksum": "c1235ba67dd6d4225850bf859d0221f8b0f7a9be235123753e6c3c537e2effa9"
+    },
+    {
+      "version": "0003_wallet",
+      "package": "packages/server/wallet/migrations/0003_wallet.sql",
+      "checksum": "b7bb82dd9e2a3f218da4de1511216dfbef9a4c6dd3dc93f66b257261b7e96306"
+    },
+    {
+      "version": "0004_pricing",
+      "package": "packages/server/pricing/migrations/0004_pricing.sql",
+      "checksum": "f9ddb3d692b8812232674a2a41206c4e9296bbc4639625842145d3270fd55e62"
+    },
+    {
+      "version": "0005_gateway",
+      "package": "packages/server/gateway/migrations/0005_gateway.sql",
+      "checksum": "c66d46bac3762f24e6fa9230b2617d9170690eadc00a1311667c6443c5881506"
+    },
+    {
+      "version": "0006_audit",
+      "package": "packages/server/audit/migrations/0006_audit.sql",
+      "checksum": "61ca84f98d46a69490b0d04add0dc22addd28447c978638e83a0199bb563dc16"
+    },
+    {
+      "version": "0007_settings",
+      "package": "packages/server/settings/migrations/0007_settings.sql",
+      "checksum": "603042fac422e9cd5b22d61cdcf09d801283297e660dfcd5b153d0c8f22540cf"
+    },
+    {
+      "version": "0008_jobs",
+      "package": "packages/server/jobs/migrations/0008_jobs.sql",
+      "checksum": "5e28726a5abb6455e746dc679b13e30f0b7d8c7878e00c10e12e7c57668093d8"
+    },
+    {
+      "version": "0009_lockout",
+      "package": "packages/server/auth/migrations/0009_lockout.sql",
+      "checksum": "d66ecba26666e108de941c8e03ae42bfe8a9bbbc3a7de6056e7a89c8c8afad8e"
+    },
+    {
+      "version": "0010_content",
+      "package": "packages/server/content/migrations/0010_content.sql",
+      "checksum": "c1674b7f4310dd64a50df5f8573f145715d3fa236d760f12def5c0cf381ccce3"
+    }
+  ]
+}

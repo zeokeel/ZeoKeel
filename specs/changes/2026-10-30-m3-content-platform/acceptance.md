@@ -13,7 +13,7 @@
 - `cargo run -q -p zk -- validate`：enterprise 33 / personal 14 packages，57 scanned
 - `cargo build -q -p zk-server`：pass
 - `bash scripts/srv-store-test.sh`：`store ok: content schema wired`（5 张 content 表）
-- `zk db lock --check`：pending（工具尚未生成 content lock，任务 10 前补）
+- `zk db lock --check`：pass（10 migrations，含 0010_content）
 
 ### task 1 evidence (2026-10-30)
 
