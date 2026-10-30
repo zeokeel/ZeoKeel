@@ -1,4 +1,4 @@
-//! Update-check contract (`update.client`).
+//! Update-check contract (`client.update`).
 //!
 //! @capability contract.update
 #![forbid(unsafe_code)]

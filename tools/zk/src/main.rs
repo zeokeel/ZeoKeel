@@ -1397,7 +1397,7 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
             sessions = Some(pkg);
         } else if pkg.role == "store.settings" {
             settings = Some(pkg);
-        } else if pkg.role == "update.client" {
+        } else if pkg.role == "client.update" {
             update = Some(pkg);
         } else if pkg.role.starts_with("srv.")
             || pkg.role.starts_with("admin.")

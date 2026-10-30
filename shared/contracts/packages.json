@@ -16,6 +16,14 @@
     ]
   },
   {
+    "id": "zeokeel/client-update-github",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "client.update"
+    ]
+  },
+  {
     "id": "zeokeel/llm-rig",
     "version": "0.1.0",
     "kind": "capability",
@@ -421,14 +429,6 @@
     "kind": "ui",
     "roles": [
       "ui.slot.settings-provider"
-    ]
-  },
-  {
-    "id": "zeokeel/client-update-github",
-    "version": "0.1.0",
-    "kind": "capability",
-    "roles": [
-      "update.client"
     ]
   },
   {

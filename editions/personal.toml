@@ -55,7 +55,7 @@ targets = ["desktop"]
 "tool.present" = "zeokeel/tool-present"
 
 "ui.slot.settings-provider" = "zeokeel/ui-settings-provider"
-"update.client" = "zeokeel/client-update-github"
+"client.update" = "zeokeel/client-update-github"
 "ui.slot.commands" = "zeokeel/ui-commands"
 "ui.slot.inspector" = "zeokeel/ui-inspector"
 "ui.shell" = "zeokeel/ui-shell"

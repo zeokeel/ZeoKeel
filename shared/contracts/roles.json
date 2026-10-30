@@ -11,6 +11,12 @@
     "contract": "zk-contract-agent",
     "cardinality": "singleton"
   },
+  "client.update": {
+    "package": "zeokeel/client-update-github",
+    "crate_name": "zk-client-update-github",
+    "contract": "zk-contract-update",
+    "cardinality": "singleton"
+  },
   "llm.provider.default": {
     "package": "zeokeel/llm-rig",
     "crate_name": "zk-llm-rig",
@@ -315,12 +321,6 @@
     "package": "zeokeel/ui-settings-provider",
     "crate_name": "zk-ui-settings-provider",
     "contract": "zk-contract-ui",
-    "cardinality": "singleton"
-  },
-  "update.client": {
-    "package": "zeokeel/client-update-github",
-    "crate_name": "zk-client-update-github",
-    "contract": "zk-contract-update",
     "cardinality": "singleton"
   },
   "vector.store": {

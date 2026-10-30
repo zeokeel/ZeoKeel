@@ -126,7 +126,7 @@ contract = "zk-contract-auth-client"
 cardinality = "singleton"
 editions = ["enterprise"]
 
-[roles."update.client"]
+[roles."client.update"]
 contract = "zk-contract-update"
 cardinality = "singleton"
 editions = ["personal"]

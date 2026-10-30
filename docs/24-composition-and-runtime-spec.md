@@ -96,7 +96,12 @@ protected = true           # 安全边界，OEM 不得替换
 
 规则：未知角色=error；提供者声明的 cardinality/contract 必须与注册表一致；`protected=true` 的角色 OEM 覆盖=error；
 角色命名统一 `auth.client`（客户端登录）/`srv.auth.source`（服务端认证源），禁止 `auth.provider` 别名。
-上表是 M0 起点：新增/改名角色必须先改本表再进实现（C12）；`zk validate` 对未登记角色报错。
+上表是 M0 起点与命名规范。**实现真源是根 `zk.toml [roles]`**：当前已登记角色/editions 以 `zk.toml` 为准，
+并由 `docs/generated/CONTRACT-INDEX.md` 的 roles(editions) 列生成展示；新增/改名角色必须先改本表与 `zk.toml`（C12）。
+`zk validate` 对未登记角色/契约不匹配报错；`protected=true` 的 OEM/channel/profile 覆盖会报错。
+上表里尚未落地的角色（`agent.prompt.section`、`host.*`、`platform.*`、`ui.shell-kit`、`ui.transport`、`theme.tokens`、`i18n.*`、
+`llm.provider.<vendor>`、`srv.auth.source`、`srv.job.wallet-grant`、`srv.gateway.upstream`/`meter`、`admin.slot.*`）是 post-M1 目标，
+不得据此声称已实现；已实现角色见生成的 `CONTRACT-INDEX.md`。`update.client` 已统一更名为 `client.update`（实现与生成物一致）。
 multi 角色允许 0 个提供者；singleton 必须恰好 1 个（`optional` 名单由 T2 冻结）。以下包的服务角色由 T2 补登记，
 当前按包内服务处理：`runtime`/`timer`/`task-service`/`supervisor`/`telemetry`/`approval`/`audit`、
 `client-bootstrap`/`client-skill`/`client-connector`/`client-wasm-host`。

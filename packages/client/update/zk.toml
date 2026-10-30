@@ -6,7 +6,7 @@ license = "MIT"
 summary = "Personal update check via GitHub Releases latest.json"
 
 [role]
-name = "update.client"
+name = "client.update"
 contract = "zk-contract-update"
 cardinality = "singleton"
 editions = ["personal"]

@@ -8,6 +8,7 @@ edition `personal` · channel `official` · 55 packages
 | --- | --- | --- | --- | --- |
 | `agent.hooks` | `zeokeel/cap-hooks` | `zk-cap-hooks` | `zk-contract-agent` | singleton |
 | `agent.loop` | `zeokeel/agent-rig` | `zk-agent-rig` | `zk-contract-agent` | singleton |
+| `client.update` | `zeokeel/client-update-github` | `zk-client-update-github` | `zk-contract-update` | singleton |
 | `llm.provider.default` | `zeokeel/llm-rig` | `zk-llm-rig` | `zk-contract-llm` | singleton |
 | `media.audio` | `zeokeel/cap-audio` | `zk-cap-audio` | `zk-contract-agent` | singleton |
 | `media.image` | `zeokeel/cap-image` | `zk-cap-image` | `zk-contract-agent` | singleton |
@@ -59,5 +60,4 @@ edition `personal` · channel `official` · 55 packages
 | `ui.slot.sessions` | `zeokeel/ui-sessions` | `zk-ui-sessions` | `zk-contract-ui` | singleton |
 | `ui.slot.settings` | `zeokeel/ui-settings` | `zk-ui-settings` | `zk-contract-ui` | singleton |
 | `ui.slot.settings-provider` | `zeokeel/ui-settings-provider` | `zk-ui-settings-provider` | `zk-contract-ui` | singleton |
-| `update.client` | `zeokeel/client-update-github` | `zk-client-update-github` | `zk-contract-update` | singleton |
 | `vector.store` | `zeokeel/cap-vector` | `zk-cap-vector` | `zk-contract-agent` | singleton |

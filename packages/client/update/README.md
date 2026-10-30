@@ -1,4 +1,4 @@
-# zk-client-update-github (`update.client`)
+# zk-client-update-github (`client.update`)
 
 **功能说明（M1 / ADR-041）**：个人版更新检查。
 
