@@ -23,7 +23,7 @@
 
 ## 4. 工具矩阵
 
-- 已实现：`fs.read`、`fs.write`、`fs.edit`、`fs.search`、`bash`、`bash_persistent`、`job_output/list/kill`、`glob`、`grep`、`skill`、`web.fetch`、`working_directory`、`todo`、`present`、`load_workspace_dependencies`、`create_worktree`、`terminal`、`goal`、`schedule`、`pwsh`、`read_image`、`subagent`、`workflow`、`ralph`、`ask_user_question`、`session_search`、`web_search`、`pwsh_persistent`、`subagent_control`、`cordis`（禁用）；UI 已有审批卡、问题卡、provider 流式/取消。
+- 已实现：`fs.read`、`fs.write`、`fs.edit`、`fs.search`、`bash`、`bash_persistent`、`job_output/list/kill`、`glob`、`grep`、`skill`、`web.fetch`、`working_directory`、`todo`、`present`、`load_workspace_dependencies`、`create_worktree`、`terminal`、`goal`、`schedule`、`pwsh`、`read_image`、`subagent`、`workflow`、`ralph`、`ask_user_question`、`session_search`、`web_search`、`pwsh_persistent`、`subagent_control`、`cordis`（禁用）、`agent_team`（实验禁用）；UI 已有审批卡、问题卡、provider 流式/取消。
 - 部分/未实现：`agent-team`（未启用）、`call-timeout`（固定 120s 策略）、schedule 执行器、workflow DAG/并行、subagent fork/异步 control、pwsh persistent 平台支持。
 - 完整矩阵与测试状态以 `docs/generated/AGENT-TOOL-MATRIX.md` 为准。
 - 平台不支持必须返回明确错误，不得静默缺失。

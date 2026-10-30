@@ -30,4 +30,4 @@ DSH reference: `research/dsh-agent-inventory.md` §2. Status is honest: implemen
 | worktree | tool.worktree | zeokeel/tool-worktree | implemented | argv, safe path |
 | call-timeout | - | agent-rig | partial | fixed 120s tool timeout |
 | tool-cordis | tool.cordis | zeokeel/tool-cordis | disabled | C2 forbids runtime plugin loading |
-| agent-team | - | - | experimental | not enabled |
+| agent-team | tool.agent_team | zeokeel/tool-agent-team | experimental | explicit unsupported error |

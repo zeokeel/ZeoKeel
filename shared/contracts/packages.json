@@ -264,6 +264,14 @@
     ]
   },
   {
+    "id": "zeokeel/tool-agent-team",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.agent_team"
+    ]
+  },
+  {
     "id": "zeokeel/tool-ask-user",
     "version": "0.1.0",
     "kind": "capability",

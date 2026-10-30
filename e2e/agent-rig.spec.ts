@@ -27,4 +27,28 @@ test.describe("personal rig agent (real serve + fake upstream)", () => {
     expect(serious, JSON.stringify(serious.map((violation) => violation.id))).toEqual([]);
     await page.screenshot({ path: "target/evidence/agent-rig/question.png" });
   });
+
+  test("rejecting an approval is fail-closed", async ({ page }) => {
+    await page.goto("/", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "新建会话" }).last().click();
+    const composer = page.getByRole("textbox").first();
+    await composer.fill("write a file");
+    await page.keyboard.press("Enter");
+    const approval = page.getByRole("group", { name: "需要审批" });
+    await expect(approval).toBeVisible();
+    await approval.getByRole("button", { name: "拒绝" }).click();
+    await expect(page.getByText(/denied by approval policy/).first()).toBeVisible();
+  });
+
+  test("runs a multi-step read/write loop", async ({ page }) => {
+    await page.goto("/", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "新建会话" }).last().click();
+    const composer = page.getByRole("textbox").first();
+    await composer.fill("multi");
+    await page.keyboard.press("Enter");
+    await expect(page.getByText("fs.read", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("fs.read", { exact: false })).toHaveCount(2);
+    await expect(page.getByText("已完成工具调用并通过审批。").last()).toBeVisible();
+    await page.screenshot({ path: "target/evidence/agent-rig/multi-step.png" });
+  });
 });

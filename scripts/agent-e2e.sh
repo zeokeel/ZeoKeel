@@ -15,11 +15,19 @@ import json,sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 def respond(body):
     messages=body.get("messages",[])
-    if any(m.get("role")=="tool" for m in messages):
-        return {"id":"chatcmpl-final","object":"chat.completion","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"已完成工具调用并通过审批。"}}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}
+    open("/tmp/zk-agent-fake.log","a").write("REQ roles="+str([m.get("role") for m in messages])+"\n")
     user=" ".join(str(m.get("content") or "") for m in messages if m.get("role")=="user")
+    tool_count=len([m for m in messages if m.get("role")=="tool"])
+    if tool_count>0 and "multi" not in user:
+        return {"id":"chatcmpl-final","object":"chat.completion","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"已完成工具调用并通过审批。"}}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}
+    if "multi" in user and tool_count>=2:
+        return {"id":"chatcmpl-final","object":"chat.completion","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"已完成工具调用并通过审批。"}}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}
     if "ask" in user:
         call={"id":"call_ask","type":"function","function":{"name":"ask_user_question","arguments":json.dumps({"questions":[{"id":"name","question":"你的名字？"}]})}}
+    elif "multi" in user and tool_count==0:
+        call={"id":"call_read","type":"function","function":{"name":"fs.read","arguments":json.dumps({"path":"agent-e2e.txt"})}}
+    elif "multi" in user and tool_count==1:
+        call={"id":"call_read2","type":"function","function":{"name":"fs.read","arguments":json.dumps({"path":"agent-e2e.txt"})}}
     else:
         call={"id":"call_write","type":"function","function":{"name":"fs.write","arguments":json.dumps({"path":"agent-e2e.txt","content":"hello from rig"})}}
     return {"id":"chatcmpl-tool","object":"chat.completion","choices":[{"index":0,"finish_reason":"tool_calls","message":{"role":"assistant","content":None,"tool_calls":[call]}}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}
