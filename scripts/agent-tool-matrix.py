@@ -27,7 +27,7 @@ rows = [
  ("working-directory","tool.working_directory","zeokeel/tool-working-directory","implemented",""),
  ("workspace-dependencies","tool.workspace_dependencies","zeokeel/tool-workspace-dependencies","implemented",""),
  ("worktree","tool.worktree","zeokeel/tool-worktree","implemented","argv, safe path"),
- ("call-timeout","-","agent-rig","partial","fixed 120s tool timeout"),
+ ("call-timeout","-","agent-rig","partial","ZEOKEEL_TOOL_TIMEOUT_MS (default 120s)"),
  ("tool-cordis","tool.cordis","zeokeel/tool-cordis","disabled","C2 forbids runtime plugin loading"),
  ("agent-team","tool.agent_team","zeokeel/tool-agent-team","experimental","explicit unsupported error"),
 ]

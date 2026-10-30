@@ -30,7 +30,7 @@ pub struct RigAgent {
     approval: Arc<dyn ApprovalGate>,
     streaming: bool,
     memory_dir: Option<PathBuf>,
-    cancelled: AtomicBool,
+    cancelled: Arc<AtomicBool>,
     runtime: tokio::runtime::Runtime,
 }
 
@@ -42,7 +42,7 @@ impl RigAgent {
             .enable_all()
             .build()
             .map_err(|error| AgentError::Invalid(format!("tokio runtime: {error}")))?;
-        Ok(Self { model, tools, preamble, approval: Arc::new(zk_kit_approval::GlobalGate), streaming: std::env::var("ZEOKEEL_AGENT_STREAMING").map(|value| value != "0").unwrap_or(true), memory_dir: std::env::var_os("ZEOKEEL_AGENT_MEMORY_DIR").map(PathBuf::from), cancelled: AtomicBool::new(false), runtime })
+        Ok(Self { model, tools, preamble, approval: Arc::new(zk_kit_approval::GlobalGate), streaming: std::env::var("ZEOKEEL_AGENT_STREAMING").map(|value| value != "0").unwrap_or(true), memory_dir: std::env::var_os("ZEOKEEL_AGENT_MEMORY_DIR").map(PathBuf::from), cancelled: Arc::new(AtomicBool::new(false)), runtime })
     }
 
     /// Enable rig-memory conversation persistence in `dir`.
@@ -74,6 +74,7 @@ impl RigAgent {
     }
 
     fn dynamic_tools(&self, context: &TurnContext, records: &Arc<Mutex<Vec<ToolCallRecord>>>, sink: &Arc<dyn EventSink>) -> Vec<DynamicTool> {
+        let cancelled = Arc::clone(&self.cancelled);
         let mut out = Vec::with_capacity(self.tools.len());
         for tool in &self.tools {
             let spec = tool.spec();
@@ -89,9 +90,11 @@ impl RigAgent {
             let approval_name = spec.name.clone();
             let records_for_tool = Arc::clone(records);
             let sink_for_tool = Arc::clone(sink);
+            let cancelled_for_tool = Arc::clone(&cancelled);
             out.push(DynamicTool::new(name, spec.description, parameters, move |args| {
                 let records_for_tool = Arc::clone(&records_for_tool);
                 let sink_for_tool = Arc::clone(&sink_for_tool);
+                let cancelled_for_tool = Arc::clone(&cancelled_for_tool);
                 let tool = Arc::clone(&callback_tool);
                 let context = callback_context.clone();
                 let approval = Arc::clone(&approval);
@@ -110,15 +113,17 @@ impl RigAgent {
                             return Ok(ToolOutput::text(result));
                         }
                     }
+                    if cancelled_for_tool.load(Ordering::SeqCst) { return Ok(ToolOutput::text("tool call cancelled".to_owned())); }
                     let args_text = serde_json::to_string(&args).unwrap_or_default();
                     sink_for_tool.emit(AgentEvent::ToolCallStarted { name: approval_name.clone(), args: args_text.clone() });
                     let tool_for_call = Arc::clone(&tool);
                     let context_for_call = context.clone();
-                    let outcome = tokio::time::timeout(std::time::Duration::from_secs(120), tokio::task::spawn_blocking(move || tool_for_call.call_json(&context_for_call, args))).await;
+                    let timeout_ms = std::env::var("ZEOKEEL_TOOL_TIMEOUT_MS").ok().and_then(|value| value.parse::<u64>().ok()).unwrap_or(120_000).clamp(1, 600_000);
+                    let outcome = tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), tokio::task::spawn_blocking(move || tool_for_call.call_json(&context_for_call, args))).await;
                     let outcome = match outcome {
                         Ok(Ok(result)) => result,
                         Ok(Err(error)) => Err(zk_contract_tool::ToolError::Io(format!("tool task failed: {error}"))),
-                        Err(_) => Err(zk_contract_tool::ToolError::Io("tool call timed out after 120s".to_owned())),
+                        Err(_) => Err(zk_contract_tool::ToolError::Io(format!("tool call timed out after {timeout_ms}ms"))),
                     };
                     match outcome {
                         Ok(text) => {
@@ -230,11 +235,12 @@ impl zk_kit_subagent::SubagentRunner for RigSubagentRunner {
         if depth >= zk_kit_subagent::MAX_DEPTH { return Err("subagent depth limit reached".to_owned()); }
         let model = self.model.clone();
         let tools = self.tools.clone();
-        let context = context.clone();
+        let mut child_context = context.clone();
+        child_context.conversation_id = format!("{}-sub-{}", context.conversation_id, depth.saturating_add(1));
         let prompt = prompt.to_owned();
         let handle = std::thread::spawn(move || {
             let agent = RigAgent::new(model, tools).map_err(|error| error.to_string())?.with_streaming(false);
-            agent.run_in(&context, &prompt).map(|reply| reply.text).map_err(|error| error.to_string())
+            agent.run_in(&child_context, &prompt).map(|reply| reply.text).map_err(|error| error.to_string())
         });
         handle.join().map_err(|_| "subagent thread panicked".to_owned())?
     }

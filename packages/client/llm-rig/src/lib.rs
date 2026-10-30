@@ -3,7 +3,7 @@
 //! @capability llm.provider.rig
 #![forbid(unsafe_code)]
 
-use rig_core::providers::openai::{OpenAIConfig, OpenAI};
+use rig_core::providers::openai::OpenAIConfig;
 use rig_core::operation::Completion;
 use rig_core::DynModel;
 use zk_contract_llm::{LlmError, LlmProvider};
@@ -11,7 +11,9 @@ use zk_contract_llm::{LlmError, LlmProvider};
 /// Provider configuration resolved from environment/settings.
 #[derive(Debug, Clone, Default)]
 pub struct RigConfig {
-    /// OpenAI-compatible endpoint (empty => OpenAI default).
+    /// Provider: openai | deepseek | anthropic | ollama.
+    pub provider: String,
+    /// OpenAI-compatible endpoint (empty => provider default).
     pub base_url: String,
     /// Bearer key.
     pub api_key: String,
@@ -24,6 +26,10 @@ impl RigConfig {
     #[must_use]
     pub fn from_env() -> Self {
         Self {
+            provider: {
+                let provider = env_first(&["ZEOKEEL_RIG_PROVIDER"]);
+                if provider.is_empty() { "openai".to_owned() } else { provider }
+            },
             base_url: env_first(&["ZEOKEEL_OPENAI_BASE_URL", "ZEOKEEL_DEV_OPENAI_BASE_URL"]),
             api_key: env_first(&["ZEOKEEL_OPENAI_API_KEY", "ZEOKEEL_DEV_OPENAI_API_KEY"]),
             model: {
@@ -46,10 +52,29 @@ pub fn model_from(config: &RigConfig) -> Result<DynModel<Completion>, LlmError> 
     if config.model.trim().is_empty() {
         return Err(LlmError::InvalidRequest("rig model is empty".to_owned()));
     }
-    let mut openai = OpenAIConfig::new(config.api_key.clone()).with_base_url(config.base_url.trim_end_matches('/').to_owned()).client();
-    let model: DynModel<Completion> = openai.chat(config.model.clone()).into();
-    let _: &mut OpenAI = &mut openai;
-    Ok(model)
+    match config.provider.as_str() {
+        "openai" => {
+            let openai = OpenAIConfig::new(config.api_key.clone()).with_base_url(config.base_url.trim_end_matches('/').to_owned()).client();
+            Ok(openai.chat(config.model.clone()).into())
+        }
+        "deepseek" => {
+            let base = if config.base_url.trim().is_empty() { "https://api.deepseek.com".to_owned() } else { config.base_url.trim_end_matches('/').to_owned() };
+            let client = OpenAIConfig::with_key(&rig_core::providers::openai::wire::DEEPSEEK, config.api_key.clone()).with_base_url(base).client();
+            Ok(client.chat(config.model.clone()).into())
+        }
+        "anthropic" => {
+            if config.api_key.trim().is_empty() { return Err(LlmError::InvalidRequest("anthropic api_key is empty".to_owned())); }
+            let mut anthropic = rig_core::providers::anthropic::AnthropicConfig::with_key(&rig_core::providers::anthropic::ANTHROPIC, config.api_key.clone());
+            if !config.base_url.trim().is_empty() { anthropic = anthropic.with_base_url(config.base_url.trim_end_matches('/')); }
+            Ok(anthropic.client().completion(config.model.clone()).into())
+        }
+        "ollama" => {
+            let base = if config.base_url.trim().is_empty() { "http://127.0.0.1:11434".to_owned() } else { config.base_url.trim_end_matches('/').to_owned() };
+            let client = rig_core::providers::ollama::OllamaConfig::new().with_base_url(base).with_api_key(config.api_key.clone()).client();
+            Ok(client.completion(config.model.clone()).into())
+        }
+        other => Err(LlmError::InvalidRequest(format!("unknown rig provider: {other}"))),
+    }
 }
 
 /// Default factory used by generated glue.
