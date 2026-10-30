@@ -7807,6 +7807,7 @@ dependencies = [
  "zk-srv-pricing",
  "zk-srv-settings",
  "zk-srv-skills",
+ "zk-srv-updates",
  "zk-srv-users",
  "zk-srv-wallet",
  "zk-store-session-sqlite",
@@ -8114,6 +8115,7 @@ dependencies = [
  "zk-srv-pricing",
  "zk-srv-settings",
  "zk-srv-skills",
+ "zk-srv-updates",
  "zk-srv-users",
  "zk-srv-wallet",
 ]
@@ -8317,6 +8319,18 @@ dependencies = [
  "uuid",
  "zip",
  "zk-kit-content",
+ "zk-kit-server",
+]
+
+[[package]]
+name = "zk-srv-updates"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "serde",
+ "serde_json",
+ "tokio",
+ "zk-contract-server",
  "zk-kit-server",
 ]
 

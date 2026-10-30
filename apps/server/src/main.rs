@@ -55,6 +55,7 @@ async fn main() -> Result<(), String> {
         .merge(zk_srv_skills::routes().with_state(state.clone()))
         .merge(zk_srv_connectors::routes().with_state(state.clone()))
         .merge(zk_srv_apps::routes().with_state(state.clone()))
+        .merge(zk_srv_updates::routes().with_state(state.clone()))
         .merge(zk_srv_wallet::routes().with_state(state.clone()))
         .merge(zk_srv_pricing::routes().with_state(state.clone()))
         .merge(zk_srv_gateway::routes().with_state(state.clone()))

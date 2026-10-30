@@ -35,6 +35,6 @@ printf '{"name":"admin-app","version":"1.0.0","description":"admin","icon":"","d
 curl -fsS -X POST "$BASE/api/client/v1/apps" -H "Authorization: Bearer $ADMIN_JWT" -F "manifest=</tmp/zk-admin-app.json" -F "wasm=@/tmp/zk-admin-app.wasm" >/dev/null
 mkdir -p target/evidence/m2/admin target/evidence/m3
 export ZEOKEEL_SKILL_ZIP=/tmp/zk-admin-skill.zip
-ZEOKEEL_ADMIN_URL="$BASE/admin" ZEOKEEL_ADMIN_PASSWORD="admin-pass" \
-  pnpm exec playwright test e2e/m2-admin.spec.ts e2e/m3-admin-skills.spec.ts e2e/m3-admin-connectors.spec.ts e2e/m4-admin-apps.spec.ts --reporter=line
+ZEOKEEL_ADMIN_URL="$BASE/admin" ZEOKEEL_PORTAL_URL="$BASE/portal" ZEOKEEL_ADMIN_PASSWORD="admin-pass" \
+  pnpm exec playwright test e2e/m2-admin.spec.ts e2e/m3-admin-skills.spec.ts e2e/m3-admin-connectors.spec.ts e2e/m4-admin-apps.spec.ts e2e/m5-portal.spec.ts --reporter=line
 echo "admin e2e ok"

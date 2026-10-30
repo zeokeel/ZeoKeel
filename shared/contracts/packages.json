@@ -224,6 +224,14 @@
     ]
   },
   {
+    "id": "zeokeel/updates",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "srv.updates"
+    ]
+  },
+  {
     "id": "zeokeel/users",
     "version": "0.1.0",
     "kind": "service",

@@ -1,4 +1,5 @@
 [packages]
+"srv.updates" = "zeokeel/updates"
 "ui.slot.apps" = "zeokeel/ui-apps"
 "admin.page.apps" = "zeokeel/admin-apps"
 "srv.app.db" = "zeokeel/app-db"

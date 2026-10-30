@@ -19,6 +19,7 @@ zk-srv-connectors = { path = "../../packages/server/connectors" }
 zk-srv-app-db = { path = "../../packages/server/app-db" }
 zk-srv-app-runtime = { path = "../../packages/server/app-runtime" }
 zk-srv-apps = { path = "../../packages/server/apps" }
+zk-srv-updates = { path = "../../packages/server/updates" }
 zk-srv-jobs = { path = "../../packages/server/jobs" }
 zk-srv-settings = { path = "../../packages/server/settings" }
 zk-srv-audit = { path = "../../packages/server/audit" }

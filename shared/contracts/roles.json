@@ -167,6 +167,12 @@
     "contract": "zk-contract-skill",
     "cardinality": "singleton"
   },
+  "srv.updates": {
+    "package": "zeokeel/updates",
+    "crate_name": "zk-srv-updates",
+    "contract": "zk-contract-server",
+    "cardinality": "singleton"
+  },
   "srv.users": {
     "package": "zeokeel/users",
     "crate_name": "zk-srv-users",

@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/updates"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Enterprise client update manifest/download (stable surface)"
+
+[role]
+name = "srv.updates"
+contract = "zk-contract-server"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-srv-updates" }
