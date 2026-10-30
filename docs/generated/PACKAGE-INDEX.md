@@ -2,11 +2,12 @@
 
 # Package Index
 
-edition `enterprise` · channel `official` · 42 packages
+edition `enterprise` · channel `official` · 43 packages
 
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
 | `admin.kit` | `zeokeel/admin-ui-kit` | `zk-admin-ui-kit` | `zk-contract-admin-ui` | singleton |
+| `admin.page.apps` | `zeokeel/admin-apps` | `zk-admin-admin-apps` | `zk-contract-admin-ui` | singleton |
 | `admin.page.audit` | `zeokeel/admin-audit` | `zk-admin-admin-audit` | `zk-contract-admin-ui` | singleton |
 | `admin.page.connectors` | `zeokeel/admin-connectors` | `zk-admin-admin-connectors` | `zk-contract-admin-ui` | singleton |
 | `admin.page.jobs` | `zeokeel/admin-jobs` | `zk-admin-admin-jobs` | `zk-contract-admin-ui` | singleton |

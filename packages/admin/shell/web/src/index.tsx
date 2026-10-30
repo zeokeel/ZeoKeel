@@ -2,9 +2,9 @@
 import { useState } from "react";
 import { api, setCsrf, clearCsrf, validateAdminLogin, assertValid } from "@zeokeel/admin-ui-kit";
 
-export type AdminPage = "users" | "wallet" | "pricing" | "audit" | "usage" | "jobs" | "skills" | "connectors" | "settings";
+export type AdminPage = "users" | "wallet" | "pricing" | "audit" | "usage" | "jobs" | "skills" | "connectors" | "apps" | "settings";
 const LABELS: Record<AdminPage, string> = {
-  users: "用户/角色", wallet: "钱包", pricing: "价格", audit: "审计", usage: "用量", jobs: "作业", skills: "技能", connectors: "连接器", settings: "系统设置",
+  users: "用户/角色", wallet: "钱包", pricing: "价格", audit: "审计", usage: "用量", jobs: "作业", skills: "技能", connectors: "连接器", apps: "应用", settings: "系统设置",
 };
 
 export function AdminShell(props: { renderPage: (page: AdminPage) => React.ReactNode }) {

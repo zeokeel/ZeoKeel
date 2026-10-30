@@ -1,4 +1,5 @@
 [packages]
+"admin.page.apps" = "zeokeel/admin-apps"
 "srv.app.db" = "zeokeel/app-db"
 "srv.app.runtime" = "zeokeel/app-runtime"
 "srv.apps" = "zeokeel/apps"

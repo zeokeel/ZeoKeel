@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+zk-admin-admin-apps = { path = "../../packages/admin/admin-apps" }
 zk-admin-admin-audit = { path = "../../packages/admin/admin-audit" }
 zk-admin-admin-connectors = { path = "../../packages/admin/admin-connectors" }
 zk-admin-admin-jobs = { path = "../../packages/admin/admin-jobs" }

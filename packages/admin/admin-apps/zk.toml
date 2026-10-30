@@ -1,0 +1,21 @@
+schema = 1
+id = "zeokeel/admin-apps"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "Admin WASM apps page (M4)"
+
+[role]
+name = "admin.page.apps"
+contract = "zk-contract-admin-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-admin-admin-apps" }
+ui = { package = "@zeokeel/admin-apps" }
+
+[[ui.contributions]]
+slot = "admin.page.apps"
+component = "page.apps"
+order = 10

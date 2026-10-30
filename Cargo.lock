@@ -7636,6 +7636,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-admin-admin-apps"
+version = "0.1.0"
+dependencies = [
+ "zk-contract-admin-ui",
+]
+
+[[package]]
 name = "zk-admin-admin-audit"
 version = "0.1.0"
 dependencies = [
@@ -7751,6 +7758,7 @@ name = "zk-composed"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "zk-admin-admin-apps",
  "zk-admin-admin-audit",
  "zk-admin-admin-connectors",
  "zk-admin-admin-jobs",

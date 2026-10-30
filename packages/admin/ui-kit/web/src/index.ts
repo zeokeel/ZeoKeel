@@ -60,3 +60,5 @@ export interface ConnectorAdmin {
   oauth_client_id: string | null;
   redirect_uri: string | null;
 }
+
+export interface AppAdmin { id: string; name: string; status: string; owner_id: string; version: string; wasm_sha256: string }

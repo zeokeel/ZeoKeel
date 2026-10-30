@@ -22,7 +22,8 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "@zeokeel/admin-skills": "workspace:*",
-    "@zeokeel/admin-connectors": "workspace:*"
+    "@zeokeel/admin-connectors": "workspace:*",
+    "@zeokeel/admin-apps": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
