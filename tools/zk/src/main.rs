@@ -849,8 +849,8 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
             sessions = Some(pkg);
         } else if pkg.role == "store.settings" {
             settings = Some(pkg);
-        } else if pkg.role.starts_with("srv.") {
-            // Server domain packages are wired by the server app/glue (M2).
+        } else if pkg.role.starts_with("srv.") || pkg.role.starts_with("admin.") {
+            // Server/admin packages are wired by their composition roots (M2).
         } else if pkg.role == "ui.kit" || pkg.role == "ui.shell" || pkg.role.starts_with("ui.slot.") {
             // UI-only packages are wired by the generated web registry, not the Rust glue.
         } else {

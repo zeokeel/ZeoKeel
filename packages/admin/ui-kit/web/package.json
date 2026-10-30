@@ -1,0 +1,1 @@
+{"name":"@zeokeel/admin-ui-kit","private":true,"version":"0.1.0","type":"module","main":"./src/index.ts","types":"./src/index.ts","peerDependencies":{"react":"^19"},"devDependencies":{"@types/react":"^19.3.0"}}

@@ -1,0 +1,17 @@
+{
+  "name": "@zeokeel/admin-pricing",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.tsx",
+  "types": "./src/index.tsx",
+  "peerDependencies": {
+    "react": "^19"
+  },
+  "dependencies": {
+    "@zeokeel/admin-ui-kit": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0"
+  }
+}

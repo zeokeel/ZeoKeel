@@ -1,0 +1,16 @@
+schema = 1
+id = "zeokeel/admin-shell"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "Admin login + shell layout + navigation"
+
+[role]
+name = "admin.shell"
+contract = "zk-contract-admin-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-admin-shell" }
+ui = { package = "@zeokeel/admin-shell" }

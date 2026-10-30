@@ -52,6 +52,51 @@ contract = "zk-contract-server"
 cardinality = "singleton"
 editions = ["enterprise"]
 
+[roles."admin.page.users"]
+contract = "zk-contract-admin-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[roles."admin.page.wallet"]
+contract = "zk-contract-admin-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[roles."admin.page.pricing"]
+contract = "zk-contract-admin-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[roles."admin.page.audit"]
+contract = "zk-contract-admin-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[roles."admin.page.usage"]
+contract = "zk-contract-admin-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[roles."admin.page.jobs"]
+contract = "zk-contract-admin-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[roles."admin.page.settings"]
+contract = "zk-contract-admin-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[roles."admin.kit"]
+contract = "zk-contract-admin-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[roles."admin.shell"]
+contract = "zk-contract-admin-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
 [roles."srv.http"]
 contract = "zk-contract-server"
 cardinality = "singleton"
@@ -128,6 +173,7 @@ editions = ["personal", "enterprise"]
 "zk.contract.config" = "zk-contract-config"
 "zk.contract.ui" = "zk-contract-ui"
 "zk.contract.server" = "zk-contract-server"
+"zk.contract.admin-ui" = "zk-contract-admin-ui"
 "zk.contract.gateway" = "zk-contract-gateway"
 "zk.contract.wallet" = "zk-contract-wallet"
 "zk.contract.user" = "zk-contract-user"

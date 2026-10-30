@@ -1,0 +1,11 @@
+[package]
+name = "zk-admin-admin-jobs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+zk-contract-admin-ui = { path = "../../contracts/admin-ui" }
+
+[lints]
+workspace = true

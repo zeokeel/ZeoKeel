@@ -1,0 +1,16 @@
+schema = 1
+id = "zeokeel/admin-ui-kit"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "Admin shared fetch/CSRF/types"
+
+[role]
+name = "admin.kit"
+contract = "zk-contract-admin-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-admin-ui-kit" }
+ui = { package = "@zeokeel/admin-ui-kit" }

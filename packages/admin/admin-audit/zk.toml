@@ -1,0 +1,16 @@
+schema = 1
+id = "zeokeel/admin-audit"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "Admin audit page"
+
+[role]
+name = "admin.page.audit"
+contract = "zk-contract-admin-ui"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-admin-admin-audit" }
+ui = { package = "@zeokeel/admin-audit" }

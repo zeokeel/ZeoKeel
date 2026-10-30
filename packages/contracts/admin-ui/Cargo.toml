@@ -1,0 +1,11 @@
+[package]
+name = "zk-contract-admin-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+
+[lints]
+workspace = true

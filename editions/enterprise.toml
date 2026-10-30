@@ -1,4 +1,13 @@
 [packages]
+"admin.page.settings" = "zeokeel/admin-settings"
+"admin.page.jobs" = "zeokeel/admin-jobs"
+"admin.page.usage" = "zeokeel/admin-usage"
+"admin.page.audit" = "zeokeel/admin-audit"
+"admin.page.pricing" = "zeokeel/admin-pricing"
+"admin.page.wallet" = "zeokeel/admin-wallet"
+"admin.page.users" = "zeokeel/admin-users"
+"admin.shell" = "zeokeel/admin-shell"
+"admin.kit" = "zeokeel/admin-ui-kit"
 "srv.auth.session" = "zeokeel/auth"
 "srv.users" = "zeokeel/users"
 "srv.wallet" = "zeokeel/wallet"
