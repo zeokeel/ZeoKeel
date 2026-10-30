@@ -113,3 +113,6 @@ pub fn routes() -> Router<AppState> {
         .route("/api/admin/pricing/{model}", put(upsert))
         .route("/v1/models", get(models))
 }
+
+/// Immutable migrations owned by this domain.
+pub const MIGRATIONS: &[(&str, &str)] = &[("0004_pricing", include_str!("../migrations/0004_pricing.sql"))];

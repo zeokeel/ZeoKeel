@@ -189,3 +189,6 @@ pub fn routes() -> Router<AppState> {
         .route("/api/admin/users", get(list).post(create))
         .route("/api/admin/users/{id}", patch(update).delete(remove))
 }
+
+/// Users domain owns no tables yet (auth owns identity tables).
+pub const MIGRATIONS: &[(&str, &str)] = &[];

@@ -241,6 +241,22 @@ pub async fn audit(state: &AppState, actor: uuid::Uuid, action: &str, target: &s
     Ok(())
 }
 
+/// Apply an ordered, immutable migration list and record checksums.
+pub async fn run_migrations(pool: &sqlx::PgPool, migrations: &[(&str, &str)]) -> Result<(), sqlx::Error> {
+    for (id, sql) in migrations {
+        let mut hash = Sha256::new();
+        hash.update(sql.as_bytes());
+        let checksum = format!("{:x}", hash.finalize());
+        sqlx::raw_sql(sql).execute(pool).await?;
+        sqlx::query("INSERT INTO schema_migrations (id, checksum) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING")
+            .bind(id)
+            .bind(checksum)
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
 /// Bootstrap the first super admin when the users table is empty.
 pub async fn ensure_bootstrap_admin(state: &AppState, username: &str, password: &str) -> Result<bool, sqlx::Error> {
     let count: i64 = sqlx::query_scalar("SELECT count(*) FROM users").fetch_one(&state.pool).await?;

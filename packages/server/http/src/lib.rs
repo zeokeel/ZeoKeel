@@ -6,7 +6,6 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use zk_contract_server::ServerModule;
@@ -23,27 +22,8 @@ pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
     PgPoolOptions::new().max_connections(16).connect(database_url).await
 }
 
-/// Apply the immutable M1 schema and record its checksum.
-///
-/// The SQL file is embedded; history edits are forbidden (add a new file instead).
-pub async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
-    let migrations: [(&str, &str); 2] = [
-        ("0001_init", include_str!("../migrations/0001_init.sql")),
-        ("0002_gateway", include_str!("../migrations/0002_gateway.sql")),
-    ];
-    for (id, sql) in migrations {
-        let mut hash = Sha256::new();
-        hash.update(sql.as_bytes());
-        let checksum = format!("{:x}", hash.finalize());
-        sqlx::raw_sql(sql).execute(pool).await?;
-        sqlx::query("INSERT INTO schema_migrations (id, checksum) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING")
-            .bind(id)
-            .bind(checksum)
-            .execute(pool)
-            .await?;
-    }
-    Ok(())
-}
+/// Core migration: only the migration ledger; domains own their schema.
+pub const MIGRATIONS: &[(&str, &str)] = &[("0001_core", include_str!("../migrations/0001_core.sql"))];
 
 /// Build server state (fresh ephemeral JWT key).
 #[must_use]

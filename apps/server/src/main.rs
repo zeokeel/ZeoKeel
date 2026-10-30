@@ -7,7 +7,7 @@
 use axum::Router;
 use tower_http::services::{ServeDir, ServeFile};
 use zk_kit_server::ensure_bootstrap_admin;
-use zk_srv_http::{connect, router_from, run_migrations, state};
+use zk_srv_http::{connect, router_from, state};
 
 const DEFAULT_ADDR: &str = "127.0.0.1:8787";
 
@@ -18,7 +18,19 @@ async fn main() -> Result<(), String> {
     let pool = connect(&database_url)
         .await
         .map_err(|error| format!("connect PostgreSQL: {error}"))?;
-    run_migrations(&pool)
+    let migrations: Vec<(&str, &str)> = zk_srv_http::MIGRATIONS
+        .iter()
+        .chain(zk_srv_auth_local::MIGRATIONS.iter())
+        .chain(zk_srv_users::MIGRATIONS.iter())
+        .chain(zk_srv_wallet::MIGRATIONS.iter())
+        .chain(zk_srv_pricing::MIGRATIONS.iter())
+        .chain(zk_srv_gateway::MIGRATIONS.iter())
+        .chain(zk_srv_audit::MIGRATIONS.iter())
+        .chain(zk_srv_settings::MIGRATIONS.iter())
+        .chain(zk_srv_jobs::MIGRATIONS.iter())
+        .copied()
+        .collect();
+    zk_kit_server::run_migrations(&pool, &migrations)
         .await
         .map_err(|error| format!("apply migrations: {error}"))?;
     let state = state(pool);

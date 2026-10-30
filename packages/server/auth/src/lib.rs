@@ -216,3 +216,6 @@ pub fn routes() -> Router<AppState> {
 
 /// Re-export bootstrap helper for the composition root.
 pub use zk_kit_server::ensure_bootstrap_admin;
+
+/// Immutable migrations owned by this domain.
+pub const MIGRATIONS: &[(&str, &str)] = &[("0002_auth", include_str!("../migrations/0002_auth.sql"))];

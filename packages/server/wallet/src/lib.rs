@@ -156,3 +156,6 @@ pub fn routes() -> Router<AppState> {
         .route("/api/admin/wallet", get(admin_list))
         .route("/api/admin/wallet/{user_id}/adjust", post(admin_adjust))
 }
+
+/// Immutable migrations owned by this domain.
+pub const MIGRATIONS: &[(&str, &str)] = &[("0003_wallet", include_str!("../migrations/0003_wallet.sql"))];

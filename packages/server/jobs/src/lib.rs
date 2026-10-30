@@ -173,3 +173,6 @@ pub fn routes() -> Router<AppState> {
         .route("/api/admin/jobs", get(list))
         .route("/api/admin/jobs/{job}/run", post(trigger))
 }
+
+/// Immutable migrations owned by this domain.
+pub const MIGRATIONS: &[(&str, &str)] = &[("0008_jobs", include_str!("../migrations/0008_jobs.sql"))];

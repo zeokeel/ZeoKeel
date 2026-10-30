@@ -43,3 +43,4 @@
 - `zk-srv-http` 仅 health/ready/migrations/router base；`apps/server` merge 各域 `routes()`。
 - 真实 PG：`scripts/srv-auth-test.sh` 全链路通过；`scripts/admin-e2e.sh` 6 Playwright tests 通过。
 - 管理台已拆包并由 `zk compose` 生成 registry；`apps/admin` 只保留 registry 组合。
+- 迁移 SQL 已按域归包；`apps/server` 按 core→auth→users→wallet→pricing→gateway→audit→settings→jobs 顺序执行。

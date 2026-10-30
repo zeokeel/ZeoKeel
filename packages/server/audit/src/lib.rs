@@ -59,3 +59,6 @@ pub fn routes() -> Router<AppState> {
         .route("/api/admin/audit", get(audit))
         .route("/api/admin/usage", get(usage))
 }
+
+/// Immutable migrations owned by this domain.
+pub const MIGRATIONS: &[(&str, &str)] = &[("0006_audit", include_str!("../migrations/0006_audit.sql"))];

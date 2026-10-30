@@ -101,3 +101,6 @@ pub fn routes() -> Router<AppState> {
         .route("/api/admin/settings/{key}", put(admin_put))
         .route("/api/client/v1/config/bootstrap", get(bootstrap))
 }
+
+/// Immutable migrations owned by this domain.
+pub const MIGRATIONS: &[(&str, &str)] = &[("0007_settings", include_str!("../migrations/0007_settings.sql"))];

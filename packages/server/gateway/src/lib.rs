@@ -261,3 +261,6 @@ pub fn routes() -> Router<AppState> {
     Router::new().route("/v1/responses", post(responses))
 }
 
+
+/// Immutable migrations owned by this domain.
+pub const MIGRATIONS: &[(&str, &str)] = &[("0005_gateway", include_str!("../migrations/0005_gateway.sql"))];
