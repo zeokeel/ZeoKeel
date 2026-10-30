@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { buildAuthorizeUrl, createPkcePair, exchangeCode, refreshOAuthToken, tokenNeedsRefresh, type OAuthMetadata } from "../src/oauth";
+import { buildAuthorizeUrl, clearConnectorTokens, createPkcePair, exchangeCode, loadConnectorTokens, refreshOAuthToken, saveConnectorTokens, savePendingAuth, takePendingAuth, tokenNeedsRefresh, type OAuthMetadata } from "../src/oauth";
 
 const metadata: OAuthMetadata = {
   authorizeUrl: "https://auth.example/authorize",
@@ -32,6 +32,22 @@ describe("connector oauth", () => {
     const refreshed = await refreshOAuthToken(metadata, tokens, 2_000);
     expect(refreshed.access_token).toBe("a2");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("persists connector tokens locally and clears them", async () => {
+    localStorage.clear();
+    saveConnectorTokens("c1", { access_token: "a", refresh_token: "r", expires_at: 123 });
+    expect(loadConnectorTokens("c1")?.access_token).toBe("a");
+    clearConnectorTokens("c1");
+    expect(loadConnectorTokens("c1")).toBeNull();
+  });
+
+  it("round-trips pending PKCE state", () => {
+    sessionStorage.clear();
+    savePendingAuth({ connectorId: "c1", verifier: "v", state: "s", metadata });
+    const pending = takePendingAuth();
+    expect(pending?.connectorId).toBe("c1");
+    expect(takePendingAuth()).toBeNull();
   });
 
   it("fails closed on refresh error", async () => {

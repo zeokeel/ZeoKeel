@@ -5,6 +5,8 @@ export interface ConnectorsPanelProps {
   open: boolean;
   items: ConnectorItem[];
   error: string | null;
+  authorized: string[];
+  onAuthorize: (item: ConnectorItem) => void;
   onToggle: (item: ConnectorItem) => void;
   onClose: () => void;
 }

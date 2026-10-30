@@ -11,12 +11,15 @@ export interface SkillItem {
   can_install: boolean;
 }
 
+export interface ConnectorOAuthInfo { clientId: string; scopes: string[]; redirectUri: string; authorizeUrl: string }
+
 export interface ConnectorItem {
   id: string;
   name: string;
   transport: string;
   enabled: boolean;
   can_enable: boolean;
+  oauth: ConnectorOAuthInfo | null;
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -66,7 +69,14 @@ export async function fetchConnectors(session: AuthSession, serverUrl: string): 
     const transport = text(value["transport"]);
     const canEnable = bool(value["can_enable"]);
     if (name === null || transport === null || canEnable === null) return [];
-    return [{ id: text(value["id"]) ?? name, name, transport, enabled: bool(value["enabled"]) ?? false, can_enable: canEnable }];
+    const oauthValue = record(value["oauth"]);
+    const oauth = oauthValue === null ? null : {
+      clientId: text(oauthValue["client_id"]) ?? "",
+      scopes: Array.isArray(oauthValue["scopes"]) ? oauthValue["scopes"].flatMap((scope) => typeof scope === "string" ? [scope] : []) : [],
+      redirectUri: text(oauthValue["redirect_uri"]) ?? "",
+      authorizeUrl: text(oauthValue["authorize_url"]) ?? "",
+    };
+    return [{ id: text(value["id"]) ?? name, name, transport, enabled: bool(value["enabled"]) ?? false, can_enable: canEnable, oauth: oauth?.clientId === "" ? null : oauth }];
   });
 }
 

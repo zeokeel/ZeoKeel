@@ -80,3 +80,64 @@ export async function refreshOAuthToken(metadata: OAuthMetadata, tokens: OAuthTo
 export function tokenNeedsRefresh(tokens: OAuthTokens, now = Date.now()): boolean {
   return tokens.expires_at - now < 60_000;
 }
+
+
+const TOKEN_KEY = "zk.connector.oauth";
+const PENDING_KEY = "zk.connector.pkce";
+
+export function loadConnectorTokens(connectorId: string): OAuthTokens | null {
+  try {
+    const raw = localStorage.getItem(TOKEN_KEY);
+    if (raw === null) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const value = parsed as Record<string, OAuthTokens>;
+    const tokens = value[connectorId];
+    if (tokens === undefined) return null;
+    return typeof tokens.access_token === "string" && typeof tokens.refresh_token === "string" && typeof tokens.expires_at === "number" ? tokens : null;
+  } catch { return null; }
+}
+
+export function saveConnectorTokens(connectorId: string, tokens: OAuthTokens): void {
+  const raw = localStorage.getItem(TOKEN_KEY);
+  let store: Record<string, OAuthTokens> = {};
+  if (raw !== null) {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed === "object" && parsed !== null) store = parsed as Record<string, OAuthTokens>;
+    } catch { store = {}; }
+  }
+  store[connectorId] = tokens;
+  localStorage.setItem(TOKEN_KEY, JSON.stringify(store));
+}
+
+export function clearConnectorTokens(connectorId: string): void {
+  const raw = localStorage.getItem(TOKEN_KEY);
+  if (raw === null) return;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return;
+    const store = parsed as Record<string, OAuthTokens>;
+    delete store[connectorId];
+    localStorage.setItem(TOKEN_KEY, JSON.stringify(store));
+  } catch { /* ignore */ }
+}
+
+interface PendingAuth { connectorId: string; verifier: string; state: string; metadata: OAuthMetadata }
+
+export function savePendingAuth(pending: PendingAuth): void {
+  sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending));
+}
+
+export function takePendingAuth(): PendingAuth | null {
+  const raw = sessionStorage.getItem(PENDING_KEY);
+  if (raw === null) return null;
+  sessionStorage.removeItem(PENDING_KEY);
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const value = parsed as Record<string, unknown>;
+    if (typeof value["connectorId"] !== "string" || typeof value["verifier"] !== "string" || typeof value["state"] !== "string" || typeof value["metadata"] !== "object" || value["metadata"] === null) return null;
+    return { connectorId: value["connectorId"], verifier: value["verifier"], state: value["state"], metadata: value["metadata"] as OAuthMetadata };
+  } catch { return null; }
+}
