@@ -23,7 +23,7 @@ M0–M5 已实现；M6 做加固与 1.0 发布：安全评审、备份恢复、�
 ## 4. 成功指标
 
 - `scripts/security-audit.sh` 0 高危；`scripts/backup-restore.sh` 演练成功；`scripts/fault-injection.sh` 不损坏数据。
-- e2e axe 全绿；性能预算报告；两次构建产物 hash 一致（或记录已知非确定项）。
+- e2e axe 全绿；性能预算报告；两次构建 sha 必须一致；非确定项需 ADR 消除，不得以记录代替通过。
 - SBOM/许可证清单；文档齐全；独立评审 APPROVED。
 
 ## 5. 风险/边界
