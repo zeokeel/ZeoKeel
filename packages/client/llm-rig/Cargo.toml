@@ -6,6 +6,8 @@ license.workspace = true
 
 [dependencies]
 rig-core = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
 zk-contract-llm = { path = "../../contracts/llm" }
 
 [lints]

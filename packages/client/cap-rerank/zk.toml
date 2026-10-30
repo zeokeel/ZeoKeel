@@ -3,7 +3,7 @@ id = "zeokeel/cap-rerank"
 kind = "capability"
 version = "0.1.0"
 license = "MIT"
-summary = "Rerank (capability unavailable without provider)"
+summary = "Rerank (rig media model; dynamic availability)"
 
 [role]
 name = "media.rerank"

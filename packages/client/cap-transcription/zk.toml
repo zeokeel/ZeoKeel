@@ -3,7 +3,7 @@ id = "zeokeel/cap-transcription"
 kind = "capability"
 version = "0.1.0"
 license = "MIT"
-summary = "Transcription (capability unavailable without provider)"
+summary = "Transcription (rig media model; dynamic availability)"
 
 [role]
 name = "media.transcription"

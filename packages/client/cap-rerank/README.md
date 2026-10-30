@@ -1,8 +1,14 @@
 # cap-rerank
 
-**功能说明**：rerank（media.rerank） 能力 —— 本轮**诚实不可用**：rig rerank 已在 core 暴露，但未配置 rerank provider。
+**功能说明**：文档重排（`media.rerank`）能力 —— 通过 rig-core rerank 模型实现。rig-core 0.45 的
+OpenAI wire **没有 rerank 端点**（`RerankQuirks::unsupported`），唯一自带 rerank wire 的 provider 是
+Voyage AI，因此本包默认/仅支持 `provider = voyageai`；`openai` 会返回明确的配置错误而不是假装可用。
+**动态可用**：没有配置 rerank 模型时 `available() == false`，`unavailable_reason()` 给出具体原因；
+调用方统一映射 `CAPABILITY_UNAVAILABLE`，不得静默丢失能力。
 
-- `available() == false`；`unavailable_reason()` 返回具体原因；调用方统一映射
-  `CAPABILITY_UNAVAILABLE`，不得静默丢失能力。
-- 未来接入 provider 后由 host 调用 `set_available(true)`；rig 的 image/audio 还需在
-  `Cargo.toml` 启用对应 feature，并新增 provider 适配包。
+- API：`configure(model)` / `configure_from_config(&MediaConfig)` / `configure_from_env()` /
+  `unconfigure()`；`rerank(query, documents)` 返回按相关性排序的
+  `RerankHit { index, score, document }`。
+- 配置（env）：`ZEOKEEL_RERANK_PROVIDER`（默认 `voyageai`）、`ZEOKEEL_RERANK_BASE_URL`、
+  `ZEOKEEL_RERANK_API_KEY`（必填）、`ZEOKEEL_RERANK_MODEL`（默认 `rerank-2.5`）。
+- 企业版：网关只支持 Responses（C7），不提供 rerank 端点，能力保持不可用并给出原因。

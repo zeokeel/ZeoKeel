@@ -3,7 +3,7 @@ id = "zeokeel/cap-audio"
 kind = "capability"
 version = "0.1.0"
 license = "MIT"
-summary = "Audio generation (capability unavailable without provider)"
+summary = "Audio generation (rig media model; dynamic availability)"
 
 [role]
 name = "media.audio"

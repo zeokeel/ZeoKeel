@@ -39,7 +39,7 @@ dirs = "6"
 tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
 futures = "0.3"
 regex = "1"
-rig-core = { version = "0.45", default-features = false, features = ["derive", "reqwest", "rustls"] }
+rig-core = { version = "0.45", default-features = false, features = ["derive", "reqwest", "rustls", "audio", "image"] }
 rig-agent = "0.45"
 rig-memory = { version = "0.45", features = ["fs"] }
 http = "1"

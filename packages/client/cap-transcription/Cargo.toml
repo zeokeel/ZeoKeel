@@ -3,6 +3,14 @@ name = "zk-cap-transcription"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+
 [dependencies]
+rig-core = { workspace = true }
+thiserror = { workspace = true }
+zk-llm-rig = { path = "../llm-rig" }
+
+[dev-dependencies]
+futures = { workspace = true }
+
 [lints]
 workspace = true

@@ -3,7 +3,7 @@ id = "zeokeel/cap-image"
 kind = "capability"
 version = "0.1.0"
 license = "MIT"
-summary = "Image generation (capability unavailable without provider)"
+summary = "Image generation (rig media model; dynamic availability)"
 
 [role]
 name = "media.image"
