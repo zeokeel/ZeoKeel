@@ -86,10 +86,10 @@
 | 方法与路径 | 用途 | 鉴权/权限点 | 请求/响应要点 | 幂等 | 主要错误 |
 | --- | --- | --- | --- | --- | --- |
 | `GET /skills` | 可见技能目录（approved ∧ 上架 ∧ 授权） | `skills:read` | resp: items[{name,version,title,category,sha256,min_client_version,enforced}] | 是 | — |
-| `GET /skills/{name}/{version}/archive` | 下载归档（zip/tar.gz） | `skills:read` | octet-stream；响应头 `X-ZeoKeel-Skill-Sha256`（整树） | 是 | SKILL_NOT_FOUND、CHECKSUM_MISMATCH |
+| `GET /skills/{name}/{version}/archive` | 下载归档（zip/tar.gz） | `skills:read` | octet-stream；响应头 `X-ZeoKeel-Skill-Sha256`（**归档哈希**；整树哈希客户端计算，ADR-061） | 是 | SKILL_NOT_FOUND、CHECKSUM_MISMATCH |
 | `POST /skills` · `DELETE /skills/{name}/{version}` | 上传新版本（员工待审；管理员代传即通过）／撤回（仅 pending） | `skills:publish` | multipart: archive + manifest；resp: status(pending/approved)、version | 否；同 name+version 不可覆盖（409） | CONFLICT、VALIDATION、PENDING_LIMIT、QUOTA_EXCEEDED |
 
-规则：服务端**只存/审/分发**，技能在客户端执行（DSH 格式：`SKILL.md` + frontmatter + 随包脚本）；整树 sha256 由服务端计算、客户端安装后重算比对，不一致拒绝执行；版本号永久占位、同版本不可覆盖；强制更新见 §8 与 §11。
+规则：服务端**只存/审/分发**，技能在客户端执行（DSH 格式：`SKILL.md` + frontmatter + 随包脚本）；服务端只读归档元数据并计算归档 sha256（ADR-061），整树 sha256 由客户端解压后计算/重算，不一致拒绝执行；版本号永久占位、同版本不可覆盖；强制更新比较版本 + 归档 sha256（见 §8/§11）。
 
 ### 2.5 connectors — 企业 MCP 下发
 

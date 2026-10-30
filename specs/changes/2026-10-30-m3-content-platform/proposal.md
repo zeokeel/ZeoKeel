@@ -3,9 +3,10 @@
 - 状态：`approved`
 - Owner：lead
 - 日期：2026-10-30
-- 关联：`docs/12-roadmap.md` M3；`docs/13` ADR-041；`docs/15` D1–D67；`docs/20`
-- 评审：`docs/reviews/2026-10-30-m3-plan.md`（R6 APPROVED）
-- 变更预算：服务端 skills/connectors + 管理台页面 + 客户端安装；需拆子切片
+- 关联：`docs/12-roadmap.md` M3；`docs/07` §5–§6；`docs/04` §2.4–§2.5；`docs/13` ADR-060/061；`docs/21`
+- 评审：docs/reviews/2026-10-30-m3-plan.md
+- 评审结论：R6 APPROVED；R7 CHANGES-REQUESTED（已 reopen）
+- 变更预算：M3 全量（服务端 content/skills/connectors + 管理台 + 客户端安装 + 证据）；按 tasks 分切片提交
 
 ## 1. 背景 / 问题
 
@@ -49,7 +50,7 @@ M1/M2 已能登录、网关对话、扣费、bootstrap 模型目录。M3 要交�
 | zip 校验与压缩炸弹 | 高 | 限制 16MB、条目数、路径穿越、SKILL.md 必填；单测 |
 | 技能版本强制更新冲突 | 中 | sha256 整树 + 客户端版本比较；e2e |
 | 连接器 secret 泄漏 | 高 | 客户端本地存储；日志脱敏；bootstrap 不含 secret |
-| 存储位置 | 中 | 服务端文件系统 `skills/` + DB 元数据；Docker volume |
+| 存储位置 | 中 | 归档存 PG BYTEA（docs/06），沿用 PG 备份/恢复 |
 
 ## 7. 需要用户拍板
 
@@ -60,14 +61,11 @@ M1/M2 已能登录、网关对话、扣费、bootstrap 模型目录。M3 要交�
 
 ## 8. 变更预算与拆分
 
-预计 40+ 文件，拆：
-1. `m3-skills-server`（本切片）：DB/契约/服务端 skills 包/管理台页面/curl 测试。
-2. `m3-connectors`：连接器服务端 + 客户端。
-3. `m3-client-install`：客户端安装/更新/冲突 + bootstrap 消费。
+本 change 覆盖 M3 全量，tasks 内分 3 个可独立验证切片（skills server/admin、connectors、client install），不另建绕过 M3 验收的子 spec。
 
 ## 9. 复用与已有实现（C17）
 
 - 已搜索：`zk capability --check`、`docs/generated/CAPABILITY-INDEX.md`、`rg "skills|connectors" packages`。
 - 可复用：`zk-srv-http` 迁移执行、`zk-kit-server` auth/audit/admin guard、`admin-ui-kit` API/表单、`ui-kit` 六态组件。
-- 本次新增可复用能力：无新增 kit；技能包校验函数放 `packages/server/skills`，后续连接器不复制。
+- 本次新增可复用能力：`zk-kit-content` 持有归档元数据/哈希规范化；`srv.content`/`srv.skills`/客户端 golden 复用，不复制。
 - 为什么不能复用：现有无 store 域；服务端 admin 页面与客户端 bootstrap 已有 seam，可复用。
