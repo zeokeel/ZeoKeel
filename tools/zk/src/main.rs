@@ -54,7 +54,11 @@ fn run() -> Result<()> {
             let keyword = rest.first().context("usage: zk find <keyword>")?.clone();
             find(&root, &keyword)
         }
-        "lint" => lint(&root, rest.iter().any(|a| a == "--duplicates")),
+        "lint" => lint(
+            &root,
+            rest.iter().any(|a| a == "--duplicates"),
+            rest.iter().any(|a| a == "--write-baseline"),
+        ),
         "channel" => channel_command(&root, &rest),
         "db" => {
             let sub = rest.first().map(String::as_str).unwrap_or("");
@@ -2474,20 +2478,287 @@ fn find(root: &Path, keyword: &str) -> Result<()> {
     Ok(())
 }
 
-fn lint(root: &Path, duplicates: bool) -> Result<()> {
+fn lint(root: &Path, duplicates: bool, write_baseline: bool) -> Result<()> {
     let mut bad: Vec<String> = Vec::new();
-    for base in ["packages", "apps"] {
+    for base in ["packages", "apps", "crates", "tools"] {
         scan_forbidden_dirs(&root.join(base), root, &mut bad)?;
     }
     if !bad.is_empty() {
         bail!("forbidden shared-code locations: {}", bad.join(", "));
     }
-    if duplicates {
-        println!("lint: duplicate detector is a M0 follow-up task (docs/25 T20); path/import checks passed");
-    } else {
+    if !duplicates {
         println!("lint: ok (no forbidden utils/helpers/common dirs)");
+        return Ok(());
+    }
+    let report = detect_duplicate_windows(root)?;
+    let baseline_path = root.join("duplication-baseline.json");
+    if write_baseline {
+        let baseline = serde_json::json!({
+            "schema": 1,
+            "generated_by": "zk lint --duplicates --write-baseline",
+            "files": report.files,
+            "clone_windows": report.clone_windows,
+        });
+        fs::write(
+            &baseline_path,
+            format!("{}\n", serde_json::to_string_pretty(&baseline)?),
+        )?;
+        println!(
+            "lint: wrote baseline ({} files, {} clone windows)",
+            report.files, report.clone_windows
+        );
+        return Ok(());
+    }
+    let baseline: Option<serde_json::Value> = if baseline_path.is_file() {
+        Some(serde_json::from_str(&fs::read_to_string(&baseline_path)?)?)
+    } else {
+        None
+    };
+    let Some(baseline) = baseline else {
+        bail!(
+            "lint: {} missing; run `zk lint --duplicates --write-baseline` and commit it (docs/25 §4)",
+            baseline_path.display()
+        );
+    };
+    let allowed = baseline
+        .get("clone_windows")
+        .and_then(serde_json::Value::as_u64)
+        .context("duplication-baseline.json: clone_windows must be a number")?;
+    if report.clone_windows > allowed {
+        bail!(
+            "lint: duplicate code ratchet exceeded: {} clone windows > baseline {} (docs/25 §4; refactor to reuse or get an ADR exception)",
+            report.clone_windows,
+            allowed
+        );
+    }
+    println!(
+        "lint: duplicates ok ({} files, {} clone windows <= baseline {})",
+        report.files, report.clone_windows, allowed
+    );
+    Ok(())
+}
+
+/// Duplicate-window report (docs/25 §4 ratchet).
+struct DuplicateReport {
+    files: u64,
+    clone_windows: u64,
+}
+
+struct Window {
+    file: usize,
+    start: usize,
+    shingles: Vec<u64>,
+}
+
+const WINDOW_LINES: usize = 30;
+const SHINGLE_LINES: usize = 7;
+const NEAR_SIMILARITY_PERCENT: u64 = 70;
+
+fn detect_duplicate_windows(root: &Path) -> Result<DuplicateReport> {
+    let mut files = Vec::new();
+    for base in ["packages", "crates", "apps", "tools"] {
+        collect_rust_files(&root.join(base), &mut files)?;
+    }
+    let mut windows: Vec<Window> = Vec::new();
+    let mut file_count = 0u64;
+    for (file_index, file) in files.iter().enumerate() {
+        let Ok(text) = fs::read_to_string(file) else {
+            continue;
+        };
+        let lines: Vec<String> = text
+            .lines()
+            .map(normalize_rust_line)
+            .filter(|line| !line.is_empty())
+            .collect();
+        if lines.len() < WINDOW_LINES {
+            continue;
+        }
+        file_count = file_count.saturating_add(1);
+        for start in 0..=lines.len().saturating_sub(WINDOW_LINES) {
+            let window = lines
+                .get(start..start.saturating_add(WINDOW_LINES))
+                .context("duplicate window slice")?;
+            let mut shingles = Vec::with_capacity(window.len().saturating_sub(SHINGLE_LINES));
+            for offset in 0..=window.len().saturating_sub(SHINGLE_LINES) {
+                let end = offset.saturating_add(SHINGLE_LINES);
+                let text = window
+                    .get(offset..end)
+                    .context("duplicate shingle slice")?
+                    .join("\u{1f}");
+                shingles.push(fnv1a(text.as_bytes()));
+            }
+            shingles.sort_unstable();
+            shingles.dedup();
+            windows.push(Window {
+                file: file_index,
+                start,
+                shingles,
+            });
+        }
+    }
+    // Candidate pairs share at least one shingle; then compare exact/near similarity.
+    let mut buckets: BTreeMap<u64, Vec<usize>> = BTreeMap::new();
+    for (index, window) in windows.iter().enumerate() {
+        for hash in &window.shingles {
+            let bucket = buckets.entry(*hash).or_default();
+            if !bucket.contains(&index) {
+                bucket.push(index);
+            }
+        }
+    }
+    let mut seen: BTreeSet<(usize, usize)> = BTreeSet::new();
+    let mut clones = 0u64;
+    for bucket in buckets.values() {
+        if bucket.len() < 2 || bucket.len() > 256 {
+            continue;
+        }
+        for left in 0..bucket.len() {
+            for right in left.saturating_add(1)..bucket.len() {
+                let Some(a) = bucket.get(left) else { continue };
+                let Some(b) = bucket.get(right) else { continue };
+                let pair = if a < b { (*a, *b) } else { (*b, *a) };
+                if !seen.insert(pair) {
+                    continue;
+                }
+                let Some(left_window) = windows.get(*a) else {
+                    continue;
+                };
+                let Some(right_window) = windows.get(*b) else {
+                    continue;
+                };
+                if left_window.file == right_window.file
+                    && left_window.start.abs_diff(right_window.start) < WINDOW_LINES
+                {
+                    continue;
+                }
+                if jaccard_percent(&left_window.shingles, &right_window.shingles)
+                    >= NEAR_SIMILARITY_PERCENT
+                {
+                    clones = clones.saturating_add(1);
+                }
+            }
+        }
+    }
+    Ok(DuplicateReport {
+        files: file_count,
+        clone_windows: clones,
+    })
+}
+
+fn jaccard_percent(left: &[u64], right: &[u64]) -> u64 {
+    let mut left_index = 0usize;
+    let mut right_index = 0usize;
+    let mut intersection = 0u64;
+    let mut union = 0u64;
+    loop {
+        match (left.get(left_index), right.get(right_index)) {
+            (Some(left_value), Some(right_value)) => {
+                union = union.saturating_add(1);
+                if left_value == right_value {
+                    intersection = intersection.saturating_add(1);
+                    left_index = left_index.saturating_add(1);
+                    right_index = right_index.saturating_add(1);
+                } else if left_value < right_value {
+                    left_index = left_index.saturating_add(1);
+                } else {
+                    right_index = right_index.saturating_add(1);
+                }
+            }
+            (Some(_), None) => {
+                union = union.saturating_add(1);
+                left_index = left_index.saturating_add(1);
+            }
+            (None, Some(_)) => {
+                union = union.saturating_add(1);
+                right_index = right_index.saturating_add(1);
+            }
+            (None, None) => break,
+        }
+    }
+    if union == 0 {
+        0
+    } else {
+        intersection
+            .saturating_mul(100)
+            .checked_div(union)
+            .unwrap_or(0)
+    }
+}
+
+fn collect_rust_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        if entry.file_type()?.is_dir() {
+            if matches!(
+                name.as_str(),
+                "target" | "node_modules" | "generated" | "tests" | "test-results"
+            ) || name.starts_with('.')
+            {
+                continue;
+            }
+            collect_rust_files(&path, out)?;
+        } else if name.ends_with(".rs") && !name.ends_with("_test.rs") {
+            out.push(path);
+        }
     }
     Ok(())
+}
+
+/// Normalize a Rust line for clone detection: drop comments, mask literals/numbers.
+fn normalize_rust_line(line: &str) -> String {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.starts_with("//") {
+        return String::new();
+    }
+    let mut out = String::with_capacity(trimmed.len());
+    let mut in_string = false;
+    let mut in_number = false;
+    for ch in trimmed.chars() {
+        if in_string {
+            if ch == '"' {
+                in_string = false;
+                out.push('"');
+            }
+            continue;
+        }
+        if ch == '"' {
+            in_string = true;
+            out.push('"');
+            out.push('S');
+            out.push('"');
+            continue;
+        }
+        if ch.is_ascii_digit() {
+            if !in_number {
+                out.push('N');
+                in_number = true;
+            }
+            continue;
+        }
+        in_number = false;
+        if ch.is_whitespace() {
+            if !out.ends_with(' ') {
+                out.push(' ');
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out.trim().to_owned()
+}
+
+fn fnv1a(bytes: &[u8]) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
 }
 
 fn scan_forbidden_dirs(dir: &Path, root: &Path, bad: &mut Vec<String>) -> Result<()> {
@@ -2514,6 +2785,79 @@ fn scan_forbidden_dirs(dir: &Path, root: &Path, bad: &mut Vec<String>) -> Result
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod lint_tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+    use super::detect_duplicate_windows;
+    use std::path::PathBuf;
+
+    fn fixture(name: &str, files: &[(&str, &str)]) -> PathBuf {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("zk-lint-test-{name}-{stamp}"));
+        std::fs::create_dir_all(dir.join("packages")).unwrap();
+        for (path, body) in files {
+            std::fs::write(dir.join(path), body).unwrap();
+        }
+        dir
+    }
+
+    fn word(index: usize) -> String {
+        let mut value = index;
+        let mut out = String::new();
+        loop {
+            let letter = u8::try_from(value % 26).unwrap_or(0).saturating_add(b'a');
+            out.insert(0, char::from(letter));
+            value /= 26;
+            if value == 0 {
+                break;
+            }
+        }
+        out
+    }
+
+    /// 40 lines that are unique per index (digits are masked by normalization, so
+    /// use alphabetic suffixes; otherwise the fixture itself contains clones).
+    fn unique_block(prefix: &str) -> String {
+        (0..40)
+            .map(|index| {
+                let name = word(index);
+                format!("fn {prefix}_{name}() {{ let value = \"{prefix}\"; let _ = value; }}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn detects_identical_windows_and_is_deterministic() {
+        let body = unique_block("copy");
+        let dir = fixture(
+            "dupes",
+            &[("packages/a.rs", &body), ("packages/b.rs", &body)],
+        );
+        let first = detect_duplicate_windows(&dir).unwrap();
+        let second = detect_duplicate_windows(&dir).unwrap();
+        assert!(first.clone_windows > 0);
+        assert_eq!(first.clone_windows, second.clone_windows);
+        assert_eq!(first.files, 2);
+    }
+
+    #[test]
+    fn unique_files_have_no_clones() {
+        let dir = fixture(
+            "unique",
+            &[
+                ("packages/a.rs", &unique_block("alpha")),
+                ("packages/b.rs", &unique_block("beta")),
+            ],
+        );
+        let report = detect_duplicate_windows(&dir).unwrap();
+        assert_eq!(report.clone_windows, 0);
+    }
 }
 
 #[cfg(test)]
