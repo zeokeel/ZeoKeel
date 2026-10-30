@@ -14,3 +14,5 @@ export function Settings({ onError }: { onError: (message: string) => void }) {
   return <section><h2>系统设置</h2><p className="hint">hot=true 立即生效；其余提示重启。值必须是 JSON。</p><form className="row" onSubmit={save}><input value={key} onChange={(e) => setKey(e.target.value)} /><input value={value} onChange={(e) => setValue(e.target.value)} /><button type="submit">保存</button></form><table><thead><tr><th>Key</th><th>Value</th><th>Hot</th></tr></thead><tbody>{items.map((item) => <tr key={item.key}><td>{item.key}</td><td className="mono">{JSON.stringify(item.value)}</td><td>{item.hot ? "是" : "否"}</td></tr>)}</tbody></table></section>;
 }
 
+
+export const components = { "page.settings": Settings } as const;

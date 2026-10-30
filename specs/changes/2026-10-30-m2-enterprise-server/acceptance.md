@@ -42,4 +42,4 @@
 - `crates/zk-kit-server` + 8 个 `packages/server/*` 域包（zk.toml/契约/README/conformance）。
 - `zk-srv-http` 仅 health/ready/migrations/router base；`apps/server` merge 各域 `routes()`。
 - 真实 PG：`scripts/srv-auth-test.sh` 全链路通过；`scripts/admin-e2e.sh` 6 Playwright tests 通过。
-- 管理台已拆 `admin-shell`/`admin-ui-kit`/`admin.page.{users,wallet,pricing,audit,usage,jobs,settings}`；`apps/admin` 只保留组合。
+- 管理台已拆包并由 `zk compose` 生成 registry；`apps/admin` 只保留 registry 组合。

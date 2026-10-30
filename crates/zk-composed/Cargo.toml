@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 zk-agent-loop = { path = "../../packages/client/agent-loop" }
+zk-contract-admin-ui = { path = "../../packages/contracts/admin-ui" }
 zk-contract-agent = { path = "../../packages/contracts/agent" }
 zk-contract-auth = { path = "../../packages/contracts/auth" }
 zk-contract-config = { path = "../../packages/contracts/config" }

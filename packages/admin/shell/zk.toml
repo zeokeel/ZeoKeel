@@ -14,3 +14,8 @@ editions = ["enterprise"]
 [facets]
 rust = { crate = "zk-admin-shell" }
 ui = { package = "@zeokeel/admin-shell" }
+
+[[ui.contributions]]
+slot = "admin.shell"
+component = "shell.admin"
+order = 10

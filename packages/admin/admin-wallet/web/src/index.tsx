@@ -9,3 +9,5 @@ export function Wallets({ onError }: { onError: (message: string) => void }) {
   return <section><h2>钱包</h2><p className="hint">调账会写 ledger；余额由账本派生。</p><label>调账金额（micros）<input value={delta} onChange={(e) => setDelta(e.target.value)} /></label><table><thead><tr><th>用户</th><th>余额</th><th>操作</th></tr></thead><tbody>{items.map((item) => <tr key={item.user_id}><td>{item.username}</td><td>{item.balance_micros}</td><td><button onClick={() => void adjust(item.user_id)}>调账</button></td></tr>)}</tbody></table></section>;
 }
 
+
+export const components = { "page.wallet": Wallets } as const;

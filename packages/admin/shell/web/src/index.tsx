@@ -39,3 +39,5 @@ function Login({ onDone }: { onDone: () => void }) {
   };
   return <form className="login" onSubmit={submit}><h1>ZeoKeel Admin</h1><label>账号<input value={username} onChange={(e) => setUsername(e.target.value)} /></label><label>密码<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>{error !== "" ? <p className="error">{error}</p> : null}<button type="submit">登录</button></form>;
 }
+
+export const components = { "shell.admin": AdminShell } as const;

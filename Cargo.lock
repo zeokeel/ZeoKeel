@@ -6101,6 +6101,7 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "zk-agent-loop",
+ "zk-contract-admin-ui",
  "zk-contract-agent",
  "zk-contract-auth",
  "zk-contract-config",

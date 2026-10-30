@@ -14,3 +14,8 @@ editions = ["enterprise"]
 [facets]
 rust = { crate = "zk-admin-admin-audit" }
 ui = { package = "@zeokeel/admin-audit" }
+
+[[ui.contributions]]
+slot = "admin.page.audit"
+component = "page.audit"
+order = 10

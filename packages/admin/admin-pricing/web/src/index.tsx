@@ -9,3 +9,5 @@ export function Pricing({ onError }: { onError: (message: string) => void }) {
   return <section><h2>模型价格</h2><form className="row" onSubmit={save}><input value={model} onChange={(e) => setModel(e.target.value)} /><input value={input} onChange={(e) => setInput(e.target.value)} /><input value={output} onChange={(e) => setOutput(e.target.value)} /><button type="submit">保存</button></form><table><thead><tr><th>模型</th><th>输入/1k</th><th>输出/1k</th><th>启用</th></tr></thead><tbody>{items.map((item) => <tr key={item.model}><td>{item.model}</td><td>{item.input_per_1k_micros}</td><td>{item.output_per_1k_micros}</td><td>{item.enabled ? "是" : "否"}</td></tr>)}</tbody></table></section>;
 }
 
+
+export const components = { "page.pricing": Pricing } as const;
