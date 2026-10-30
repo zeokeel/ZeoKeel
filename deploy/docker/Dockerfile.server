@@ -15,16 +15,16 @@ COPY pnpm-workspace.yaml package.json ./
 RUN cargo build --release -p zk-server --locked
 
 FROM node:22-bookworm AS admin-build
-WORKDIR /admin
-COPY apps/admin/web ./apps/admin/web
-RUN cd apps/admin/web && npm install --no-audit --no-fund && npm run build
+WORKDIR /src
+COPY . .
+RUN corepack enable && pnpm install --frozen-lockfile && pnpm --dir apps/admin/web build
 
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --home /srv/zeokeel --shell /usr/sbin/nologin zeokeel
 COPY --from=server-build /src/target/release/zk-server /usr/local/bin/zk-server
-COPY --from=admin-build /admin/apps/admin/web/dist /srv/admin
+COPY --from=admin-build /src/apps/admin/web/dist /srv/admin
 RUN mkdir -p /srv/zeokeel && chown -R zeokeel:zeokeel /srv/zeokeel
 USER zeokeel
 ENV ZEOKEEL_ADMIN_DIST=/srv/admin
