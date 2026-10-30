@@ -1,6 +1,6 @@
 /** Enterprise login / first-run page (controlled; auth is provided by the app). */
 import { useState } from "react";
-import { BrandLogo, Button } from "@zeokeel/ui-kit";
+import { BrandLogo, Button, useUi } from "@zeokeel/ui-kit";
 
 export interface LoginInput {
   serverUrl?: string;
@@ -18,42 +18,94 @@ export interface LoginPageProps {
 }
 
 export function LoginPage(props: LoginPageProps) {
+  const { t, brand } = useUi();
   const [serverUrl, setServerUrl] = useState(props.serverUrl ?? "");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [deviceName, setDeviceName] = useState("这台电脑");
+  const [deviceName, setDeviceName] = useState(t("loginDeviceDefault"));
   const [showPassword, setShowPassword] = useState(false);
   const needsServer = props.serverUrl === null;
+  const submit = (event: { preventDefault: () => void }): void => {
+    event.preventDefault();
+    props.onSubmit({ ...(needsServer ? { serverUrl } : {}), username, password, deviceName });
+  };
   return (
     <div className="flex h-dvh flex-col items-center justify-center bg-background px-6">
       <div className="w-full max-w-[360px]">
-        <div className="flex items-center gap-2"><BrandLogo className="h-8 w-8 rounded-document" /><span className="text-[15px] font-semibold">ZeoKeel</span></div>
-        <h1 className="mt-6 text-[18px] font-semibold tracking-[-0.01em]">{needsServer ? "连接企业服务器" : "登录企业版"}</h1>
+        <div className="flex items-center gap-2">
+          <BrandLogo className="h-8 w-8 rounded-document" />
+          <span className="text-[15px] font-semibold">{brand.name}</span>
+        </div>
+        <h1 className="mt-6 text-[18px] font-semibold tracking-[-0.01em]">
+          {needsServer ? t("loginTitleFirstRun") : t("loginTitle")}
+        </h1>
         <p className="mt-1 text-[12px] leading-[1.55] text-muted-foreground">
-          {needsServer ? "首次使用需要填写登录服务地址；保存后可在设置中修改（需重新登录）。" : props.channelLocked ? "使用企业提供的账号登录。" : "使用企业账号登录。"}
+          {needsServer ? t("loginHintFirstRun") : props.channelLocked ? t("loginHintLocked") : t("loginHint")}
         </p>
-        <form className="mt-5 grid gap-3" onSubmit={(event) => { event.preventDefault(); props.onSubmit({ ...(needsServer ? { serverUrl } : {}), username, password, deviceName }); }}>
+        <form className="mt-5 grid gap-3" onSubmit={submit} noValidate>
           {needsServer ? (
-            <label className="grid gap-1 text-[12px] text-muted-foreground">服务器地址
-              <input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} placeholder="https://zeokeel.example.com" className="rounded-control border border-border bg-background px-2 py-1.5 text-[13px] text-foreground" autoComplete="url" />
+            <label className="grid gap-1 text-[12px] text-muted-foreground">
+              {t("loginServerAddress")}
+              <input
+                value={serverUrl}
+                onChange={(event) => { setServerUrl(event.target.value); }}
+                placeholder="https://zeokeel.example.com"
+                className="rounded-control border border-border bg-background px-2 py-1.5 text-[13px] text-foreground"
+                autoComplete="url"
+                aria-label={t("loginServerAddress")}
+              />
             </label>
           ) : null}
-          <label className="grid gap-1 text-[12px] text-muted-foreground">账号
-            <input value={username} onChange={(e) => setUsername(e.target.value)} className="rounded-control border border-border bg-background px-2 py-1.5 text-[13px] text-foreground" autoComplete="username" />
+          <label className="grid gap-1 text-[12px] text-muted-foreground">
+            {t("loginUsername")}
+            <input
+              value={username}
+              onChange={(event) => { setUsername(event.target.value); }}
+              className="rounded-control border border-border bg-background px-2 py-1.5 text-[13px] text-foreground"
+              autoComplete="username"
+              aria-label={t("loginUsername")}
+            />
           </label>
-          <label className="grid gap-1 text-[12px] text-muted-foreground">密码
+          <label className="grid gap-1 text-[12px] text-muted-foreground">
+            {t("loginPassword")}
             <span className="relative block">
-              <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} className="w-full rounded-control border border-border bg-background px-2 py-1.5 pe-14 text-[13px] text-foreground" autoComplete="current-password" />
-              <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute end-1 top-1 rounded-sm px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-foreground/[0.05]">{showPassword ? "隐藏" : "显示"}</button>
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(event) => { setPassword(event.target.value); }}
+                className="w-full rounded-control border border-border bg-background px-2 py-1.5 pe-14 text-[13px] text-foreground"
+                autoComplete="current-password"
+                aria-label={t("loginPassword")}
+              />
+              <button
+                type="button"
+                onClick={() => { setShowPassword((value) => !value); }}
+                className="absolute end-1 top-1 rounded-sm px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-foreground/[0.05]"
+              >
+                {showPassword ? t("loginHide") : t("loginShow")}
+              </button>
             </span>
           </label>
-          <label className="grid gap-1 text-[12px] text-muted-foreground">设备名
-            <input value={deviceName} onChange={(e) => setDeviceName(e.target.value)} className="rounded-control border border-border bg-background px-2 py-1.5 text-[13px] text-foreground" />
+          <label className="grid gap-1 text-[12px] text-muted-foreground">
+            {t("loginDeviceName")}
+            <input
+              value={deviceName}
+              onChange={(event) => { setDeviceName(event.target.value); }}
+              className="rounded-control border border-border bg-background px-2 py-1.5 text-[13px] text-foreground"
+              aria-label={t("loginDeviceName")}
+            />
           </label>
-          {props.error !== null ? <p role="alert" className="rounded-document bg-muted px-2 py-1.5 text-[12px] text-destructive">{props.error}</p> : null}
-          <Button variant="primary" disabled={props.loading || username.trim() === "" || password === "" || (needsServer && serverUrl.trim() === "")} title={props.loading ? "登录中…" : "登录"}>{props.loading ? "登录中…" : "登录"}</Button>
+          {props.error !== null ? (
+            <p role="alert" className="rounded-document bg-muted px-2 py-1.5 text-[12px] text-destructive">{props.error}</p>
+          ) : null}
+          <Button
+            variant="primary"
+            disabled={props.loading || username.trim() === "" || password === "" || (needsServer && serverUrl.trim() === "")}
+          >
+            {props.loading ? t("loginSubmitting") : t("loginSubmit")}
+          </Button>
         </form>
-        <p className="mt-4 text-[11px] leading-[1.5] text-muted-foreground">登录即表示同意企业使用条款。密钥与令牌只保存在本机；AI 请求经企业网关。</p>
+        <p className="mt-4 text-[11px] leading-[1.5] text-muted-foreground">{t("loginTerms")}</p>
       </div>
     </div>
   );

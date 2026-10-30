@@ -6,12 +6,12 @@ export type ApprovalDecision = "approved" | "rejected";
 
 export const ApprovalDecideContext = createContext<
   (approvalId: string, decision: ApprovalDecision) => void
->(() => {});
+>(() => undefined);
 
 export function ApprovalDataPart(props: DataMessagePartProps) {
   const { t } = useUi();
   const onDecide = useContext(ApprovalDecideContext);
-  const data = props.data;
+  const data: unknown = props.data;
   if (!isRecord(data)) {
     return null;
   }

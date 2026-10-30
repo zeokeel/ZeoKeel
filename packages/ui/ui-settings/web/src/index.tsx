@@ -1,14 +1,12 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   BrandLogo,
   Button,
   IconClose,
-  Switch,
   useUi,
   type AppSettings,
   type Locale,
-  type ProviderKind,
   type ProviderSettingsProps,
   type Theme,
 } from "@zeokeel/ui-kit";
@@ -41,6 +39,12 @@ export interface SettingsDialogProps {
   renderProvider?: ((props: ProviderSettingsProps) => ReactNode) | undefined;
   updateText?: string | null;
   updateBusy?: boolean;
+  /** Enterprise only: render the login server address (docs/19 §3.3). */
+  showServerUrl?: boolean;
+  /** Channel-locked address (C14/ADR-042): read-only. */
+  serverUrlLocked?: boolean;
+  /** Enterprise only: sign out (wired by the app; dependency: auth.logout IPC). */
+  onLogout?: (() => void) | undefined;
 }
 
 /** `settings.dialog` slot: reads settings/open state and actions from useUi. */
@@ -48,26 +52,17 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
   const ui = useUi();
   const models = props.gatewayModels ?? [];
   const { t, settings, settingsOpen, actions } = ui;
+  // The app remounts this dialog with a key on open, so the form always reflects persisted settings.
   const [form, setForm] = useState<SettingsForm>(() => toForm(settings));
   const [errors, setErrors] = useState<SettingsErrors>(EMPTY_ERRORS);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!settingsOpen) {
-      return;
-    }
-    setForm(toForm(settings));
-    setErrors(EMPTY_ERRORS);
-    setSaveError(null);
-    setSaving(false);
-  }, [settingsOpen, settings]);
-
-  const update = <Key extends keyof SettingsForm>(key: Key, value: SettingsForm[Key]) => {
+  const update = <Key extends keyof SettingsForm>(key: Key, value: SettingsForm[Key]): void => {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: { preventDefault: () => void }): void => {
     event.preventDefault();
     const nextErrors = validateSettings(form);
     setErrors(nextErrors);
@@ -119,7 +114,7 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
             id="settings-description"
             className="mt-1.5 mb-5 text-[13px] text-muted-foreground"
           >
-            {t("settingsDescription")}
+            {props.showServerUrl === true ? t("settingsDescriptionEnterprise") : t("settingsDescription")}
           </Dialog.Description>
 
           <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
@@ -136,6 +131,32 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
               onModel: (value) => { update("model", value); },
               onApiKey: (value) => { update("apiKey", value); },
             })}
+            {props.showServerUrl === true ? (
+              <fieldset className="rounded-document bg-muted p-4">
+                <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
+                  {t("settingsServerUrl")}
+                </legend>
+                <div className="grid gap-1.5">
+                  <label className="flex flex-col gap-1" htmlFor="settings-server-url">
+                    <input
+                      id="settings-server-url"
+                      aria-label={t("settingsServerUrl")}
+                      className={inputClass}
+                      type="url"
+                      inputMode="url"
+                      value={form.serverUrl}
+                      disabled={props.serverUrlLocked === true}
+                      onChange={(event) => { update("serverUrl", event.target.value); }}
+                      placeholder="https://zeokeel.example.com"
+                      aria-describedby="settings-server-hint"
+                    />
+                  </label>
+                  <p id="settings-server-hint" className="text-[12px] text-muted-foreground">
+                    {props.serverUrlLocked === true ? t("settingsServerUrlLocked") : t("settingsServerUrlHint")}
+                  </p>
+                </div>
+              </fieldset>
+            ) : null}
             <fieldset className="rounded-document bg-muted p-4">
               <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
                 {t("settingsSectionAppearance")}
@@ -170,20 +191,6 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
                     <option value="zh-CN">中文（简体）</option>
                     <option value="en-US">English (US)</option>
                   </select>
-                </label>
-
-                <label
-                  className="flex items-center gap-3 rounded-control bg-background px-3 py-2 sm:col-span-2"
-                  htmlFor="settings-auto-approve"
-                >
-                  <Switch
-                    id="settings-auto-approve"
-                    checked={form.autoApproveReadOnly}
-                    onChange={(event) => {
-                      update("autoApproveReadOnly", event.target.checked);
-                    }}
-                  />
-                  <span className="text-[13px] text-foreground">{t("settingsAutoApprove")}</span>
                 </label>
               </div>
             </fieldset>
@@ -229,6 +236,16 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
               >
                 {models.map((model) => <option key={model} value={model}>{model}</option>)}
               </select>
+            </section>
+          ) : null}
+          {props.onLogout !== undefined ? (
+            <section className="grid gap-2 border-t border-border pt-3">
+              <h3 className={labelClass}>{t("settingsLogout")}</h3>
+              <div>
+                <Button type="button" variant="destructive" size="sm" onClick={props.onLogout}>
+                  {t("settingsLogout")}
+                </Button>
+              </div>
             </section>
           ) : null}
         </form>

@@ -6,28 +6,28 @@ import { useExternalStoreRuntime } from "@assistant-ui/react";
 import type { AppendMessage, AssistantRuntime, ThreadMessageLike } from "@assistant-ui/react";
 import { isRecord, type ChatMessage, type UiValue } from "@zeokeel/ui-kit";
 
-type TextPart = { type: "text"; text: string };
+interface TextPart { type: "text"; text: string }
 
-type ToolPart = {
+interface ToolPart {
   type: "tool-call";
   toolCallId: string;
   toolName: string;
   argsText: string;
   result?: string;
   isError?: boolean;
-};
+}
 
-type ApprovalData = {
+interface ApprovalData {
   id: string;
   tool: string;
   args: string;
   reason: string;
   decision: "pending" | "approved" | "rejected";
-};
+}
 
-type ApprovalPart = { type: "data-approval"; id?: string; data: ApprovalData };
-type QuestionData = { id: string; questions: unknown; answers: unknown };
-type QuestionPart = { type: "data-question"; id?: string; data: QuestionData };
+interface ApprovalPart { type: "data-approval"; id?: string; data: ApprovalData }
+interface QuestionData { id: string; questions: unknown; answers: unknown }
+interface QuestionPart { type: "data-question"; id?: string; data: QuestionData }
 
 type ContentPart = TextPart | ToolPart | ApprovalPart | QuestionPart;
 
@@ -120,17 +120,20 @@ export function useChatRuntime(ui: UiValue): AssistantRuntime {
     isRunning: ui.streaming,
     isDisabled: ui.offline,
     isSendDisabled: ui.offline,
-    onNew: async (message) => {
+    onNew: (message) => {
       const text = appendText(message).trim();
       if (text !== "") {
         ui.actions.send(text);
       }
+      return Promise.resolve();
     },
-    onCancel: async () => {
+    onCancel: () => {
       ui.actions.cancel();
+      return Promise.resolve();
     },
-    onReload: async () => {
+    onReload: () => {
       ui.actions.retry();
+      return Promise.resolve();
     },
   });
 }

@@ -1,1 +1,22 @@
-{"name":"@zeokeel/admin-shell","private":true,"version":"0.1.0","type":"module","main":"./src/index.tsx","types":"./src/index.tsx","peerDependencies":{"react":"^19"},"dependencies":{"@zeokeel/admin-ui-kit":"workspace:*"},"devDependencies":{"@types/react":"^19.3.0"}}
+{
+  "name": "@zeokeel/admin-shell",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.tsx",
+  "types": "./src/index.tsx",
+  "peerDependencies": {
+    "react": "^19"
+  },
+  "dependencies": {
+    "@zeokeel/admin-ui-kit": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0"
+  },
+  "scripts": {
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:unit": "vitest run"
+  }
+}

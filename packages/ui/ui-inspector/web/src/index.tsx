@@ -1,4 +1,6 @@
 /** Module skeleton: right inspector (files/changes/terminal). Data comes from the app. */
+import { useUi } from "@zeokeel/ui-kit";
+
 export type InspectorTab = "files" | "changes" | "terminal";
 
 export interface FileNode { path: string; depth: number; kind: "dir" | "file"; badge?: string }
@@ -13,22 +15,38 @@ export interface InspectorPanelProps {
   onClose: () => void;
 }
 
+const TABS: InspectorTab[] = ["files", "changes", "terminal"];
+
 export function InspectorPanel(props: InspectorPanelProps) {
+  const { t } = useUi();
   if (!props.open) return null;
+  const labelOf = (tab: InspectorTab): string =>
+    tab === "files" ? t("inspectorTabFiles") : tab === "changes" ? t("inspectorTabChanges") : t("inspectorTabTerminal");
   return (
-    <aside aria-label="右侧检查器" className="flex w-[288px] shrink-0 flex-col border-s border-border" data-slot="inspector">
-      <div className="flex h-9 items-center gap-1 border-b border-border px-2 text-[11px]">
-        {(["files", "changes", "terminal"] as const).map((tab) => (
-          <button key={tab} type="button" onClick={() => props.onTab(tab)} className={`rounded-sm px-2 py-1 ${props.tab === tab ? "bg-muted" : ""}`}>
-            {tab}
+    <aside aria-label={t("inspectorTitle")} className="flex w-[288px] shrink-0 flex-col border-s border-border" data-slot="inspector">
+      <div role="tablist" aria-label={t("inspectorTitle")} className="flex h-9 items-center gap-1 border-b border-border px-2 text-[11px]">
+        {TABS.map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            role="tab"
+            aria-selected={props.tab === tab}
+            onClick={() => { props.onTab(tab); }}
+            className={`rounded-sm px-2 py-1 ${props.tab === tab ? "bg-muted" : ""}`}
+          >
+            {labelOf(tab)}
           </button>
         ))}
-        <button type="button" onClick={props.onClose} className="ms-auto px-1 text-muted-foreground" aria-label="收起右栏">×</button>
+        <button type="button" onClick={props.onClose} className="ms-auto px-1 text-muted-foreground" aria-label={t("inspectorClose")}>×</button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-2 text-[11px] text-muted-foreground">
-        {props.tab === "files" ? props.files.map((file) => <p key={file.path} style={{ paddingInlineStart: `${file.depth * 8}px` }}>{file.path}</p>) : null}
-        {props.tab === "changes" ? props.changes.map((change) => <p key={change.path}>{change.path} +{change.add} −{change.del}</p>) : null}
-        {props.tab === "terminal" ? <p className="font-mono">terminal skeleton</p> : null}
+      <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto p-2 text-[11px] text-muted-foreground">
+        {props.tab === "files" ? (
+          props.files.length === 0
+            ? <p>{t("inspectorFilesEmpty")}</p>
+            : props.files.map((file) => <p key={file.path} style={{ paddingInlineStart: `${String(file.depth * 8)}px` }}>{file.path}</p>)
+        ) : null}
+        {props.tab === "changes" ? props.changes.map((change) => <p key={change.path}>{change.path} +{String(change.add)} −{String(change.del)}</p>) : null}
+        {props.tab === "terminal" ? <p className="font-mono">{t("inspectorTerminalSkeleton")}</p> : null}
       </div>
     </aside>
   );

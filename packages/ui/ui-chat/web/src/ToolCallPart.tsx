@@ -21,9 +21,10 @@ function stringifyResult(value: unknown): string | null {
     return value;
   }
   try {
-    return JSON.stringify(value);
+    const encoded: unknown = JSON.stringify(value);
+    return typeof encoded === "string" ? encoded : null;
   } catch {
-    return String(value);
+    return "unserializable";
   }
 }
 
@@ -45,7 +46,7 @@ export function ToolCallPart(props: ToolCallMessagePartProps) {
   const statusLabel =
     status === "running" ? t("toolRunning") : status === "error" ? t("toolFailed") : t("toolDone");
   const result = stringifyResult(props.result);
-  const summary = result === null ? props.argsText : result;
+  const summary = result ?? props.argsText;
   const dotClass =
     status === "error"
       ? "bg-destructive"

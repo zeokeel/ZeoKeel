@@ -88,7 +88,7 @@ function ReloadAction() {
 function ErrorNote() {
   const { t } = useUi();
   const status = useAuiState((state) => state.message.status);
-  if (status === undefined || status.type !== "incomplete" || status.reason !== "error") {
+  if (status?.type !== "incomplete" || status.reason !== "error") {
     return null;
   }
   const error = status.error;
@@ -112,7 +112,7 @@ function TypingDots() {
 }
 
 function AssistantMessage() {
-  const { t, brand } = useUi();
+  const { brand } = useUi();
   const running = useAuiState((state) => state.message.status?.type === "running");
   const empty = useAuiState(
     (state) =>

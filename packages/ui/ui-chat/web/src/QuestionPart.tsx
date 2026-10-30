@@ -3,11 +3,11 @@ import { createContext, useContext, useMemo, useState } from "react";
 import { isRecord, readString, useUi } from "@zeokeel/ui-kit";
 
 export const QuestionAnswerContext = createContext<(questionId: string, answers: unknown) => void>(
-  () => {},
+  () => undefined,
 );
 
-type Option = { label: string; description?: string };
-type Question = { id: string; question: string; header?: string; options: Option[]; multi_select?: boolean };
+interface Option { label: string; description?: string }
+interface Question { id: string; question: string; header?: string; options: Option[]; multi_select?: boolean }
 
 function readQuestions(value: unknown): Question[] {
   if (!Array.isArray(value)) {
@@ -45,15 +45,17 @@ function readQuestions(value: unknown): Question[] {
 export function QuestionDataPart(props: DataMessagePartProps) {
   const { t } = useUi();
   const onAnswer = useContext(QuestionAnswerContext);
-  const data = props.data;
+  const data: unknown = props.data;
+  // Hooks must run unconditionally (react-hooks/rules-of-hooks); guards come after.
+  const [selected, setSelected] = useState<Record<string, string[]>>({});
+  const [custom, setCustom] = useState<Record<string, string>>({});
+  const questions = useMemo(() => (isRecord(data) ? readQuestions(data["questions"]) : []), [data]);
   if (!isRecord(data)) {
     return null;
   }
   const id = readString(data, "id");
-  const answered = data["answers"] !== null && data["answers"] !== undefined;
-  const questions = useMemo(() => readQuestions(data["questions"]), [data]);
-  const [selected, setSelected] = useState<Record<string, string[]>>({});
-  const [custom, setCustom] = useState<Record<string, string>>({});
+  const answers = data["answers"];
+  const answered = answers !== null && answers !== undefined;
   if (id === null || questions.length === 0) {
     return null;
   }
@@ -101,7 +103,7 @@ export function QuestionDataPart(props: DataMessagePartProps) {
               aria-label={question.question}
               className="mt-1.5 w-full rounded-control border border-border bg-background px-2 py-1 text-[13px]"
               value={custom[question.id] ?? ""}
-              onChange={(event) => setCustom((current) => ({ ...current, [question.id]: event.target.value }))}
+              onChange={(event) => { setCustom((current) => ({ ...current, [question.id]: event.target.value })); }}
             />
           )}
         </fieldset>

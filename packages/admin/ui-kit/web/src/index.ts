@@ -1,19 +1,42 @@
 /** Shared admin API/CSRF/session state (no page/domain logic). */
 let csrf = "";
 
+/** Narrow an untrusted JSON value to a record (no type assertions at call sites). */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Human-readable message for an unknown thrown value (never leaks an object). */
+export function messageOf(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return "request failed";
+}
+
 export function setCsrf(token: string): void { csrf = token; }
 export function clearCsrf(): void { csrf = ""; }
 
 export interface ApiErrorBody { ok?: boolean; error?: string }
+
+function apiFailure(body: unknown, ok: boolean, status: number): string | null {
+  const record = isRecord(body) ? body : null;
+  const error = record !== null && typeof record["error"] === "string" ? record["error"] : null;
+  const okField = record !== null && record["ok"] === false;
+  if (ok && !okField) return null;
+  return error ?? `HTTP ${String(status)}`;
+}
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("content-type", "application/json");
   if (csrf !== "") headers.set("x-csrf-token", csrf);
   const response = await fetch(path, { ...init, headers, credentials: "include" });
-  const body = (await response.json()) as ApiErrorBody & T;
-  if (!response.ok || body.ok === false) throw new Error(body.error ?? `HTTP ${response.status}`);
-  return body;
+  const body: unknown = await response.json();
+  const failure = apiFailure(body, response.ok, response.status);
+  if (failure !== null) throw new Error(failure);
+  // Generic decode boundary: callers declare T and pages validate their request payloads with Ajv (C10/T22).
+  // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- ADR-059/T22 generic response boundary
+  return body as T;
 }
 
 export interface User { id: string; username: string; display_name: string; role: string; status: string }
@@ -44,9 +67,11 @@ export async function apiForm<T>(path: string, form: FormData): Promise<T> {
   const headers = new Headers();
   if (csrf !== "") headers.set("x-csrf-token", csrf);
   const response = await fetch(path, { method: "POST", headers, body: form, credentials: "include" });
-  const body = (await response.json()) as ApiErrorBody & T;
-  if (!response.ok || body.ok === false) throw new Error(body.error ?? `HTTP ${response.status}`);
-  return body;
+  const body: unknown = await response.json();
+  const failure = apiFailure(body, response.ok, response.status);
+  if (failure !== null) throw new Error(failure);
+  // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- ADR-059/T22 generic response boundary
+  return body as T;
 }
 
 export interface ConnectorGrant { grantee: string; can_enable: boolean }

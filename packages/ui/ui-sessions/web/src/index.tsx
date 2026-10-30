@@ -37,6 +37,7 @@ function Modal(props: {
   onClose: () => void;
   children: ReactNode;
 }) {
+  const { t } = useUi();
   const panelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -89,7 +90,7 @@ function Modal(props: {
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <button
         type="button"
-        aria-label="close"
+        aria-label={t("close")}
         className="absolute inset-0 border-0 bg-[var(--zk-overlay)]"
         onClick={props.onClose}
       />
@@ -107,7 +108,7 @@ function Modal(props: {
           <button
             type="button"
             className="inline-flex h-7 w-7 items-center justify-center rounded-control text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"
-            aria-label="close"
+            aria-label={t("close")}
             onClick={props.onClose}
           >
             <IconClose />
@@ -137,7 +138,7 @@ export function Sidebar() {
     actions,
   } = useUi();
 
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [hideEmpty, setHideEmpty] = useState(false);
@@ -151,28 +152,23 @@ export function Sidebar() {
   const [reassignTo, setReassignTo] = useState("");
   const [paletteOpen, setPaletteOpen] = useState(false);
 
+  // docs/27 §2: the narrow-window drawer closes with Escape (modal surfaces handle their own Esc).
   useEffect(() => {
-    setExpanded((previous) => {
-      const next = new Set(previous);
-      for (const workspace of workspaces) {
-        next.add(workspace.id);
-      }
-      if (activeWorkspaceId !== null) {
-        next.add(activeWorkspaceId);
-      }
-      return next;
-    });
-  }, [workspaces, activeWorkspaceId]);
-
-  useEffect(() => {
-    if (removeTarget === null) {
+    if (!sidebarOpen) {
       return;
     }
-    const candidates = workspaces.filter((workspace) => workspace.id !== removeTarget.id);
-    const preferred =
-      candidates.find((workspace) => workspace.is_default) ?? candidates[0] ?? null;
-    setReassignTo(preferred === null ? "" : preferred.id);
-  }, [removeTarget, workspaces]);
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape" || event.defaultPrevented) {
+        return;
+      }
+      if (document.querySelector('[aria-modal="true"]') !== null) {
+        return;
+      }
+      actions.toggleSidebar();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); };
+  }, [sidebarOpen, actions]);
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleWorkspaces = useMemo(() => {
@@ -412,7 +408,7 @@ export function Sidebar() {
             <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
               {t("workspacePathLabel")}
               <input
-                autoFocus
+                data-autofocus
                 value={pathInput}
                 onChange={(event) => {
                   setPathInput(event.target.value);
@@ -458,7 +454,7 @@ export function Sidebar() {
             {visibleWorkspaces.map((workspace) => {
               const workspaceActive = workspace.id === activeWorkspaceId;
               const sessions = conversationsByWorkspace[workspace.id] ?? [];
-              const open = expanded.has(workspace.id);
+              const open = !collapsed.has(workspace.id);
               const filteredSessions =
                 normalizedQuery === ""
                   ? sessions
@@ -479,7 +475,7 @@ export function Sidebar() {
                         aria-label={open ? t("collapseSessions") : t("expandSessions")}
                         aria-expanded={open}
                         onClick={() => {
-                          setExpanded((previous) => {
+                          setCollapsed((previous) => {
                             const next = new Set(previous);
                             if (next.has(workspace.id)) {
                               next.delete(workspace.id);
@@ -568,6 +564,9 @@ export function Sidebar() {
                           className="w-full rounded-sm px-2 py-1 text-start text-[12px] text-destructive hover:bg-muted"
                           onClick={() => {
                             setRemoveTarget(workspace);
+                            const candidates = workspaces.filter((candidate) => candidate.id !== workspace.id);
+                            const preferred = candidates.find((candidate) => candidate.is_default) ?? candidates[0] ?? null;
+                            setReassignTo(preferred === null ? "" : preferred.id);
                             setMenuId(null);
                           }}
                         >
@@ -619,7 +618,7 @@ export function Sidebar() {
         <Modal
           labelId="workspace-rename"
           title={t("workspaceRename")}
-          onClose={() => setRenameTarget(null)}
+          onClose={() => { setRenameTarget(null); }}
         >
           <form
             onSubmit={(event) => {
@@ -628,7 +627,7 @@ export function Sidebar() {
             }}
           >
             <input
-              autoFocus
+              data-autofocus
               value={renameValue}
               onChange={(event) => {
                 setRenameValue(event.target.value);
@@ -636,7 +635,7 @@ export function Sidebar() {
               className="w-full rounded-control border border-border bg-background px-2 py-1.5 text-[13px] text-foreground"
             />
             <div className="mt-3 flex justify-end gap-2">
-              <Button variant="ghost" size="sm" type="button" onClick={() => setRenameTarget(null)}>
+              <Button variant="ghost" size="sm" type="button" onClick={() => { setRenameTarget(null); }}>
                 {t("settingsCancel")}
               </Button>
               <Button
@@ -656,7 +655,7 @@ export function Sidebar() {
         <Modal
           labelId="workspace-remove"
           title={t("workspaceRemoveTitle")}
-          onClose={() => setRemoveTarget(null)}
+          onClose={() => { setRemoveTarget(null); }}
         >
           <p className="text-[13px] text-muted-foreground">{t("workspaceRemoveBody")}</p>
           {removeTarget.is_default ? (
@@ -685,7 +684,7 @@ export function Sidebar() {
             </div>
           )}
           <div className="mt-3 flex justify-end gap-2">
-            <Button variant="ghost" size="sm" type="button" onClick={() => setRemoveTarget(null)}>
+            <Button variant="ghost" size="sm" type="button" onClick={() => { setRemoveTarget(null); }}>
               {t("settingsCancel")}
             </Button>
             <Button
@@ -694,9 +693,6 @@ export function Sidebar() {
               type="button"
               disabled={removeDisabled}
               onClick={() => {
-                if (removeTarget === null) {
-                  return;
-                }
                 actions.removeWorkspace(
                   removeTarget.id,
                   reassignTo === "" ? undefined : reassignTo,
@@ -714,12 +710,12 @@ export function Sidebar() {
         <Modal
           labelId="command-palette"
           title={t("commandPaletteTitle")}
-          onClose={() => setPaletteOpen(false)}
+          onClose={() => { setPaletteOpen(false); }}
         >
           <div className="flex flex-col gap-1">
             <button
               type="button"
-              autoFocus
+              data-autofocus
               className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-start text-[13px] text-foreground hover:bg-muted"
               onClick={() => {
                 setPaletteOpen(false);
