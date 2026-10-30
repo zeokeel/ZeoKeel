@@ -1,0 +1,22 @@
+[
+  {
+    "id": "contract.agent",
+    "path": "packages/contracts/agent/src/lib.rs"
+  },
+  {
+    "id": "contract.kernel",
+    "path": "packages/contracts/kernel/src/lib.rs"
+  },
+  {
+    "id": "contract.llm",
+    "path": "packages/contracts/llm/src/lib.rs"
+  },
+  {
+    "id": "contract.package",
+    "path": "packages/contracts/package/src/lib.rs"
+  },
+  {
+    "id": "contract.tool",
+    "path": "packages/contracts/tool/src/lib.rs"
+  }
+]

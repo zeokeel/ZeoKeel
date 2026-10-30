@@ -1,0 +1,8 @@
+[edition]
+name = "personal"
+targets = ["desktop"]
+
+[packages]
+"tool.fs" = "zeokeel/tool-fs"
+"llm.provider.default" = "zeokeel/llm-mock"
+"agent.loop" = "zeokeel/agent-loop"

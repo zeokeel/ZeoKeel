@@ -1,0 +1,9 @@
+schema = 1
+id = "zeokeel/contract-agent"
+kind = "contract"
+version = "0.1.0"
+license = "MIT"
+summary = "本地 agent 循环契约：Agent/AgentReply/ToolCallRecord"
+
+[facets]
+rust = { crate = "zk-contract-agent" }

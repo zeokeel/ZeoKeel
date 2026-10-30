@@ -1,0 +1,29 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  rust:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: System deps (Tauri)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev xvfb
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Compose + capability
+        run: |
+          cargo run -q -p zk -- validate
+          cargo run -q -p zk -- compose --edition personal --profile default --channel official --check
+          cargo run -q -p zk -- capability --check
+      - name: Test
+        run: cargo test --workspace
+  docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python3 scripts/docs-check.py
+      - run: python3 scripts/spec-check.py

@@ -1,0 +1,9 @@
+schema = 1
+id = "zeokeel/contract-tool"
+kind = "contract"
+version = "0.1.0"
+license = "MIT"
+summary = "工具契约：Tool trait + ToolSpec + ToolError"
+
+[facets]
+rust = { crate = "zk-contract-tool" }

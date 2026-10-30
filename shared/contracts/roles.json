@@ -1,0 +1,20 @@
+{
+  "agent.loop": {
+    "package": "zeokeel/agent-loop",
+    "crate_name": "zk-agent-loop",
+    "contract": "zk-contract-agent",
+    "cardinality": "singleton"
+  },
+  "llm.provider.default": {
+    "package": "zeokeel/llm-mock",
+    "crate_name": "zk-llm-mock",
+    "contract": "zk-contract-llm",
+    "cardinality": "singleton"
+  },
+  "tool.fs": {
+    "package": "zeokeel/tool-fs",
+    "crate_name": "zk-tool-fs",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  }
+}

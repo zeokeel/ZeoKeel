@@ -1,0 +1,35 @@
+schema = 1
+
+[scan]
+packages = ["packages/*/*"]
+
+[paths]
+crates = "crates"
+apps = "apps"
+shared = "shared"
+docs_generated = "docs/generated"
+
+[personal_only]
+file = "editions/personal-only.toml"
+
+[roles."tool.fs"]
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."llm.provider.default"]
+contract = "zk-contract-llm"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[roles."agent.loop"]
+contract = "zk-contract-agent"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[contracts]
+"zk.contract.package" = "zk-contract-package"
+"zk.contract.kernel" = "zk-contract-kernel"
+"zk.contract.tool" = "zk-contract-tool"
+"zk.contract.llm" = "zk-contract-llm"
+"zk.contract.agent" = "zk-contract-agent"

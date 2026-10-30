@@ -25,6 +25,26 @@
 网络不限制、不做企业审批（见 `docs/00`、`docs/15`）。
 **个人版**：反过来，允许自配 provider，数据全在本地。
 
+## 快速开始（当前 M0 骨架 + 最小 demo）
+
+仓库已从 Plan 阶段进入 **M0 骨架**：单一 Cargo workspace、契约/包/`zk` 组合器/两端 app 可运行，
+最小 demo 是「桌面窗口 → 本地 agent → mock LLM → `fs.read` 工具 → 返回结果」。
+
+```bash
+bash scripts/bootstrap.sh          # 构建 zk、validate、compose、生成能力索引、跑测试
+./scripts/dev-desktop.sh           # 桌面 demo（Tauri；无 DISPLAY 时自动用 xvfb-run）
+./scripts/dev-server.sh            # 服务端骨架：http://127.0.0.1:8787/healthz
+```
+
+桌面 demo：输入 `读取 demo-data/hello.txt`，应看到文件正文和一条 `fs.read` 工具调用记录。
+
+生成物（`crates/zk-composed/`、`apps/*/Cargo.toml`、`apps/*/src/generated/`、`shared/contracts/*`、
+`docs/generated/*`）只由 `zk` 写；改组合请改 `editions/`、`profiles/`、`zk.toml` 后重跑
+`zk compose --edition personal --profile default --channel official --check`。
+
+> 当前 demo 是 M0 子集：未接 cordis fiber/Registrar、DB/认证/网关/管理台/React UI；
+> 这些按 `docs/12` 的 M0/M1 路线图推进。Spec：`specs/changes/2026-10-30-m0-scaffold-minimal-demo/`。
+
 ## 核心机制（与 v2 一脉相承）
 
 ```text

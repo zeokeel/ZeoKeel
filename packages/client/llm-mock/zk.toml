@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/llm-mock"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "确定性 mock LLM provider（demo 用，无网络）"
+
+[role]
+name = "llm.provider.default"
+contract = "zk-contract-llm"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-llm-mock" }

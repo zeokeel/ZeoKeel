@@ -1,0 +1,9 @@
+schema = 1
+id = "zeokeel/contract-kernel"
+kind = "contract"
+version = "0.1.0"
+license = "MIT"
+summary = "内核服务契约（Clock/Tasks/Config 最小集）"
+
+[facets]
+rust = { crate = "zk-contract-kernel" }

@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/agent-loop"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "本地最小 agent 循环（单轮、至多一次工具调用）"
+
+[role]
+name = "agent.loop"
+contract = "zk-contract-agent"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-agent-loop" }

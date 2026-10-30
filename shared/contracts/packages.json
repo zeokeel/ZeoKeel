@@ -1,0 +1,26 @@
+[
+  {
+    "id": "zeokeel/agent-loop",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "agent.loop"
+    ]
+  },
+  {
+    "id": "zeokeel/llm-mock",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "llm.provider.default"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-fs",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.fs"
+    ]
+  }
+]

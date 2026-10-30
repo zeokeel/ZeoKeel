@@ -1,0 +1,9 @@
+schema = 1
+id = "zeokeel/contract-llm"
+kind = "contract"
+version = "0.1.0"
+license = "MIT"
+summary = "LLM provider 契约（最小 chat-complete 子集）"
+
+[facets]
+rust = { crate = "zk-contract-llm" }

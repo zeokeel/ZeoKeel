@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+members = ["packages/*/*", "crates/*", "apps/desktop", "apps/server", "tools/zk"]
+exclude = ["experiments/*", "oem/*", "vendor/*", "fixtures/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+anyhow = "1"
+thiserror = "1"
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+tauri = { version = "2.12", features = [] }
+tauri-build = "2.7"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"

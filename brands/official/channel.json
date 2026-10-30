@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "id": "official",
+  "edition": "personal",
+  "defaults": { "server_url": "" },
+  "brand": { "name": "ZeoKeel", "powered_by": "show" }
+}
