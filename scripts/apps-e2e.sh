@@ -4,8 +4,19 @@ set -euo pipefail
 DB="zk_apps_e2e_$$"; ROLE="zk_apps_e2e_$$"; PORT="${ZEOKEEL_APPS_PORT:-8798}"
 BASE="http://127.0.0.1:$PORT"; HOME_DIR="target/evidence/m4/apps-home"
 rm -rf "$HOME_DIR"; mkdir -p "$HOME_DIR/app-db"
+# Stop a PID with SIGTERM, then force-kill if graceful shutdown does not finish; always
+# wait BEFORE dropping the DB so the server never outlives the script (see round4 report).
+stop_pid() {
+  local pid="$1"
+  [[ -n "$pid" ]] || return 0
+  kill "$pid" 2>/dev/null || true
+  for _ in $(seq 1 40); do kill -0 "$pid" 2>/dev/null || break; sleep 0.25; done
+  if kill -0 "$pid" 2>/dev/null; then kill -KILL "$pid" 2>/dev/null || true; fi
+  wait "$pid" 2>/dev/null || true
+}
+stop_server() { stop_pid "${SERVER_PID:-}"; SERVER_PID=""; }
 cleanup() {
-  [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" >/dev/null 2>&1 || true
+  stop_server
   sudo -u postgres dropdb --if-exists --force "$DB" >/dev/null 2>&1 || true
   sudo -u postgres psql -Atq -c "DROP ROLE IF EXISTS $ROLE" >/dev/null 2>&1 || true
 }
@@ -70,7 +81,7 @@ curl -fsS -D /tmp/zk-app-asset.headers -o /tmp/zk-app-asset.html "$BASE/api/clie
 grep -qi 'content-type: text/html' /tmp/zk-app-asset.headers
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/client/v1/apps/$APP_ID/assets/../secret" -H "Authorization: Bearer $ADMIN_JWT"); [[ "$CODE" == "400" || "$CODE" == "404" ]]
 # restart and verify persistence
-kill "$SERVER_PID"; wait "$SERVER_PID" 2>/dev/null || true
+stop_server
 start_server
 ADMIN_JWT=$(curl -fsS -X POST "$BASE/api/client/v1/auth/login" -H 'content-type: application/json' -d '{"username":"admin","password":"admin-pass","device_id":"apps-e2e-2"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
 curl -fsS -X POST "$BASE/api/client/v1/apps/$APP_ID/request" -H "Authorization: Bearer $ADMIN_JWT" -H 'content-type: application/json' -d "$LIST" | python3 -c 'import json,sys,base64;d=json.load(sys.stdin);body=json.loads(base64.b64decode(d["body_b64"]));assert body["rows"][0]["name"]=="e2e"'

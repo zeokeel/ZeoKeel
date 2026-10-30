@@ -3,11 +3,19 @@
 set -euo pipefail
 DB="zk_login_e2e_$$"; ROLE="zk_login_role_$$"
 SERVER_PORT="${ZEOKEEL_LOGIN_SERVER_PORT:-8795}"; UI_PORT="${ZEOKEEL_LOGIN_UI_PORT:-8789}"; UPSTREAM_PORT="${ZEOKEEL_LOGIN_UPSTREAM_PORT:-8796}"
+# SIGTERM then bounded wait, fallback SIGKILL; DB/role are dropped only after exit.
+stop_pid() {
+  local pid="$1"
+  [[ -n "$pid" ]] || return 0
+  kill "$pid" 2>/dev/null || true
+  for _ in $(seq 1 40); do kill -0 "$pid" 2>/dev/null || break; sleep 0.25; done
+  if kill -0 "$pid" 2>/dev/null; then kill -KILL "$pid" 2>/dev/null || true; fi
+  wait "$pid" 2>/dev/null || true
+}
+stop_server() { stop_pid "${SERVER_PID:-}"; SERVER_PID=""; }
 cleanup() {
-  [[ -n "${UI_PID:-}" ]] && kill "$UI_PID" >/dev/null 2>&1 || true
-  [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" >/dev/null 2>&1 || true
-  [[ -n "${UPSTREAM_PID:-}" ]] && kill "$UPSTREAM_PID" >/dev/null 2>&1 || true
-  [[ -n "${OAUTH_PID:-}" ]] && kill "$OAUTH_PID" >/dev/null 2>&1 || true
+  stop_pid "${UI_PID:-}"; stop_pid "${UPSTREAM_PID:-}"; stop_pid "${OAUTH_PID:-}"
+  stop_server
   sudo -u postgres dropdb --if-exists --force "$DB" >/dev/null 2>&1 || true
   sudo -u postgres psql -Atq -c "DROP ROLE IF EXISTS $ROLE" >/dev/null 2>&1 || true
   # docs/24 §1.2: never leave a non-personal composition in the committed baseline.

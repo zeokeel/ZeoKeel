@@ -2,7 +2,7 @@
 # M5 OEM/delivery: channel schema, OEM index/pin, compose matrix, dist verify.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-cleanup() { bash scripts/restore-baseline.sh >/dev/null 2>&1 || true; }
+cleanup() { rm -rf brands/oem-deep; bash scripts/restore-baseline.sh >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 cargo build -q -p zk
 ./target/debug/zk channel validate --index oem/fixtures --all

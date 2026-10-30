@@ -5,8 +5,18 @@ DB="zk_admin_e2e_$$"
 ROLE="zk_admin_e2e_$$"
 PORT="${ZEOKEEL_ADMIN_TEST_PORT:-8794}"
 BASE="http://127.0.0.1:$PORT"
+# SIGTERM then bounded wait, fallback SIGKILL; DB/role are dropped only after exit.
+stop_pid() {
+  local pid="$1"
+  [[ -n "$pid" ]] || return 0
+  kill "$pid" 2>/dev/null || true
+  for _ in $(seq 1 40); do kill -0 "$pid" 2>/dev/null || break; sleep 0.25; done
+  if kill -0 "$pid" 2>/dev/null; then kill -KILL "$pid" 2>/dev/null || true; fi
+  wait "$pid" 2>/dev/null || true
+}
+stop_server() { stop_pid "${SERVER_PID:-}"; SERVER_PID=""; }
 cleanup() {
-  [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" >/dev/null 2>&1 || true
+  stop_server
   sudo -u postgres dropdb --if-exists --force "$DB" >/dev/null 2>&1 || true
   sudo -u postgres psql -Atq -c "DROP ROLE IF EXISTS $ROLE" >/dev/null 2>&1 || true
   bash scripts/restore-baseline.sh >/dev/null 2>&1 || true

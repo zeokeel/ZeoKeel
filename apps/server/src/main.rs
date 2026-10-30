@@ -8,7 +8,7 @@
 
 use std::future::IntoFuture;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use axum::Router;
 use tower_http::cors::CorsLayer;
@@ -20,6 +20,49 @@ const DEFAULT_ADDR: &str = "127.0.0.1:8787";
 /// Session-level advisory lock key ("ZKSERV" slot); one lock per database.
 const INSTANCE_LOCK_KEY: i64 = 0x5A4B_5345_5256_4552;
 const SHUTDOWN_DEADLINE_SECS: u64 = 30;
+const MIN_SHUTDOWN_BUDGET_SECS: u64 = 5;
+const MAX_SHUTDOWN_BUDGET_SECS: u64 = 120;
+
+/// One total SIGTERM budget: drain, jobs stop, settlement, audit, pool close and
+/// kernel disposal all share it; expiration forces exit 1 (`docs/24` §6).
+struct ShutdownBudget {
+    deadline: Instant,
+}
+
+impl ShutdownBudget {
+    fn new() -> Self {
+        let now = Instant::now();
+        let deadline = now.checked_add(shutdown_budget()).unwrap_or(now);
+        Self { deadline }
+    }
+
+    fn remaining(&self) -> Duration {
+        self.deadline.saturating_duration_since(Instant::now())
+    }
+
+    fn expired(&self) -> bool {
+        self.remaining().is_zero()
+    }
+}
+
+fn shutdown_budget() -> Duration {
+    let secs = std::env::var("ZEOKEEL_SHUTDOWN_DEADLINE_SECS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(SHUTDOWN_DEADLINE_SECS)
+        .clamp(MIN_SHUTDOWN_BUDGET_SECS, MAX_SHUTDOWN_BUDGET_SECS);
+    Duration::from_secs(secs)
+}
+
+fn force_exit(reason: &str) -> ! {
+    eprintln!("zk-server: {reason}; forcing exit 1");
+    std::process::exit(1);
+}
+
+struct ServeOutcome {
+    budget: ShutdownBudget,
+    result: Result<(), String>,
+}
 
 /// Kernel service: server state (PG pool + JWT keys).
 static SERVER_STATE_SERVICE: zk_bootstrap::ServiceKey<AppState> =
@@ -151,22 +194,66 @@ async fn main() -> Result<(), String> {
         .merge(zk_srv_audit::routes().with_state(state.clone()))
         .merge(zk_srv_settings::routes().with_state(state.clone()))
         .merge(zk_srv_jobs::routes().with_state(state.clone()));
-    let result = serve(app).await;
-    // Stop cron and wait (bounded, 10s) for the in-flight job tick before the
-    // settlement/audit-flush phase closes the pool (`docs/24` §6).
+    let outcome = serve(app)
+        .await
+        .map_err(|error| format!("zk-server: {error}"))?;
+    let budget = outcome.budget;
+    let mut final_error = outcome.result.err();
+    if budget.expired() {
+        force_exit("drain exceeded shutdown budget");
+    }
+    // Stop cron and wait (bounded by the total shutdown budget) for the in-flight
+    // job tick before settlement/audit closes the pool (`docs/24` §6).
     jobs.stop();
-    if !jobs.wait().await {
-        eprintln!("zk-server: jobs loop exceeded the bounded wait; aborted before settlement");
+    match tokio::time::timeout(budget.remaining(), jobs.wait()).await {
+        Ok(true) => {}
+        Ok(false) => {
+            eprintln!("zk-server: jobs loop exceeded the bounded wait; aborted before settlement");
+            if final_error.is_none() {
+                final_error = Some("jobs loop exceeded the bounded wait".to_owned());
+            }
+        }
+        Err(_) => force_exit("jobs stop exceeded shutdown budget"),
     }
-    shutdown_sequence(&state).await;
-    // Dispose kernel effects (server plugins/tasks) after the drain/settlement phase.
-    if let Err(error) = bootstrap.shutdown() {
-        eprintln!("zk-server: bootstrap shutdown failed: {error}");
+    if budget.expired() {
+        force_exit("jobs stop exceeded shutdown budget");
     }
-    result
+    shutdown_sequence(&state, &budget).await;
+    let remaining = budget.remaining();
+    if remaining.is_zero() {
+        force_exit("settlement/audit exceeded shutdown budget");
+    }
+    // Kernel disposal is synchronous and has no internal deadline; bound it with
+    // the remaining total budget and force-exit if it cannot finish in time.
+    let bootstrap = Arc::new(bootstrap);
+    match tokio::time::timeout(
+        remaining,
+        tokio::task::spawn_blocking(move || bootstrap.shutdown()),
+    )
+    .await
+    {
+        Ok(Ok(Ok(()))) => {}
+        Ok(Ok(Err(error))) => {
+            eprintln!("zk-server: bootstrap shutdown failed: {error}");
+            if final_error.is_none() {
+                final_error = Some(format!("bootstrap shutdown failed: {error}"));
+            }
+        }
+        Ok(Err(error)) => {
+            eprintln!("zk-server: bootstrap shutdown task failed: {error}");
+            if final_error.is_none() {
+                final_error = Some(format!("bootstrap shutdown task failed: {error}"));
+            }
+        }
+        Err(_) => force_exit("bootstrap shutdown exceeded shutdown budget"),
+    }
+    if let Some(error) = final_error {
+        return Err(error);
+    }
+    Ok(())
 }
 
-async fn serve(app: Router) -> Result<(), String> {
+async fn serve(app: Router) -> Result<ServeOutcome, String> {
     let addr = std::env::var("ZEOKEEL_SERVER_ADDR").unwrap_or_else(|_| DEFAULT_ADDR.to_owned());
     let admin_dist =
         std::env::var("ZEOKEEL_ADMIN_DIST").unwrap_or_else(|_| "apps/admin/web/dist".to_owned());
@@ -203,16 +290,20 @@ async fn serve(app: Router) -> Result<(), String> {
     });
     let server_task = tokio::spawn(server.into_future());
     shutdown_signal().await;
+    // Start the single total budget when SIGTERM arrives: every later phase uses
+    // its remaining time and the process force-exits 1 when it is exhausted.
+    let budget = ShutdownBudget::new();
     let _ = shutdown_tx.send(());
-    match tokio::time::timeout(Duration::from_secs(SHUTDOWN_DEADLINE_SECS), server_task).await {
+    let result = match tokio::time::timeout(budget.remaining(), server_task).await {
         Ok(Ok(Ok(()))) => Ok(()),
         Ok(Ok(Err(error))) => Err(format!("zk-server failed: {error}")),
         Ok(Err(error)) => Err(format!("zk-server task failed: {error}")),
         Err(_) => Err(
-            "shutdown deadline exceeded; residual pending usage left for startup compensation"
+            "drain exceeded shutdown budget; residual pending usage left for startup compensation"
                 .to_owned(),
         ),
-    }
+    };
+    Ok(ServeOutcome { budget, result })
 }
 
 async fn shutdown_signal() {
@@ -237,34 +328,56 @@ async fn shutdown_signal() {
     }
 }
 
-async fn shutdown_sequence(state: &AppState) {
-    // Compensation + audit flush are bounded; a timeout leaves residuals for the
-    // next startup sweep (`docs/24` §6 "超时 → 强制退出 1").
+async fn shutdown_sequence(state: &AppState, budget: &ShutdownBudget) {
+    // Compensation + audit flush are bounded by the remaining total budget; a
+    // timeout leaves residuals for the next startup sweep (`docs/24` §6
+    // "超时 → 强制退出 1").
     let pending_key = format!("usage-pending:shutdown:{}", zk_kit_server::now_secs());
+    let remaining = budget.remaining();
+    if remaining.is_zero() {
+        force_exit("pending settlement exceeded shutdown budget");
+    }
     match tokio::time::timeout(
-        Duration::from_secs(SHUTDOWN_DEADLINE_SECS),
+        remaining,
         zk_srv_jobs::run_job(&state.pool, "usage-pending", &pending_key),
     )
     .await
     {
         Ok(Ok(detail)) => println!("shutdown pending-usage sweep: {detail}"),
         Ok(Err(error)) => eprintln!("shutdown pending-usage sweep failed: {error}"),
-        Err(_) => eprintln!("shutdown pending-usage sweep timed out"),
+        Err(_) => force_exit("pending settlement exceeded shutdown budget"),
+    }
+    if budget.expired() {
+        force_exit("pending settlement exceeded shutdown budget");
     }
     // Audit rows are written synchronously inside business transactions; the
     // final chain verification is the shutdown "flush" consistency check.
     let verify_key = format!("audit-verify:shutdown:{}", zk_kit_server::now_secs());
+    let remaining = budget.remaining();
+    if remaining.is_zero() {
+        force_exit("audit flush exceeded shutdown budget");
+    }
     match tokio::time::timeout(
-        Duration::from_secs(SHUTDOWN_DEADLINE_SECS),
+        remaining,
         zk_srv_jobs::run_job(&state.pool, "audit-verify", &verify_key),
     )
     .await
     {
         Ok(Ok(detail)) => println!("shutdown audit flush check: {detail}"),
         Ok(Err(error)) => eprintln!("shutdown audit flush check failed: {error}"),
-        Err(_) => eprintln!("shutdown audit flush check timed out"),
+        Err(_) => force_exit("audit flush exceeded shutdown budget"),
     }
-    state.pool.close().await;
+    if budget.expired() {
+        force_exit("audit flush exceeded shutdown budget");
+    }
+    let remaining = budget.remaining();
+    if remaining.is_zero() {
+        force_exit("pool close exceeded shutdown budget");
+    }
+    match tokio::time::timeout(remaining, state.pool.close()).await {
+        Ok(()) => {}
+        Err(_) => force_exit("pool close exceeded shutdown budget"),
+    }
     println!("zk-server shutdown complete");
 }
 
@@ -273,5 +386,13 @@ mod tests {
     #[test]
     fn edition_is_composed() {
         assert!(!zk_composed::EDITION.is_empty());
+    }
+
+    #[test]
+    fn shutdown_budget_is_bounded() {
+        let budget = super::ShutdownBudget::new();
+        assert!(!budget.expired());
+        assert!(budget.remaining() <= super::shutdown_budget());
+        assert!(super::shutdown_budget() >= std::time::Duration::from_secs(5));
     }
 }

@@ -13,7 +13,10 @@ use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use zk_contract_server::ServerModule;
 pub use zk_kit_server::AppState;
-use zk_kit_server::{permissions_for_role, require_admin, ServerError};
+use zk_kit_server::{
+    brand_snapshot, content_etag, if_none_match, min_client_version, permissions_for_role,
+    require_admin, ServerError,
+};
 
 /// Stable API version for the cross-major `/api/meta/*` surface (`docs/04` §2).
 pub const API_VERSION: &str = "v1";
@@ -49,6 +52,7 @@ pub fn router_from(state: AppState) -> Router {
         .route("/readyz", get(readyz))
         .route("/api/meta", get(meta))
         .route("/api/meta/capabilities", get(capabilities))
+        .route("/api/channel", get(channel))
         .route("/api/admin/meta", get(admin_meta))
         .with_state(state)
 }
@@ -106,7 +110,7 @@ fn capabilities_payload() -> Value {
     json!({
         "api_version": API_VERSION,
         "server_version": module().version,
-        "min_client_version": "0.1.0",
+        "min_client_version": min_client_version(),
         "features": [
             "auth.local",
             "gateway.responses",
@@ -161,6 +165,61 @@ async fn capabilities(headers: HeaderMap) -> Response {
     response
 }
 
+/// Brand/channel payload for the stable `/api/channel` surface (`docs/04` §2.2).
+fn channel_payload() -> Value {
+    let brand = brand_snapshot();
+    let channel_id = brand
+        .get("channel")
+        .and_then(Value::as_str)
+        .unwrap_or("official")
+        .to_owned();
+    let name = brand
+        .get("name")
+        .cloned()
+        .unwrap_or_else(|| json!(channel_id));
+    let server_url = brand
+        .get("server_url")
+        .cloned()
+        .unwrap_or_else(|| json!(""));
+    json!({
+        "channel_id": channel_id,
+        "name": name,
+        "brand": brand.clone(),
+        "server_url": server_url,
+        "assets": { "base_url": "" },
+        "update": {
+            "mode": "server",
+            "manifest": "/api/updates/manifest",
+            "channel": channel_id,
+        },
+    })
+}
+
+/// Public channel/brand discovery with ETag/304 (`docs/04` §2.2 stable surface).
+async fn channel(headers: HeaderMap) -> Response {
+    let payload = channel_payload();
+    let etag = content_etag(&payload);
+    if if_none_match(&headers, &etag) {
+        let mut response = Response::new(Body::empty());
+        *response.status_mut() = StatusCode::NOT_MODIFIED;
+        if let Ok(value) = HeaderValue::from_str(&etag) {
+            response.headers_mut().insert(header::ETAG, value);
+        }
+        return response;
+    }
+    let rendered = serde_json::to_vec(&payload).unwrap_or_default();
+    let mut response = Response::new(Body::from(rendered));
+    *response.status_mut() = StatusCode::OK;
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    if let Ok(value) = HeaderValue::from_str(&etag) {
+        response.headers_mut().insert(header::ETAG, value);
+    }
+    response
+}
+
 /// Admin build/permission metadata so the admin SPA can render capabilities
 /// without guessing (`docs/08` admin shell; permission points `docs/04` §3).
 async fn admin_meta(
@@ -190,6 +249,20 @@ mod tests {
     #[test]
     fn module_is_namespaced() {
         assert_eq!(module().id, "srv/http");
+    }
+
+    #[test]
+    fn channel_payload_has_stable_surface_fields() {
+        let payload = channel_payload();
+        assert!(payload.get("channel_id").and_then(Value::as_str).is_some());
+        assert!(payload.get("brand").is_some_and(Value::is_object));
+        assert_eq!(
+            payload
+                .get("update")
+                .and_then(|value| value.get("mode"))
+                .and_then(Value::as_str),
+            Some("server")
+        );
     }
 
     #[tokio::test]

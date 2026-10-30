@@ -4,6 +4,7 @@
 #![forbid(unsafe_code)]
 
 use std::collections::BTreeSet;
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
@@ -16,7 +17,7 @@ use base64::Engine;
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use sqlx::Row;
@@ -366,6 +367,89 @@ pub fn permissions_for_role(role: &str) -> Vec<&'static str> {
         "auditor" => AUDITOR_PERMISSIONS.to_vec(),
         _ => EMPLOYEE_PERMISSIONS.to_vec(),
     }
+}
+
+/// Default minimum supported client version when no environment override exists.
+pub const DEFAULT_MIN_CLIENT_VERSION: &str = "0.1.0";
+
+/// Minimum supported client version (`ZEOKEEL_MIN_CLIENT_VERSION`, validated).
+#[must_use]
+pub fn min_client_version() -> String {
+    std::env::var("ZEOKEEL_MIN_CLIENT_VERSION")
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| parse_semver(value).is_some())
+        .unwrap_or_else(|| DEFAULT_MIN_CLIENT_VERSION.to_owned())
+}
+
+/// Parse a plain `major.minor.patch` version (pre-release suffix ignored).
+#[must_use]
+pub fn parse_semver(value: &str) -> Option<(u32, u32, u32)> {
+    let trimmed = value.trim();
+    let mut parts = trimmed.split('.');
+    let major = parts.next()?.parse::<u32>().ok()?;
+    let minor = parts.next()?.parse::<u32>().ok()?;
+    let patch = parts.next()?.split('-').next()?.parse::<u32>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((major, minor, patch))
+}
+
+/// Client semver from `X-ZeoKeel-Client: <semver>;<channel>;<platform>;<device>`.
+#[must_use]
+pub fn client_version(headers: &HeaderMap) -> Option<String> {
+    let raw = headers.get("x-zeokeel-client")?.to_str().ok()?;
+    raw.split(';')
+        .next()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+}
+
+/// Whether the request carries a client version below the configured minimum.
+///
+/// An absent or malformed client header is allowed (login/first-run compatibility);
+/// stable surfaces must remain reachable so old clients can discover updates.
+#[must_use]
+pub fn client_is_too_old(headers: &HeaderMap) -> bool {
+    let Some(current) = client_version(headers).and_then(|value| parse_semver(&value)) else {
+        return false;
+    };
+    let minimum = parse_semver(&min_client_version()).unwrap_or((0, 0, 0));
+    current < minimum
+}
+
+/// Stable ETag for a JSON payload (`"<sha256 hex>"`).
+#[must_use]
+pub fn content_etag(payload: &Value) -> String {
+    let rendered = serde_json::to_vec(payload).unwrap_or_default();
+    let mut hash = Sha256::new();
+    hash.update(&rendered);
+    format!("\"{:x}\"", hash.finalize())
+}
+
+/// Whether `If-None-Match` matches `etag` (including `*`).
+#[must_use]
+pub fn if_none_match(headers: &HeaderMap, etag: &str) -> bool {
+    let candidate = headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    candidate == etag || candidate == "*"
+}
+
+/// Compile-time channel brand snapshot (`shared/contracts/brand.json`).
+///
+/// `zk compose` regenerates the file for the selected channel before the server
+/// binary is built, so OEM builds embed their own brand here.
+#[must_use]
+pub fn brand_snapshot() -> &'static Value {
+    static BRAND: OnceLock<Value> = OnceLock::new();
+    BRAND.get_or_init(|| {
+        serde_json::from_str(include_str!("../../../shared/contracts/brand.json"))
+            .unwrap_or_else(|_| json!({}))
+    })
 }
 
 /// Read one JSON `system_settings` value (hot config).
