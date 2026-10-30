@@ -8407,6 +8407,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-cap-audio"
+version = "0.1.0"
+
+[[package]]
+name = "zk-cap-hooks"
+version = "0.1.0"
+
+[[package]]
+name = "zk-cap-image"
+version = "0.1.0"
+
+[[package]]
+name = "zk-cap-rerank"
+version = "0.1.0"
+
+[[package]]
+name = "zk-cap-transcription"
+version = "0.1.0"
+
+[[package]]
+name = "zk-cap-vector"
+version = "0.1.0"
+
+[[package]]
 name = "zk-client-auth"
 version = "0.1.0"
 dependencies = [
@@ -8450,6 +8474,12 @@ dependencies = [
  "zk-admin-shell",
  "zk-admin-ui-kit",
  "zk-agent-loop",
+ "zk-cap-audio",
+ "zk-cap-hooks",
+ "zk-cap-image",
+ "zk-cap-rerank",
+ "zk-cap-transcription",
+ "zk-cap-vector",
  "zk-client-auth",
  "zk-contract-admin-ui",
  "zk-contract-agent",

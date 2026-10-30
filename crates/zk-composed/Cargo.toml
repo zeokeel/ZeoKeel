@@ -19,6 +19,12 @@ zk-admin-admin-wallet = { path = "../../packages/admin/admin-wallet" }
 zk-admin-shell = { path = "../../packages/admin/shell" }
 zk-admin-ui-kit = { path = "../../packages/admin/ui-kit" }
 zk-agent-loop = { path = "../../packages/client/agent-loop" }
+zk-cap-audio = { path = "../../packages/client/cap-audio" }
+zk-cap-hooks = { path = "../../packages/client/cap-hooks" }
+zk-cap-image = { path = "../../packages/client/cap-image" }
+zk-cap-rerank = { path = "../../packages/client/cap-rerank" }
+zk-cap-transcription = { path = "../../packages/client/cap-transcription" }
+zk-cap-vector = { path = "../../packages/client/cap-vector" }
 zk-client-auth = { path = "../../packages/client/auth" }
 zk-contract-admin-ui = { path = "../../packages/contracts/admin-ui" }
 zk-contract-agent = { path = "../../packages/contracts/agent" }

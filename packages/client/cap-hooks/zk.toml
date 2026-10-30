@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/cap-hooks"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Rig hooks lifecycle (capability unavailable without provider)"
+
+[role]
+name = "agent.hooks"
+contract = "zk-contract-agent"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-cap-hooks" }

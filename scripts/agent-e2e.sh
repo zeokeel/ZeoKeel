@@ -15,6 +15,7 @@ cat > /tmp/zk-agent-fake.py <<'PY'
 import json,sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 def respond(body):
+    global UNKNOWN_SEEN
     messages=body.get("messages",[])
     user=" ".join(str(m.get("content") or "") for m in messages if m.get("role")=="user")
     tool_count=len([m for m in messages if m.get("role")=="tool"])

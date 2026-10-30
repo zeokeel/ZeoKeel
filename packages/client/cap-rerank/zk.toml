@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/cap-rerank"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Rerank (capability unavailable without provider)"
+
+[role]
+name = "media.rerank"
+contract = "zk-contract-agent"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-cap-rerank" }

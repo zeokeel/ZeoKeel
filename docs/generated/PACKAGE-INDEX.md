@@ -2,7 +2,7 @@
 
 # Package Index
 
-edition `enterprise` · channel `official` · 80 packages
+edition `enterprise` · channel `official` · 86 packages
 
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
@@ -18,9 +18,14 @@ edition `enterprise` · channel `official` · 80 packages
 | `admin.page.users` | `zeokeel/admin-users` | `zk-admin-admin-users` | `zk-contract-admin-ui` | singleton |
 | `admin.page.wallet` | `zeokeel/admin-wallet` | `zk-admin-admin-wallet` | `zk-contract-admin-ui` | singleton |
 | `admin.shell` | `zeokeel/admin-shell` | `zk-admin-shell` | `zk-contract-admin-ui` | singleton |
+| `agent.hooks` | `zeokeel/cap-hooks` | `zk-cap-hooks` | `zk-contract-agent` | singleton |
 | `agent.loop` | `zeokeel/agent-loop` | `zk-agent-loop` | `zk-contract-agent` | singleton |
 | `auth.client` | `zeokeel/client-auth` | `zk-client-auth` | `zk-contract-auth-client` | singleton |
 | `llm.provider.default` | `zeokeel/llm-gateway` | `zk-llm-gateway` | `zk-contract-llm` | singleton |
+| `media.audio` | `zeokeel/cap-audio` | `zk-cap-audio` | `zk-contract-agent` | singleton |
+| `media.image` | `zeokeel/cap-image` | `zk-cap-image` | `zk-contract-agent` | singleton |
+| `media.rerank` | `zeokeel/cap-rerank` | `zk-cap-rerank` | `zk-contract-agent` | singleton |
+| `media.transcription` | `zeokeel/cap-transcription` | `zk-cap-transcription` | `zk-contract-agent` | singleton |
 | `srv.app.db` | `zeokeel/app-db` | `zk-srv-app-db` | `zk-contract-app` | singleton |
 | `srv.app.runtime` | `zeokeel/app-runtime` | `zk-srv-app-runtime` | `zk-contract-app` | singleton |
 | `srv.apps` | `zeokeel/apps` | `zk-srv-apps` | `zk-contract-app` | singleton |
@@ -86,3 +91,4 @@ edition `enterprise` · channel `official` · 80 packages
 | `ui.slot.sessions` | `zeokeel/ui-sessions` | `zk-ui-sessions` | `zk-contract-ui` | singleton |
 | `ui.slot.settings` | `zeokeel/ui-settings` | `zk-ui-settings` | `zk-contract-ui` | singleton |
 | `ui.slot.skills` | `zeokeel/ui-skills` | `zk-ui-skills` | `zk-contract-ui` | singleton |
+| `vector.store` | `zeokeel/cap-vector` | `zk-cap-vector` | `zk-contract-agent` | singleton |

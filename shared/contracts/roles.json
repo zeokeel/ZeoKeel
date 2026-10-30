@@ -71,6 +71,12 @@
     "contract": "zk-contract-admin-ui",
     "cardinality": "singleton"
   },
+  "agent.hooks": {
+    "package": "zeokeel/cap-hooks",
+    "crate_name": "zk-cap-hooks",
+    "contract": "zk-contract-agent",
+    "cardinality": "singleton"
+  },
   "agent.loop": {
     "package": "zeokeel/agent-loop",
     "crate_name": "zk-agent-loop",
@@ -87,6 +93,30 @@
     "package": "zeokeel/llm-gateway",
     "crate_name": "zk-llm-gateway",
     "contract": "zk-contract-llm",
+    "cardinality": "singleton"
+  },
+  "media.audio": {
+    "package": "zeokeel/cap-audio",
+    "crate_name": "zk-cap-audio",
+    "contract": "zk-contract-agent",
+    "cardinality": "singleton"
+  },
+  "media.image": {
+    "package": "zeokeel/cap-image",
+    "crate_name": "zk-cap-image",
+    "contract": "zk-contract-agent",
+    "cardinality": "singleton"
+  },
+  "media.rerank": {
+    "package": "zeokeel/cap-rerank",
+    "crate_name": "zk-cap-rerank",
+    "contract": "zk-contract-agent",
+    "cardinality": "singleton"
+  },
+  "media.transcription": {
+    "package": "zeokeel/cap-transcription",
+    "crate_name": "zk-cap-transcription",
+    "contract": "zk-contract-agent",
     "cardinality": "singleton"
   },
   "srv.app.db": {
@@ -477,6 +507,12 @@
     "package": "zeokeel/ui-skills",
     "crate_name": "zk-ui-skills",
     "contract": "zk-contract-ui",
+    "cardinality": "singleton"
+  },
+  "vector.store": {
+    "package": "zeokeel/cap-vector",
+    "crate_name": "zk-cap-vector",
+    "contract": "zk-contract-agent",
     "cardinality": "singleton"
   }
 }

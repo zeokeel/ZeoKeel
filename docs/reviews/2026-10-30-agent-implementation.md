@@ -347,3 +347,76 @@ rig 循环/审批/ask-user/工具包**happy path 能跑**，但离 spec 的“DS
 
 - 关联 spec：`specs/changes/2026-10-30-agent-dsh-parity`。
 - 复评结论（第四轮）：**CHANGES-REQUESTED**
+
+---
+
+## 12. 第五轮复评（R5，2026-10-30）
+
+> 对象：R4 修复后的 agent rig 实现。只读复跑；未改产品代码/spec（仅本记录）。
+> 按用户目标“all DSH tools + all rig capabilities + all Playwright”评估。
+
+### 12.1 结论
+
+**CHANGES REQUIRED（CHANGES-REQUESTED）**
+
+- **P0：0**。
+- **P1：3 组**：rig 全能力仍有缺口、Playwright 仍缺 max/unknown、acceptance 事实错误/过期。其余为 P2/manual 或产品 descope 决策。
+- **e2e 7 passed retries=0**；provider hot-swap 已真实 UI e2e；schedule executor/subagent_fork/PDF 正例/workflow DAG 已落。
+
+### 12.2 已关闭
+
+- **provider 设置**：settings hot-swap + 第二 fake upstream Playwright 通过（test 7）。
+- **schedule**：`apps/desktop/src/automation.rs` 读 `.zeokeel/schedules.json` 并派发 chat；tool 设置 `next_run_ms`；CRUD 测试通过。
+- **subagent_fork**：新增包/工具/runner.fork + 测试；matrix 标 implemented。
+- **PDF**：`tool-read-document/tests/tool.rs` 现有有效 PDF/EPUB 正例（Hello PDF/Hello EPUB）。
+- **workflow DAG**、**subagent registry**、**6+1 e2e** 已落。
+- **call-timeout**：matrix 标 “implemented (exemption) ZEOKEEL_TOOL_TIMEOUT_MS”，有 C3 豁免说明（可接受为 P2，若产品确认）。
+
+### 12.3 剩余 P1（阻断目标）
+
+1. **rig 全能力仍缺**
+   - hooks、vector store/dynamic context、media（图像/音频/转写/rerank）未实现；acceptance 自述“仍未完成”。
+   - spec §0/§5 要求 capability 包/角色；用户目标 “all rig capabilities” 未满足。
+   - 性质：**需更多实现**，不是环境阻塞；若产品 descope，需 ADR + matrix/docs 明确 P2/manual，才可改判。
+2. **Playwright 仍缺 max turns / unknown tool**
+   - 现有 7 条覆盖审批/拒绝/取消/ask/bash/present/多步/provider；spec §5 还要求 max turns/unknown tool；未补。
+   - 性质：**需更多实现**（fake upstream 脚本可加）。
+3. **acceptance 事实错误/过期**
+   - `scripts/agent-e2e.sh` 实际 7 scenarios，acceptance 仍写 6；
+   - “仍未完成”仍列 schedule 执行器（已实现）、Playwright provider 设置（已实现）；与 matrix/代码冲突；
+   - “已落地证据”与未勾选检查项混用；状态 blocked 的 R4 文案需更新。
+   - 性质：**文档修复**（可本地完成），但未修前不能作为验收证据。
+
+### 12.4 P2/manual
+
+- `call-timeout` 独立包/role：当前 agent 级 env + matrix 豁免；若接受 C3 豁免，P2。
+- `subagent-control` send/interrupt、schedule worker 深度、tools 名称 DSH 对齐：P2/manual。
+- media/vector/hooks 若产品明确不做个人版，需 ADR + `CAPABILITY_UNAVAILABLE`；否则回 P1。
+- `review-check` 当前红：latest review CHANGES-REQUESTED（APPROVED 前预期）；不是代码缺陷。
+- `web_search` 自定义 endpoint 仅 https，未禁私网（本地配置）。
+
+### 12.5 证据
+
+| 命令 | 结果 |
+| --- | --- |
+| `bash scripts/agent-e2e.sh` | **PASS：7 passed (17.5s)，retries=0，无 flaky** |
+| `cargo test --workspace` / clippy | PASS |
+| `docs-check` / `spec-check` | PASS |
+| `agent-tool-matrix.py --check` | PASS |
+| `review-check` | **FAIL**：latest review CHANGES-REQUESTED；审批前预期 |
+| PDF positive / schedule CRUD / subagent_fork tests | PASS（本轮） |
+
+### 12.6 最小 APPROVED 条件
+
+- **A（补全目标）**：实现 hooks/vector/media（或明确按 provider 配置启用 + `CAPABILITY_UNAVAILABLE`）；补 Playwright max/unknown；把 acceptance 改为 7 scenarios、移除已完成项、更新状态；然后 APPROVED。
+- **B（产品 descope）**：产品 owner 书面同意 hooks/vector/media 为 P2/manual，写 ADR + matrix `partial/unsupported` + `CAPABILITY_UNAVAILABLE`；仍须补 Playwright max/unknown、修 acceptance 事实错误；然后 APPROVED。
+- 不接受仅在 acceptance 标 P2 而不改 ADR/matrix 的“文字 descope”。
+
+### 12.7 结论
+
+- **P0：0；P1：3 组**（rig 全能力、Playwright max/unknown、acceptance 事实）。
+- **当前 scope 不能 APPROVED**：目标未满足；修 P1 或按 B 正式 descope 后复评。
+- 环境阻塞项：无；剩余为可本地实现/文档修复/产品决策。
+
+- 关联 spec：`specs/changes/2026-10-30-agent-dsh-parity`。
+- 复评结论（第五轮）：**CHANGES-REQUESTED**

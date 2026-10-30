@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/cap-image"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Image generation (capability unavailable without provider)"
+
+[role]
+name = "media.image"
+contract = "zk-contract-agent"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-cap-image" }

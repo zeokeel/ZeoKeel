@@ -31,6 +31,12 @@ DSH reference: `research/dsh-agent-inventory.md` §2. Status is honest: implemen
 | workspace-dependencies | tool.workspace_dependencies | zeokeel/tool-workspace-dependencies | implemented |  |
 | read document (PDF/EPUB) | tool.read_document | zeokeel/tool-read-document | implemented | PDF/EPUB positive + negative tests |
 | worktree | tool.worktree | zeokeel/tool-worktree | implemented | argv, safe path |
+| vector store | vector.store | zeokeel/cap-vector | capability-unavailable | CAPABILITY_UNAVAILABLE until embedding provider |
+| image generation | media.image | zeokeel/cap-image | capability-unavailable | CAPABILITY_UNAVAILABLE |
+| audio generation | media.audio | zeokeel/cap-audio | capability-unavailable | CAPABILITY_UNAVAILABLE |
+| transcription | media.transcription | zeokeel/cap-transcription | capability-unavailable | CAPABILITY_UNAVAILABLE |
+| rerank | media.rerank | zeokeel/cap-rerank | capability-unavailable | CAPABILITY_UNAVAILABLE |
+| rig hooks | agent.hooks | zeokeel/cap-hooks | capability-unavailable | CAPABILITY_UNAVAILABLE |
 | call-timeout | - | agent-rig | implemented (exemption) | ZEOKEEL_TOOL_TIMEOUT_MS; agent-level policy, no separate package per C3 exemption |
 | tool-cordis | tool.cordis | zeokeel/tool-cordis | disabled | C2 forbids runtime plugin loading |
 | agent-team | tool.agent_team | zeokeel/tool-agent-team | experimental | explicit unsupported error |

@@ -1,4 +1,11 @@
 [packages]
+"vector.store" = "zeokeel/cap-vector"
+"media.image" = "zeokeel/cap-image"
+"media.audio" = "zeokeel/cap-audio"
+"media.transcription" = "zeokeel/cap-transcription"
+"media.rerank" = "zeokeel/cap-rerank"
+"agent.hooks" = "zeokeel/cap-hooks"
+
 "tool.subagent_fork" = "zeokeel/tool-subagent-fork"
 "tool.read_document" = "zeokeel/tool-read-document"
 "tool.extract" = "zeokeel/tool-extract"

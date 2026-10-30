@@ -96,6 +96,14 @@
     ]
   },
   {
+    "id": "zeokeel/cap-hooks",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "agent.hooks"
+    ]
+  },
+  {
     "id": "zeokeel/agent-loop",
     "version": "0.1.0",
     "kind": "capability",
@@ -117,6 +125,38 @@
     "kind": "capability",
     "roles": [
       "llm.provider.default"
+    ]
+  },
+  {
+    "id": "zeokeel/cap-audio",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "media.audio"
+    ]
+  },
+  {
+    "id": "zeokeel/cap-image",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "media.image"
+    ]
+  },
+  {
+    "id": "zeokeel/cap-rerank",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "media.rerank"
+    ]
+  },
+  {
+    "id": "zeokeel/cap-transcription",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "media.transcription"
     ]
   },
   {
@@ -637,6 +677,14 @@
     "kind": "ui",
     "roles": [
       "ui.slot.skills"
+    ]
+  },
+  {
+    "id": "zeokeel/cap-vector",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "vector.store"
     ]
   }
 ]
