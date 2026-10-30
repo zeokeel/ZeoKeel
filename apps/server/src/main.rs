@@ -5,6 +5,7 @@
 #![forbid(unsafe_code)]
 
 use axum::Router;
+use tower_http::services::{ServeDir, ServeFile};
 use zk_srv_http::{auth::ensure_bootstrap_admin, connect, router_from, run_migrations, state};
 
 const DEFAULT_ADDR: &str = "127.0.0.1:8787";
@@ -34,6 +35,12 @@ async fn main() -> Result<(), String> {
 
 async fn serve(app: Router) -> Result<(), String> {
     let addr = std::env::var("ZEOKEEL_SERVER_ADDR").unwrap_or_else(|_| DEFAULT_ADDR.to_owned());
+    let admin_dist = std::env::var("ZEOKEEL_ADMIN_DIST").unwrap_or_else(|_| "apps/admin/web/dist".to_owned());
+    let admin_index = format!("{admin_dist}/index.html");
+    let app = app.nest_service(
+        "/admin",
+        ServeDir::new(&admin_dist).not_found_service(ServeFile::new(admin_index)),
+    );
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .map_err(|error| format!("bind {addr}: {error}"))?;

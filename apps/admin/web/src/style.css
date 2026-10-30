@@ -1,0 +1,19 @@
+:root { color-scheme: light; font-family: ui-sans-serif, system-ui, sans-serif; background: #f6f8fb; color: #172033; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+.admin { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+aside { background: #111827; color: #e5e7eb; padding: 18px 12px; display: flex; flex-direction: column; gap: 4px; }
+aside h1 { font-size: 15px; margin: 0 0 14px; padding: 0 8px; } aside h1 span { color: #93c5fd; font-weight: 400; }
+aside button { border: 0; background: transparent; color: #cbd5e1; text-align: left; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+aside button.active, aside button:hover { background: #1f2937; color: #fff; } aside .logout { margin-top: auto; color: #fca5a5; }
+main { padding: 24px 28px; overflow: auto; } h2 { font-size: 18px; margin: 0 0 14px; }
+table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-top: 14px; font-size: 13px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eef2f7; } th { background: #f8fafc; color: #64748b; font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+input, select, button { font: inherit; } input, select { border: 1px solid #d7dee8; background: #fff; border-radius: 6px; padding: 6px 8px; font-size: 13px; }
+button { border: 1px solid #d7dee8; background: #fff; border-radius: 6px; padding: 6px 10px; font-size: 13px; cursor: pointer; } button:hover { background: #f1f5f9; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.login { width: min(360px, 90vw); margin: 15vh auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 22px; display: grid; gap: 12px; }
+.login h1 { font-size: 18px; margin: 0; } .login label { display: grid; gap: 4px; font-size: 12px; color: #64748b; }
+.login input { width: 100%; } .login button { background: #111827; color: #fff; border: 0; padding: 8px; }
+.error { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; padding: 8px 10px; border-radius: 6px; font-size: 12px; }
+.hint { color: #64748b; font-size: 12px; } .mono { font-family: ui-monospace, monospace; color: #64748b; }

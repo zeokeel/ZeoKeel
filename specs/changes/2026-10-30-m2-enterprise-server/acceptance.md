@@ -17,3 +17,9 @@
 - `bash scripts/srv-migration-test.sh` → `migration ok: 17 tables`（真实 PG 16）。
 - `bash scripts/srv-auth-test.sh` → `auth ok: login/me/refresh/reuse/admin-csrf/users-auditor/wallet-ledger/pricing/gateway`（真实 server + PG）。
 - `/healthz`、`/readyz` 200；`schema_migrations(0001_init)` 写入。
+
+## P3 admin SPA (progress)
+
+- `apps/admin/web`（Vite/React）：登录、用户/角色、钱包调账、模型价格。
+- 本地 Playwright 实测：登录 → 创建 e2e-user → 钱包调账 → 保存价格；axe serious/critical = 0。
+- 服务端以 `/admin/` 提供静态资源；`ZEOKEEL_ADMIN_DIST` 可覆盖。

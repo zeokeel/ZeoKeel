@@ -25,7 +25,7 @@
   client 包（tool-fs/llm-mock/agent-loop/store-session-sqlite/store-settings-json/llm-openai-compatible）、workspace 契约/v2 迁移、
   `crates/zk-composed`（生成 glue）、Tauri 桌面 app + axum 服务端骨架、serve 载体、assistant-ui React 前端（UI 包化）、官方渠道 logo 构建期注入。
 - 尚未完成：provider 运行时按设置选择/系统密钥库（M1b）、审批/工具扩展、右栏/命令面板完整版、
-  M2 企业版服务端（已批准 spec；P1 已有 srv.http/PostgreSQL 迁移、local 登录/EdDSA JWT/refresh/admin cookie+CSRF/users/roles、钱包账本/调账、价格/模型目录、网关准入/hold/SSE/结算；管理台待做）、M3–M6。
+  M2 企业版服务端（已批准 spec；P1 已有 srv.http/PostgreSQL 迁移、local 登录/EdDSA JWT/refresh/admin cookie+CSRF/users/roles、钱包账本/调账、价格/模型目录、网关准入/hold/SSE/结算；管理台 SPA（用户/钱包/价格）已可登录操作）、M3–M6。
 - 文档仍是规范真源；代码与文档冲突时先改文档/ADR 再改实现。
 
 ## 2. 最高约束（必须遵守）
