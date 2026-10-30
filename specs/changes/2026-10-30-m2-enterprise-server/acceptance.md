@@ -23,3 +23,10 @@
 - `apps/admin/web`（Vite/React）：登录、用户/角色、钱包调账、模型价格、审计、用量。
 - `bash scripts/admin-e2e.sh`：真实 PostgreSQL + server + 4 Playwright tests（建用户/钱包/价格/审计/用量/axe）全绿。
 - 服务端以 `/admin/` 提供静态资源；`ZEOKEEL_ADMIN_DIST` 可覆盖。
+
+## P4 deployment artifacts (progress)
+
+- `deploy/docker/Dockerfile.server`：多阶段 server + admin build。
+- `deploy/docker-compose.yml`：postgres/server/caddy，6 键 env。
+- `deploy/caddy/Caddyfile`、`deploy/portal/index.html`、`deploy/scripts/{backup,restore}.sh`。
+- 本机无 Docker，**未执行镜像构建/compose up**；需在 CI/主机补验证。
