@@ -12,6 +12,7 @@
 - **服务端是弱管控配套**：Rust（axum + PostgreSQL + cordis）只做认证、用户、钱包/网关计费、商店分发（技能/连接器/应用）、审计、管理台；**不执行 agent、不执行技能**。
 - **内核**：`zeokeel-cordis` 0.6.x（纯 Rust、静态链接、无动态加载）。
 - **组合方式**：构建期组合（edition/profile/channel → `zk` → 生成 glue → 编译）；**运行期不加载任何插件/代码**。
+- **复用优先**：可复用实现只在契约/kit；能力索引由 `zk capability` 生成；禁止第二份实现。
 - **双版本**：`personal`（纯客户端、自配 provider、无应用中心）是基线；`enterprise` = (个人版 − 个人专属包) + 企业管控包（服务端、登录、网关、商店客户端、管理台），通过 `base_edition = "personal"` + `exclude` 追加/覆盖，不复制客户端基线。
 - **OEM**：私有索引仓 + 每客户 submodule，构建期注入渠道/品牌/文案；OEM 定制代码由我方开发并入库（D61）。
 - **许可**：MIT（企业版/个人版核心）；OEM 产物按交付说明。
@@ -46,6 +47,7 @@
 | C14 | **渠道决定登录地址形态**：官方企业版也是渠道（`official`），`server_url` 默认空 → 首配页由客户填写并本地保存（设置可改，需重登）；OEM 渠道可设非空 → 登录页**不显示地址输入**（只账号/密码），地址不可编辑；个人版必须空且无登录 | 见 ADR-042/044 |
 | C15 | **参考仓库只作参考**：`zeokeel/channels`、`ZeoKeel-Harness`、`ZeoKeel-Next` 等只可作事实/设计参考，**不得**作为我们的依赖、构建输入、索引仓或数据源；我们的 OEM 索引仓必须自有命名（demo 为 `zeokeel/demo-oem-index`） | 拒绝合并 |
 | C16 | **无 spec 不开工**：代码/契约/数据/行为变更必须先有 `specs/changes/<id>/` 五件套；spec 经用户确认后改 `approved`；完成必须填 `acceptance.md` 并归档 | 拒绝合并 |
+| C17 | **复用优先 / 单一实现**：可复用能力只允许一处实现（契约 / `crates/zk-kit-*` / `packages/ui/ui-kit`）；禁止新建 `utils/helpers/common` 或复制近似实现；新增可复用能力必须先查能力索引并登记 `@capability`；CI 重复/越界门禁（`docs/25`、ADR-057） | 拒绝合并 |
 
 ## 3. Architecture model（binding）
 
@@ -82,7 +84,7 @@
 ZeoKeel/
 ├─ AGENTS.md            # 本文件
 ├─ README.md
-├─ docs/                # 规划（00–24）+ PLAN + README(SSOT)
+├─ docs/                # 规划（00–25）+ PLAN + README(SSOT)
 ├─ specs/               # 变更规格（changes/templates/archive）
 ├─ .agents/skills/      # 项目 Agent Skills（change/add-package/docs）
 ├─ research/            # 一手研究 + 评审
@@ -100,8 +102,9 @@ ZeoKeel/
 ├─ pnpm-workspace.yaml
 ├─ zk.toml / zk.lock
 ├─ editions/  profiles/  brands/
-├─ crates/               # 非包 crate：zk-composed（生成 glue）、zk-bootstrap（ADR-009）
+├─ crates/               # 非包 crate：zk-composed（生成 glue）、zk-bootstrap（ADR-009）、zk-kit-*（共享实现库，25）
 ├─ packages/{contracts,runtime,client,server,ui}/
+│                          # ui/ui-kit = 共享 UI 组件（角色 ui.kit）
 ├─ apps/{desktop,server,admin}/
 ├─ deploy/{docker,portal}/
 ├─ oem/                  # OEM 索引仓 submodule
@@ -188,6 +191,7 @@ zk validate
 zk compose --edition personal --profile default --channel official --check
 zk compose --edition enterprise --profile default --channel official --check
 zk api --edition personal --profile default --channel official --check
+zk capability --check
 zk docs --check
 zk db lock --check
 cargo test --workspace export_bindings && git diff --exit-code
@@ -208,6 +212,8 @@ cargo test --workspace export_schema && git diff --exit-code
 - 需要底层能力（WASM 运行时、系统 API）时，使用经过审计的依赖（wasmtime/tauri 等），**不自己写 unsafe**；
   依赖内的 unsafe 由锁定版本 + `cargo-geiger`/`cargo-deny` 审计管理（见 `docs/18` §4）。
 - 包 `name()` 必须命名空间化（`<role>/<package-id>`），避免 cordis 同名 runtime 合并。
+- 可复用逻辑只进 `crates/zk-kit-*` 或 `@zeokeel/ui-kit`；包内 helper 私有；禁止新建 `utils/helpers/common`。
+- 可复用公共项必须有 `@capability <id>` 注释；`zk capability --check` 必须绿。
 - 插件/服务必须把资源包成 effect（任务、监听器、fd），否则内核回收不到。
 
 ### TypeScript / React
@@ -217,6 +223,7 @@ cargo test --workspace export_schema && git diff --exit-code
 - 组件只读 reducer/view model；流式事件进纯 reducer；未知事件忽略并记日志。
 - 不自己写 Markdown 解析/虚拟滚动/焦点管理；用 §3.1 指定库。
 - 每个 UI 组件必须覆盖六态：空/加载/错误/离线/流式中/已取消。
+- 共享组件/格式化进 `@zeokeel/ui-kit`；业务组件不得被其它包 import。
 
 ### 包与命名
 
@@ -255,7 +262,7 @@ cargo test --workspace export_schema && git diff --exit-code
 - 改行为必须同步改文档；新增 ADR 放 `docs/13`，决策变更先改 ADR 再改实现。
 - 生成物头部 `@generated`，禁止手改；`--check` 失败时改生成器或输入，不改产物。
 - **ADR 状态机**：决策被取代时，旧 ADR 必须标 `superseded-by-ADR-0xx` 并回写所有引用/重复表述；禁止两篇 `accepted` ADR 互相矛盾。
-- **唯一已定清单**：`docs/15`（D1–D65；实现细节待定索引见 §C）+ `docs/13`（ADR-001…056，其中 ADR-013 为显式 `open` 的非本期扩展点）+ `docs/19–24`（域内规范）是已定事项真源；PLAN/其它文档只引用编号，不手抄结论。
+- **唯一已定清单**：`docs/15`（D1–D65；实现细节待定索引见 §C）+ `docs/13`（ADR-001…057，其中 ADR-013 为显式 `open` 的非本期扩展点）+ `docs/19–25`（域内规范）是已定事项真源；PLAN/其它文档只引用编号，不手抄结论。
 - **变更规格**：`specs/changes/<id>/` 五件套；`spec-check` 门禁；耐久结论回写 `docs/`，spec 归档。
 - **Skills**：`.agents/skills/` 只写步骤/命令/判据，不复制规范；冲突时以本文件与 `docs/README.md` 为准。
 
@@ -275,25 +282,30 @@ cargo test --workspace export_schema && git diff --exit-code
 | 跨包直接依赖具体实现类型（而非契约） | 可替换性（ADR-002/004） |
 | 提交密钥、客户信息、OEM 私有素材到公开仓 | 安全/合约 |
 | 把参考仓库（channels/Harness/Next）当依赖/构建输入/索引仓/数据源 | C15 |
+| 重复实现已有能力：本地 `utils/helpers`、复制近似代码、同一职责两套实现 | C17/`25` |
+| 业务包 import 其它业务实现；kit 反向依赖业务包 | C4/C17 |
+| 新增/修改共享能力但未登记 `@capability`/未更新能力索引 | C17/`25` |
 | 把"未验证"说成"已验证"；用模型自述当证据 | 证据政策 |
 
 ## 12. 当前 TODO / 已知未决
 
 - macOS 公证：**本地先测**，证书后配，CI 先就绪（ADR-037）。
 - S0：P2（WASM）原型完成但**证据未归档**（M0 前补跑 `build.sh` + `golden/run.py` 并存 `target/evidence/`）；P1 双 app 组合、P3 认证+JWT、P4 OEM submodule CI、P5 迁移不可变、P6 管理台包化待做（S0 阻塞 M0，见 `docs/12`）。
-- 实现细节待定：统一索引 `docs/15` §C（T1–T19），不阻塞 spec 编写与机制 spike；实现前在对应 milestone spec 冻结。
+- 实现细节待定：统一索引 `docs/15` §C（T1–T21），不阻塞 spec 编写与机制 spike；实现前在对应 milestone spec 冻结。
+- 复用/去重门禁：能力索引、路径/import 检查、克隆检测与 baseline，M0 落地（`25`、T20/T21）。
 - 已拍板（v3.2）：余额=企业配额、不做开票/收款、OEM 代码自研、Powered by OEM 默认隐藏、不做 DPA、暂不定义 RPO/RTO、安全内部评审（D60–D65）。
 - 已定清单：`docs/15-open-questions.md`（D1–D65）；决策理由：`docs/13-risks-and-adr.md`；`docs/17-v3.1-decisions.md` 是历史存档，不作依据。
 
 ## 13. Agent workflow（怎么干活）
 
-1. **先读**：本文件 → `docs/README.md`（SSOT/任务路径）→ `specs/README.md`（变更规则）→ 任务对应权威文档 → `docs/18`（写代码时）。
-2. **先查 spec**：`specs/changes/` 是否已有同目标变更；没有则 `bash scripts/new-change.sh <slug>`，写 `proposal.md` 并让用户确认后改 `approved`。
-3. **先问**：需求/契约/数据格式/安全边界不明确时问用户；不要替用户做产品决策。
-4. **小步**：按 `tasks.md` 一次一个可提交步骤；改契约先跑 conformance 与 public-api diff。
-5. **验证**：按 §6 跑对应命令；失败就修到绿，不许跳过。
-6. **收尾**：填 `acceptance.md`；更新文档/ADR/README；检查 `docs-check`/`spec-check` 与生成物 `--check`；归档 spec。
-7. **提交**：Conventional Commits（`feat(scope): ...`）；一个 PR 一件事；PR 描述链接 `specs/changes/<id>`。
+1. **先读**：本文件 → `docs/README.md`（SSOT/任务路径）→ `specs/README.md`（变更规则）→ 任务对应权威文档 → `docs/18`/`docs/25`（写代码时）。
+2. **先搜复用**：`zk find <能力>` / 读 `docs/generated/CAPABILITY-INDEX.md` / `rg` 现有符号；确定复用、扩展或新建，并留证据（`25` §5）。
+3. **先查 spec**：`specs/changes/` 是否已有同目标变更；没有则 `bash scripts/new-change.sh <slug>`，写 `proposal.md` 并让用户确认后改 `approved`。
+4. **先问**：需求/契约/数据格式/安全边界不明确时问用户；不要替用户做产品决策。
+5. **小步**：按 `tasks.md` 一次一个可提交步骤；改契约先跑 conformance 与 public-api diff。
+6. **验证**：按 §6 跑对应命令；失败就修到绿，不许跳过。
+7. **收尾**：填 `acceptance.md`；更新文档/ADR/README；检查 `docs-check`/`spec-check`/`zk capability --check` 与生成物 `--check`；归档 spec。
+8. **提交**：Conventional Commits（`feat(scope): ...`）；一个 PR 一件事；PR 描述链接 `specs/changes/<id>`，并回答复用四问。
 
 ## 14. PR / commit 约定
 

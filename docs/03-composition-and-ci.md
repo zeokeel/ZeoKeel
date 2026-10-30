@@ -183,7 +183,10 @@ base = "default"
 | `zk db lock` / `zk db lock --check` | 分配/更新迁移哈希（只允许新增）/ 只校验不写 | 迁移变更 / PR 漂移 |
 | `zk api` / `zk api --check` | 生成 api-catalog/openapi/权限矩阵 / 只校验 | 契约变更 |
 | `zk docs` / `zk docs --check` | 生成 `docs/generated/*.md` / 只校验 | PR 漂移 |
-| `zk lint` | 包静态检查（依赖白名单/IO/线程/全局状态/公共 API） | PR |
+| `zk capability` / `zk capability --check` | 生成/校验能力索引（`25` §3） | PR 漂移 |
+| `zk find <关键词>` / `zk find --used-by <id>` | 搜能力索引（写代码前必查） | 开发/评审 |
+| `zk lint` | 包静态检查（依赖白名单/IO/线程/全局状态/公共 API/非法 utils 目录/import 越界） | PR |
+| `zk lint --duplicates` | 克隆代码检测（Rust token 级；TS 用 jscpd） | PR |
 | `zk init [--edition E]` | 初始化/补全 workspace 骨架（一次性） | scaffold / 新人 |
 | `zk vendor [--all-profiles]` | 生成全 profile 并集 vendor + source replace | 离线构建 |
 | `zk db reset` | 开发期重置本地库（生产禁用） | 本地 |
@@ -356,7 +359,8 @@ $ python3 resolve.py hardened && cargo build --offline  # ok，但 Cargo.lock �
 ### 5.6 文档索引
 
 `docs/generated/PACKAGE-INDEX.md`（所有包）、`PROFILE-MATRIX.md`（edition × profile × channel 闭包）、
-`CONTRACT-INDEX.md`。writer 为 `zk docs`（`24` §3）；数字一律生成，禁止手写——先例最大的返工来源就是手写计数漂移。
+`CONTRACT-INDEX.md`、`CAPABILITY-INDEX.md`（可复用能力）。writer 为 `zk docs`/`zk capability`（`24` §3）；
+数字一律生成，禁止手写——先例最大的返工来源就是手写计数漂移。
 
 ## 6. CI：把"可替换"变成可执行断言
 
@@ -369,6 +373,7 @@ jobs:
   manifests:        zk validate                       # 含契约唯一性（按 package id/source，fail closed）
   drift:            zk compose --edition personal --profile default --channel official --check
                     zk api --edition personal --profile default --channel official --check
+                    zk capability --check
                     zk docs --check
                     zk db lock --check
                     cargo test --workspace export_bindings && git diff --exit-code
@@ -432,6 +437,9 @@ unexpected: 其他包出现在 diff 中 → 说明有包越界依赖了具体实
 | 契约 crate 出现两个 package id（同名不同 path / 同名不同 git+rev / 改名副本） | 失败，指出两个 id；**不允许降级为警告**（POC 实测三种都能骗过"按版本去重"） |
 | 第三方包自带私有契约副本 | `zk validate` 失败（"契约身份不符"），而不是留给 `cargo build` 的 E0599 |
 | 手改生成物 | `--check` 失败 |
+| 复制已有实现/新增克隆块 | `zk lint --duplicates` 超 baseline 失败（`25` §4） |
+| kit 外新建 `utils/helpers/common` | `zk lint` 失败 |
+| kit/契约公共项未登记 `@capability` | `zk capability --check` 失败 |
 | UI 贡献声明的 componentId 在 web 侧不存在 | 构建失败（`required ⊆ provided`） |
 
 ### 6.5 第三方包接入（外部供应商/OEM）——必须先解决契约身份

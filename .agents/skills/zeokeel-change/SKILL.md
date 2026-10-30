@@ -14,8 +14,9 @@ description: Use when starting any ZeoKeel change that touches code, contracts, 
 
 1. 读 `AGENTS.md` → `docs/README.md`（SSOT/任务路径）。
 2. 打开本次主题的**唯一权威文档**；不要从 `research/` 或历史文档取规范。
-3. 检查 `specs/changes/` 是否已有同目标变更；有则续用，不另建。
-4. 检查 `docs/15`（D）与 `docs/13`（ADR）是否已有结论；冲突时停下来问用户，不自行选。
+3. **先搜复用**（C17/`docs/25`）：`zk find <能力>` / 读 `docs/generated/CAPABILITY-INDEX.md` / `rg` 现有符号；确定复用、扩展还是新建，并留证据。
+4. 检查 `specs/changes/` 是否已有同目标变更；有则续用，不另建。
+5. 检查 `docs/15`（D）与 `docs/13`（ADR）是否已有结论；冲突时停下来问用户，不自行选。
 
 ## 建 spec
 
@@ -35,8 +36,10 @@ bash scripts/new-change.sh <kebab-slug>
 ## 实现
 
 - 按 `tasks.md` 顺序，一次一个可独立提交的步骤。
+- 复用优先：能调用现有实现就不新写；能扩展 kit/契约就不新建；禁止复制旧文件后改（`25` §5）。
 - 改契约先跑 conformance / public-api diff；改迁移只追加。
 - 不手改 `@generated`；不跨层依赖具体实现；不新增运行期插件加载。
+- 不新建 `utils/helpers/common`；可复用逻辑只进 `crates/zk-kit-*` / `@zeokeel/ui-kit`；新增能力登记 `@capability`。
 - 每个任务完成后立刻跑它的 `verify`，失败不进入下一步。
 - 发现 spec 错了：先改 spec（必要时重新 `approved`），再改代码。
 

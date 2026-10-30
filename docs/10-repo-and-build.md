@@ -17,13 +17,13 @@ ZeoKeel/
 ├─ editions/                   # enterprise.toml / personal.toml / personal-only.toml
 ├─ brands/                     # official 渠道品牌资产（logo/文案/安装器文案；OEM 子仓同构）
 ├─ profiles/                   # base/default/mock/minimal/hardened/ci-matrix/...
-├─ crates/                     # 非包 crate：zk-composed（生成 glue）、zk-bootstrap（引导，ADR-009）
+├─ crates/                     # 非包 crate：zk-composed（生成 glue）、zk-bootstrap（引导，ADR-009）、zk-kit-*（共享实现库，`25`）
 ├─ packages/
 │  ├─ contracts/               # zk-contract-*（trait/DTO/API 契约 + conformance kit）
 │  ├─ runtime/                 # zk-runtime-*（cordis 宿主、config、ipc、http、db、migrate、jobs、obs）
 │  ├─ client/                  # zk-agent-*、zk-tool-*、zk-llm-*、zk-client-*、UI 声明 crate
 │  ├─ server/                  # zk-srv-* 域包 + admin-* 管理台页面/壳包（Rust 声明 crate + web/ facet）
-│  └─ ui/                      # @zeokeel/ui-*：Rust 声明 crate + web/ facet（不含 admin）
+│  └─ ui/                      # @zeokeel/ui-*：Rust 声明 crate + web/ facet（不含 admin）；ui-kit = 共享组件（角色 ui.kit）
 ├─ apps/
 │  ├─ desktop/                 # Tauri 客户端：web/（前端）+ src/（Rust 入口；Cargo.toml 由 zk 生成）
 │  ├─ server/                  # axum 服务端（Cargo.toml 由 zk 生成）
@@ -67,6 +67,8 @@ packages/server/wallet/
 ```
 
 有 UI facet 的包加 `web/`（package.json + src）；有后台作业的包在 `zk.toml` 声明 `[[jobs]]`（`24` §2）。
+
+**共享实现库不是包**：Rust 的 `crates/zk-kit-*` 无 `zk.toml`/无角色、只依赖契约与其它 kit；TS 的 `packages/ui/ui-kit` 是包（角色 `ui.kit`）。业务包不得互相 import；规则见 `25` §2。
 
 ## 3. editions 与 profiles
 

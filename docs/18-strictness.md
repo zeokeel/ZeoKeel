@@ -208,3 +208,19 @@ cargo test --workspace export_schema && git diff --exit-code
 - 构建/工具链见 `10-repo-and-build.md`；
 - 契约与边界见 `04-contracts-and-api.md`；
 - ADR 记录见 `13-risks-and-adr.md` ADR-039。
+
+## 10. 复用/去重检查（C17）
+
+> 规则与门禁清单见 `25`；本节只列静态检查落点。
+
+| 检查 | 机制 | 失败 |
+| --- | --- | --- |
+| 能力索引 | kit/契约每个 `pub` 项必须有 `@capability <id>` 注释；`zk capability --check` 与源码一致 | PR 红 |
+| 禁止目录/文件 | 业务包内出现 `utils/`、`helpers/`、`common/`、`misc/`、`shared.ts`、`lib.ts`（kit 外） | `zk lint` 红 |
+| import 边界 | 业务包只能 import 契约、`zk-kit-*`、`@zeokeel/ui-kit`、基线依赖；禁止 import 其它业务包实现 | `zk lint`/ESLint `no-restricted-imports` 红 |
+| 重复代码（TS） | `jscpd --threshold 70 --min-lines 30`，与 `duplication-baseline.json` 比较（只降不升） | PR 红 |
+| 重复代码（Rust） | `zk lint --duplicates`（token 规范化后比对），同一 baseline ratchet | PR 红 |
+| 唯一 id | 路由/命令/`tool.<name>`/componentId/slotId/权限点重复 | `zk validate`/`zk compose --check` 红 |
+
+- 不新增第二条"共享工具"路径：共享实现只能进 `crates/zk-kit-*` 或 `packages/ui/ui-kit`（`25` §2）。
+- 例外必须 spec + ADR/D 批准并在能力索引登记；审查时按 `25` §4.3 的复用四问。

@@ -52,6 +52,7 @@ P1（双 app 组合）、P3（认证+JWT）、P4（OEM submodule CI）、P5（�
 4. 两端骨架：`apps/desktop`（Tauri 空壳 + UI registry）+ `apps/server`（axum + /healthz + 管理台空壳）。
 5. 生成物：两端 glue、api-catalog、迁移清单；负向测试 7 条。
 6. CI 骨架：三平台 `cargo check`、validate/drift、单包测试。
+7. 复用/去重门禁：`zk capability` 能力索引 + 禁止目录/import/克隆检测 + `duplication-baseline.json`（`25` §4）。
 
 **退出条件**
 
@@ -60,6 +61,7 @@ P1（双 app 组合）、P3（认证+JWT）、P4（OEM submodule CI）、P5（�
 - [ ] 7 条负向测试全红（唯一清单见 `03` §6.4）。
 - [ ] 路由/命令静态表与运行期注册不一致时拒启；迁移重复/改历史/顺序漂移均红（`24` §9 M0 清单）。
 - [ ] 完整 M0 验收另见 `24` §9（M0 部分）。
+- [ ] `zk capability --check` 绿；新增克隆块 = 0（相对 baseline）；kit 外新增 utils/helpers = 0。
 - [ ] CI 热缓存下 T0+T1 < 10 min（实测记录）。
 
 ---

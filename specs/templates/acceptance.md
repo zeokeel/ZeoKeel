@@ -12,6 +12,8 @@
 | `python3 scripts/docs-check.py` | <pass/fail> | <stdout/日志> |
 | `zk validate` | <pass/fail> | <日志> |
 | `zk compose --edition <E> --profile <P> --channel <C> --check` | <pass/fail> | <日志> |
+| `zk capability --check` | <pass/fail> | <日志> |
+| `zk lint --duplicates`（或 jscpd ratchet） | <pass/fail> | <报告> |
 | `cargo nextest run -p <pkg>` | <pass/fail> | `target/evidence/...` |
 | `pnpm -r typecheck && pnpm -r lint` | <pass/fail> | <日志> |
 | <其它> | | |
@@ -46,3 +48,10 @@
 
 - [ ] `done`：证据齐全，可合并
 - [ ] `abandoned`：原因：<...>
+
+## 6. 复用证据（C17）
+
+- 搜索记录：<`zk find ...` 输出 / 索引条目链接>
+- 复用清单：<capability id → 调用点>
+- 新增能力登记：<索引条目 / 无>
+

@@ -7,7 +7,7 @@
 
 | 层 | 范围 | 成本目标 | 何时跑 |
 | --- | --- | --- | --- |
-| T0 组合快照 | 清单校验、角色/契约、路由/权限矩阵、UI 闭包、迁移哈希 | < 10s | 每次提交 |
+| T0 组合快照 | 清单校验、角色/契约、路由/权限矩阵、UI 闭包、迁移哈希、**复用/去重门禁**（能力索引/禁止目录/import/克隆 ratchet） | < 10s | 每次提交 |
 | T1 单包 | `cargo check -p` + 该包单测 + conformance | < 3 min | PR 受影响包 |
 | T2 组合构建 | edition/profile 构建（client/server/admin）+ 启动自检 | 5–15 min/profile | PR（enterprise + personal） |
 | T3 集成 | 真 PG + 服务端全包；真客户端 + 真服务端 | 10–20 min | PR / 合并前 |
@@ -48,7 +48,7 @@
 
 ## 5. 证据与报告
 
-- 每次 CI 产出 `target/evidence/<run>/`：测试报告、端点矩阵、覆盖报告、SBOM、产物哈希。
+- 每次 CI 产出 `target/evidence/<run>/`：测试报告、端点矩阵、覆盖报告、SBOM、产物哈希、能力索引 diff、克隆 ratchet 报告。
 - "完成"判据：对应层的命令在 CI 绿 + 证据文件存在 + 可复现（README 记录命令）。
 - 手工验证也必须落成脚本（否则下次无法复现）。
 - 文档里的数字（包数/端点/测试数）一律生成，不手写。
@@ -59,6 +59,8 @@
 | --- | --- |
 | `zk validate` | 缺角色/重复 singleton/契约两个 package id/迁移哈希不符 |
 | `zk compose --check` | 生成物与提交不一致 |
+| `zk capability --check` | 能力索引与公共 API 不一致；kit/契约公共项未登记 |
+| 复用/去重 | kit 外新增 utils/helpers；业务包 import 其它业务实现；新增克隆超 baseline |
 | 迁移不可变 | 历史迁移文件哈希变化 |
 | 权限矩阵 | 有端点没声明权限点，或管理台页面权限不在集合内 |
 | 品牌残留 | `hide` 渠道出现官方品牌字符串/资源；`show` 渠道出现非固定 Powered by 文案 |

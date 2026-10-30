@@ -14,6 +14,16 @@
 | edition/profile/channel | <personal/enterprise、default/mock、official/oem> |
 | 文档 | <SSOT 文档、ADR/D> |
 
+## 1.5 复用检查（C17，必填）
+
+| 要实现的点 | 现有能力（capability id / 路径） | 结论 | 归属 |
+| --- | --- | --- | --- |
+| <函数/组件/规则> | <`kit.xxx` / `contract.xxx` / 无> | 复用 / 扩展 / 新建 | <kit/契约/包> |
+
+- 搜索证据：<`zk find ...` 输出 / CAPABILITY-INDEX 条目 / `rg` 结果>
+- 若"新建"：为什么不能复用或扩展？<必填；无理由 = 评审拒绝>
+- 新增可复用能力：`@capability` id = <...>；登记位置 = <...>
+
 ## 2. 方案
 
 <一段话说清做法；配最小图/表。>

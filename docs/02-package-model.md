@@ -20,6 +20,9 @@
 **推论**：包不是"文件夹"，是"可替换边界"。一个包可以同时有 Rust facet 和前端 facet，
 但**替换时两个 facet 一起换**——这是"UI 与能力同属一个包"的语义保证（见 §6）。
 
+**例外：共享实现库（kit）不是包**。`crates/zk-kit-*` 无 `zk.toml`/无角色/无状态，只放被多个包复用的纯实现，
+供业务包依赖；`packages/ui/ui-kit` 是 UI 包（角色 `ui.kit`）。规则见 `25` §2（C17）。
+
 ## 2. 包清单 `zk.toml`
 
 每个包根目录一份，**唯一真源**。`Cargo.toml` / `package.json` 里的对应字段由 `zk` 校验一致
@@ -51,6 +54,7 @@
 | ★`admin-ui` | 管理台页面与 UI 包 | `admin.page.*`、`admin.slot.*` | `admin-users`、`admin-gateway` | **核心替换对象** |
 
 `product` 是**产物入口**的标记，不进入可组合包集合（它由 profile 决定包含哪些包）；单独列出是为了让"什么不是包"显式化。
+kit 不是 kind（它是非包共享库，见 §1 例外与 `25`）。
 
 **edition 与 OEM 不是 kind，是组合层**：`editions/personal.toml` 是基线；`editions/enterprise.toml`
 `base_edition = "personal"` + `exclude` 个人专属包后**追加企业管控包 + 覆盖角色**（企业版 = (个人版 − 个人专属包) + 企业管控包）；`oem/<customer>/`
@@ -84,7 +88,7 @@ v3 追加两类实现包：`server`（服务端域）与 `admin-ui`（管理台�
 | `store.*` | `store.session`、`store.settings` | singleton | 持久化实现 |
 | `host.*` | `host.fs-access`、`host.process`、`host.net`、`host.secrets`、`host.tasks`、`host.clock`、`host.config` | singleton | 宿主能力，被 capability 依赖；后三者由 runtime 按 `zk-contract-kernel` 提供 |
 | `platform.*` | `platform.shell`、`platform.ipc`、`platform.http` | singleton | 桌面壳 / IPC 通道 / serve 载体；与前端 `ui.transport` 成对（同一包 facet 提供） |
-| `ui.shell` / `ui.shell-kit` / `ui.transport` | — | singleton | 外壳/壳原语+SLOT_DEFS/传输实现（tauri/http/mock）由 profile 选 |
+| `ui.shell` / `ui.shell-kit` / `ui.transport` / `ui.kit` | — | singleton | 外壳/壳原语+SLOT_DEFS/传输实现（tauri/http/mock）/共享 UI 组件由 profile 选 |
 | `ui.slot.<位置>` | `ui.slot.chat`、`ui.slot.settings.section` | multi | 槽位贡献；角色后缀 = slotId 去掉 `ui.` 前缀（slotId 清单见 `16` §3） |
 | `theme.*` / `brand.*` / `i18n.*` | `theme.tokens`、`brand.mark` | singleton | 换肤/白标的最小替换面 |
 | ★`srv.auth` / `srv.users` / `srv.wallet` | 例：`srv.auth.source`、`srv.users`、`srv.wallet` | singleton | 服务端域，一域一实现；OEM 可整域替换（无部门/用户组） |

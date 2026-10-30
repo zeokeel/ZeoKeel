@@ -56,6 +56,7 @@ M0 起点角色表（`[roles]` 的键；提供者声明的 contract/cardinality 
 | `platform.ipc` | `zk-contract-ipc` | singleton | personal, enterprise | IPC 通道（`Command`/`Event`/`StreamChannel`） |
 | `ui.shell` | `zk-contract-ui` | singleton | personal, enterprise | 外壳唯一 |
 | `ui.shell-kit` | `zk-contract-ui` | singleton | personal, enterprise | 壳原语 + `SLOT_DEFS`/props 常量（`16` §3） |
+| `ui.kit` | `zk-contract-ui` | singleton | personal, enterprise | 共享 UI 组件/格式化/六态容器（`packages/ui/ui-kit`，`25`） |
 | `ui.transport` | `zk-contract-ui` | singleton | personal, enterprise | 前端 transport（tauri/http/mock） |
 | `ui.slot.<slotSuffix>` | `zk-contract-ui` | multi | personal, enterprise | 槽位贡献；slotId = `ui.<slotSuffix>`，清单见 `16` §3 |
 | `store.session` / `store.settings` | `zk-contract-session` / `zk-contract-config` | singleton | personal, enterprise | 持久化实现 |
@@ -235,7 +236,8 @@ protected = false
 | `shared/contracts/events.json` | `zk compose`（事件 topic 注册表，`04` §8） | 同上 |
 | `shared/ts/*.ts` | `cargo test --workspace export_bindings`（ts-rs） | `git diff --exit-code` |
 | `shared/schema/*.json`、包内 `schema/*.json` | `cargo test --workspace export_schema`（schemars） | 同上 |
-| `docs/generated/*.md` | `zk docs`（数据来自 `zk plan`/`zk api`/`zk db lock`） | 临时目录比较，不写 |
+| `docs/generated/*.md` | `zk docs`（数据来自 `zk plan`/`zk api`/`zk capability`/`zk db lock`） | 临时目录比较，不写 |
+| `shared/contracts/capability-index.json`、`docs/generated/CAPABILITY-INDEX.md` | `zk capability`（从 `@capability` 注释生成，`25` §3） | 只校验 |
 | `migrations.lock` | `zk db lock`（`--check` 只校验） | 不写 |
 | 根 `Cargo.toml` 的 `[patch]`/`[workspace.lints]` | `zk compose` 在 `@generated:begin/end` 块内 | 块外内容不覆盖 |
 | `deploy/docker/Dockerfile` 生成段 | `zk compose` 生成块 | 手写段禁止改生成块 |
@@ -297,6 +299,7 @@ SIGTERM
 
 **M0（组合与生成物）**
 
+- [ ] `zk capability --check` 绿（能力索引与公共 API 一致，kit/契约公共项均已登记）。
 - [ ] 同一输入重复 compose 生成物逐字节一致；`--check` 不写文件。
 - [ ] 企业版闭包不含 personal-only 包；exclude 未命中报错。
 - [ ] 路由/命令静态表与运行期注册不一致时拒启。

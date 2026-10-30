@@ -29,5 +29,6 @@
 - [ ] `python3 scripts/docs-check.py`
 - [ ] 变更涉及的 T0/T1 命令全绿
 - [ ] 无手改 `@generated`
+- [ ] 复用检查已做（`zk find`/能力索引；新增能力已登记 `@capability`）
 - [ ] PR 只包含本 spec 范围
 - [ ] `acceptance.md` 已填证据路径

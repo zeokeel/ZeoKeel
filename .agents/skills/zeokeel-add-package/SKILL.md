@@ -16,6 +16,7 @@ description: Use when adding, replacing, or removing a ZeoKeel package (Rust cra
 - `docs/03-composition-and-ci.md`：edition/profile/channel 叠层
 - `docs/10-repo-and-build.md`：目录/workspace/生成物 owner
 - `docs/18-strictness.md`：Rust/TS 严格检查
+- `docs/25-reuse-and-dedup.md`：复用优先/单一实现；先查能力索引，避免造第二份实现
 
 > 当前仓库处于 Plan 阶段，`packages/` 尚不存在；先确认 scaffold 已完成，不要假装目录存在。
 
@@ -31,9 +32,11 @@ description: Use when adding, replacing, or removing a ZeoKeel package (Rust cra
 | editions | `personal`/`enterprise`；personal-only 包登记到 `editions/personal-only.toml` |
 | facet | rust / ui / assets；UI 必须有静态 `[[ui.contributions]]` |
 | 生成物 | 哪些是 `@generated`，由哪个 writer 写 |
+| 复用 | 是否已有包/kit/契约能扩展？为什么必须新建包？（`25` §2/§5） |
 
 ## 落地步骤
 
+0. **先搜复用**：`zk find <能力>` / 读能力索引 / 检查现有包与 `crates/zk-kit-*`；能用现有包扩展就不新建包（`25`）。
 1. 建/复用 change spec（`bash scripts/new-change.sh add-package-<name>`）。
 2. 建目录：`packages/<group>/<name>/`；Rust crate 名 `zk-<name>`（服务端 `zk-srv-<name>`）。
 3. 写 `zk.toml`：字段只按 `24` §2；未知键 = 构建失败。
@@ -68,3 +71,4 @@ python3 scripts/docs-check.py
 - 直接依赖别的包实现类型；运行期加载/热插拔。
 - 手写平台 `#[tauri::command]`；UI 包互相 import 内部组件。
 - 为通过检查放宽 lint 或改生成物。
+- 新建包却复制现有包实现；在包内新建 `utils/helpers/common`；未登记 `@capability`。
