@@ -10,6 +10,7 @@ pub use config::{
 };
 pub use hooks::{HookEvent, HookSink, UsageSnapshot};
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -83,6 +84,9 @@ pub struct RigAgent {
     hook_sink: Option<Arc<dyn HookSink>>,
     last_usage: Arc<Mutex<Option<UsageSnapshot>>>,
     cancelled: Arc<AtomicBool>,
+    /// True when the flag is shared with an async runner: a new turn must not
+    /// clear an interrupt that was raised before the child started running.
+    external_cancel: bool,
     runtime: tokio::runtime::Runtime,
 }
 
@@ -107,6 +111,7 @@ impl RigAgent {
             hook_sink: global_hook_sink(),
             last_usage: Arc::new(Mutex::new(None)),
             cancelled: Arc::new(AtomicBool::new(false)),
+            external_cancel: false,
             runtime,
         })
     }
@@ -195,6 +200,23 @@ impl RigAgent {
     pub fn with_streaming(mut self, streaming: bool) -> Self {
         self.streaming = streaming;
         self
+    }
+
+    /// Share a pre-existing cancellation flag (async children).
+    ///
+    /// The flag is not cleared at turn start, so an interrupt raised between
+    /// `start` and the first model call is never lost.
+    #[must_use]
+    pub fn with_cancel_flag(mut self, flag: Arc<AtomicBool>) -> Self {
+        self.cancelled = flag;
+        self.external_cancel = true;
+        self
+    }
+
+    /// The cancellation flag this agent observes (shared with async children).
+    #[must_use]
+    pub fn cancel_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.cancelled)
     }
 
     /// Install a factory used by `configure_model` (settings hot-reload).
@@ -451,7 +473,9 @@ impl RigAgent {
                 tool_timeout_ms,
             },
         );
-        self.cancelled.store(false, Ordering::SeqCst);
+        if !self.external_cancel {
+            self.cancelled.store(false, Ordering::SeqCst);
+        }
         let max_steps = config.max_steps.clamp(1, 200);
         let preamble = format!(
             "{}\n\n{}\n\n{}",
@@ -862,29 +886,66 @@ impl EventSink for BufferedSink {
     }
 }
 
+/// Maximum concurrently running async children per runner (`docs/38` §5.2).
+pub const MAX_ASYNC_SUBAGENTS: usize = zk_kit_subagent::MAX_ASYNC_AGENTS;
+
+/// One async child tracked by [`RigSubagentRunner`].
+struct AsyncChild {
+    depth: usize,
+    prompt: String,
+    status: String,
+    result: Option<Result<String, String>>,
+    flag: Arc<AtomicBool>,
+}
+
+/// Runner shared by `subagent` / `subagent_fork` / `subagent_start`.
 struct RigSubagentRunner {
     model: DynModel<Completion>,
     tools: Vec<Arc<dyn Tool>>,
+    children: Arc<Mutex<HashMap<String, AsyncChild>>>,
 }
-impl zk_kit_subagent::SubagentRunner for RigSubagentRunner {
-    fn run(&self, prompt: &str, context: &TurnContext, depth: usize) -> Result<String, String> {
+
+impl RigSubagentRunner {
+    fn new(model: DynModel<Completion>, tools: Vec<Arc<dyn Tool>>) -> Self {
+        Self {
+            model,
+            tools,
+            children: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    fn next_child(
+        &self,
+        prompt: &str,
+        context: &TurnContext,
+        depth: usize,
+    ) -> Result<(String, usize), String> {
         if depth >= zk_kit_subagent::MAX_DEPTH {
             return Err("subagent depth limit reached".to_owned());
         }
-        let model = self.model.clone();
-        let tools = self.tools.clone();
+        let child_depth = depth.saturating_add(1);
         static SUBAGENT_SEQ: AtomicU64 = AtomicU64::new(1);
         let id = format!("subagent-{}", SUBAGENT_SEQ.fetch_add(1, Ordering::SeqCst));
-        let child_depth = depth.saturating_add(1);
         zk_kit_subagent::register(&id, &context.conversation_id, child_depth, prompt);
-        let mut child_context = context.clone();
+        Ok((id, child_depth))
+    }
+}
+
+impl zk_kit_subagent::SubagentRunner for RigSubagentRunner {
+    fn run(&self, prompt: &str, context: &TurnContext, depth: usize) -> Result<String, String> {
+        let (id, child_depth) = self.next_child(prompt, context, depth)?;
+        // Keep the synchronous child conversation id stable (`<conv>-sub-<depth>`).
         let child_conversation_id = format!("{}-sub-{child_depth}", context.conversation_id);
+        let model = self.model.clone();
+        let tools = self.tools.clone();
+        let mut child_context = context.clone();
         child_context.conversation_id = child_conversation_id.clone();
         // The child runs on a new thread: persist its depth by conversation id so
         // the child's DynamicTool callbacks (also on fresh threads) see it.
         zk_kit_subagent::set_context_depth(&child_conversation_id, child_depth);
         let prompt = prompt.to_owned();
         let id_for_finish = id.clone();
+        let conversation_for_finish = child_conversation_id.clone();
         let handle = std::thread::spawn(move || {
             let agent = RigAgent::new(model, tools)
                 .map_err(|error| error.to_string())?
@@ -895,10 +956,128 @@ impl zk_kit_subagent::SubagentRunner for RigSubagentRunner {
                 .map_err(|error| error.to_string())
         });
         let joined = handle.join();
-        zk_kit_subagent::clear_context_depth(&child_conversation_id);
+        zk_kit_subagent::clear_context_depth(&conversation_for_finish);
         let result = joined.map_err(|_| "subagent thread panicked".to_owned())?;
         zk_kit_subagent::finish(&id_for_finish, result.is_ok());
         result
+    }
+
+    fn start(&self, prompt: &str, context: &TurnContext, depth: usize) -> Result<String, String> {
+        let flag = Arc::new(AtomicBool::new(false));
+        let (id, child_depth, child_conversation_id) = {
+            let mut children = self
+                .children
+                .lock()
+                .map_err(|_| "subagent registry poisoned".to_owned())?;
+            let running = children
+                .values()
+                .filter(|child| child.status == "running")
+                .count();
+            if running >= MAX_ASYNC_SUBAGENTS {
+                return Err(format!(
+                    "async subagent concurrency limit reached ({MAX_ASYNC_SUBAGENTS})"
+                ));
+            }
+            let (id, child_depth) = self.next_child(prompt, context, depth)?;
+            let child_conversation_id =
+                format!("{}-sub-{child_depth}-{id}", context.conversation_id);
+            children.insert(
+                id.clone(),
+                AsyncChild {
+                    depth: child_depth,
+                    prompt: prompt.chars().take(200).collect(),
+                    status: "running".to_owned(),
+                    result: None,
+                    flag: Arc::clone(&flag),
+                },
+            );
+            (id, child_depth, child_conversation_id)
+        };
+        let mut child_context = context.clone();
+        child_context.conversation_id = child_conversation_id.clone();
+        zk_kit_subagent::set_context_depth(&child_conversation_id, child_depth);
+        let model = self.model.clone();
+        let tools = self.tools.clone();
+        let children = Arc::clone(&self.children);
+        let prompt = prompt.to_owned();
+        let id_for_thread = id.clone();
+        std::thread::spawn(move || {
+            let agent = RigAgent::new(model, tools).map(|agent| {
+                agent
+                    .with_streaming(false)
+                    .with_cancel_flag(Arc::clone(&flag))
+            });
+            let outcome = match agent {
+                Ok(agent) => agent
+                    .run_in(&child_context, &prompt)
+                    .map(|reply| reply.text)
+                    .map_err(|error| error.to_string()),
+                Err(error) => Err(error.to_string()),
+            };
+            let cancelled = flag.load(Ordering::SeqCst);
+            let result = if cancelled {
+                Err("subagent cancelled".to_owned())
+            } else {
+                outcome
+            };
+            let status = if cancelled {
+                "cancelled"
+            } else if result.is_ok() {
+                "done"
+            } else {
+                "failed"
+            };
+            zk_kit_subagent::clear_context_depth(&child_conversation_id);
+            if cancelled {
+                zk_kit_subagent::mark_cancelled(&id_for_thread);
+            } else {
+                zk_kit_subagent::finish(&id_for_thread, result.is_ok());
+            }
+            if let Ok(mut children) = children.lock() {
+                if let Some(child) = children.get_mut(&id_for_thread) {
+                    child.status = status.to_owned();
+                    child.result = Some(result);
+                }
+            }
+        });
+        Ok(id)
+    }
+
+    fn status(&self, id: &str) -> Option<zk_kit_subagent::AsyncAgentStatus> {
+        self.children.lock().ok().and_then(|children| {
+            children
+                .get(id)
+                .map(|child| zk_kit_subagent::AsyncAgentStatus {
+                    id: id.to_owned(),
+                    depth: child.depth,
+                    status: child.status.clone(),
+                    prompt: child.prompt.clone(),
+                })
+        })
+    }
+
+    fn result(&self, id: &str) -> Option<Result<String, String>> {
+        self.children
+            .lock()
+            .ok()
+            .and_then(|children| children.get(id).and_then(|child| child.result.clone()))
+    }
+
+    fn interrupt(&self, id: &str) -> Result<(), String> {
+        let mut children = self
+            .children
+            .lock()
+            .map_err(|_| "subagent registry poisoned".to_owned())?;
+        let child = children
+            .get_mut(id)
+            .ok_or_else(|| format!("unknown subagent: {id}"))?;
+        if child.status != "running" {
+            return Err(format!("subagent {id} already finished"));
+        }
+        child.flag.store(true, Ordering::SeqCst);
+        child.status = "cancelled".to_owned();
+        zk_kit_subagent::mark_cancelled(id);
+        Ok(())
     }
 }
 
@@ -943,10 +1122,7 @@ pub fn agent(
     tools: Vec<Arc<dyn Tool>>,
     model: DynModel<Completion>,
 ) -> Result<RigAgent, AgentError> {
-    let runner = Arc::new(RigSubagentRunner {
-        model: model.clone(),
-        tools: tools.clone(),
-    });
+    let runner = Arc::new(RigSubagentRunner::new(model.clone(), tools.clone()));
     zk_kit_subagent::set_runner(runner);
     zk_kit_extractor::set_runner(Arc::new(RigExtractRunner {
         model: model.clone(),
@@ -1041,6 +1217,7 @@ mod tests {
     use rig_core::completion::Usage;
     use rig_core::test_utils::{MockCompletionModel, MockStreamEvent, MockTurn};
     use std::sync::Mutex as StdMutex;
+    use zk_kit_subagent::SubagentRunner as _;
 
     struct VecSink(StdMutex<Vec<AgentEvent>>);
     impl EventSink for VecSink {
@@ -1649,5 +1826,109 @@ mod tests {
         assert!(events
             .iter()
             .any(|event| matches!(event, HookEvent::MemoryUnavailable { .. })));
+    }
+
+    struct SlowTool;
+    impl Tool for SlowTool {
+        fn spec(&self) -> zk_contract_tool::ToolSpec {
+            zk_contract_tool::ToolSpec {
+                name: "slow.echo".to_owned(),
+                description: "slow".to_owned(),
+                parameters: serde_json::json!({"type":"object"}),
+                mutating: false,
+                requires_approval: false,
+            }
+        }
+        fn call(&self, _args: &str) -> Result<String, zk_contract_tool::ToolError> {
+            Ok("slow".to_owned())
+        }
+        fn call_json(
+            &self,
+            _context: &TurnContext,
+            _args: serde_json::Value,
+        ) -> Result<String, zk_contract_tool::ToolError> {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            Ok("slow".to_owned())
+        }
+    }
+
+    fn wait_until(
+        mut check: impl FnMut() -> Option<Result<String, String>>,
+    ) -> Result<String, String> {
+        for _ in 0..400 {
+            if let Some(result) = check() {
+                return result;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        Err("async subagent did not finish in time".to_owned())
+    }
+
+    #[test]
+    fn async_start_status_and_result() {
+        let model = MockCompletionModel::from_turns([MockTurn::text("async child answer")]);
+        let runner = RigSubagentRunner::new(model.into(), Vec::new());
+        let id = runner
+            .start("inspect the repo", &context(), 0)
+            .expect("start");
+        let early = runner.status(&id).expect("status");
+        assert_eq!(early.id, id);
+        assert_eq!(early.depth, 1);
+        assert_eq!(early.prompt, "inspect the repo");
+        let result = wait_until(|| runner.result(&id));
+        assert_eq!(result, Ok("async child answer".to_owned()));
+        let status = runner.status(&id).expect("status");
+        assert_eq!(status.status, "done");
+        assert_eq!(zk_kit_subagent::current_depth(), 0);
+    }
+
+    #[test]
+    fn async_interrupt_marks_cancelled() {
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("slow-1", "slow.echo", serde_json::json!({})),
+            MockTurn::text("never returned"),
+        ]);
+        let runner = RigSubagentRunner::new(model.into(), vec![Arc::new(SlowTool)]);
+        let id = runner.start("slow child", &context(), 0).expect("start");
+        // The child blocks in the tool long enough for the interrupt to land.
+        runner.interrupt(&id).expect("interrupt");
+        let result = wait_until(|| runner.result(&id));
+        assert!(result.is_err(), "cancelled child must not report success");
+        let status = runner.status(&id).expect("status");
+        assert_eq!(status.status, "cancelled");
+    }
+
+    #[test]
+    fn async_concurrency_cap_is_enforced() {
+        let model = MockCompletionModel::from_turns([MockTurn::text("x")]);
+        let runner = RigSubagentRunner::new(model.into(), Vec::new());
+        {
+            let mut children = runner.children.lock().unwrap();
+            for index in 0..MAX_ASYNC_SUBAGENTS {
+                children.insert(
+                    format!("fake-{index}"),
+                    AsyncChild {
+                        depth: 1,
+                        prompt: "x".to_owned(),
+                        status: "running".to_owned(),
+                        result: None,
+                        flag: Arc::new(AtomicBool::new(false)),
+                    },
+                );
+            }
+        }
+        let error = runner.start("overflow", &context(), 0).unwrap_err();
+        assert!(error.contains("concurrency limit"), "{error}");
+        runner.children.lock().unwrap().clear();
+    }
+
+    #[test]
+    fn async_depth_limit_is_enforced() {
+        let model = MockCompletionModel::from_turns([MockTurn::text("x")]);
+        let runner = RigSubagentRunner::new(model.into(), Vec::new());
+        let error = runner
+            .start("too deep", &context(), zk_kit_subagent::MAX_DEPTH)
+            .unwrap_err();
+        assert!(error.contains("depth limit"), "{error}");
     }
 }

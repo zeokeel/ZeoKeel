@@ -7,7 +7,24 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use zk_contract_tool::TurnContext;
 
+/// One asynchronously started child agent visible to the control tools.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct AsyncAgentStatus {
+    /// Stable child id returned by [`SubagentRunner::start`].
+    pub id: String,
+    /// Delegation depth of the child (1 = direct child of the parent turn).
+    pub depth: usize,
+    /// `running` | `done` | `failed` | `cancelled`.
+    pub status: String,
+    /// Original prompt (truncated by the runner).
+    pub prompt: String,
+}
+
 /// A runner that executes a delegated prompt with the same model/tools.
+///
+/// Synchronous delegation is mandatory ([`Self::run`] / [`Self::fork`]); async
+/// children are optional and degrade honestly: the default implementations
+/// report "unsupported" instead of pretending to start work.
 pub trait SubagentRunner: Send + Sync {
     /// Run at `depth` (0 = parent); implementation enforces max depth.
     fn run(&self, prompt: &str, context: &TurnContext, depth: usize) -> Result<String, String>;
@@ -15,6 +32,39 @@ pub trait SubagentRunner: Send + Sync {
     /// Fork the current conversation context instead of isolating a child conversation.
     fn fork(&self, prompt: &str, context: &TurnContext, depth: usize) -> Result<String, String> {
         self.run(prompt, context, depth)
+    }
+
+    /// Start a background child and return its id without waiting.
+    ///
+    /// # Errors
+    ///
+    /// Implementations reject unsupported async execution, depth limits and
+    /// concurrency limits with a human-readable message.
+    fn start(&self, prompt: &str, context: &TurnContext, depth: usize) -> Result<String, String> {
+        let _ = (prompt, context, depth);
+        Err("async subagents are not supported by this runner".to_owned())
+    }
+
+    /// Current status of one async child, when known.
+    fn status(&self, id: &str) -> Option<AsyncAgentStatus> {
+        let _ = id;
+        None
+    }
+
+    /// Final result of one async child once it finished, when known.
+    fn result(&self, id: &str) -> Option<Result<String, String>> {
+        let _ = id;
+        None
+    }
+
+    /// Cancel a running async child (already-finished children keep their result).
+    ///
+    /// # Errors
+    ///
+    /// Unknown ids are rejected; implementations may also report interrupt
+    /// races as errors.
+    fn interrupt(&self, id: &str) -> Result<(), String> {
+        Err(format!("unknown subagent: {id}"))
     }
 }
 
@@ -38,6 +88,9 @@ pub fn runner() -> Option<Arc<dyn SubagentRunner>> {
 
 /// Maximum delegation depth.
 pub const MAX_DEPTH: usize = 3;
+
+/// Maximum concurrently running async children per runner.
+pub const MAX_ASYNC_AGENTS: usize = 8;
 
 /// One subagent run visible to control tools.
 #[derive(Clone, Debug, serde::Serialize)]
@@ -81,6 +134,15 @@ pub fn finish(id: &str, ok: bool) {
             } else {
                 "failed".to_owned()
             };
+        }
+    }
+}
+
+/// Mark a child as cancelled (async interrupt).
+pub fn mark_cancelled(id: &str) {
+    if let Ok(mut guard) = agents().lock() {
+        if let Some(agent) = guard.iter_mut().find(|agent| agent.id == id) {
+            agent.status = "cancelled".to_owned();
         }
     }
 }
@@ -152,8 +214,48 @@ pub fn clear_context_depth(conversation_id: &str) {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)] // test-only
     use super::*;
+
+    struct SyncOnly;
+    impl SubagentRunner for SyncOnly {
+        fn run(
+            &self,
+            _prompt: &str,
+            _context: &TurnContext,
+            _depth: usize,
+        ) -> Result<String, String> {
+            Ok("sync".to_owned())
+        }
+    }
+
+    #[test]
+    fn async_methods_degrade_honestly_by_default() {
+        let context = TurnContext {
+            conversation_id: "c".to_owned(),
+            workspace_id: "w".to_owned(),
+            workspace_root: ".".to_owned(),
+        };
+        let runner = SyncOnly;
+        assert!(runner.start("p", &context, 0).is_err());
+        assert_eq!(runner.status("missing"), None);
+        assert_eq!(runner.result("missing"), None);
+        assert!(runner.interrupt("missing").is_err());
+        assert_eq!(runner.fork("p", &context, 0), Ok("sync".to_owned()));
+    }
+
+    #[test]
+    fn async_status_serializes() {
+        let status = AsyncAgentStatus {
+            id: "subagent-1".to_owned(),
+            depth: 1,
+            status: "running".to_owned(),
+            prompt: "inspect".to_owned(),
+        };
+        let value = serde_json::to_value(&status).unwrap();
+        assert_eq!(value["id"], "subagent-1");
+        assert_eq!(value["status"], "running");
+    }
 
     #[test]
     fn context_depth_roundtrip() {

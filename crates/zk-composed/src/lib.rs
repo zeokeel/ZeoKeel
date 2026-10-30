@@ -60,7 +60,7 @@ pub fn configure_llm(_base_url: &str, _access_token: &str, _model: &str) {}
 pub fn gateway_credentials() -> Option<(String, String)> { None }
 
 pub fn build() -> Result<Runtime, String> {
-    let tools: Vec<Arc<dyn zk_contract_tool::Tool>> = vec![
+    let mut tools: Vec<Arc<dyn zk_contract_tool::Tool>> = vec![
         Arc::new(zk_tool_agent_team::tool()),
         Arc::new(zk_tool_ask_user::tool()),
         Arc::new(zk_tool_bash::tool()),
@@ -98,6 +98,8 @@ pub fn build() -> Result<Runtime, String> {
         Arc::new(zk_tool_workspace_dependencies::tool()),
         Arc::new(zk_tool_worktree::tool()),
     ];
+    tools.extend(zk_tool_subagent::extra_tools());
+    tools.extend(zk_tool_subagent_control::extra_tools());
     let model = zk_llm_rig::model().map_err(|e| e.to_string())?;
     let agent_concrete = zk_agent_rig::agent(tools, model).map_err(|e| e.to_string())?.with_model_factory(std::sync::Arc::new(|base_url, api_key, model, provider| zk_llm_rig::model_from_config(provider, base_url, api_key, model).map_err(|e| e.to_string())));
     let agent: Arc<dyn zk_contract_agent::Agent> = Arc::new(agent_concrete);
