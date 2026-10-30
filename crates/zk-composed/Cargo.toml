@@ -87,6 +87,7 @@ zk-tool-session-query = { path = "../../packages/client/tool-session-query" }
 zk-tool-skill = { path = "../../packages/client/tool-skill" }
 zk-tool-subagent = { path = "../../packages/client/tool-subagent" }
 zk-tool-subagent-control = { path = "../../packages/client/tool-subagent-control" }
+zk-tool-subagent-fork = { path = "../../packages/client/tool-subagent-fork" }
 zk-tool-terminal = { path = "../../packages/client/tool-terminal" }
 zk-tool-todo = { path = "../../packages/client/tool-todo" }
 zk-tool-web-fetch = { path = "../../packages/client/tool-web-fetch" }

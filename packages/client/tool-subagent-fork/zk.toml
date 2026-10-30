@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-subagent-fork"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Fork a subagent over the current conversation context"
+
+[role]
+name = "tool.subagent_fork"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-subagent-fork" }

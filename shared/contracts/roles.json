@@ -359,6 +359,12 @@
     "contract": "zk-contract-tool",
     "cardinality": "singleton"
   },
+  "tool.subagent_fork": {
+    "package": "zeokeel/tool-subagent-fork",
+    "crate_name": "zk-tool-subagent-fork",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
   "tool.terminal": {
     "package": "zeokeel/tool-terminal",
     "crate_name": "zk-tool-terminal",

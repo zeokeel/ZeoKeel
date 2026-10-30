@@ -10,6 +10,11 @@ use zk_contract_tool::TurnContext;
 pub trait SubagentRunner: Send + Sync {
     /// Run at `depth` (0 = parent); implementation enforces max depth.
     fn run(&self, prompt: &str, context: &TurnContext, depth: usize) -> Result<String, String>;
+
+    /// Fork the current conversation context instead of isolating a child conversation.
+    fn fork(&self, prompt: &str, context: &TurnContext, depth: usize) -> Result<String, String> {
+        self.run(prompt, context, depth)
+    }
 }
 
 static RUNNER: OnceLock<Mutex<Option<Arc<dyn SubagentRunner>>>> = OnceLock::new();

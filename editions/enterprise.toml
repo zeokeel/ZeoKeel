@@ -1,4 +1,5 @@
 [packages]
+"tool.subagent_fork" = "zeokeel/tool-subagent-fork"
 "tool.read_document" = "zeokeel/tool-read-document"
 "tool.extract" = "zeokeel/tool-extract"
 "tool.agent_team" = "zeokeel/tool-agent-team"

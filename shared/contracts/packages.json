@@ -480,6 +480,14 @@
     ]
   },
   {
+    "id": "zeokeel/tool-subagent-fork",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.subagent_fork"
+    ]
+  },
+  {
     "id": "zeokeel/tool-terminal",
     "version": "0.1.0",
     "kind": "capability",

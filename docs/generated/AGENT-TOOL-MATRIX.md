@@ -22,7 +22,8 @@ DSH reference: `research/dsh-agent-inventory.md` §2. Status is honest: implemen
 | goal | tool.goal | zeokeel/tool-goal | partial | no round driver |
 | schedule | tool.schedule | zeokeel/tool-schedule | partial | definitions only; no worker |
 | session-query | tool.session_query | zeokeel/tool-session-query | implemented | search/read |
-| subagent | tool.subagent | zeokeel/tool-subagent | partial | synchronous; no fork/control |
+| subagent | tool.subagent | zeokeel/tool-subagent | partial | synchronous; no async control |
+| subagent_fork | tool.subagent_fork | zeokeel/tool-subagent-fork | implemented | forks current conversation context |
 | subagent-control | tool.subagent_control | zeokeel/tool-subagent-control | partial | real child registry list; send/interrupt unavailable |
 | workflow | tool.workflow | zeokeel/tool-workflow | implemented | linear + DAG topological order |
 | ralph | tool.ralph | zeokeel/tool-ralph | partial | bounded loop; no fresh context isolation |
