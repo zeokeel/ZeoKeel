@@ -275,3 +275,82 @@ M5 的 channel validate/verify、OEM fixture、updates 端点、dist 脚本和 p
 
 - 关联 spec：`specs/changes/2026-10-30-oem-delivery`。
 - 复评结论（第三轮）：**CHANGES-REQUESTED**
+
+---
+
+## 10. 第四轮复评（R4，2026-10-30）
+
+> 对象：R3 修复后的 M5 实现。只读复跑；未改产品代码/spec（仅本记录）。
+> 仅列剩余 P0/P1；环境阻塞项另标 P2/manual。
+
+### 10.1 结论
+
+**CHANGES REQUIRED（CHANGES-REQUESTED）**
+
+- **P0：1**（build-dist 在空 clients 下生成 assets=[] 后失败；可本地修）。
+- **P1：1 组**（channel_validate 未复用严格 channel/logo/id 校验；可本地修）。
+- **P2/manual**：真实 Docker/三平台安装包/公证/真实升级/SBOM 仍不可验证，标 UNVERIFIED。
+
+### 10.2 已关闭
+
+- **deep OEM**：`packages/oem/acme-brand` 四件套 + `editions/oem-deep.toml`；oem-e2e 复制 fixture、`zk plan` 断言 acme/acme-brand、`compose --edition oem-deep --channel oem-deep --check`、`cargo test -p acme-brand`；实测 oem-e2e PASS。
+- **pin/.gitmodules**：`channel_validate` 用 `dir_hash(customer)`，并检查 `.gitmodules` 包含 submodule 路径；fixtures pin 更新。
+- **unknown keys/logo/id**：`ChannelFile`/Identity/Brand/lgogo 加 `deny_unknown_fields`；`load_channel` 加 id 长度/字符、logo `..`/绝对/http/256KB/script 检查。
+- **portal/1:1**：portal 读 CHANNEL；oem-demo 显示 Acme Keel、无 ZeoKeel；manifest 不匹配 409；updates-e2e PASS。
+- **channel verify**：dist CHANNEL/CLIENT channel、SHA256SUMS 复算、SBOM、hide 二进制扫描；oem-e2e binary leak 负向 PASS。
+- **upgrade dry-run**：local manifest fallback、sha 比较、assets 空输出 `UNVERIFIED_NO_ASSETS`（不再假装 verified）。
+
+### 10.3 剩余 P0（可本地修）
+
+#### P0-1 · `build-dist.sh` 在空 clients 时生成 `assets=[]`，随后 `channel verify` 失败
+
+- 实测：
+  ```text
+  $ bash scripts/build-dist.sh official 0.1.0 /tmp/zk-dist-r4
+  zk: CLIENT-RELEASE assets empty
+  EXIT=1
+  ```
+- 原因：`build-dist.sh` 先在 Python 中 `clients=sorted((out/"clients").iterdir())` → `assets=[]` 写 `CLIENT-RELEASE.json`；**之后**才在 `if not any(clients)` 创建 fallback `official-0.1.0-linux.AppImage`；`channel verify` 现在要求 assets 非空，于是失败。
+- `CLIENT-RELEASE.json` 实际仍 `assets:[]`；`SHA256SUMS` 也不含客户端。
+- 修：先创建 fallback/真实 clients，再生成 assets/sha；或 fallback 放前面；补 `build-dist` 空/非空 clients 单测。
+
+### 10.4 剩余 P1（可本地修）
+
+- **`channel_validate` 未复用严格 channel/logo/id 校验**：
+  - `channel_validate`（`tools/zk/src/main.rs:1006-1057`）只解析 `ChannelFile` 与 identity，不调用 `load_channel`；因此 logo canonicalize/256KB/script、`file.id` 正则/长度、`powered_by` enum 在 `channel validate --all` 路径未执行。
+  - 修：`channel_validate` 对每个 customer 调用统一 `validate_channel_file`（与 `load_channel` 共用），并补非法 id/logo/powered_by 负向。
+
+### 10.5 P2/manual（环境阻塞）
+
+- 真实 Docker image save/load/compose up、PG 备份/PITR。
+- 三平台 Tauri 安装包与 Windows SHA 实测；`release.yml` installers job 仍是 echo 模板。
+- macOS notarize/staple（证书未配，job echo）。
+- 真实升级/回滚演练；`upgrade-drill --docker` 仍只 echo。
+- 真实 CycloneDX SBOM（当前 `SBOM/README` 占位）。
+- 真实 OEM 镜像/安装包二进制残留扫描（当前 fixture 文本/二进制负向）。
+
+这些在无 Docker/证书/平台 runner 环境不可复现；acceptance 必须标 `UNVERIFIED`，不得写 complete。若 CI 在有 runner 环境跑通，可作为 M5 完成证据。
+
+### 10.6 R4 证据
+
+| 命令 | 结果 |
+| --- | --- |
+| `bash scripts/oem-e2e.sh` | **PASS**：deep plan/compose/cargo test + verify/residue |
+| `bash scripts/updates-e2e.sh` | **PASS**：manifest/channel/version reject/artifact/oem-portal |
+| `bash scripts/admin-e2e.sh` | **PASS**：10 passed（官方 portal） |
+| `cargo test -p acme-brand` | **PASS**（conformance manifest） |
+| `zk validate` | **PASS**：71 packages scanned |
+| `zk channel validate --index oem/fixtures --all` | **PASS**：2 channels |
+| `bash scripts/build-dist.sh official 0.1.0 /tmp/zk-dist-r4` | **FAIL**：assets empty（P0） |
+| `bash scripts/upgrade-drill.sh --dry-run` | **PASS（dry-run）**：local fallback/sha 比较，环境项 unverified |
+| `cargo test --workspace` / clippy / compose official / schema / db | **PASS**（前轮） |
+
+### 10.7 结论
+
+- **P0：1**（build-dist 空 clients assets 失败）。
+- **P1：1 组**（channel_validate 未复用严格 logo/id/powered_by）。
+- **P2/manual**：真实 Docker/安装包/公证/升级/SBOM。
+- **M5 实现仍不可 APPROVED**：修 P0/P1 后再复评。
+
+- 关联 spec：`specs/changes/2026-10-30-oem-delivery`。
+- 复评结论（第四轮）：**CHANGES-REQUESTED**

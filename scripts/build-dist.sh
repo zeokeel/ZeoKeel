@@ -7,7 +7,9 @@ mkdir -p "$OUT/clients" "$OUT/images" "$OUT/SBOM" "$OUT/deploy"
 python3 - "$CHANNEL" "$VERSION" "$OUT" <<'PY'
 import json,sys,pathlib,hashlib
 channel,version,out=sys.argv[1],sys.argv[2],pathlib.Path(sys.argv[3])
-clients=sorted((out/"clients").iterdir())
+if not any((out/"clients").iterdir()):
+    (out/"clients"/f"{channel}-{version}-linux.AppImage").write_text("dry-run client artifact\n")
+clients=sorted(p for p in (out/"clients").iterdir() if p.is_file())
 assets=[{"name":p.name,"sha256":hashlib.sha256(p.read_bytes()).hexdigest(),"size":p.stat().st_size} for p in clients]
 release={"schema":1,"channel_id":channel,"edition":"enterprise","server_version":version,"client_version":version,"min_supported":version,"forced":False,"assets":assets}
 (out/"CLIENT-RELEASE.json").write_text(json.dumps(release,indent=2)+"\n")
@@ -17,8 +19,6 @@ channel_json=json.loads(pathlib.Path("brands",channel,"channel.json").read_text(
 (out/"SBOM"/"README.md").write_text("# SBOM placeholder (dry-run; CI generates CycloneDX)\n")
 (out/"CHANNEL.json").write_text((out/"CHANNEL.json").read_text())
 (out/"deploy"/"README.md").write_text("# deploy bundle placeholder\n")
-if not any((out/"clients").iterdir()):
-    (out/"clients"/f"{channel}-{version}-linux.AppImage").write_text("dry-run client artifact\n")
 PY
 (cd "$OUT" && sha256sum CLIENT-RELEASE.json CHANNEL.json VERSION clients/* > SHA256SUMS)
 printf '# Handover (dry-run)\n' > "$OUT/HANDOVER.md"

@@ -554,21 +554,21 @@ fn resolve_profile(
 
 fn load_channel(root: &Path, channel: &str) -> Result<(ChannelFile, PathBuf)> {
     let dir = root.join("brands").join(channel);
+    let file = validate_channel_dir(channel, &dir)?;
+    Ok((file, dir))
+}
+
+fn validate_channel_dir(channel: &str, dir: &Path) -> Result<ChannelFile> {
     let path = dir.join("channel.json");
-    if !path.is_file() {
-        bail!("channel {channel} not found at {}", path.display());
-    }
+    if !path.is_file() { bail!("channel {channel} not found at {}", path.display()); }
     let text = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
     let file: ChannelFile = serde_json::from_str(&text).with_context(|| format!("parse {}", path.display()))?;
     let display_name = if file.identity.product_name.trim().is_empty() { file.brand.name.trim() } else { file.identity.product_name.trim() };
     if display_name.is_empty() { bail!("channel {channel}: identity.product_name is required"); }
+    if file.id.is_empty() || file.id.len() > 32 || !file.id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') { bail!("channel {channel}: bad id"); }
     if !file.identity.slug.is_empty() && !file.identity.slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') { bail!("channel {channel}: bad identity.slug"); }
     if !file.identity.app_id.is_empty() && (!file.identity.app_id.contains('.') || file.identity.app_id.contains(' ')) { bail!("channel {channel}: bad identity.app_id"); }
-    if !matches!(file.brand.powered_by.as_str(), "" | "show" | "hide") { bail!("channel {channel}: brand.powered_by must be show|hide"); }
-    if file.brand.logo.light.trim().is_empty() || file.brand.logo.dark.trim().is_empty() {
-        bail!("channel {channel}: brand.logo.light and brand.logo.dark are required");
-    }
-    if file.id.is_empty() || file.id.len() > 32 || !file.id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') { bail!("channel {channel}: bad id"); }
+    if !matches!(file.brand.powered_by.as_str(), "show" | "hide") { bail!("channel {channel}: brand.powered_by must be show|hide"); }
     for logo in [&file.brand.logo.light, &file.brand.logo.dark] {
         if logo.is_empty() || logo.contains("..") || logo.starts_with('/') || logo.starts_with("http:") || logo.starts_with("https:") { bail!("channel {channel}: unsafe logo path {logo}"); }
         let logo_path = dir.join(logo);
@@ -578,7 +578,7 @@ fn load_channel(root: &Path, channel: &str) -> Result<(ChannelFile, PathBuf)> {
         let text = fs::read_to_string(&logo_path).unwrap_or_default().replace("http://www.w3.org/2000/svg", "");
         if text.to_ascii_lowercase().contains("<script") || text.contains("http://") || text.contains("https://") { bail!("channel {channel}: unsafe logo content"); }
     }
-    Ok((file, dir))
+    Ok(file)
 }
 
 fn resolve(root: &Path, flags: &Flags) -> Result<Resolved> {
@@ -1062,12 +1062,11 @@ fn channel_validate(index_dir: &Path) -> Result<()> {
         if entry.edition != "enterprise" { bail!("channel {id}: edition must be enterprise"); }
         if !matches!(entry.depth.as_str(), "basic" | "deep") { bail!("channel {id}: bad depth"); }
         let customer = index_dir.join(&entry.submodule);
-        let channel_text = fs::read_to_string(customer.join("channel.json")).with_context(|| format!("channel {id}: channel.json"))?;
         let actual_pin = dir_hash(&customer)?;
         if actual_pin != entry.pin { bail!("channel {id}: pin mismatch (fixture pin = directory hash)"); }
         let gitmodules = fs::read_to_string(index_dir.join(".gitmodules")).unwrap_or_default();
         if !gitmodules.contains(&entry.submodule) { bail!("channel {id}: .gitmodules missing submodule path"); }
-        let file: ChannelFile = serde_json::from_str(&channel_text).context("parse channel.json")?;
+        let file = validate_channel_dir(id, &customer)?;
         let display = if file.identity.product_name.is_empty() { file.brand.name.clone() } else { file.identity.product_name.clone() };
         if display.is_empty() || file.identity.slug.is_empty() || file.identity.app_id.is_empty() { bail!("channel {id}: missing identity fields"); }
         for (value, label) in [(&file.identity.app_id, "app_id"), (&file.identity.deep_link_scheme, "deep_link_scheme"), (&file.identity.app_origin_scheme, "app_origin_scheme"), (&file.identity.data_dir_name, "data_dir_name"), (&file.identity.product_home_dir, "product_home_dir"), (&display, "product_name")] {
