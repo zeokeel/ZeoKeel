@@ -7,7 +7,7 @@ cleanup() {
   [[ -n "${UI_PID:-}" ]] && kill "$UI_PID" >/dev/null 2>&1 || true
   [[ -n "${UPSTREAM_PID:-}" ]] && kill "$UPSTREAM_PID" >/dev/null 2>&1 || true
   [[ -n "${UPSTREAM2_PID:-}" ]] && kill "$UPSTREAM2_PID" >/dev/null 2>&1 || true
-  cargo run -q -p zk -- compose --edition enterprise --profile default --channel official >/dev/null 2>&1 || true
+  bash scripts/restore-baseline.sh >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 mkdir -p target/evidence/agent-rig

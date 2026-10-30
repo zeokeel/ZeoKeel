@@ -9,6 +9,7 @@ cleanup() {
   [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" >/dev/null 2>&1 || true
   sudo -u postgres dropdb --if-exists --force "$DB" >/dev/null 2>&1 || true
   sudo -u postgres psql -Atq -c "DROP ROLE IF EXISTS $ROLE" >/dev/null 2>&1 || true
+  bash scripts/restore-baseline.sh >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 sudo -u postgres psql -v ON_ERROR_STOP=1 -Atqc "CREATE ROLE $ROLE LOGIN PASSWORD '$ROLE';"

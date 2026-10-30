@@ -10,8 +10,8 @@ cleanup() {
   [[ -n "${OAUTH_PID:-}" ]] && kill "$OAUTH_PID" >/dev/null 2>&1 || true
   sudo -u postgres dropdb --if-exists --force "$DB" >/dev/null 2>&1 || true
   sudo -u postgres psql -Atq -c "DROP ROLE IF EXISTS $ROLE" >/dev/null 2>&1 || true
-  # M3 acceptance tail state stays enterprise; run personal compose explicitly for the personal gate.
-  cargo run -q -p zk -- compose --edition enterprise --profile default --channel official >/dev/null 2>&1 || true
+  # docs/24 §1.2: never leave a non-personal composition in the committed baseline.
+  bash scripts/restore-baseline.sh >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 cat > /tmp/zk-login-upstream.py <<'PYUP'
