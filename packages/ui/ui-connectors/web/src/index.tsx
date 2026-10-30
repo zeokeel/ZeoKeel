@@ -1,5 +1,5 @@
 /** Enterprise connector panel. */
-export interface ConnectorItem { id: string; name: string; transport: string; enabled: boolean; can_enable: boolean }
+export interface ConnectorItem { id: string; name: string; transport: string; enabled: boolean; can_enable: boolean; oauth: { clientId: string; scopes: string[]; redirectUri: string; authorizeUrl: string; tokenUrl: string } | null }
 
 export interface ConnectorsPanelProps {
   open: boolean;
@@ -24,6 +24,7 @@ export function ConnectorsPanel(props: ConnectorsPanelProps) {
           {props.items.map((item) => (
             <li key={item.id} className="flex items-center gap-3 rounded-document bg-muted px-3 py-2">
               <div className="min-w-0 flex-1"><p className="truncate text-[13px] text-foreground">{item.name}</p><p className="text-[11px] text-muted-foreground">{item.transport}</p></div>
+              {item.oauth ? <button type="button" onClick={() => props.onAuthorize(item)} className="rounded-control border border-border px-2 py-1 text-[11px] text-foreground">{props.authorized.includes(item.id) ? "已授权" : "授权"}</button> : null}
               <button type="button" disabled={!item.can_enable} onClick={() => props.onToggle(item)} className="rounded-control bg-foreground px-2 py-1 text-[11px] text-background disabled:opacity-40">{item.enabled ? "停用" : "启用"}</button>
             </li>
           ))}

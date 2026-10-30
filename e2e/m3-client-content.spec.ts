@@ -32,8 +32,15 @@ test.describe("M3 client content store", () => {
     await page.getByRole("option", { name: "连接器" }).click();
     const connectors = page.getByRole("dialog", { name: "连接器" });
     await expect(connectors).toBeVisible();
-    await connectors.getByRole("button", { name: "启用" }).click();
-    await expect(connectors.getByRole("button", { name: "停用" })).toBeVisible({ timeout: 10_000 });
+    await connectors.getByRole("button", { name: "授权" }).click();
+    await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(800);
+    await page.keyboard.press("Control+k");
+    await page.getByRole("option", { name: "连接器" }).click();
+    const connectorsAfter = page.getByRole("dialog", { name: "连接器" });
+    await expect(connectorsAfter.getByRole("button", { name: "已授权" })).toBeVisible({ timeout: 15_000 });
+    await connectorsAfter.getByRole("button", { name: "启用" }).click();
+    await expect(connectorsAfter.getByRole("button", { name: "停用" })).toBeVisible({ timeout: 10_000 });
     await page.screenshot({ path: "target/evidence/m3/client-connectors.png" });
   });
 });

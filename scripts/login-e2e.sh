@@ -7,6 +7,7 @@ cleanup() {
   [[ -n "${UI_PID:-}" ]] && kill "$UI_PID" >/dev/null 2>&1 || true
   [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" >/dev/null 2>&1 || true
   [[ -n "${UPSTREAM_PID:-}" ]] && kill "$UPSTREAM_PID" >/dev/null 2>&1 || true
+  [[ -n "${OAUTH_PID:-}" ]] && kill "$OAUTH_PID" >/dev/null 2>&1 || true
   sudo -u postgres dropdb --if-exists --force "$DB" >/dev/null 2>&1 || true
   sudo -u postgres psql -Atq -c "DROP ROLE IF EXISTS $ROLE" >/dev/null 2>&1 || true
   cargo run -q -p zk -- compose --edition personal --profile default --channel official >/dev/null 2>&1 || true
@@ -34,6 +35,31 @@ class H(BaseHTTPRequestHandler):
 HTTPServer(("127.0.0.1", int(__import__("sys").argv[1])), H).serve_forever()
 PYUP
 python3 /tmp/zk-login-upstream.py "$UPSTREAM_PORT" >/dev/null 2>&1 & UPSTREAM_PID=$!
+cat > /tmp/zk-oauth-server.py <<'PYOAUTH'
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse, parse_qs, urlencode
+class H(BaseHTTPRequestHandler):
+    def cors(self):
+        self.send_header("access-control-allow-origin", "http://127.0.0.1:8789")
+        self.send_header("access-control-allow-headers", "content-type")
+        self.send_header("access-control-allow-methods", "POST,OPTIONS")
+    def do_OPTIONS(self):
+        self.send_response(204); self.cors(); self.end_headers()
+    def do_GET(self):
+        q = parse_qs(urlparse(self.path).query)
+        redirect = q.get("redirect_uri", [""])[0]
+        state = q.get("state", [""])[0]
+        target = redirect + "?" + urlencode({"code": "oauth-code", "state": state})
+        self.send_response(302); self.send_header("location", target); self.end_headers()
+    def do_POST(self):
+        length = int(self.headers.get("content-length", "0"))
+        self.rfile.read(length)
+        body = b'{"access_token":"oauth-access","refresh_token":"oauth-refresh","expires_in":3600}'
+        self.send_response(200); self.cors(); self.send_header("content-type", "application/json"); self.send_header("content-length", str(len(body))); self.end_headers(); self.wfile.write(body)
+    def log_message(self, *args): pass
+HTTPServer(("127.0.0.1", 8801), H).serve_forever()
+PYOAUTH
+python3 /tmp/zk-oauth-server.py >/dev/null 2>&1 & OAUTH_PID=$!
 cargo run -q -p zk -- compose --edition enterprise --profile default --channel official >/dev/null
 cargo build -q -p zk-server -p zk-desktop
 pnpm --dir apps/desktop/web build >/dev/null
@@ -71,9 +97,10 @@ SKILL_ID=$(printf '%s' "$SKILL" | python3 -c 'import json,sys;print(json.load(sy
 curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/skills/$SKILL_ID/approve" >/dev/null
 curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/skills/$SKILL_ID/versions" -F "version=1.0.0" -F "archive=@/tmp/zk-client-skill.zip" >/dev/null
 curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X PUT "http://127.0.0.1:$SERVER_PORT/api/admin/skills/$SKILL_ID/grants" -H 'content-type: application/json' -d '{"grants":[{"grantee":"all","can_install":true}]}' >/dev/null
-CONN=$(curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/connectors" -H 'content-type: application/json' -d '{"name":"client-mcp","transport":"http","config":{}}')
+CONN=$(curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/connectors" -H 'content-type: application/json' -d '{"name":"client-mcp","transport":"http","config":{"authorize_url":"http://127.0.0.1:8801/authorize","token_url":"http://127.0.0.1:8801/token"}}')
 CONN_ID=$(printf '%s' "$CONN" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
 curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X PUT "http://127.0.0.1:$SERVER_PORT/api/admin/connectors/$CONN_ID/grants" -H 'content-type: application/json' -d '{"grants":[{"grantee":"all","can_enable":true}]}' >/dev/null
+curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/connectors/$CONN_ID/oauth" -H 'content-type: application/json' -d '{"client_id":"public-client","scopes":["mcp"],"redirect_uri":"http://127.0.0.1:8789/"}' >/dev/null
 ZEOKEEL_CLIENT_SKILL_ZIP=/tmp/zk-client-skill.zip ZEOKEEL_LOGIN_URL="http://127.0.0.1:$UI_PORT" ZEOKEEL_LOGIN_SERVER="http://127.0.0.1:$SERVER_PORT" \
   pnpm exec playwright test e2e/m2-login.spec.ts e2e/m2-gateway-chat.spec.ts e2e/m3-client-content.spec.ts --reporter=line
 echo "login e2e ok"

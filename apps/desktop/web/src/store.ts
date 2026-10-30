@@ -11,7 +11,7 @@ export interface SkillItem {
   can_install: boolean;
 }
 
-export interface ConnectorOAuthInfo { clientId: string; scopes: string[]; redirectUri: string; authorizeUrl: string }
+export interface ConnectorOAuthInfo { clientId: string; scopes: string[]; redirectUri: string; authorizeUrl: string; tokenUrl: string }
 
 export interface ConnectorItem {
   id: string;
@@ -75,6 +75,7 @@ export async function fetchConnectors(session: AuthSession, serverUrl: string): 
       scopes: Array.isArray(oauthValue["scopes"]) ? oauthValue["scopes"].flatMap((scope) => typeof scope === "string" ? [scope] : []) : [],
       redirectUri: text(oauthValue["redirect_uri"]) ?? "",
       authorizeUrl: text(oauthValue["authorize_url"]) ?? "",
+      tokenUrl: text(oauthValue["token_url"]) ?? "",
     };
     return [{ id: text(value["id"]) ?? name, name, transport, enabled: bool(value["enabled"]) ?? false, can_enable: canEnable, oauth: oauth?.clientId === "" ? null : oauth }];
   });

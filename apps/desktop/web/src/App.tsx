@@ -12,6 +12,7 @@ import { useResolvedTheme } from "./theme";
 import type { FileEntry, Transport } from "./types";
 import { parseFileEntries, parseUpdateRelease } from "./protocol";
 import { downloadSkillArchive, fetchConnectors, fetchSkills, fetchTombstones, sendInstallReceipt, toggleConnector, type ConnectorItem, type SkillItem } from "./store";
+import { buildAuthorizeUrl, createPkcePair, exchangeCode, loadConnectorTokens, refreshOAuthToken, saveConnectorTokens, savePendingAuth, takePendingAuth, tokenNeedsRefresh } from "./oauth";
 import { clearSession, fetchBootstrapInfo, loadGatewayModel, loadServerUrl, loadSession, login as loginRequest, refreshSession, saveGatewayModel, saveServerUrl, saveSession, type AuthSession } from "./auth";
 
 
@@ -34,7 +35,23 @@ export function App(props: { transport: Transport }) {
   const [installed, setInstalled] = useState<Array<{ name: string; version: string }>>([]);
   const [contentError, setContentError] = useState<string | null>(null);
   const [contentBusy, setContentBusy] = useState<string | null>(null);
+  const [authorized, setAuthorized] = useState<string[]>([]);
   const { state } = controller;
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    const stateValue = params.get("state");
+    if (code === null || stateValue === null) return;
+    const pending = takePendingAuth();
+    if (pending === null || pending.state !== stateValue) return;
+    void exchangeCode(pending.metadata, code, pending.verifier)
+      .then((tokens) => {
+        saveConnectorTokens(pending.connectorId, tokens);
+        setAuthorized((values) => values.includes(pending.connectorId) ? values : [...values, pending.connectorId]);
+        window.history.replaceState({}, "", window.location.pathname);
+      })
+      .catch(() => { setContentError("OAUTH_FAILED"); });
+  }, []);
   useEffect(() => {
     if (state.meta.edition !== "enterprise" || session === null) return;
     const url = serverUrl === "" ? state.settings.server_url : serverUrl;
@@ -44,6 +61,18 @@ export function App(props: { transport: Transport }) {
       .then(async ([skillItems, connectorItems, installedValue, tombstones]) => {
         setSkills(skillItems);
         setConnectors(connectorItems);
+        const oauthIds: string[] = [];
+        for (const connector of connectorItems) {
+          if (connector.oauth === null) continue;
+          let tokens = loadConnectorTokens(connector.id);
+          if (tokens === null) continue;
+          if (tokenNeedsRefresh(tokens)) {
+            tokens = await refreshOAuthToken({ authorizeUrl: connector.oauth.authorizeUrl, tokenUrl: connector.oauth.tokenUrl, clientId: connector.oauth.clientId, redirectUri: connector.oauth.redirectUri, scopes: connector.oauth.scopes }, tokens).catch(() => null);
+            if (tokens !== null) saveConnectorTokens(connector.id, tokens);
+          }
+          if (tokens !== null) oauthIds.push(connector.id);
+        }
+        setAuthorized(oauthIds);
         const rows = typeof installedValue === "object" && installedValue !== null ? (installedValue as { items?: unknown }).items : [];
         const local = Array.isArray(rows) ? rows.flatMap((row) => {
           if (typeof row !== "object" || row === null) return [];
@@ -189,6 +218,17 @@ export function App(props: { transport: Transport }) {
             .catch((error: unknown) => { setContentError(error instanceof Error ? error.message : "install failed"); })
             .finally(() => { setContentBusy(null); });
         }}
+        authorized={authorized}
+        onAuthorize={(item) => {
+          if (item.oauth === null || item.oauth === undefined) return;
+          void createPkcePair().then((pair) => {
+            const stateValue = crypto.randomUUID();
+            const metadata = { authorizeUrl: item.oauth?.authorizeUrl ?? "", tokenUrl: item.oauth?.tokenUrl ?? "", clientId: item.oauth?.clientId ?? "", redirectUri: item.oauth?.redirectUri ?? "", scopes: item.oauth?.scopes ?? [] };
+            if (metadata.authorizeUrl === "" || metadata.tokenUrl === "") { setContentError("OAUTH_NOT_CONFIGURED"); return; }
+            savePendingAuth({ connectorId: item.id, verifier: pair.verifier, state: stateValue, metadata });
+            window.location.assign(buildAuthorizeUrl(metadata, pair.challenge, stateValue));
+          }).catch(() => { setContentError("OAUTH_FAILED"); });
+        }}
         onToggleConnector={(item) => {
           if (session === null) return;
           const url = serverUrl === "" ? state.settings.server_url : serverUrl;
@@ -223,8 +263,8 @@ export function App(props: { transport: Transport }) {
 
 function AppShell(props: { controller: AppController; ui: UiValue; transport: Transport; gatewayModels: string[]; gatewayModel: string; onSelectGatewayModel: (model: string) => void; updateText: string | null; updateBusy: boolean; onCheckUpdate?: (() => void) | undefined;
   skills: SkillItem[]; connectors: ConnectorItem[]; installed: Array<{ name: string; version: string }>; contentError: string | null; contentBusy: string | null;
-  onInstall: (item: SkillItem) => void; onToggleConnector: (item: ConnectorItem) => void }) {
-  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel, updateText, updateBusy, onCheckUpdate, skills, connectors, installed, contentError, contentBusy, onInstall, onToggleConnector } = props;
+  onInstall: (item: SkillItem) => void; onAuthorize: (item: ConnectorItem) => void; onToggleConnector: (item: ConnectorItem) => void; authorized: string[] }) {
+  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel, updateText, updateBusy, onCheckUpdate, skills, connectors, installed, contentError, contentBusy, onInstall, onAuthorize, onToggleConnector, authorized } = props;
   const t = ui.t;
   const state = controller.state;
   const [commandsOpen, setCommandsOpen] = useState(false);
@@ -304,7 +344,7 @@ function AppShell(props: { controller: AppController; ui: UiValue; transport: Tr
       settings={<SettingsSlot gatewayModels={gatewayModels} gatewayModel={gatewayModel} onSelectGatewayModel={onSelectGatewayModel} onCheckUpdate={onCheckUpdate} updateText={updateText} updateBusy={updateBusy} renderProvider={SettingsProviderSlot} />}
       overlay={<>
         <SkillsSlot open={panel === "skills"} items={skills} installed={installed} busy={contentBusy} error={contentError} onInstall={onInstall} onClose={() => { setPanel(null); }} />
-        <ConnectorsSlot open={panel === "connectors"} items={connectors} error={contentError} onToggle={onToggleConnector} onClose={() => { setPanel(null); }} />
+        <ConnectorsSlot open={panel === "connectors"} items={connectors} error={contentError} authorized={authorized} onAuthorize={onAuthorize} onToggle={onToggleConnector} onClose={() => { setPanel(null); }} />
       </>}
       inspector={<InspectorSlot open={inspectorOpen} tab={inspectorTab} files={files} changes={[]} onTab={setInspectorTab} onClose={() => { setInspectorOpen(false); }} />}
       inspectorOpen={inspectorOpen}

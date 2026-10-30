@@ -163,7 +163,8 @@ async fn catalog(State(state): State<AppState>, headers: HeaderMap) -> Result<Js
                 COALESCE((SELECT can_enable FROM connector_grants g WHERE g.connector_id = c.id AND g.grantee = $1), false) AS user_can,
                 COALESCE((SELECT can_enable FROM connector_grants g WHERE g.connector_id = c.id AND g.grantee = 'all'), false) AS all_can,
                 COALESCE((SELECT enabled FROM connector_prefs p WHERE p.connector_id = c.id AND p.user_id = $2), false) AS enabled,
-                o.client_id, o.scopes, o.redirect_uri
+                o.client_id, o.scopes, o.redirect_uri,
+                c.config->>'authorize_url' AS authorize_url, c.config->>'token_url' AS token_url
          FROM connectors c LEFT JOIN connector_oauth o ON o.connector_id = c.id
          WHERE c.deleted_at IS NULL AND c.transport IS NOT NULL
            AND (EXISTS (SELECT 1 FROM connector_grants g WHERE g.connector_id = c.id AND g.grantee = 'all')
@@ -183,7 +184,7 @@ async fn catalog(State(state): State<AppState>, headers: HeaderMap) -> Result<Js
             "can_enable": can_enable,
             "force_update": row.try_get::<bool, _>("force_update").unwrap_or(false),
             "min_client_version": row.try_get::<String, _>("min_client_version").unwrap_or_default(),
-            "oauth": { "client_id": row.try_get::<Option<String>, _>("client_id").ok().flatten(), "scopes": row.try_get::<Option<Value>, _>("scopes").ok().flatten().unwrap_or(json!([])), "redirect_uri": row.try_get::<Option<String>, _>("redirect_uri").ok().flatten() },
+            "oauth": { "client_id": row.try_get::<Option<String>, _>("client_id").ok().flatten(), "scopes": row.try_get::<Option<Value>, _>("scopes").ok().flatten().unwrap_or(json!([])), "redirect_uri": row.try_get::<Option<String>, _>("redirect_uri").ok().flatten(), "authorize_url": row.try_get::<Option<String>, _>("authorize_url").ok().flatten(), "token_url": row.try_get::<Option<String>, _>("token_url").ok().flatten() },
         })
     }).collect();
     Ok(Json(json!({ "ok": true, "items": items })))

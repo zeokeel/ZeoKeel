@@ -17,7 +17,7 @@
 - tombstone e2e：安装 → 管理台删除 → 客户端刷新后目录为空。
 - force update e2e：管理台上传 1.1.0 + 强制更新 → 客户端显示“更新” → 更新后“已安装”。
 - 员工上传/非 owner 403/转交后上传 200：`srv-store-test.sh` 已覆盖。
-- OAuth token/pending 本地持久化单测通过；授权回调 UI 尚未接入（helper/存储/刷新已就绪）。
+- OAuth 授权回调 UI 已接：fake OAuth provider e2e（授权跳转→回跳→换 token→“已授权”）；token/pending 单测通过。
 
 ### task 9 evidence (2026-10-30)
 
