@@ -225,7 +225,7 @@ async fn request(State(state): State<AppState>, headers: HeaderMap, Path(id): Pa
         let _app = app_permit;
         let _user = user_permit;
         let _global = global_permit;
-        runtime::execute(&wasm, &db_for_run, request, u64::try_from(fuel).unwrap_or(10_000_000), usize::try_from(max_memory).unwrap_or(64 * 1024 * 1024), &assets)
+        runtime::execute(&wasm, &db_for_run, request, u64::try_from(fuel).unwrap_or(10_000_000), usize::try_from(max_memory).unwrap_or(64 * 1024 * 1024), &assets, app_db::MAX_BYTES)
     })).await.map_err(|_| error(StatusCode::TOO_MANY_REQUESTS, "APP_LIMIT_TIME"))?.map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "APP_UNAVAILABLE"))?;
     let output = result.map_err(|failure| {
         let code = runtime::error_code(&failure);

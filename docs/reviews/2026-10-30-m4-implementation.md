@@ -340,3 +340,12 @@
 - P1-4：新增 `e2e/m4-client-apps.spec.ts`（隔离窗口/app_request/rows），login-e2e 4 passed；apps-e2e 增 employee upload、non-owner 403、can_open=false open 403/404。
 - P1-5：Tauri capability 文件已加；实机 Tauri 运行时验证仍无法在无显示环境完成。
 - 修复 SUM(bigint) numeric 类型错误（request 500）。
+
+
+## 11. R3 后修复（Lead，2026-10-30）
+
+- P1-1：`0013_app_logs` + `app-retire` job；20GB 全局 DB 配额；5s 排队；日志表。
+- P1-2：SQLite progress handler per-query 5s；`max_page_count` 按 100MB 配额，写超限 SQLite 直接失败（事务原子）。
+- P1-3：runtime limits max_concurrency/max_memory_bytes；UI entry 从 manifest 取。
+- P1-4：新增 `e2e/m4-client-apps.spec.ts`（真实窗口内 request 回显）；`apps-e2e.sh` employee/non-owner/can_open；golden 去 ignore（缺 artifact 时明确 skip，存在则运行）；`scripts/tauri-smoke.sh` Xvfb 启动真实 desktop 主窗口。
+- P1-5：capability 文件已加；Tauri 主窗口 smoke 通过；app-window capability 运行时仍无自动化（无 tauri-driver），partition 用 per-app data_directory+incognito 替代并记录。

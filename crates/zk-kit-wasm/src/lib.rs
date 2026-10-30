@@ -50,6 +50,7 @@ pub struct RunInput<'a> {
     pub request: Value,
     pub limits: Limits,
     pub assets: &'a HashMap<String, Vec<u8>>,
+    pub db_quota_bytes: u64,
 }
 
 /// One run output.
@@ -131,6 +132,10 @@ pub fn run(input: RunInput<'_>) -> Result<RunOutput, WasmError> {
         .build_p1();
     let connection = Connection::open(input.db_path).map_err(|error| WasmError::Db(error.to_string()))?;
     connection.busy_timeout(Duration::from_secs(5)).map_err(|error| WasmError::Db(error.to_string()))?;
+    if input.db_quota_bytes > 0 {
+        let pages = i64::try_from(input.db_quota_bytes / 4096).unwrap_or(i64::MAX).max(1);
+        connection.pragma_update(None, "max_page_count", pages).map_err(|error| WasmError::Db(error.to_string()))?;
+    }
     let sql_deadline = Arc::new(Mutex::new(next_sql_deadline()));
     let progress_deadline = sql_deadline.clone();
     connection.progress_handler(1_000, Some(move || Instant::now() > *progress_deadline.lock().unwrap_or_else(|poison| poison.into_inner())));
