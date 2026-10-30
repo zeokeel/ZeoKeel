@@ -109,6 +109,11 @@
 | `GET /apps/{app_id}/assets/{path}` | 应用静态 UI 资源 | `apps:use` | 只读 release `ui/` 清单内文件；ETag；无 token 泄露 | 是 | APP_NOT_FOUND、APP_DELISTED、NOT_FOUND |
 | `POST /apps/{app_id}/open` | 打开计数 + 版本票据 | `apps:use` | resp 头 `X-ZeoKeel-App-Version` + `X-ZeoKeel-App-Ui`（缓存键唯一来源）；不返回可执行 guest | 否（计数） | APP_NOT_FOUND、APP_DELISTED |
 | `POST /apps/{app_id}/request` | 请求信封转发（应用全部数据面） | `apps:use` | req/resp 见 §9 | 由应用语义决定；GET 安全、写不幂等 | APP_DELISTED、RATE_LIMITED、APP_UNAVAILABLE |
+| `GET/POST /api/admin/apps` | 管理列表/创建 | `apps:admin` | 列表含 pending/approved/version；创建 admin-only | 是/否 | VALIDATION |
+| `POST /api/admin/apps/{id}/versions` | 管理上传/释放 | `apps:admin` | multipart manifest+wasm+ui；同版本 409 | 否 | APP_BAD_WASM、CONFLICT |
+| `POST /api/admin/apps/{id}/{approve,reject,delist,rollback,delete,purge}` | 审核/上下架/回滚/退役 | `apps:admin` | super_admin + CSRF；audit | 否 | APP_NOT_FOUND、CONFLICT |
+| `PUT /api/admin/apps/{id}/grants` | 可见/可用 grants | `apps:admin` | all/user + can_open | 否 | VALIDATION |
+| `GET /api/admin/apps/{id}/diagnostics` | 运行诊断 | `apps:admin` | calls/logs/limits，脱敏 | 是 | APP_NOT_FOUND |
 
 应用发布/审核/部署/导出在管理端与发布面（另文）；客户端**不执行应用、不持有应用 DB**。
 

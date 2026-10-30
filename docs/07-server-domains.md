@@ -154,7 +154,7 @@
 **语言（已调研，`research/wasm-languages.md`）**：v1 Tier-1 = **Go(wasip1) + Rust(wasip1)**，共用 p1 core module；
 TinyGo 预览；C/C++ 仅 vendor；wasip2 与其他语言暂缓。**M4 先 Go 打通，GA 前加 Rust**。
 
-**模型**：复用 §5 的 `contents/releases/grants/deployments`（`kind=app`）+ `app_databases`（app_id, path, size, quota）
+**模型**：复用 §5 的 `contents/releases/grants/deployments`（`kind=app`）+ `app_databases(app_id, schema_version, size_bytes, quota_bytes)`；DB 文件路径由服务端生成、不入库
 + `app_calls`（审计/限额）。
 
 **API**：`GET /api/client/v1/apps`（可见目录）、`POST /api/client/v1/apps/{app_id}/open`、
@@ -162,7 +162,7 @@ TinyGo 预览；C/C++ 仅 vendor；wasip2 与其他语言暂缓。**M4 先 Go �
 
 **运行**：Wasmtime LTS（候选 48/50，M4 实测定版；原型用 50；`15` §C T11）embedding；wasip1 core module；零 preopen；**客户端不执行应用 WASM，只执行 `app_request`**（ADR-062）；
 （原型验证见 `experiments/wasm-poc`：Go/Rust 双 guest + 帧 ABI + SQLite + fuel 已跑通）
-无网络、无文件；宿主提供 `db.exec/db.query/log/asset.read` 等扁平导入；帧协议 `RS<len>\n<JSON>`；
+无网络、无文件；宿主提供 `db.exec/db.query/log/asset.read` 等扁平导入；帧协议 `RS<len>\n<JSON>`；**schema 由 host-managed migration 在 guest 前执行**（release manifest 声明，guest 只 DML）；
 epoch/fuel + StoreLimits 做超时/内存；内存/CPU/时间/并发限额；
 每应用 SQLite 上限 **100MB / 16 表**；退役作业：软删 → 保留期 → 真删（含 DB 文件）。
 
@@ -196,7 +196,8 @@ epoch/fuel + StoreLimits 做超时/内存；内存/CPU/时间/并发限额；
 | users | `zk-srv-users` | `srv.users` |
 | wallet | `zk-srv-wallet`、`zk-srv-pricing`、`zk-srv-wallet-grant` | `srv.wallet`、`srv.pricing`、`srv.job.wallet-grant` |
 | gateway | `zk-srv-gateway`、`zk-srv-gateway-upstream-openai`、`zk-srv-gateway-meter` | `srv.gateway`、`srv.gateway.upstream`、`srv.gateway.meter` |
-| content | `zk-srv-content`（发布内核）、`zk-srv-skills`、`zk-srv-apps`、`zk-srv-app-runtime`、`zk-srv-app-db` | `srv.content`、`srv.skills`、`srv.apps` |
+| content | `zk-srv-content`（发布内核）、`zk-srv-skills` | `srv.content`、`srv.skills` |
+| apps | `zk-srv-apps`、`zk-srv-app-runtime`、`zk-srv-app-db` | `srv.apps`、`srv.app.runtime`、`srv.app.db` |
 | connectors | `zk-srv-connectors` | `srv.connectors` |
 | ops | `zk-srv-audit`、`zk-srv-settings`、`zk-srv-jobs`、`zk-srv-http` | `srv.audit`、`srv.settings`、`srv.jobs`、`srv.http` |
 

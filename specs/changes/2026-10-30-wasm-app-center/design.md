@@ -5,6 +5,7 @@
 ## 1. 包/契约/角色
 
 - `packages/contracts/app`：App/Release/Open/Frame/Manifest；schemars 生成 `app.json`/`app-frame.json`/`app-manifest.json`；C10 前端 Ajv。
+- `packages/contracts/ipc`：新增 `app_request` 命令/DTO（信封、响应、错误码）；Tauri capability 文件只允许该命令；窗口其他 IPC 命令一律 403；serve postMessage 只接受同 DTO。
 - `packages/server/apps`（`zk-srv-apps`，role `srv.apps`）：管理/员工/客户端路由、发布内核、轮询/资产。
 - `packages/server/app-runtime`（`zk-srv-app-runtime`，role `srv.app.runtime`）：wasmtime 执行、限额、SQL 闸门、帧、asset。
 - `packages/server/app-db`（`zk-srv-app-db`，role `srv.app.db`）：每 app SQLite、schema version、表数/大小、pinned connection 接口。
@@ -19,6 +20,7 @@
 - 帧：从 stdin 读完整请求；输出上限 8MiB；畸形/非 JSON → `APP_BAD_REQUEST`。
 - SQL 闸门：词法归一化 + 单语句 + 首关键字白名单 + 禁止关键字/`;`/注释；参数绑定；DDL 永不通过；SQL 5s 用 interrupt handle。
 - DB：`srv.app-db` 每连接 `rusqlite`/`sqlx` SQLite 文件；`db.exec/query` 不暴露路径；表数 `sqlite_master` 检查前后；文件大小 fs metadata；写前配额检查。
+- Host-managed schema：manifest `db_migrations` 仅 CREATE TABLE/INDEX，host 在事务内执行、更新 `schema_version`、失败回滚并保留旧 DB；guest 只 DML；迁移在 guest 启动前完成。
 - 并发：`tokio::sync::Semaphore` per-app/user/global + queue；超时含排队；429 + Retry-After。
 - 审计：upload/approve/list/delist/request/limit/purge；写失败 fail-closed。
 

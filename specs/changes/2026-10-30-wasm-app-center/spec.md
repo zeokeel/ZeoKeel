@@ -7,6 +7,7 @@
 
 - 复用 `contents(kind='app')`、`content_releases`、`content_deployments`、`content_grants`；release 额外存 `wasm bytea`、`ui_manifest jsonb`、`ui_archive bytea`、`wasm_sha256`、`ui_sha256`。
 - `app_databases(app_id PK, schema_version, size_bytes, quota_bytes default 104857600, updated_at)`；`path` 不入库，由服务端 `ZEOKEEL_APP_DB_DIR/<app_id>.sqlite` 唯一生成。
+- **host-managed schema/migration**：release manifest 携带 `db_schema_version` + `db_migrations:[{version,sql}]`；host 在 guest 启动前校验（仅 `CREATE TABLE`/`CREATE INDEX`，≤32 条、≤64KB total、表数 ≤16）并在事务内按版本执行；`app_databases.schema_version` 原子更新；失败回滚、保留旧 DB 与旧 schema_version；不允许降级；guest 永远只 DML（禁 DDL）。
 - `app_calls(id, app_id, user_id, request_id, status, duration_ms, fuel, at)` 保留 30 天，后台清理。
 - `app_runtime_logs(id, app_id, level, message, at)` 每 app 最多 1000 行，全局 10 万行；每日清理。
 - `app_runtime_limits(app_id, max_concurrency default 4, max_memory_bytes 64MB, fuel default 10M, updated_at)`；全局/用户并发来自 system_settings。
@@ -24,7 +25,7 @@
 - wasmtime 50 LTS embedding；wasip1 core module；零 preopen；零 socket；无 env/时钟配置；guest 导出 `_start`。
 - 帧：stdin/stdout `RS<len>\n<JSON>`；单请求单实例。
 - 宿主函数封闭：`db.exec`、`db.query`、`log`、`asset.read`；无 `ai.*`、network、file、env。
-- SQL：单语句；仅 SELECT/INSERT/UPDATE/DELETE；**禁 DDL/ATTACH/PRAGMA/VACUUM/load_extension/readfile/writefile/TRIGGER/VIRTUAL TABLE**；显式参数绑定；注释/多语句/大小写绕过拒绝；单条 SQL 5s。
+- guest SQL：单语句；仅 SELECT/INSERT/UPDATE/DELETE；**禁 DDL/ATTACH/PRAGMA/VACUUM/load_extension/readfile/writefile/TRIGGER/VIRTUAL TABLE**；显式参数绑定；注释/多语句/大小写绕过拒绝；单条 SQL 5s。host-managed migration 是唯一 DDL 入口（见 §1）。
 - DB：只操作当前 app 的 pinned connection；`db.*` 不接受路径/attach 名；表 ≤16、文件 ≤100MB；超限 fail-closed。
 - 限额：请求 1MiB、响应 8MiB；端到端 60s（含排队）、guest 30s、SQL 5s；每应用并发 4、每用户并发 8、全局并发 32、排队 64；超限 429+Retry-After；内存 64MB/实例、fuel 10M。
 - 配额：上传 wasm ≤32MB、UI zip ≤16MB；每用户 pending ≤10、总应用 ≤200；DB 总磁盘 ≤20GB；日志/调用按保留期清理。
