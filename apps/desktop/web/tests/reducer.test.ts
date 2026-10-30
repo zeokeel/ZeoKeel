@@ -67,7 +67,7 @@ describe("chat reducer", () => {
     });
     state = appReducer(state, {
       type: "agent_event",
-      event: { type: "turn_completed", reply: { text: "最终回答", tool_calls: [] } },
+      event: { type: "turn_completed", reply: { text: "最终回答", tool_calls: [], usage: null } },
       now: 12,
     });
     const assistant = state.messages[1];

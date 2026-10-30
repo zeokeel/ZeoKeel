@@ -65,6 +65,9 @@ export function ChatView() {
   );
 }
 
+export { readUsage, usageFromReply } from "./UsagePart";
+export type { UsageSummary } from "./UsagePart";
+
 export const components = {
   "chat.thread": ChatView,
 } as const;

@@ -28,8 +28,9 @@ interface ApprovalData {
 interface ApprovalPart { type: "data-approval"; id?: string; data: ApprovalData }
 interface QuestionData { id: string; questions: unknown; answers: unknown }
 interface QuestionPart { type: "data-question"; id?: string; data: QuestionData }
+interface UsagePart { type: "data-usage"; data: { usage: NonNullable<ChatMessage["usage"]> } }
 
-type ContentPart = TextPart | ToolPart | ApprovalPart | QuestionPart;
+type ContentPart = TextPart | ToolPart | ApprovalPart | QuestionPart | UsagePart;
 
 function buildContent(message: ChatMessage): ContentPart[] {
   const content: ContentPart[] = [];
@@ -64,6 +65,9 @@ function buildContent(message: ChatMessage): ContentPart[] {
   }
   for (const question of message.questions) {
     content.push({ type: "data-question", id: question.id, data: { id: question.id, questions: question.questions, answers: question.answers } });
+  }
+  if (message.usage !== undefined && message.usage !== null) {
+    content.push({ type: "data-usage", data: { usage: message.usage } });
   }
   return content;
 }

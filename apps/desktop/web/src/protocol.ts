@@ -6,8 +6,11 @@
  * ignore them (unknown events) or surface a protocol error (commands).
  */
 import {
+  defaultAgentSettings,
   defaultSettings,
   type AgentEvent,
+  type AgentSettings,
+  type AgentUsage,
   type AppSettings,
   type CommandResult,
   type Conversation,
@@ -19,11 +22,21 @@ import {
   type ProviderKind,
   type ReplyToolCall,
   type Theme,
+  type ToolChoiceSetting,
   type UiEvent,
   type Workspace,
 } from "./types";
 
 import { isRecord, readBoolean, readNumber, readString } from "@zeokeel/ui-kit";
+import {
+  validateAgentEvent,
+  validateAppSettings,
+  validateCommandResponse,
+  validateConversation,
+  validateMessage,
+  validateUiEvent,
+  validateWorkspace,
+} from "./validate";
 
 export { isRecord, readBoolean, readNumber, readString };
 
@@ -37,6 +50,9 @@ function readArrayOrNull(value: unknown): unknown[] | null {
 }
 
 function parseConversationRecord(value: Record<string, unknown>): Conversation | null {
+  if (!validateConversation(value)) {
+    return null;
+  }
   const id = readString(value, "id");
   const title = readString(value, "title");
   const createdAt = readNumber(value, "created_at_ms");
@@ -66,6 +82,9 @@ export function parseConversation(value: unknown): Conversation | null {
 }
 
 function parseWorkspaceRecord(value: Record<string, unknown>): Workspace | null {
+  if (!validateWorkspace(value)) {
+    return null;
+  }
   const id = readString(value, "id");
   const path = readString(value, "path");
   const title = readString(value, "title");
@@ -161,6 +180,9 @@ export function parseConversations(value: unknown): Conversation[] | null {
 }
 
 function parseMessageRecord(value: Record<string, unknown>): Message | null {
+  if (!validateMessage(value)) {
+    return null;
+  }
   const id = readString(value, "id");
   const conversationId = readString(value, "conversation_id");
   const role = readString(value, "role");
@@ -231,9 +253,80 @@ function parseProvider(value: Record<string, unknown>): ProviderConfig {
   };
 }
 
+function readNullableNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readToolChoice(value: unknown): ToolChoiceSetting {
+  const fallback: ToolChoiceSetting = { mode: "auto" };
+  if (!isRecord(value)) {
+    return fallback;
+  }
+  const mode = readString(value, "mode");
+  if (mode === "none" || mode === "required") {
+    return { mode };
+  }
+  if (mode === "specific") {
+    const tools = (readArray(value, "tools") ?? []).flatMap((tool) =>
+      typeof tool === "string" && tool.trim() !== "" ? [tool] : [],
+    );
+    return tools.length === 0 ? fallback : { mode: "specific", tools };
+  }
+  return fallback;
+}
+
+function parseAgentSettings(value: unknown): AgentSettings {
+  const base = defaultAgentSettings();
+  if (!isRecord(value)) {
+    return base;
+  }
+  const completion = isRecord(value["completion"]) ? value["completion"] : {};
+  const memory = isRecord(value["memory"]) ? value["memory"] : {};
+  const hooks = isRecord(value["hooks"]) ? value["hooks"] : {};
+  const stop = (readArray(completion, "stop") ?? []).flatMap((item) =>
+    typeof item === "string" ? [item] : [],
+  );
+  return {
+    max_steps: readNumber(value, "max_steps") ?? base.max_steps,
+    completion: {
+      temperature: readNullableNumber(completion["temperature"]),
+      max_tokens: readNullableNumber(completion["max_tokens"]),
+      top_p: readNullableNumber(completion["top_p"]),
+      seed: readNullableNumber(completion["seed"]),
+      stop,
+      tool_choice: readToolChoice(completion["tool_choice"]),
+      parallel_tool_calls: readBoolean(completion, "parallel_tool_calls"),
+      reasoning_effort: readString(completion, "reasoning_effort"),
+      prompt_cache: readString(completion, "prompt_cache"),
+    },
+    memory: {
+      enabled: readBoolean(memory, "enabled") ?? base.memory.enabled,
+      dir: readString(memory, "dir") ?? base.memory.dir,
+    },
+    hooks: {
+      enabled: readBoolean(hooks, "enabled") ?? base.hooks.enabled,
+      log: readString(hooks, "log") ?? base.hooks.log,
+    },
+  };
+}
+
+function parseUsage(value: unknown): AgentUsage | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return {
+    input_tokens: readNullableNumber(value["input_tokens"]),
+    output_tokens: readNullableNumber(value["output_tokens"]),
+    total_tokens: readNullableNumber(value["total_tokens"]),
+    cached_tokens: readNullableNumber(value["cached_tokens"]),
+    reasoning_tokens: readNullableNumber(value["reasoning_tokens"]),
+    cost_micros: readNullableNumber(value["cost_micros"]),
+  };
+}
+
 export function parseSettings(value: unknown): AppSettings {
   const base = defaultSettings();
-  if (!isRecord(value)) {
+  if (!isRecord(value) || !validateAppSettings(value)) {
     return base;
   }
   const provider = isRecord(value["provider"]) ? parseProvider(value["provider"]) : base.provider;
@@ -245,6 +338,7 @@ export function parseSettings(value: unknown): AppSettings {
     auto_approve_read_only:
       readBoolean(value, "auto_approve_read_only") ?? base.auto_approve_read_only,
     server_url: readString(value, "server_url") ?? base.server_url,
+    agent: parseAgentSettings(value["agent"]),
   };
 }
 
@@ -258,11 +352,12 @@ export function parseMeta(value: unknown): Meta {
     edition: readString(value, "edition") ?? "personal",
     version: readString(value, "version") ?? "0.0.0",
     packages,
+    agentConfigError: readString(value, "agent_config_error"),
   };
 }
 
 export function parseCommandResponse(value: unknown): CommandResult {
-  if (!isRecord(value)) {
+  if (!isRecord(value) || !validateCommandResponse(value)) {
     return { ok: false, data: null, error: "invalid response" };
   }
   const ok = value["ok"] === true;
@@ -285,7 +380,7 @@ export function parseStreamId(value: unknown): string | null {
 }
 
 export function parseUiEvent(value: unknown): UiEvent | null {
-  if (!isRecord(value)) {
+  if (!isRecord(value) || !validateUiEvent(value)) {
     return null;
   }
   const streamId = readString(value, "stream_id");
@@ -297,7 +392,7 @@ export function parseUiEvent(value: unknown): UiEvent | null {
   return { stream_id: streamId, seq, kind, payload: value["payload"] ?? null };
 }
 
-interface CompletedReply { text: string; tool_calls: ReplyToolCall[] }
+interface CompletedReply { text: string; tool_calls: ReplyToolCall[]; usage: AgentUsage | null }
 
 function parseCompletedReply(value: unknown): CompletedReply | null {
   if (!isRecord(value)) {
@@ -321,11 +416,11 @@ function parseCompletedReply(value: unknown): CompletedReply | null {
     }
     toolCalls.push({ name, args, result });
   }
-  return { text, tool_calls: toolCalls };
+  return { text, tool_calls: toolCalls, usage: parseUsage(value["usage"]) };
 }
 
 export function parseAgentEvent(value: unknown): AgentEvent | null {
-  if (!isRecord(value)) {
+  if (!isRecord(value) || !validateAgentEvent(value)) {
     return null;
   }
   const type = readString(value, "type");
@@ -368,6 +463,17 @@ export function parseAgentEvent(value: unknown): AgentEvent | null {
         return null;
       }
       return { type, approval_id: approvalId, tool, args, reason };
+    }
+    case "approval_resolved": {
+      const approvalId = readString(value, "approval_id");
+      const decision = readString(value, "decision");
+      if (
+        approvalId === null ||
+        (decision !== "allow_once" && decision !== "reject" && decision !== "cancel")
+      ) {
+        return null;
+      }
+      return { type, approval_id: approvalId, decision };
     }
     case "turn_completed": {
       const reply = parseCompletedReply(value["reply"]);

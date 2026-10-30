@@ -15,6 +15,13 @@ describe("settings integration", () => {
 
     await userEvent.selectOptions(screen.getByLabelText("语言"), "en-US");
     await userEvent.selectOptions(screen.getByLabelText("主题"), "dark");
+    const maxSteps = screen.getByLabelText("最大步数（1-200）");
+    await userEvent.clear(maxSteps);
+    await userEvent.type(maxSteps, "12");
+    const temperature = screen.getByLabelText("temperature（0-2）");
+    await userEvent.clear(temperature);
+    await userEvent.type(temperature, "0.7");
+    await userEvent.click(screen.getByLabelText("启用会话记忆"));
     await userEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => {
@@ -25,6 +32,9 @@ describe("settings integration", () => {
     );
     expect(sentSettings.locale).toBe("en-US");
     expect(sentSettings.theme).toBe("dark");
+    expect(sentSettings.agent.max_steps).toBe(12);
+    expect(sentSettings.agent.completion.temperature).toBe(0.7);
+    expect(sentSettings.agent.memory.enabled).toBe(false);
 
     expect(document.documentElement.lang).toBe("en-US");
     expect(document.documentElement.dataset["theme"]).toBe("dark");

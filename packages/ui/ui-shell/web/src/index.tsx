@@ -21,6 +21,7 @@ export interface ShellFrameProps {
   workspacePath: string;
   toast: string | null;
   workspaceError: string | null;
+  agentConfigError: string | null;
   navigation: ReactNode;
   conversation: ReactNode;
   settings: ReactNode;
@@ -110,6 +111,11 @@ export function ShellFrame(props: ShellFrameProps) {
         {props.offline ? (
           <div className="flex items-center justify-center gap-2 border-b border-border bg-muted px-4 py-1 text-[11px] text-destructive" role="status">
             <IconWifiOff /><span>{t("offlineBanner")}</span>
+          </div>
+        ) : null}
+        {props.agentConfigError !== null ? (
+          <div className="flex items-center justify-center gap-2 border-b border-border bg-muted px-4 py-1 text-[11px] text-destructive" role="alert">
+            <span>{t("agentConfigError", { message: props.agentConfigError })}</span>
           </div>
         ) : null}
         <div className="flex min-h-0 flex-1">

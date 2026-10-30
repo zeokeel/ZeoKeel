@@ -73,7 +73,7 @@ function planTurn(input: string): AgentEvent[] {
   for (const chunk of splitChunks(finalText, 8)) {
     steps.push({ type: "text_delta", delta: chunk });
   }
-  steps.push({ type: "turn_completed", reply: { text: finalText, tool_calls: [] } });
+  steps.push({ type: "turn_completed", reply: { text: finalText, tool_calls: [], usage: null } });
   return steps;
 }
 

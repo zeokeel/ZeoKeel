@@ -1,0 +1,166 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { defaultSettings } from "../src/types";
+import {
+  parseAgentEvent,
+  parseCommandResponse,
+  parseConversation,
+  parseMessages,
+  parseSettings,
+  parseUiEvent,
+  parseMeta,
+  parseWorkspace,
+  parseWorkspaces,
+} from "../src/protocol";
+import {
+  validateAgentEvent,
+  validateAppSettings,
+  validateCommandResponse,
+  validateConversation,
+  validateMessage,
+  validateUiEvent,
+  validateWorkspace,
+} from "../src/validate";
+
+const UI_EVENT = { stream_id: "stream-1", seq: 1, kind: "agent", payload: { type: "turn_started", turn_id: "t1" } };
+const AGENT_EVENT = { type: "text_delta", delta: "hello" };
+const WORKSPACE = {
+  id: "ws-1",
+  path: "/home/test",
+  title: "Home",
+  is_default: true,
+  created_at_ms: 1,
+  updated_at_ms: 2,
+};
+const CONVERSATION = {
+  id: "c-1",
+  workspace_id: "ws-1",
+  title: "Conversation",
+  created_at_ms: 1,
+  updated_at_ms: 2,
+};
+const MESSAGE = {
+  id: "m-1",
+  conversation_id: "c-1",
+  role: "user",
+  content: "hi",
+  created_at_ms: 1,
+};
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("Ajv boundary schemas (T22/C10)", () => {
+  it("accepts valid IPC/event/settings/DTO payloads", () => {
+    expect(validateCommandResponse({ ok: true, data: null, error: null })).toBe(true);
+    expect(validateUiEvent(UI_EVENT)).toBe(true);
+    expect(validateAgentEvent(AGENT_EVENT)).toBe(true);
+    expect(validateAgentEvent({ type: "turn_cancelled" })).toBe(true);
+    expect(validateAppSettings(defaultSettings())).toBe(true);
+    expect(validateWorkspace(WORKSPACE)).toBe(true);
+    expect(validateConversation(CONVERSATION)).toBe(true);
+    expect(validateMessage(MESSAGE)).toBe(true);
+  });
+
+  it("rejects missing fields, wrong types and unknown agent events", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(validateCommandResponse({ data: null })).toBe(false);
+    expect(validateCommandResponse({ ok: "yes" })).toBe(false);
+    expect(validateUiEvent({ ...UI_EVENT, stream_id: undefined })).toBe(false);
+    expect(validateUiEvent({ ...UI_EVENT, seq: "1" })).toBe(false);
+    expect(validateAgentEvent({ type: "not_a_known_event" })).toBe(false);
+    expect(validateAgentEvent({ type: "text_delta" })).toBe(false);
+    expect(validateAppSettings({ ...defaultSettings(), schema: "1" })).toBe(false);
+    expect(validateAppSettings({ ...defaultSettings(), provider: { kind: "nope" } })).toBe(false);
+    expect(validateWorkspace({ ...WORKSPACE, path: 42 })).toBe(false);
+    expect(validateConversation({ ...CONVERSATION, title: undefined })).toBe(false);
+    expect(validateMessage({ ...MESSAGE, content: null })).toBe(false);
+  });
+});
+
+describe("protocol boundary rejects invalid data after schema validation", () => {
+  it("maps malformed command envelopes to a safe error", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(parseCommandResponse({ data: {} })).toEqual({ ok: false, data: null, error: "invalid response" });
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it("drops malformed UiEvent and AgentEvent payloads", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(parseUiEvent({ stream_id: "s", seq: 1, kind: "agent" })).toBeNull();
+    expect(parseUiEvent({ ...UI_EVENT, payload: undefined })).toBeNull();
+    expect(parseAgentEvent({ type: "unknown_event", foo: 1 })).toBeNull();
+  });
+
+  it("falls back to defaults for invalid settings and rejects malformed DTOs", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(parseSettings({ schema: 1 }).schema).toBe(defaultSettings().schema);
+    expect(parseSettings({ ...defaultSettings(), provider: { kind: "bogus" } })).toEqual(defaultSettings());
+    expect(parseWorkspace({ ...WORKSPACE, created_at_ms: "1" })).toBeNull();
+    expect(parseConversation({ ...CONVERSATION, title: 5 })).toBeNull();
+    expect(parseMessages({ messages: [{ ...MESSAGE, content: 5 }] })).toBeNull();
+    expect(parseWorkspaces({ workspaces: [WORKSPACE, { id: "bad" }] })).toBeNull();
+  });
+
+  it("accepts valid settings/DTO payloads (no regression)", () => {
+    expect(parseSettings(defaultSettings())).toEqual(defaultSettings());
+    expect(parseUiEvent(UI_EVENT)).toEqual(UI_EVENT);
+    expect(parseAgentEvent(AGENT_EVENT)).toEqual(AGENT_EVENT);
+    expect(parseWorkspace(WORKSPACE)).toEqual(WORKSPACE);
+    expect(parseConversation(CONVERSATION)).toEqual(CONVERSATION);
+  });
+
+  it("parses AppSettings.agent and AgentReply.usage from the contract shape", () => {
+    const settings = parseSettings({
+      ...defaultSettings(),
+      agent: {
+        max_steps: 12,
+        completion: {
+          temperature: 0.7,
+          max_tokens: 2048,
+          top_p: 0.9,
+          seed: 42,
+          stop: ["STOP"],
+          tool_choice: { mode: "specific", tools: ["fs.read"] },
+          parallel_tool_calls: true,
+          reasoning_effort: "high",
+          prompt_cache: "long",
+        },
+        memory: { enabled: false, dir: "/tmp/mem" },
+        hooks: { enabled: false, log: "/tmp/hooks.jsonl" },
+      },
+    });
+    expect(settings.agent.max_steps).toBe(12);
+    expect(settings.agent.completion.tool_choice).toEqual({ mode: "specific", tools: ["fs.read"] });
+    expect(settings.agent.memory.dir).toBe("/tmp/mem");
+
+    const completed = parseAgentEvent({
+      type: "turn_completed",
+      reply: {
+        text: "done",
+        tool_calls: [],
+        usage: { input_tokens: 5, output_tokens: 2, total_tokens: 7, cached_tokens: 1, reasoning_tokens: 0, cost_micros: 10 },
+      },
+    });
+    expect(completed).not.toBeNull();
+    expect(completed?.type).toBe("turn_completed");
+    if (completed?.type === "turn_completed") {
+      expect(completed.reply.usage?.total_tokens).toBe(7);
+    }
+
+    const resolved = parseAgentEvent({ type: "approval_resolved", approval_id: "a1", decision: "reject" });
+    expect(resolved).toEqual({ type: "approval_resolved", approval_id: "a1", decision: "reject" });
+  });
+
+  it("parses meta.get.agent_config_error for the boot warning", () => {
+    expect(parseMeta({ edition: "personal", version: "1", packages: [], agent_config_error: "agent.max_steps must be within 1..=200" }).agentConfigError).toBe("agent.max_steps must be within 1..=200");
+    expect(parseMeta({ edition: "personal", version: "1", packages: [] }).agentConfigError).toBeNull();
+  });
+
+  it("defaults missing AppSettings.agent fields (old settings files)", () => {
+    const settings = parseSettings({ ...defaultSettings(), agent: undefined });
+    expect(settings.agent.max_steps).toBe(50);
+    expect(settings.agent.completion.tool_choice).toEqual({ mode: "auto" });
+    expect(settings.agent.memory.enabled).toBe(true);
+  });
+});

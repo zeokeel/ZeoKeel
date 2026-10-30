@@ -78,9 +78,24 @@ describe("chat flow", () => {
       reply: {
         text: "最终回答：已读取 demo-data/hello.txt。",
         tool_calls: [],
+        usage: {
+          input_tokens: 12,
+          cached_tokens: 2,
+          output_tokens: 3,
+          reasoning_tokens: 1,
+          total_tokens: 15,
+          cost_micros: 5000,
+        },
       },
     });
     expect(screen.getByText("最终回答：已读取 demo-data/hello.txt。")).toBeTruthy();
+    expect(screen.getByText("用量")).toBeTruthy();
+    expect(screen.getByText("输入 12")).toBeTruthy();
+    expect(screen.getByText("缓存 2")).toBeTruthy();
+    expect(screen.getByText("输出 3")).toBeTruthy();
+    expect(screen.getByText("推理 1")).toBeTruthy();
+    expect(screen.getByText("合计 15")).toBeTruthy();
+    expect(screen.getByText("成本 $0.005000")).toBeTruthy();
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "发送" })).toBeTruthy();
     });

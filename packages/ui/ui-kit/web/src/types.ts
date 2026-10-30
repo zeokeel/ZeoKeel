@@ -23,6 +23,56 @@ export interface ProviderConfig {
   api_key: string;
 }
 
+/** Mirrors `zk_contract_config::ToolChoiceSetting` (serde tag/content). */
+export type ToolChoiceSetting =
+  | { mode: "auto" }
+  | { mode: "none" }
+  | { mode: "required" }
+  | { mode: "specific"; tools: string[] };
+
+/** Normalized `zk_contract_config::CompletionSettings` (nullable = provider default). */
+export interface CompletionSettings {
+  temperature: number | null;
+  max_tokens: number | null;
+  top_p: number | null;
+  seed: number | null;
+  stop: string[];
+  tool_choice: ToolChoiceSetting;
+  parallel_tool_calls: boolean | null;
+  reasoning_effort: string | null;
+  prompt_cache: string | null;
+}
+
+/** Mirrors `zk_contract_config::MemorySettings`. */
+export interface MemorySettings {
+  enabled: boolean;
+  dir: string;
+}
+
+/** Mirrors `zk_contract_config::HookSettings`. */
+export interface HookSettings {
+  enabled: boolean;
+  log: string;
+}
+
+/** Normalized `zk_contract_config::AgentSettings`. */
+export interface AgentSettings {
+  max_steps: number;
+  completion: CompletionSettings;
+  memory: MemorySettings;
+  hooks: HookSettings;
+}
+
+/** Mirrors `zk_contract_agent::AgentUsage`. */
+export interface AgentUsage {
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+  cached_tokens: number | null;
+  reasoning_tokens: number | null;
+  cost_micros: number | null;
+}
+
 /** Mirrors `zk_contract_config::AppSettings`. */
 export interface AppSettings {
   schema: number;
@@ -32,6 +82,8 @@ export interface AppSettings {
   auto_approve_read_only: boolean;
   /** Enterprise login server URL (personal edition: empty). */
   server_url: string;
+  /** Runtime-configurable local agent settings (serde default for old stores). */
+  agent: AgentSettings;
 }
 
 /** Mirrors `zk_contract_session::Workspace`. */
@@ -69,6 +121,8 @@ export interface Meta {
   edition: string;
   version: string;
   packages: string[];
+  /** Boot-time agent settings error reported by Rust; invalid values fall back to defaults. */
+  agentConfigError?: string | null;
 }
 
 /** One tool call as rendered inside an assistant message. */
@@ -109,6 +163,8 @@ export interface ChatMessage {
   approvals: ApprovalView[];
   questions: QuestionView[];
   error: string | null;
+  /** Provider token usage for a completed assistant turn, when reported. */
+  usage?: AgentUsage | null;
 }
 
 /** Mirrors `zk_contract_agent::AgentEvent` (`serde(tag = "type", rename_all = "snake_case")`). */
@@ -125,6 +181,11 @@ export type AgentEvent =
       reason: string;
     }
   | {
+      type: "approval_resolved";
+      approval_id: string;
+      decision: "allow_once" | "reject" | "cancel";
+    }
+  | {
       type: "question_asked";
       question_id: string;
       questions: unknown;
@@ -136,7 +197,7 @@ export type AgentEvent =
     }
   | {
       type: "turn_completed";
-      reply: { text: string; tool_calls: ReplyToolCall[] };
+      reply: { text: string; tool_calls: ReplyToolCall[]; usage: AgentUsage | null };
     }
   | { type: "turn_cancelled" }
   | { type: "error"; message: string };
@@ -162,6 +223,25 @@ export interface CommandResult {
   error: string | null;
 }
 
+export function defaultAgentSettings(): AgentSettings {
+  return {
+    max_steps: 50,
+    completion: {
+      temperature: null,
+      max_tokens: null,
+      top_p: null,
+      seed: null,
+      stop: [],
+      tool_choice: { mode: "auto" },
+      parallel_tool_calls: null,
+      reasoning_effort: null,
+      prompt_cache: null,
+    },
+    memory: { enabled: true, dir: "" },
+    hooks: { enabled: true, log: "" },
+  };
+}
+
 export function defaultSettings(): AppSettings {
   return {
     schema: 1,
@@ -170,6 +250,7 @@ export function defaultSettings(): AppSettings {
     locale: "zh-CN",
     auto_approve_read_only: true,
     server_url: "",
+    agent: defaultAgentSettings(),
   };
 }
 

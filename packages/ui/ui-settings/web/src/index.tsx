@@ -11,14 +11,15 @@ import {
   type Theme,
 } from "@zeokeel/ui-kit";
 import {
+  EMPTY_SETTINGS_ERRORS,
   formToSettings,
+  hasSettingsErrors,
   toForm,
   validateSettings,
   type SettingsErrors,
+  type SettingsFieldError,
   type SettingsForm,
 } from "./settings-validation";
-
-const EMPTY_ERRORS: SettingsErrors = { baseUrl: null, model: null };
 const labelClass = "text-[12px] font-medium text-muted-foreground";
 const inputClass =
   "w-full rounded-control border border-border bg-background px-2.5 py-2 text-[13px] text-foreground placeholder:text-muted-foreground disabled:opacity-55";
@@ -54,7 +55,7 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
   const { t, settings, settingsOpen, actions } = ui;
   // The app remounts this dialog with a key on open, so the form always reflects persisted settings.
   const [form, setForm] = useState<SettingsForm>(() => toForm(settings));
-  const [errors, setErrors] = useState<SettingsErrors>(EMPTY_ERRORS);
+  const [errors, setErrors] = useState<SettingsErrors>(EMPTY_SETTINGS_ERRORS);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -66,7 +67,7 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
     event.preventDefault();
     const nextErrors = validateSettings(form);
     setErrors(nextErrors);
-    if (nextErrors.baseUrl !== null || nextErrors.model !== null) {
+    if (hasSettingsErrors(nextErrors)) {
       return;
     }
     setSaving(true);
@@ -84,6 +85,29 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
   };
 
   const isMock = form.providerKind === "mock";
+  const fieldError = (error: SettingsFieldError): ReactNode =>
+    error === null ? null : (
+      <span className="text-[12px] text-destructive" role="alert">{t(error)}</span>
+    );
+  const numeric = (id: string, label: string, value: string, onChange: (next: string) => void, error: SettingsFieldError, extra: { step?: string; min?: number; max?: number } = {}): ReactNode => (
+    <label className="flex flex-col gap-1" htmlFor={id}>
+      <span className={labelClass}>{label}</span>
+      <input
+        id={id}
+        className={inputClass}
+        type="number"
+        inputMode="decimal"
+        value={value}
+        step={extra.step ?? "1"}
+        min={extra.min}
+        max={extra.max}
+        onChange={(event) => { onChange(event.target.value); }}
+        aria-invalid={error !== null}
+        aria-label={label}
+      />
+      {fieldError(error)}
+    </label>
+  );
 
   return (
     <Dialog.Root open={settingsOpen} onOpenChange={actions.closeSettings}>
@@ -191,6 +215,141 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
                     <option value="zh-CN">中文（简体）</option>
                     <option value="en-US">English (US)</option>
                   </select>
+                </label>
+              </div>
+            </fieldset>
+            <fieldset className="rounded-document bg-muted p-4">
+              <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
+                {t("settingsSectionAgent")}
+              </legend>
+              <p className="mb-3 text-[12px] text-muted-foreground">{t("settingsAgentDescription")}</p>
+              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                {numeric("settings-max-steps", t("settingsMaxSteps"), form.maxSteps, (value) => { update("maxSteps", value); }, errors.maxSteps, { min: 1, max: 200 })}
+                {numeric("settings-temperature", t("settingsTemperature"), form.temperature, (value) => { update("temperature", value); }, errors.temperature, { step: "0.1", min: 0, max: 2 })}
+                {numeric("settings-max-tokens", t("settingsMaxTokens"), form.maxTokens, (value) => { update("maxTokens", value); }, errors.maxTokens, { min: 1 })}
+                {numeric("settings-top-p", t("settingsTopP"), form.topP, (value) => { update("topP", value); }, errors.topP, { step: "0.05", min: 0, max: 1 })}
+                {numeric("settings-seed", t("settingsSeed"), form.seed, (value) => { update("seed", value); }, errors.seed, { min: 0 })}
+                <label className="flex flex-col gap-1" htmlFor="settings-tool-choice">
+                  <span className={labelClass}>{t("settingsToolChoice")}</span>
+                  <select
+                    id="settings-tool-choice"
+                    className={inputClass}
+                    value={form.toolChoiceMode}
+                    onChange={(event) => { update("toolChoiceMode", event.target.value === "none" || event.target.value === "required" || event.target.value === "specific" ? event.target.value : "auto"); }}
+                  >
+                    <option value="auto">{t("settingsToolChoiceAuto")}</option>
+                    <option value="none">{t("settingsToolChoiceNone")}</option>
+                    <option value="required">{t("settingsToolChoiceRequired")}</option>
+                    <option value="specific">{t("settingsToolChoiceSpecific")}</option>
+                  </select>
+                </label>
+                {form.toolChoiceMode === "specific" ? (
+                  <label className="flex flex-col gap-1" htmlFor="settings-tool-choice-tools">
+                    <span className={labelClass}>{t("settingsToolChoiceTools")}</span>
+                    <input
+                      id="settings-tool-choice-tools"
+                      className={inputClass}
+                      value={form.toolChoiceTools}
+                      placeholder="fs.read, fs.write"
+                      onChange={(event) => { update("toolChoiceTools", event.target.value); }}
+                      aria-invalid={errors.toolChoiceTools !== null}
+                    />
+                    {fieldError(errors.toolChoiceTools)}
+                  </label>
+                ) : null}
+                <label className="flex flex-col gap-1" htmlFor="settings-parallel-tool-calls">
+                  <span className={labelClass}>{t("settingsParallelToolCalls")}</span>
+                  <select
+                    id="settings-parallel-tool-calls"
+                    className={inputClass}
+                    value={form.parallelToolCalls}
+                    onChange={(event) => { update("parallelToolCalls", event.target.value === "true" ? "true" : event.target.value === "false" ? "false" : "default"); }}
+                  >
+                    <option value="default">{t("settingsParallelDefault")}</option>
+                    <option value="true">{t("settingsParallelOn")}</option>
+                    <option value="false">{t("settingsParallelOff")}</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1" htmlFor="settings-reasoning-effort">
+                  <span className={labelClass}>{t("settingsReasoningEffort")}</span>
+                  <select
+                    id="settings-reasoning-effort"
+                    className={inputClass}
+                    value={form.reasoningEffort}
+                    onChange={(event) => { const value = event.target.value; update("reasoningEffort", value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh" || value === "max" ? value : ""); }}
+                  >
+                    <option value="">{t("settingsReasoningDefault")}</option>
+                    <option value="minimal">minimal</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                    <option value="xhigh">xhigh</option>
+                    <option value="max">max</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1" htmlFor="settings-prompt-cache">
+                  <span className={labelClass}>{t("settingsPromptCache")}</span>
+                  <select
+                    id="settings-prompt-cache"
+                    className={inputClass}
+                    value={form.promptCache}
+                    onChange={(event) => { update("promptCache", event.target.value === "short" || event.target.value === "long" ? event.target.value : ""); }}
+                  >
+                    <option value="">{t("settingsPromptCacheDefault")}</option>
+                    <option value="short">{t("settingsPromptCacheShort")}</option>
+                    <option value="long">{t("settingsPromptCacheLong")}</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 sm:col-span-2" htmlFor="settings-stop">
+                  <span className={labelClass}>{t("settingsStop")}</span>
+                  <textarea
+                    id="settings-stop"
+                    className={`${inputClass} min-h-[60px] font-mono`}
+                    value={form.stop}
+                    onChange={(event) => { update("stop", event.target.value); }}
+                    aria-describedby="settings-stop-hint"
+                  />
+                  <span id="settings-stop-hint" className="text-[12px] text-muted-foreground">{t("settingsStopHint")}</span>
+                </label>
+                <label className="flex items-center gap-3 rounded-control bg-background px-3 py-2" htmlFor="settings-memory-enabled">
+                  <input
+                    id="settings-memory-enabled"
+                    type="checkbox"
+                    checked={form.memoryEnabled}
+                    onChange={(event) => { update("memoryEnabled", event.target.checked); }}
+                  />
+                  <span className="text-[13px] text-foreground">{t("settingsMemoryEnabled")}</span>
+                </label>
+                <label className="flex flex-col gap-1" htmlFor="settings-memory-dir">
+                  <span className={labelClass}>{t("settingsMemoryDir")}</span>
+                  <input
+                    id="settings-memory-dir"
+                    className={inputClass}
+                    value={form.memoryDir}
+                    onChange={(event) => { update("memoryDir", event.target.value); }}
+                    placeholder="$ZEOKEEL_HOME/agent-memory"
+                  />
+                  <span className="text-[12px] text-muted-foreground">{t("settingsMemoryDirHint")}</span>
+                </label>
+                <label className="flex items-center gap-3 rounded-control bg-background px-3 py-2" htmlFor="settings-hooks-enabled">
+                  <input
+                    id="settings-hooks-enabled"
+                    type="checkbox"
+                    checked={form.hooksEnabled}
+                    onChange={(event) => { update("hooksEnabled", event.target.checked); }}
+                  />
+                  <span className="text-[13px] text-foreground">{t("settingsHooksEnabled")}</span>
+                </label>
+                <label className="flex flex-col gap-1" htmlFor="settings-hooks-log">
+                  <span className={labelClass}>{t("settingsHooksLog")}</span>
+                  <input
+                    id="settings-hooks-log"
+                    className={inputClass}
+                    value={form.hooksLog}
+                    onChange={(event) => { update("hooksLog", event.target.value); }}
+                    placeholder="/tmp/zeokeel-hooks.jsonl"
+                  />
+                  <span className="text-[12px] text-muted-foreground">{t("settingsHooksLogHint")}</span>
                 </label>
               </div>
             </fieldset>

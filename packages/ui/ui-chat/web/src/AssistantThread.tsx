@@ -13,6 +13,7 @@ import { AssistantComposer } from "./AssistantComposer";
 import { EmptyThread } from "./EmptyThread";
 import { MarkdownText } from "./MarkdownText";
 import { ToolCallPart } from "./ToolCallPart";
+import { UsageDataPart } from "./UsagePart";
 
 const actionButton =
   "inline-flex items-center gap-1 rounded-sm p-1 text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground";
@@ -141,7 +142,7 @@ function AssistantMessage() {
           components={{
             Text: MarkdownText,
             tools: { Fallback: ToolCallPart },
-            data: { by_name: { approval: ApprovalDataPart, question: QuestionDataPart } },
+            data: { by_name: { approval: ApprovalDataPart, question: QuestionDataPart, usage: UsageDataPart } },
           }}
         />
         <ErrorNote />

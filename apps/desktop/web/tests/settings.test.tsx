@@ -105,6 +105,17 @@ describe("settings dialog", () => {
     expect(captured.settings?.provider.model).toBe("gpt-4o-mini");
   });
 
+  it("rejects invalid agent settings before saving", async () => {
+    const onSaved = vi.fn();
+    render(<Harness onSaved={onSaved} />);
+    const maxSteps = screen.getByLabelText("最大步数（1-200）");
+    await userEvent.clear(maxSteps);
+    await userEvent.type(maxSteps, "0");
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(screen.getByText("数值超出允许范围")).toBeTruthy();
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
   it("closes on Escape", async () => {
     const onSaved = vi.fn();
     render(<Harness onSaved={onSaved} />);

@@ -541,6 +541,7 @@ function AppShell(props: AppShellProps) {
       workspacePath={activeWorkspace === undefined ? t("noConversation") : activeWorkspace.path}
       toast={state.toast}
       workspaceError={ui.workspaceError}
+      agentConfigError={ui.meta.agentConfigError ?? null}
       navigation={<SlotErrorBoundary name="ui.sessions"><SessionsSlot /></SlotErrorBoundary>}
       conversation={<SlotErrorBoundary name="ui.chat"><ChatSlot key={ui.activeWorkspaceId ?? "none"} /></SlotErrorBoundary>}
       settings={(

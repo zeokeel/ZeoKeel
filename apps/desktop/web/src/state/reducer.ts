@@ -99,7 +99,7 @@ export function createInitialState(): AppState {
   return {
     boot: "loading",
     bootError: null,
-    meta: { edition: "personal", version: "0.0.0", packages: [] },
+    meta: { edition: "personal", version: "0.0.0", packages: [], agentConfigError: null },
     settings: defaultSettings(),
     settingsOpen: false,
     workspaces: [],
@@ -236,6 +236,7 @@ function applyAgentEvent(state: AppState, event: AgentEvent): AppState {
             })),
       status: "done",
       error: null,
+      usage: event.reply.usage,
     }));
   }
   if (event.type === "turn_cancelled") {
@@ -286,6 +287,16 @@ function applyAgentEvent(state: AppState, event: AgentEvent): AppState {
       ),
     }));
   }
+  if (event.type === "approval_resolved") {
+    const decision = event.decision === "allow_once" ? "approved" : "rejected";
+    return updateStreamingMessage(state, (message) => ({
+      ...message,
+      approvals: message.approvals.map((approval) =>
+        approval.id === event.approval_id ? { ...approval, decision } : approval,
+      ),
+    }));
+  }
+  // Exhaustive switch above leaves only `approval_requested` here.
   const approval: ApprovalView = {
     id: event.approval_id,
     tool: event.tool,
@@ -293,14 +304,10 @@ function applyAgentEvent(state: AppState, event: AgentEvent): AppState {
     reason: event.reason,
     decision: "pending",
   };
-  const updated = updateStreamingMessage(state, (message) => ({
+  return updateStreamingMessage(state, (message) => ({
     ...message,
     approvals: [...message.approvals, approval],
   }));
-  if (updated !== state) {
-    return updated;
-  }
-  return state;
 }
 
 function finishStream(state: AppState, message: string | null): AppState {
@@ -575,6 +582,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
               approvals: [],
               questions: [],
               error: null,
+              usage: null,
             }
           : message,
       );
