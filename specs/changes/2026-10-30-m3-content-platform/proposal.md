@@ -1,6 +1,6 @@
 # 2026-10-30-m3-content-platform · 提案
 
-- 状态：`draft`
+- 状态：`approved`
 - Owner：lead
 - 日期：2026-10-30
 - 关联：`docs/12-roadmap.md` M3；`docs/13` ADR-041；`docs/15` D1–D67；`docs/20`
