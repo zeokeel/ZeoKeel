@@ -177,6 +177,9 @@ fn call_in_uses_workspace_root_not_tool_root() {
     let result = fs_tool(&tool_root).call_in(&ctx, "notes.txt").unwrap();
     assert_eq!(result, "from workspace");
     assert!(fs_tool(&tool_root).call_in(&ctx, "../escape").is_err());
-    let empty = zk_contract_tool::TurnContext { workspace_root: String::new(), ..ctx };
+    let empty = zk_contract_tool::TurnContext {
+        workspace_root: String::new(),
+        ..ctx
+    };
     assert!(fs_tool(&tool_root).call_in(&empty, "notes.txt").is_err());
 }

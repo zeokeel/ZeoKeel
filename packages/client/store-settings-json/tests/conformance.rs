@@ -5,7 +5,15 @@ use zk_contract_config::{AppSettings, ProviderKind, SettingsStore};
 use zk_store_settings_json::{open, path_of};
 
 fn temp_path(name: &str) -> PathBuf {
-    let unique = format!("{}-{}-{}", std::process::id(), name, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos());
+    let unique = format!(
+        "{}-{}-{}",
+        std::process::id(),
+        name,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
     std::env::temp_dir().join(format!("zeokeel-settings-{unique}.json"))
 }
 
@@ -41,6 +49,9 @@ fn corrupt_file_is_preserved() {
 #[test]
 fn invalid_values_are_rejected() {
     let store = open(temp_path("invalid"));
-    let settings = AppSettings { theme: "neon".to_owned(), ..AppSettings::default() };
+    let settings = AppSettings {
+        theme: "neon".to_owned(),
+        ..AppSettings::default()
+    };
     assert!(store.save(&settings).is_err());
 }

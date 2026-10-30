@@ -63,22 +63,40 @@ impl Tool for FsTool {
     }
 
     fn call(&self, args: &str) -> Result<String, ToolError> {
-        let context = TurnContext { conversation_id: "legacy".to_owned(), workspace_id: "legacy".to_owned(), workspace_root: self.root.display().to_string() };
+        let context = TurnContext {
+            conversation_id: "legacy".to_owned(),
+            workspace_id: "legacy".to_owned(),
+            workspace_root: self.root.display().to_string(),
+        };
         self.call_in(&context, args)
     }
 
     fn call_in(&self, context: &TurnContext, args: &str) -> Result<String, ToolError> {
         let path = zk_kit_tools::safe_path(context, args)?;
-        let metadata = std::fs::metadata(&path).map_err(|error| ToolError::Io(error.to_string()))?;
-        if !metadata.is_file() { return Err(ToolError::InvalidArgs("不是普通文件".to_owned())); }
-        if metadata.len() > MAX_BYTES { return Err(ToolError::InvalidArgs(format!("文件超过 {MAX_BYTES} 字节上限"))); }
+        let metadata =
+            std::fs::metadata(&path).map_err(|error| ToolError::Io(error.to_string()))?;
+        if !metadata.is_file() {
+            return Err(ToolError::InvalidArgs("不是普通文件".to_owned()));
+        }
+        if metadata.len() > MAX_BYTES {
+            return Err(ToolError::InvalidArgs(format!(
+                "文件超过 {MAX_BYTES} 字节上限"
+            )));
+        }
         let bytes = std::fs::read(&path).map_err(|error| ToolError::Io(error.to_string()))?;
-        String::from_utf8(bytes).map_err(|error| ToolError::InvalidArgs(format!("不是 UTF-8 文本: {error}")))
+        String::from_utf8(bytes)
+            .map_err(|error| ToolError::InvalidArgs(format!("不是 UTF-8 文本: {error}")))
     }
 
-    fn call_json(&self, context: &TurnContext, args: serde_json::Value) -> Result<String, ToolError> {
-        let path = args.get("path").and_then(serde_json::Value::as_str).ok_or_else(|| ToolError::InvalidArgs("path".to_owned()))?;
+    fn call_json(
+        &self,
+        context: &TurnContext,
+        args: serde_json::Value,
+    ) -> Result<String, ToolError> {
+        let path = args
+            .get("path")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| ToolError::InvalidArgs("path".to_owned()))?;
         self.call_in(context, path)
     }
 }
-

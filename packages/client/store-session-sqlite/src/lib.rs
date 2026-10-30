@@ -31,19 +31,26 @@ pub fn open(path: PathBuf) -> Result<SqliteSessionStore, SessionError> {
 }
 
 /// Open a store with an explicit default workspace root (tests / embedded use).
-pub fn open_with_root(path: PathBuf, workspace_root: PathBuf) -> Result<SqliteSessionStore, SessionError> {
+pub fn open_with_root(
+    path: PathBuf,
+    workspace_root: PathBuf,
+) -> Result<SqliteSessionStore, SessionError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(storage)?;
     }
     let mut conn = Connection::open(&path).map_err(storage)?;
-    conn.pragma_update(None, "journal_mode", "WAL").map_err(storage)?;
-    conn.pragma_update(None, "foreign_keys", "ON").map_err(storage)?;
+    conn.pragma_update(None, "journal_mode", "WAL")
+        .map_err(storage)?;
+    conn.pragma_update(None, "foreign_keys", "ON")
+        .map_err(storage)?;
     let version = schema_version(&conn)?;
     if version < 3 && path.exists() {
         backup(&conn, &path)?;
     }
     migrate(&mut conn, &workspace_root)?;
-    Ok(SqliteSessionStore { conn: Mutex::new(Some(conn)) })
+    Ok(SqliteSessionStore {
+        conn: Mutex::new(Some(conn)),
+    })
 }
 
 fn default_path() -> PathBuf {
@@ -82,12 +89,17 @@ fn now_ms() -> u64 {
 }
 
 fn schema_version(conn: &Connection) -> Result<i64, SessionError> {
-    conn.query_row("PRAGMA user_version", [], |row| row.get(0)).map_err(storage)
+    conn.query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(storage)
 }
 
 fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, SessionError> {
-    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})")).map_err(storage)?;
-    let rows = stmt.query_map([], |row| row.get::<_, String>(1)).map_err(storage)?;
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(storage)?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(storage)?;
     for name in rows {
         if name.map_err(storage)? == column {
             return Ok(true);
@@ -117,7 +129,8 @@ fn backup(conn: &Connection, path: &Path) -> Result<(), SessionError> {
     for suffix in ["-wal", "-shm"] {
         let from = path.with_file_name(format!("{name}{suffix}"));
         if from.exists() {
-            std::fs::copy(&from, path.with_file_name(format!("{name}.bak-v1{suffix}"))).map_err(storage)?;
+            std::fs::copy(&from, path.with_file_name(format!("{name}.bak-v1{suffix}")))
+                .map_err(storage)?;
         }
     }
     Ok(())
@@ -178,12 +191,14 @@ fn migrate(conn: &mut Connection, workspace_root: &Path) -> Result<(), SessionEr
             params![default_id, default_path.to_string_lossy(), "默认工作区", now],
         )
         .map_err(storage)?;
-        conn.pragma_update(None, "user_version", 2).map_err(storage)?;
+        conn.pragma_update(None, "user_version", 2)
+            .map_err(storage)?;
         return Ok(());
     }
     let legacy = !has_column(conn, "conversations", "workspace_id")?;
     if legacy || version < 2 {
-        conn.execute_batch("PRAGMA foreign_keys=OFF;").map_err(storage)?;
+        conn.execute_batch("PRAGMA foreign_keys=OFF;")
+            .map_err(storage)?;
         let tx = conn.transaction().map_err(storage)?;
         tx.execute_batch(
             "CREATE TABLE IF NOT EXISTS workspaces (
@@ -252,11 +267,17 @@ fn migrate(conn: &mut Connection, workspace_root: &Path) -> Result<(), SessionEr
         )
         .map_err(storage)?;
         tx.commit().map_err(storage)?;
-        conn.execute_batch("PRAGMA foreign_keys=ON;").map_err(storage)?;
+        conn.execute_batch("PRAGMA foreign_keys=ON;")
+            .map_err(storage)?;
     }
     if !has_column(conn, "messages", "status")? {
-        conn.execute("ALTER TABLE messages ADD COLUMN status TEXT NOT NULL DEFAULT 'done'", []).map_err(storage)?;
-        conn.pragma_update(None, "user_version", 3).map_err(storage)?;
+        conn.execute(
+            "ALTER TABLE messages ADD COLUMN status TEXT NOT NULL DEFAULT 'done'",
+            [],
+        )
+        .map_err(storage)?;
+        conn.pragma_update(None, "user_version", 3)
+            .map_err(storage)?;
     }
     conn.execute(
         "UPDATE workspaces SET is_default = CASE WHEN id = (SELECT id FROM workspaces ORDER BY is_default DESC, created_at_ms ASC LIMIT 1) THEN 1 ELSE 0 END",
@@ -318,12 +339,19 @@ fn row_to_conversation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Conversation
 }
 
 impl SqliteSessionStore {
-    fn with_conn<T>(&self, f: impl FnOnce(&Connection) -> Result<T, SessionError>) -> Result<T, SessionError> {
-        let guard = self.conn.lock().map_err(|_| storage("session store poisoned"))?;
-        let conn = guard.as_ref().ok_or_else(|| storage("session store unavailable"))?;
+    fn with_conn<T>(
+        &self,
+        f: impl FnOnce(&Connection) -> Result<T, SessionError>,
+    ) -> Result<T, SessionError> {
+        let guard = self
+            .conn
+            .lock()
+            .map_err(|_| storage("session store poisoned"))?;
+        let conn = guard
+            .as_ref()
+            .ok_or_else(|| storage("session store unavailable"))?;
         f(conn)
     }
-
 
     fn get_workspace(conn: &Connection, id: &str) -> Result<Workspace, SessionError> {
         conn.query_row(
@@ -351,11 +379,15 @@ impl WorkspaceStore for SqliteSessionStore {
     fn create_workspace(&self, path: &str, title: &str) -> Result<Workspace, SessionError> {
         let path = path.trim();
         if path.is_empty() {
-            return Err(SessionError::WorkspacePathUnavailable("empty path".to_owned()));
+            return Err(SessionError::WorkspacePathUnavailable(
+                "empty path".to_owned(),
+            ));
         }
         let canonical = std::fs::canonicalize(path).map_err(|error| match error.kind() {
             std::io::ErrorKind::NotFound => SessionError::WorkspacePathNotFound(path.to_owned()),
-            std::io::ErrorKind::PermissionDenied => SessionError::WorkspaceNotWritable(path.to_owned()),
+            std::io::ErrorKind::PermissionDenied => {
+                SessionError::WorkspaceNotWritable(path.to_owned())
+            }
             _ => SessionError::WorkspacePathUnavailable(format!("{path}: {error}")),
         })?;
         let metadata = std::fs::metadata(&canonical).map_err(storage)?;
@@ -367,7 +399,10 @@ impl WorkspaceStore for SqliteSessionStore {
         }
         let path_text = canonical.to_string_lossy().to_string();
         let title = if title.trim().is_empty() {
-            canonical.file_name().map_or_else(|| "Workspace".to_owned(), |n| n.to_string_lossy().to_string())
+            canonical.file_name().map_or_else(
+                || "Workspace".to_owned(),
+                |n| n.to_string_lossy().to_string(),
+            )
         } else {
             title.trim().to_owned()
         };
@@ -375,7 +410,11 @@ impl WorkspaceStore for SqliteSessionStore {
         let now = now_ms();
         self.with_conn(|conn| {
             let exists: i64 = conn
-                .query_row("SELECT COUNT(1) FROM workspaces WHERE path=?1", params![path_text], |row| row.get(0))
+                .query_row(
+                    "SELECT COUNT(1) FROM workspaces WHERE path=?1",
+                    params![path_text],
+                    |row| row.get(0),
+                )
                 .map_err(storage)?;
             if exists > 0 {
                 return Err(SessionError::DuplicateWorkspacePath(path_text));
@@ -432,33 +471,50 @@ impl WorkspaceStore for SqliteSessionStore {
         confirm: bool,
     ) -> Result<RemoveWorkspaceResult, SessionError> {
         if !confirm {
-            return Err(SessionError::ConfirmRequired("workspace.remove requires confirm=true".to_owned()));
+            return Err(SessionError::ConfirmRequired(
+                "workspace.remove requires confirm=true".to_owned(),
+            ));
         }
         self.with_conn(|conn| {
             let workspace = SqliteSessionStore::get_workspace(conn, workspace_id)?;
             if workspace.is_default {
-                return Err(SessionError::DefaultWorkspace("change default with workspace.set_default first".to_owned()));
+                return Err(SessionError::DefaultWorkspace(
+                    "change default with workspace.set_default first".to_owned(),
+                ));
             }
             let count: i64 = conn
-                .query_row("SELECT COUNT(1) FROM conversations WHERE workspace_id=?1", params![workspace_id], |row| row.get(0))
+                .query_row(
+                    "SELECT COUNT(1) FROM conversations WHERE workspace_id=?1",
+                    params![workspace_id],
+                    |row| row.get(0),
+                )
                 .map_err(storage)?;
             let moved = u64::try_from(count).unwrap_or(0);
             if count > 0 {
                 let Some(target) = reassign_to else {
-                    return Err(SessionError::WorkspaceInUse(format!("{workspace_id} has {count} conversations")));
+                    return Err(SessionError::WorkspaceInUse(format!(
+                        "{workspace_id} has {count} conversations"
+                    )));
                 };
                 if target == workspace_id {
-                    return Err(SessionError::WorkspaceReassignTargetInvalid("reassign_to must differ from removed workspace".to_owned()));
+                    return Err(SessionError::WorkspaceReassignTargetInvalid(
+                        "reassign_to must differ from removed workspace".to_owned(),
+                    ));
                 }
                 let target_workspace = match SqliteSessionStore::get_workspace(conn, target) {
                     Ok(workspace) => workspace,
                     Err(SessionError::WorkspaceNotFound(_)) => {
-                        return Err(SessionError::WorkspaceReassignTargetInvalid(format!("target not found: {target}")));
+                        return Err(SessionError::WorkspaceReassignTargetInvalid(format!(
+                            "target not found: {target}"
+                        )));
                     }
                     Err(error) => return Err(error),
                 };
                 if !is_writable_dir(Path::new(&target_workspace.path)) {
-                    return Err(SessionError::WorkspaceReassignTargetInvalid(format!("target path unavailable: {}", target_workspace.path)));
+                    return Err(SessionError::WorkspaceReassignTargetInvalid(format!(
+                        "target path unavailable: {}",
+                        target_workspace.path
+                    )));
                 }
                 let tx = conn.unchecked_transaction().map_err(storage)?;
                 tx.execute(
@@ -466,18 +522,27 @@ impl WorkspaceStore for SqliteSessionStore {
                     params![workspace_id, target],
                 )
                 .map_err(storage)?;
-                tx.execute("DELETE FROM workspaces WHERE id=?1", params![workspace_id]).map_err(storage)?;
+                tx.execute("DELETE FROM workspaces WHERE id=?1", params![workspace_id])
+                    .map_err(storage)?;
                 tx.commit().map_err(storage)?;
             } else {
-                conn.execute("DELETE FROM workspaces WHERE id=?1", params![workspace_id]).map_err(storage)?;
+                conn.execute("DELETE FROM workspaces WHERE id=?1", params![workspace_id])
+                    .map_err(storage)?;
             }
-            Ok(RemoveWorkspaceResult { removed: true, moved_sessions: moved })
+            Ok(RemoveWorkspaceResult {
+                removed: true,
+                moved_sessions: moved,
+            })
         })
     }
 }
 
 impl SessionStore for SqliteSessionStore {
-    fn create_conversation_in(&self, workspace_id: &str, title: &str) -> Result<Conversation, SessionError> {
+    fn create_conversation_in(
+        &self,
+        workspace_id: &str,
+        title: &str,
+    ) -> Result<Conversation, SessionError> {
         let title = title.trim();
         if title.is_empty() {
             return Err(SessionError::Invalid("empty conversation title".to_owned()));
@@ -513,7 +578,9 @@ impl SessionStore for SqliteSessionStore {
 
     fn append_message(&self, message: &Message) -> Result<(), SessionError> {
         if message.id.trim().is_empty() || message.conversation_id.trim().is_empty() {
-            return Err(SessionError::Invalid("empty message id/conversation id".to_owned()));
+            return Err(SessionError::Invalid(
+                "empty message id/conversation id".to_owned(),
+            ));
         }
         self.with_conn(|conn| {
             conn.execute(
@@ -530,7 +597,11 @@ impl SessionStore for SqliteSessionStore {
         })
     }
 
-    fn messages_in(&self, workspace_id: &str, conversation_id: &str) -> Result<Vec<Message>, SessionError> {
+    fn messages_in(
+        &self,
+        workspace_id: &str,
+        conversation_id: &str,
+    ) -> Result<Vec<Message>, SessionError> {
         self.with_conn(|conn| {
             SqliteSessionStore::get_workspace(conn, workspace_id)?;
             let owner: Option<String> = conn
@@ -561,5 +632,4 @@ impl SessionStore for SqliteSessionStore {
             rows.collect::<Result<Vec<_>, _>>().map_err(storage)
         })
     }
-
 }

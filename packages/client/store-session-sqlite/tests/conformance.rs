@@ -1,11 +1,24 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)] // test-only
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)] // test-only
 
 use std::path::PathBuf;
 use zk_contract_session::{Message, SessionError, SessionStore, WorkspaceStore};
 use zk_store_session_sqlite::{open_with_root, SqliteSessionStore};
 
 fn unique(name: &str) -> String {
-    format!("{}-{}-{}", std::process::id(), name, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos())
+    format!(
+        "{}-{}-{}",
+        std::process::id(),
+        name,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    )
 }
 
 fn open_store(name: &str) -> (SqliteSessionStore, PathBuf) {
@@ -17,7 +30,14 @@ fn open_store(name: &str) -> (SqliteSessionStore, PathBuf) {
 }
 
 fn message(id: &str, conversation_id: &str, role: &str, content: &str) -> Message {
-    Message { id: id.to_owned(), conversation_id: conversation_id.to_owned(), role: role.to_owned(), content: content.to_owned(), created_at_ms: 1, status: "done".to_owned() }
+    Message {
+        id: id.to_owned(),
+        conversation_id: conversation_id.to_owned(),
+        role: role.to_owned(),
+        content: content.to_owned(),
+        created_at_ms: 1,
+        status: "done".to_owned(),
+    }
 }
 
 #[test]
@@ -34,19 +54,33 @@ fn create_workspace_and_isolate_conversations() {
     let (store, base) = open_store("isolate");
     let other_dir = base.join("other");
     std::fs::create_dir_all(&other_dir).unwrap();
-    let other = store.create_workspace(other_dir.to_str().unwrap(), "其他").unwrap();
+    let other = store
+        .create_workspace(other_dir.to_str().unwrap(), "其他")
+        .unwrap();
     assert!(!other.is_default);
-    let w1 = store.list_workspaces().unwrap().into_iter().find(|w| w.is_default).unwrap();
+    let w1 = store
+        .list_workspaces()
+        .unwrap()
+        .into_iter()
+        .find(|w| w.is_default)
+        .unwrap();
     let a = store.create_conversation_in(&w1.id, "会话 A").unwrap();
     assert_eq!(a.workspace_id, w1.id);
     let b = store.create_conversation_in(&other.id, "会话 B").unwrap();
-    store.append_message(&message("m1", &a.id, "user", "你好")).unwrap();
-    store.append_message(&message("m2", &a.id, "assistant", "收到")).unwrap();
+    store
+        .append_message(&message("m1", &a.id, "user", "你好"))
+        .unwrap();
+    store
+        .append_message(&message("m2", &a.id, "assistant", "收到"))
+        .unwrap();
     assert_eq!(store.messages_in(&w1.id, &a.id).unwrap().len(), 2);
     assert!(store.messages_in(&other.id, &b.id).unwrap().is_empty());
     assert_eq!(store.list_conversations_in(&w1.id).unwrap().len(), 1);
     assert_eq!(store.list_conversations_in(&other.id).unwrap().len(), 1);
-    assert!(matches!(store.messages_in(&other.id, &a.id), Err(SessionError::WorkspaceMismatch { .. })));
+    assert!(matches!(
+        store.messages_in(&other.id, &a.id),
+        Err(SessionError::WorkspaceMismatch { .. })
+    ));
 }
 
 #[test]
@@ -54,8 +88,13 @@ fn workspace_crud_default_and_removal() {
     let (store, base) = open_store("crud");
     let dir = base.join("project");
     std::fs::create_dir_all(&dir).unwrap();
-    let ws = store.create_workspace(dir.to_str().unwrap(), "项目").unwrap();
-    assert!(matches!(store.create_workspace(dir.to_str().unwrap(), "dup"), Err(SessionError::DuplicateWorkspacePath(_))));
+    let ws = store
+        .create_workspace(dir.to_str().unwrap(), "项目")
+        .unwrap();
+    assert!(matches!(
+        store.create_workspace(dir.to_str().unwrap(), "dup"),
+        Err(SessionError::DuplicateWorkspacePath(_))
+    ));
     let renamed = store.rename_workspace(&ws.id, "项目二").unwrap();
     assert_eq!(renamed.title, "项目二");
     let list = store.set_default_workspace(&ws.id).unwrap();
@@ -63,17 +102,41 @@ fn workspace_crud_default_and_removal() {
     assert!(list.iter().find(|w| w.id == ws.id).unwrap().is_default);
 
     let conv = store.create_conversation_in(&ws.id, "会话").unwrap();
-    assert!(matches!(store.remove_workspace(&ws.id, None, true), Err(SessionError::DefaultWorkspace(_))));
-    let old_default = store.list_workspaces().unwrap().into_iter().find(|w| !w.is_default).unwrap();
+    assert!(matches!(
+        store.remove_workspace(&ws.id, None, true),
+        Err(SessionError::DefaultWorkspace(_))
+    ));
+    let old_default = store
+        .list_workspaces()
+        .unwrap()
+        .into_iter()
+        .find(|w| !w.is_default)
+        .unwrap();
     store.set_default_workspace(&old_default.id).unwrap();
-    assert!(matches!(store.remove_workspace(&ws.id, Some(&old_default.id), false), Err(SessionError::ConfirmRequired(_))));
-    let res = store.remove_workspace(&ws.id, Some(&old_default.id), true).unwrap();
+    assert!(matches!(
+        store.remove_workspace(&ws.id, Some(&old_default.id), false),
+        Err(SessionError::ConfirmRequired(_))
+    ));
+    let res = store
+        .remove_workspace(&ws.id, Some(&old_default.id), true)
+        .unwrap();
     assert!(res.removed);
     assert_eq!(res.moved_sessions, 1);
-    assert_eq!(store.messages_in(&old_default.id, &conv.id).unwrap().len(), 0);
+    assert_eq!(
+        store.messages_in(&old_default.id, &conv.id).unwrap().len(),
+        0
+    );
 
-    let default_now = store.list_workspaces().unwrap().into_iter().find(|w| w.is_default).unwrap();
-    assert!(matches!(store.remove_workspace(&default_now.id, None, true), Err(SessionError::DefaultWorkspace(_))));
+    let default_now = store
+        .list_workspaces()
+        .unwrap()
+        .into_iter()
+        .find(|w| w.is_default)
+        .unwrap();
+    assert!(matches!(
+        store.remove_workspace(&default_now.id, None, true),
+        Err(SessionError::DefaultWorkspace(_))
+    ));
 }
 
 #[test]
@@ -94,12 +157,20 @@ fn legacy_v1_database_migrates_without_losing_messages() {
     }
     let root = base.join("ws");
     let store = open_with_root(db, root).unwrap();
-    let ws = store.list_workspaces().unwrap().into_iter().find(|w| w.is_default).unwrap();
+    let ws = store
+        .list_workspaces()
+        .unwrap()
+        .into_iter()
+        .find(|w| w.is_default)
+        .unwrap();
     let list = store.list_conversations_in(&ws.id).unwrap();
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].id, "c1");
     assert_eq!(list[0].workspace_id, ws.id);
-    assert_eq!(store.messages_in(&ws.id, "c1").unwrap()[0].content, "旧消息");
+    assert_eq!(
+        store.messages_in(&ws.id, "c1").unwrap()[0].content,
+        "旧消息"
+    );
 }
 
 #[test]
@@ -107,9 +178,13 @@ fn reopens_persisted_workspace_and_conversation() {
     let (store, base) = open_store("reopen");
     let dir = base.join("persist");
     std::fs::create_dir_all(&dir).unwrap();
-    let ws = store.create_workspace(dir.to_str().unwrap(), "持久化").unwrap();
+    let ws = store
+        .create_workspace(dir.to_str().unwrap(), "持久化")
+        .unwrap();
     let conv = store.create_conversation_in(&ws.id, "会话").unwrap();
-    store.append_message(&message("m1", &conv.id, "user", "hi")).unwrap();
+    store
+        .append_message(&message("m1", &conv.id, "user", "hi"))
+        .unwrap();
     let db = base.join("sessions.db");
     drop(store);
     let reopened = open_with_root(db, base.join("default-workspace")).unwrap();
@@ -120,7 +195,12 @@ fn reopens_persisted_workspace_and_conversation() {
 #[test]
 fn persists_message_status_for_cancel_markers() {
     let (store, _) = open_store("status");
-    let ws = store.list_workspaces().unwrap().into_iter().find(|w| w.is_default).unwrap();
+    let ws = store
+        .list_workspaces()
+        .unwrap()
+        .into_iter()
+        .find(|w| w.is_default)
+        .unwrap();
     let conv = store.create_conversation_in(&ws.id, "status").unwrap();
     let mut cancelled = message("c1", &conv.id, "assistant", "部分输出");
     cancelled.status = "cancelled".to_owned();
