@@ -190,10 +190,11 @@ ui-chat ──ipc──► agent-loop（agent.loop，singleton）
 `rig-memory` 稳定版均为 **0.45.0**（2026-10-19），`0.46.0-rc.1` 已于 10-23 发布；节奏是**每 1–3 周
 一次 breaking**。
 
-**M1 只依赖 `rig-core`**：`agent-loop` 用自有状态机，不需要 `rig-agent`；后者会无条件拉入
-`rig-memory` 与约 100+ 个包，只为「可选第二实现」不值得（评审 S10）。`zk-agent-rig` 与
-`rig-agent`/`rig-memory` 放到 M5 的可选实现。直接依赖 `rig-core`（而不是 `rig` facade，后者 lock
-≈663 包含全部 optional 集成）也把 lock 控制在约 150 包以内。
+**默认组合使用 `rig-agent`（ADR-064，2026-10-31）**：`agent.loop` 在 personal×default×official 与
+enterprise 均映射到 `packages/client/agent-rig`；`packages/client/agent-loop` 只保留为最小演示/契约
+对拍实现（M0 产物），不再进入 shipped 组合。`docs/38` 是 agent 运行时的唯一权威；本节只保留 rig
+版本事实与适配层边界。rig 依赖仍只出现在适配层（`zk-llm-rig`/`zk-agent-rig`），契约与 `zk-tool-*`
+不依赖 rig；`rig-agent`/`rig-memory` 由 `agent-rig` 引入，lock 体积按 §5.1 边界控制。
 
 ### 5.1 crate 边界
 
@@ -202,10 +203,10 @@ zk-contract-llm      模型/消息/工具/流/错误契约（Cargo.toml 里不�
 zk-contract-agent    AgentRuntime / AgentRequest / EventSink / CancelToken
         ▲
 zk-llm-rig           唯一 use rig_core::*：completion / streaming / error 映射
-zk-agent-rig         （M5 可选）唯一 use rig_agent::*：AgentRunner/Hook/Memory 编排
+zk-agent-rig         默认（ADR-064）唯一 use rig_agent::*：AgentRunner/Hook/Memory 编排
 zk-llm-openai        第二实现（async-openai 或薄 HTTP），用于契约对拍与降级
 zk-llm-mock          测试实现（脚本化模型/工具）
-zk-tool-*            只依赖 zk-contract-tool；工具调度由 agent-loop 自己做（不经 rig）
+zk-tool-*            只依赖 zk-contract-tool；由 zk-agent-rig 转成 rig DynamicTool 调度
 ```
 
 铁律：
@@ -226,29 +227,31 @@ zk-tool-*            只依赖 zk-contract-tool；工具调度由 agent-loop 自
 3. **错误映射**：三层错误不要混着透出——`PromptError`（agent 级）、`ToolExecutionError`（工具级）、
    `ErrorReport`（handler 级）→ 统一映射到自有 `LlmError { kind, retryable, code, model_visible }`。
    注意这些类型大量 `#[non_exhaustive]`，match 必须带 `_ =>`，否则 0.46 升级必炸。
-4. **装配**：M1 的模型调用路径是 `agent-loop → zk-contract-llm::LlmProvider → zk-llm-rig →
-   rig-core`；工具执行与调度完全在 `agent-loop` + `zk-contract-tool` 内完成，不经过 rig 的
-   `ToolServerHandle`。只有将来用 `agent-rig` 时，才需要把契约工具转成 rig 的 `DynamicTool`——
-   那是 M5 的实现细节，现在不设计。
+4. **装配**：默认路径是
+   `agent-rig → rig-agent::AgentBuilder → zk-llm-rig（DynModel）`；契约工具在
+   `agent-rig::dynamic_tools` 内转成 rig `DynamicTool`（参数 JSON Schema、审批、超时、取消都在该层）。
+   `agent-loop` 只在演示/契约测试中使用自有调度；不再作为 shipped 路径。
 
 ### 5.3 必须显式处理的 0.45 行为（都是实测坑；标 🤖 的仅在使用 `agent-rig` 时相关）
 
 | 行为 | 影响 | 处理 |
 | --- | --- | --- |
-| 🤖 **`max_turns` 默认 1** | 模型一调工具就到顶，报 `MaxTurns` | 用 `agent-rig` 时必须显式设；自有 agent-loop 不受影响，但要自己实现回合上限 |
+| 🤖 **`max_turns` 默认 1** | 模型一调工具就到顶，报 `MaxTurns` | `agent-rig` 显式设 `max_turns`（`ZEOKEEL_AGENT_MAX_STEPS`，默认 50）；`agent-loop` 仅演示，不受影响 |
 | 🤖 Agent 长生命周期、`Clone+Send+Sync`；`prompt()` 返回一次性 `AgentRunner` | 不能把 `Agent` 塞进 serde 状态 | 运行时持 `Arc<Agent>`；run 状态放 runner/UI |
-| 🤖 工具默认**串行**、批**原子提交**；无 per-call 取消 | 无法"部分成功"给模型看 | 用 hook 或自管工具调度；取消粒度定为 turn/stream |
-| 🤖 0.45 的 `ToolExecutionCommitted` **不是实时事件** | 做不了实时进度条 | 自有调度直接产生实时事件，不受此限 |
+| 🤖 工具默认**串行**、批**原子提交**；无 per-call 取消 | 无法"部分成功"给模型看 | `agent-rig` 的 DynamicTool 回调产生实时事件；取消粒度定为 turn/stream |
+| 🤖 0.45 的 `ToolExecutionCommitted` **不是实时事件** | 做不了实时进度条 | `agent-rig` DynamicTool 回调直接产生实时事件，不用该事件 |
 | 参数校验是**宽容子集**（不查 `pattern`/`format`；未声明 `additionalProperties:false` 时多余字段被接受） | 模型幻觉参数能进来 | 工具内部二次校验；契约 `ToolSpec` 自带 schema，校验在适配层 |
 | `serde_json` 的 `preserve_order`/`float_roundtrip` 是**全局 feature 副作用** | 影响 IPC 序列化顺序/浮点表示 | workspace 统一决策 + IPC 契约测试防回归 |
 | MSRV **1.97.1 + edition 2024** | 工具链/CI 镜像不匹配 | `rust-toolchain.toml` 钉 ≥1.97.1；CI 镜像同步 |
 
 ### 5.4 agent 循环归属
 
-- **默认**：`agent-loop` 包在契约上实现自己的回合状态机（审批、流式事件、压缩、取消完全可控）。
-- **可选第二实现**：`agent-rig`（基于 `rig-agent` 的 AgentRunner/Hook/Memory）作为 `agent.loop`
-  角色的另一个实现——这是证明"最复杂的角色也能替换"的绝佳样本，放 M3 之后。
-- 两条实现共用 `zk-contract-agent`，用同一套 conformance 对拍。
+- **默认（ADR-064）**：`agent-rig`（基于 `rig-agent` 的 AgentBuilder/DynamicTool）是 `agent.loop`
+  的唯一 shipped 实现；personal×default×official 的模型 provider 为 `zk-llm-rig`，enterprise 为
+  `zk-llm-gateway`（其 rig 适配由网关包提供）。
+- **测试/演示**：`agent-loop` 保留为最小实现，用于契约 conformance 对拍与 M0 演示；禁止在
+  edition/profile 中重新映射为默认。
+- 两条实现共用 `zk-contract-agent`；新增 agent 能力只改 `agent-rig` 与工具包，并同步 `docs/38`。
 
 ### 5.5 prefix cache 友好性（直接影响成本）
 

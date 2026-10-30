@@ -7,7 +7,7 @@ mod inner {
 use std::sync::Arc;
 
 pub const EDITION: &str = "personal";
-pub const PACKAGES: &[&str] = &["zeokeel/cap-hooks","zeokeel/agent-loop","zeokeel/llm-mock","zeokeel/cap-audio","zeokeel/cap-image","zeokeel/cap-rerank","zeokeel/cap-transcription","zeokeel/store-session-sqlite","zeokeel/store-settings-json","zeokeel/tool-agent-team","zeokeel/tool-ask-user","zeokeel/tool-bash","zeokeel/tool-bash-persistent","zeokeel/tool-cordis","zeokeel/tool-extract","zeokeel/tool-fs","zeokeel/tool-fs-edit","zeokeel/tool-fs-search","zeokeel/tool-fs-write","zeokeel/tool-glob","zeokeel/tool-goal","zeokeel/tool-grep","zeokeel/tool-job-kill","zeokeel/tool-job-list","zeokeel/tool-job-output","zeokeel/tool-present","zeokeel/tool-pwsh","zeokeel/tool-pwsh-persistent","zeokeel/tool-ralph","zeokeel/tool-read-document","zeokeel/tool-read-image","zeokeel/tool-schedule","zeokeel/tool-session-query","zeokeel/tool-skill","zeokeel/tool-subagent","zeokeel/tool-subagent-control","zeokeel/tool-subagent-fork","zeokeel/tool-terminal","zeokeel/tool-todo","zeokeel/tool-web-fetch","zeokeel/tool-web-search","zeokeel/tool-workflow","zeokeel/tool-working-directory","zeokeel/tool-workspace-dependencies","zeokeel/tool-worktree","zeokeel/ui-kit","zeokeel/ui-shell","zeokeel/ui-chat","zeokeel/ui-commands","zeokeel/ui-inspector","zeokeel/ui-sessions","zeokeel/ui-settings","zeokeel/ui-settings-provider","zeokeel/client-update-github","zeokeel/cap-vector",];
+pub const PACKAGES: &[&str] = &["zeokeel/cap-hooks","zeokeel/agent-rig","zeokeel/llm-rig","zeokeel/cap-audio","zeokeel/cap-image","zeokeel/cap-rerank","zeokeel/cap-transcription","zeokeel/store-session-sqlite","zeokeel/store-settings-json","zeokeel/tool-agent-team","zeokeel/tool-ask-user","zeokeel/tool-bash","zeokeel/tool-bash-persistent","zeokeel/tool-cordis","zeokeel/tool-extract","zeokeel/tool-fs","zeokeel/tool-fs-edit","zeokeel/tool-fs-search","zeokeel/tool-fs-write","zeokeel/tool-glob","zeokeel/tool-goal","zeokeel/tool-grep","zeokeel/tool-job-kill","zeokeel/tool-job-list","zeokeel/tool-job-output","zeokeel/tool-present","zeokeel/tool-pwsh","zeokeel/tool-pwsh-persistent","zeokeel/tool-ralph","zeokeel/tool-read-document","zeokeel/tool-read-image","zeokeel/tool-schedule","zeokeel/tool-session-query","zeokeel/tool-skill","zeokeel/tool-subagent","zeokeel/tool-subagent-control","zeokeel/tool-subagent-fork","zeokeel/tool-terminal","zeokeel/tool-todo","zeokeel/tool-web-fetch","zeokeel/tool-web-search","zeokeel/tool-workflow","zeokeel/tool-working-directory","zeokeel/tool-workspace-dependencies","zeokeel/tool-worktree","zeokeel/ui-kit","zeokeel/ui-shell","zeokeel/ui-chat","zeokeel/ui-commands","zeokeel/ui-inspector","zeokeel/ui-sessions","zeokeel/ui-settings","zeokeel/ui-settings-provider","zeokeel/client-update-github","zeokeel/cap-vector",];
 
 pub struct Runtime {
     agent: Arc<dyn zk_contract_agent::Agent>,
@@ -97,8 +97,9 @@ pub fn build() -> Result<Runtime, String> {
         Arc::new(zk_tool_workspace_dependencies::tool()),
         Arc::new(zk_tool_worktree::tool()),
     ];
-    let llm: Arc<dyn zk_contract_llm::LlmProvider> = Arc::new(zk_llm_mock::provider());
-    let agent: Arc<dyn zk_contract_agent::Agent> = Arc::new(zk_agent_loop::agent(tools, llm));
+    let model = zk_llm_rig::model().map_err(|e| e.to_string())?;
+    let agent_concrete = zk_agent_rig::agent(tools, model).map_err(|e| e.to_string())?.with_model_factory(std::sync::Arc::new(|base_url, api_key, model, provider| zk_llm_rig::model_from_config(provider, base_url, api_key, model).map_err(|e| e.to_string())));
+    let agent: Arc<dyn zk_contract_agent::Agent> = Arc::new(agent_concrete);
     let sessions: Arc<dyn zk_contract_session::SessionStore> = Arc::new(zk_store_session_sqlite::store().map_err(|e| e.to_string())?);
     let settings: Arc<dyn zk_contract_config::SettingsStore> = Arc::new(zk_store_settings_json::store());
     Ok(Runtime { agent, sessions, settings })

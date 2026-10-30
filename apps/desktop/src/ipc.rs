@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 
 use serde_json::{json, Value};
 use tokio::sync::broadcast;
@@ -16,12 +16,26 @@ use crate::approval::ApprovalBroker;
 use crate::events::{emit_kind, now_ms, BridgeSink, EVENT_BUFFER};
 use zk_kit_questions::QuestionBroker;
 
+/// One queued turn for a conversation worker.
+///
+/// One conversation executes at most one turn at a time (docs/05 §4.1); extra
+/// sends are queued FIFO instead of racing on the same conversation.
+struct TurnJob {
+    text: String,
+    conversation_id: String,
+    workspace_id: String,
+    workspace_root: String,
+    stream_id: String,
+    cancelled: Arc<AtomicBool>,
+}
+
 /// Composed runtime + IPC/event state shared by all transports.
 pub struct AppState {
     runtime: Arc<zk_composed::Runtime>,
     pub bus: broadcast::Sender<UiEvent>,
     seq: AtomicU64,
     streams: Mutex<HashMap<String, Arc<AtomicBool>>>,
+    turns: Mutex<HashMap<String, mpsc::Sender<TurnJob>>>,
     approvals: Arc<ApprovalBroker>,
     questions: Arc<QuestionBroker>,
 }
@@ -42,6 +56,7 @@ impl AppState {
             bus,
             seq: AtomicU64::new(1),
             streams: Mutex::new(HashMap::new()),
+            turns: Mutex::new(HashMap::new()),
             approvals,
             questions,
         })
@@ -200,21 +215,25 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             if let Err(error) = validate_settings(&settings) {
                 return CommandResponse::err(error);
             }
-            match state.runtime.settings().save(&settings) {
-                Ok(()) => {
-                    let provider = match settings.provider.kind {
-                        ProviderKind::Mock => "mock",
-                        ProviderKind::OpenAiCompatible => "openai",
-                        ProviderKind::Ollama => "ollama",
-                    };
-                    let _ = state.runtime.configure_llm(
-                        &settings.provider.base_url,
-                        &settings.provider.api_key,
-                        &settings.provider.model,
-                        provider,
-                    );
-                    CommandResponse::ok(masked_settings(&settings))
+            // Apply provider hot-swap first: a configure failure must reach the UI
+            // instead of being discarded after persisting an unusable provider.
+            let provider = match settings.provider.kind {
+                ProviderKind::Mock => None,
+                ProviderKind::OpenAiCompatible => Some("openai"),
+                ProviderKind::Ollama => Some("ollama"),
+            };
+            if let Some(provider) = provider {
+                if let Err(error) = state.runtime.configure_llm(
+                    &settings.provider.base_url,
+                    &settings.provider.api_key,
+                    &settings.provider.model,
+                    provider,
+                ) {
+                    return CommandResponse::err(format!("provider configure failed: {error}"));
                 }
+            }
+            match state.runtime.settings().save(&settings) {
+                Ok(()) => CommandResponse::ok(masked_settings(&settings)),
                 Err(error) => CommandResponse::err(error.to_string()),
             }
         }
@@ -244,8 +263,30 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 return CommandResponse::err("missing server_url/access_token");
             };
             let model = payload.get("model").and_then(Value::as_str).unwrap_or("");
+            // Shared config feeds the gateway credentials/token refresh paths ...
             zk_composed::configure_llm(base_url, access_token, model);
-            CommandResponse::ok(json!({ "configured": true }))
+            // ... while this rebuilds the already-constructed rig model so login and
+            // refresh take effect without restarting the app (ADR-064 hot-swap).
+            match state
+                .runtime
+                .configure_llm(base_url, access_token, model, "gateway")
+            {
+                Ok(()) => CommandResponse::ok(json!({ "configured": true })),
+                Err(error) => CommandResponse::err(format!("auth/configure: {error}")),
+            }
+        }
+        commands::AUTH_LOGOUT => {
+            // Clear the enterprise gateway credentials held by the composed runtime.
+            // The local session (tokens/server URL) is owned by the UI layer; here we
+            // only make sure no in-flight turn can keep using the old credentials.
+            zk_composed::configure_llm("", "", "");
+            if let Ok(streams) = state.streams.lock() {
+                for cancelled in streams.values() {
+                    cancelled.store(true, Ordering::SeqCst);
+                }
+            }
+            state.runtime.cancel_agent();
+            CommandResponse::ok(json!({ "logged_out": true }))
         }
         commands::UPDATE_CHECK => {
             let platform = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
@@ -785,67 +826,107 @@ fn chat_send(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
         streams.insert(stream_id.clone(), Arc::clone(&cancelled));
     }
 
-    let state = Arc::clone(state);
-    let text = text.to_owned();
-    let conversation_id_for_thread = conversation_id.clone();
-    let turn_id = stream_id.clone();
-    std::thread::spawn(move || {
-        let seq = Arc::new(AtomicU64::new(1));
-        let sink: Arc<dyn zk_contract_agent::EventSink> = Arc::new(BridgeSink {
-            bus: state.bus.clone(),
-            stream_id: turn_id.clone(),
-            seq: Arc::clone(&seq),
-            cancelled: Arc::clone(&cancelled),
-            sessions: state.runtime.sessions(),
-            conversation_id: conversation_id_for_thread.clone(),
-        });
-        let context = TurnContext {
-            conversation_id: conversation_id_for_thread.clone(),
-            workspace_id: workspace_root.0.clone(),
-            workspace_root: workspace_root.1,
-        };
-        let result = state
-            .runtime
-            .run_stream_in_shared(&context, &turn_id, &text, sink);
-        match result {
-            Ok(reply) => {
-                let message = Message {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    conversation_id: conversation_id_for_thread.clone(),
-                    role: "assistant".to_owned(),
-                    content: reply.text,
-                    created_at_ms: now_ms(),
-                    status: if cancelled.load(Ordering::SeqCst) {
-                        "cancelled"
-                    } else {
-                        "done"
-                    }
-                    .to_owned(),
-                };
-                let _ = state.runtime.sessions().append_message(&message);
-            }
-            Err(error) => {
-                let message = Message {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    conversation_id: conversation_id_for_thread,
-                    role: "assistant".to_owned(),
-                    content: format!("错误：{error}"),
-                    created_at_ms: now_ms(),
-                    status: "error".to_owned(),
-                };
-                let _ = state.runtime.sessions().append_message(&message);
-            }
-        }
+    let job = TurnJob {
+        text: text.to_owned(),
+        conversation_id: conversation_id.clone(),
+        workspace_id: workspace_id.clone(),
+        workspace_root: workspace_root.1,
+        stream_id: stream_id.clone(),
+        cancelled,
+    };
+    let sender = turn_sender(state, &conversation_id);
+    if sender.send(job).is_err() {
         if let Ok(mut streams) = state.streams.lock() {
-            streams.remove(&turn_id);
+            streams.remove(&stream_id);
         }
-    });
+        return CommandResponse::err("session/busy: turn worker unavailable; retry");
+    }
 
     CommandResponse::ok(json!({
         "stream_id": stream_id,
         "conversation_id": conversation_id,
         "workspace_id": workspace_id,
     }))
+}
+
+/// Return the per-conversation worker sender, spawning the FIFO worker on demand.
+fn turn_sender(state: &Arc<AppState>, conversation_id: &str) -> mpsc::Sender<TurnJob> {
+    let mut turns = state
+        .turns
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(sender) = turns.get(conversation_id) {
+        return sender.clone();
+    }
+    let (sender, receiver) = mpsc::channel::<TurnJob>();
+    let worker_state = Arc::clone(state);
+    std::thread::spawn(move || {
+        while let Ok(job) = receiver.recv() {
+            run_turn(&worker_state, &job);
+        }
+    });
+    turns.insert(conversation_id.to_owned(), sender.clone());
+    sender
+}
+
+/// Execute one queued turn (runs on that conversation's worker thread).
+fn run_turn(state: &Arc<AppState>, job: &TurnJob) {
+    if job.cancelled.load(Ordering::SeqCst) {
+        // Cancelled while queued: the cancel command already emitted the event.
+        if let Ok(mut streams) = state.streams.lock() {
+            streams.remove(&job.stream_id);
+        }
+        return;
+    }
+    let seq = Arc::new(AtomicU64::new(1));
+    let sink: Arc<dyn zk_contract_agent::EventSink> = Arc::new(BridgeSink {
+        bus: state.bus.clone(),
+        stream_id: job.stream_id.clone(),
+        seq: Arc::clone(&seq),
+        cancelled: Arc::clone(&job.cancelled),
+        sessions: state.runtime.sessions(),
+        conversation_id: job.conversation_id.clone(),
+    });
+    let context = TurnContext {
+        conversation_id: job.conversation_id.clone(),
+        workspace_id: job.workspace_id.clone(),
+        workspace_root: job.workspace_root.clone(),
+    };
+    let result = state
+        .runtime
+        .run_stream_in_shared(&context, &job.stream_id, &job.text, sink);
+    match result {
+        Ok(reply) => {
+            let message = Message {
+                id: uuid::Uuid::new_v4().to_string(),
+                conversation_id: job.conversation_id.clone(),
+                role: "assistant".to_owned(),
+                content: reply.text,
+                created_at_ms: now_ms(),
+                status: if job.cancelled.load(Ordering::SeqCst) {
+                    "cancelled"
+                } else {
+                    "done"
+                }
+                .to_owned(),
+            };
+            let _ = state.runtime.sessions().append_message(&message);
+        }
+        Err(error) => {
+            let message = Message {
+                id: uuid::Uuid::new_v4().to_string(),
+                conversation_id: job.conversation_id.clone(),
+                role: "assistant".to_owned(),
+                content: format!("错误：{error}"),
+                created_at_ms: now_ms(),
+                status: "error".to_owned(),
+            };
+            let _ = state.runtime.sessions().append_message(&message);
+        }
+    }
+    if let Ok(mut streams) = state.streams.lock() {
+        streams.remove(&job.stream_id);
+    }
 }
 
 fn chat_cancel(state: &Arc<AppState>, payload: &Value) -> CommandResponse {

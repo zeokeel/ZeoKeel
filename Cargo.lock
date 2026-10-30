@@ -8461,7 +8461,7 @@ version = "0.1.0"
 dependencies = [
  "rig-core",
  "serde_json",
- "zk-agent-loop",
+ "zk-agent-rig",
  "zk-cap-audio",
  "zk-cap-hooks",
  "zk-cap-image",
@@ -8490,7 +8490,7 @@ dependencies = [
  "zk-contract-update",
  "zk-contract-user",
  "zk-contract-wallet",
- "zk-llm-mock",
+ "zk-llm-rig",
  "zk-store-session-sqlite",
  "zk-store-settings-json",
  "zk-tool-agent-team",
@@ -8849,7 +8849,9 @@ name = "zk-llm-gateway"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "futures",
  "reqwest 0.12.28",
+ "rig-core",
  "serde_json",
  "tokio",
  "zk-contract-llm",

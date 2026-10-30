@@ -14,6 +14,7 @@ mod serve;
 use std::sync::Arc;
 
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use zk_contract_config::ProviderKind;
 use zk_contract_ipc::CommandResponse;
 
 use crate::ipc::AppState;
@@ -103,7 +104,50 @@ fn app_request(
 
 fn build_state() -> Result<Arc<AppState>, String> {
     let runtime = zk_composed::build()?;
+    apply_persisted_provider(&runtime);
     Ok(AppState::new(runtime))
+}
+
+/// Apply the provider persisted by a previous run (settings hot-swap, ADR-064).
+///
+/// The composed glue builds the model from env first; a saved provider wins. All
+/// failures are startup diagnostics: the app must still boot so the user can fix
+/// the provider in settings (where `settings.set` reports the error to the UI).
+fn apply_persisted_provider(runtime: &zk_composed::Runtime) {
+    // Enterprise builds take the gateway provider from the login response
+    // (`auth.configure`); local settings must never override it (docs/04 §6: no BYOK).
+    if zk_composed::EDITION != "personal" {
+        return;
+    }
+    let settings = match runtime.settings().load() {
+        Ok(settings) => settings,
+        Err(error) => {
+            eprintln!("zk-desktop: settings load failed: {error}");
+            return;
+        }
+    };
+    let provider = settings.provider;
+    let kind = match provider.kind {
+        ProviderKind::Mock => {
+            eprintln!(
+                "zk-desktop: no provider configured in settings; using env fallback until configured"
+            );
+            return;
+        }
+        ProviderKind::OpenAiCompatible => "openai",
+        ProviderKind::Ollama => "ollama",
+    };
+    if provider.base_url.trim().is_empty() || provider.model.trim().is_empty() {
+        eprintln!(
+            "zk-desktop: persisted provider is incomplete (base_url/model empty); keeping env fallback"
+        );
+        return;
+    }
+    if let Err(error) =
+        runtime.configure_llm(&provider.base_url, &provider.api_key, &provider.model, kind)
+    {
+        eprintln!("zk-desktop: provider from settings not applied: {error}");
+    }
 }
 
 fn main() {

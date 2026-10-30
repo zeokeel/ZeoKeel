@@ -6,7 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-zk-agent-loop = { path = "../../packages/client/agent-loop" }
+zk-agent-rig = { path = "../../packages/client/agent-rig" }
 zk-cap-audio = { path = "../../packages/client/cap-audio" }
 zk-cap-hooks = { path = "../../packages/client/cap-hooks" }
 zk-cap-image = { path = "../../packages/client/cap-image" }
@@ -35,7 +35,7 @@ zk-contract-ui = { path = "../../packages/contracts/ui" }
 zk-contract-update = { path = "../../packages/contracts/update" }
 zk-contract-user = { path = "../../packages/contracts/user" }
 zk-contract-wallet = { path = "../../packages/contracts/wallet" }
-zk-llm-mock = { path = "../../packages/client/llm-mock" }
+zk-llm-rig = { path = "../../packages/client/llm-rig" }
 zk-store-session-sqlite = { path = "../../packages/client/store-session-sqlite" }
 zk-store-settings-json = { path = "../../packages/client/store-settings-json" }
 zk-tool-agent-team = { path = "../../packages/client/tool-agent-team" }

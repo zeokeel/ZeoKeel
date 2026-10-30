@@ -2,6 +2,7 @@
 //!
 //! @capability kit.subagent
 #![forbid(unsafe_code)]
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use zk_contract_tool::TurnContext;
@@ -111,4 +112,54 @@ pub fn with_depth<T>(depth: usize, f: impl FnOnce() -> T) -> T {
         cell.set(previous);
         out
     })
+}
+
+static CONTEXT_DEPTHS: OnceLock<Mutex<BTreeMap<String, usize>>> = OnceLock::new();
+
+fn context_depths() -> &'static Mutex<BTreeMap<String, usize>> {
+    CONTEXT_DEPTHS.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+/// Record the delegation depth of a conversation context.
+///
+/// A child conversation runs on a fresh thread (and its tool calls on blocking
+/// threads), so the thread-local [`current_depth`] cannot carry the delegation
+/// depth across the boundary. The agent runtime registers the depth here for the
+/// child conversation id and re-applies it with [`with_depth`] inside the tool
+/// execution closure, which keeps [`MAX_DEPTH`] enforceable.
+pub fn set_context_depth(conversation_id: &str, depth: usize) {
+    if let Ok(mut depths) = context_depths().lock() {
+        depths.insert(conversation_id.to_owned(), depth);
+    }
+}
+
+/// Delegation depth recorded for a conversation context (0 when absent).
+#[must_use]
+pub fn context_depth(conversation_id: &str) -> usize {
+    context_depths()
+        .lock()
+        .ok()
+        .and_then(|depths| depths.get(conversation_id).copied())
+        .unwrap_or(0)
+}
+
+/// Drop the recorded depth for a finished conversation context.
+pub fn clear_context_depth(conversation_id: &str) {
+    if let Ok(mut depths) = context_depths().lock() {
+        depths.remove(conversation_id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+    use super::*;
+
+    #[test]
+    fn context_depth_roundtrip() {
+        set_context_depth("kit-depth-context", 2);
+        assert_eq!(context_depth("kit-depth-context"), 2);
+        clear_context_depth("kit-depth-context");
+        assert_eq!(context_depth("kit-depth-context"), 0);
+    }
 }
