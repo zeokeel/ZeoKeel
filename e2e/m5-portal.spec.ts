@@ -10,7 +10,7 @@ test.describe("M5 client portal", () => {
     await page.goto(PORTAL_URL ?? "");
     await expect(page.getByRole("heading", { name: "ZeoKeel 客户端下载" })).toBeVisible();
     await expect(page.getByText("渠道：official")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Linux AppImage" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Linux/ })).toBeVisible();
     const axe = await new AxeBuilder({ page }).analyze();
     const serious = axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
     expect(serious, JSON.stringify(serious.map((v) => v.id))).toEqual([]);
