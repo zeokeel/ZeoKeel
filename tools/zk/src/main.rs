@@ -1,8 +1,9 @@
 #![forbid(unsafe_code)]
 //! ZeoKeel `zk` composition CLI (minimal M0 subset).
 //!
-//! Commands: `validate`, `compose [--check]`, `plan`, `capability [--check]`,
-//! `find <kw>`, `lint [--duplicates]`, `db lock [--check]`.
+//! Commands: `validate`, `compose [--check]`, `plan`, `docs [--check]`,
+//! `capability [--check]`, `find <kw>`, `lint [--duplicates]`, `channel`,
+//! `db lock [--check]`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -25,20 +26,25 @@ fn run() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let command = args
         .next()
-        .context("usage: zk <validate|compose|plan|capability|find|lint>")?;
+        .context("usage: zk <validate|compose|plan|docs|capability|find|lint|channel|db>")?;
     let root = find_root()?;
     let rest: Vec<String> = args.collect();
     match command.as_str() {
         "validate" => validate(&root),
         "compose" => {
-            let flags = Flags::parse(&rest)?.context("compose requires --edition")?;
+            let flags = Flags::parse(&rest, true)?
+                .context("compose requires --edition (and --channel, docs/24 §1.2)")?;
             let check = rest.iter().any(|a| a == "--check");
             compose(&root, &flags, check)
         }
         "plan" => {
-            let flags =
-                Flags::parse(&rest)?.context("plan requires --edition/--profile/--channel")?;
+            let flags = Flags::parse(&rest, true)?
+                .context("plan requires --edition (and --channel, docs/24 §1.2)")?;
             plan(&root, &flags)
+        }
+        "docs" => {
+            let check = rest.iter().any(|a| a == "--check");
+            docs(&root, check)
         }
         "capability" => {
             let check = rest.iter().any(|a| a == "--check");
@@ -84,7 +90,9 @@ struct Flags {
 }
 
 impl Flags {
-    fn parse(args: &[String]) -> Result<Option<Self>> {
+    /// Parse `--edition/--profile/--channel`. `--profile` defaults to `default`;
+    /// `--channel` must be explicit for compose/plan (docs/24 §1.2: no default).
+    fn parse(args: &[String], require_channel: bool) -> Result<Option<Self>> {
         let mut map: BTreeMap<&str, String> = BTreeMap::new();
         let mut i = 0;
         while let Some(arg) = args.get(i) {
@@ -111,10 +119,14 @@ impl Flags {
             .get("--profile")
             .cloned()
             .unwrap_or_else(|| "default".to_owned());
-        let channel = map
-            .get("--channel")
-            .cloned()
-            .unwrap_or_else(|| "official".to_owned());
+        let channel = match map.get("--channel").cloned() {
+            Some(value) => value,
+            None if require_channel => bail!(
+                "--channel is required (docs/24 §1.2: no default); \
+                 pass --channel official|beta|oem-<customer>"
+            ),
+            None => "official".to_owned(),
+        };
         Ok(Some(Self {
             edition,
             profile,
@@ -130,6 +142,19 @@ struct RootConfig {
     paths: Paths,
     roles: BTreeMap<String, RoleDef>,
     contracts: BTreeMap<String, String>,
+    #[serde(default)]
+    personal_only: Option<PersonalOnlySection>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PersonalOnlySection {
+    file: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PersonalOnlyFile {
+    #[serde(default)]
+    packages: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -680,6 +705,7 @@ fn resolve(root: &Path, flags: &Flags) -> Result<Resolved> {
     let mut profile_chain = Vec::new();
     resolve_profile(root, &flags.profile, &mut packages, &mut profile_chain)?;
 
+    enforce_protected_roles(root, &config, flags, &packages)?;
     validate_contracts(&config, &manifests)?;
 
     let mut selected = Vec::new();
@@ -801,10 +827,82 @@ fn validate_contracts(config: &RootConfig, manifests: &BTreeMap<String, Manifest
             );
         }
         if def.protected {
-            // reserved for OEM checks
+            // Enforced in resolve()/enforce_protected_roles(); see docs/24 §1.5.
         }
     }
     Ok(())
+}
+
+/// Provider of `role` in the outer-most non-OEM edition of `edition`'s base chain.
+/// Protected roles must keep this provider: profile/channel/OEM-edition overrides are
+/// errors (docs/24 §1.5 "protected=true 的角色 OEM 覆盖=error").
+fn canonical_provider(root: &Path, edition: &str, role: &str) -> Result<Option<Vec<String>>> {
+    let mut chain: Vec<String> = Vec::new();
+    let mut current = edition.to_owned();
+    loop {
+        if chain.iter().any(|name| name == &current) {
+            bail!("edition base cycle at {current}");
+        }
+        chain.push(current.clone());
+        let file = load_edition(root, &current)?;
+        if !current.starts_with("oem-") {
+            if let Some(selection) = file.packages.get(role) {
+                return Ok(Some(selection.ids()));
+            }
+        }
+        match file.edition.base_edition {
+            Some(base) => current = base,
+            None => return Ok(None),
+        }
+    }
+}
+
+fn enforce_protected_roles(
+    root: &Path,
+    config: &RootConfig,
+    flags: &Flags,
+    packages: &BTreeMap<String, PackageSel>,
+) -> Result<()> {
+    for (role, def) in &config.roles {
+        if !def.protected {
+            continue;
+        }
+        let Some(selection) = packages.get(role) else {
+            continue;
+        };
+        match canonical_provider(root, &flags.edition, role)? {
+            None => bail!(
+                "role {role} is protected (docs/24 §1.5) but the non-OEM edition chain of \
+                 edition {} declares no provider for it",
+                flags.edition
+            ),
+            Some(expected) => {
+                let mut actual = selection.ids();
+                let mut baseline = expected;
+                actual.sort();
+                baseline.sort();
+                if actual != baseline {
+                    bail!(
+                        "role {role} is protected (docs/24 §1.5): edition/profile selects {actual:?} \
+                         but the baseline provider is {baseline:?}"
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn load_personal_only(root: &Path, config: &RootConfig) -> Result<Vec<String>> {
+    let Some(section) = config.personal_only.as_ref() else {
+        return Ok(Vec::new());
+    };
+    let path = root.join(&section.file);
+    let text = fs::read_to_string(&path)
+        .with_context(|| format!("read personal-only list {}", path.display()))?;
+    let parsed: PersonalOnlyFile = toml::from_str(&text)
+        .with_context(|| format!("parse personal-only list {}", path.display()))?;
+    Ok(parsed.packages)
 }
 
 fn validate(root: &Path) -> Result<()> {
@@ -816,6 +914,7 @@ fn validate(root: &Path) -> Result<()> {
     let config = load_root(root)?;
     let manifests = scan_manifests(root)?;
     validate_contracts(&config, &manifests)?;
+    let personal_only = load_personal_only(root, &config)?;
     for edition in config
         .roles
         .values()
@@ -824,6 +923,21 @@ fn validate(root: &Path) -> Result<()> {
     {
         flags.edition = (*edition).clone();
         let resolved = resolve(root, &flags)?;
+        if !flags.edition.starts_with("personal") {
+            let leaked: Vec<&str> = resolved
+                .packages
+                .iter()
+                .filter(|pkg| personal_only.iter().any(|id| id == &pkg.package_id))
+                .map(|pkg| pkg.package_id.as_str())
+                .collect();
+            if !leaked.is_empty() {
+                bail!(
+                    "edition {} contains personal-only packages (docs/24 §1.1): {}",
+                    flags.edition,
+                    leaked.join(", ")
+                );
+            }
+        }
         println!(
             "validate: edition={} profile={} channel={} packages={} roles={}",
             resolved.edition,
@@ -850,6 +964,243 @@ fn plan(root: &Path, flags: &Flags) -> Result<()> {
         );
     }
     Ok(())
+}
+
+fn docs(root: &Path, check: bool) -> Result<()> {
+    let config = load_root(root)?;
+    let manifests = scan_manifests(root)?;
+    validate_contracts(&config, &manifests)?;
+    let contract_md = contract_index_md(&config, &manifests);
+    let matrix_md = profile_matrix_md(root, &config)?;
+    let dir = root.join(&config.paths.docs_generated);
+    let files: [(PathBuf, String); 2] = [
+        (dir.join("CONTRACT-INDEX.md"), contract_md),
+        (dir.join("PROFILE-MATRIX.md"), matrix_md),
+    ];
+    if check {
+        let mut mismatched: Vec<String> = Vec::new();
+        for (path, expected) in &files {
+            match fs::read_to_string(path) {
+                Ok(actual) if actual == *expected => {}
+                _ => mismatched.push(path.display().to_string()),
+            }
+        }
+        if !mismatched.is_empty() {
+            bail!(
+                "docs differ: {}; run `zk docs` to regenerate (docs/24 §3)",
+                mismatched.join(", ")
+            );
+        }
+        println!("docs: up to date ({} files)", files.len());
+        return Ok(());
+    }
+    fs::create_dir_all(&dir)?;
+    for (path, content) in &files {
+        fs::write(path, content).with_context(|| format!("write {}", path.display()))?;
+    }
+    println!("docs: wrote {} files to {}", files.len(), dir.display());
+    Ok(())
+}
+
+fn list_named_toml(root: &Path, dir: &str, marker: &str) -> Result<Vec<String>> {
+    let base = root.join(dir);
+    if !base.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut names: Vec<String> = Vec::new();
+    for entry in fs::read_dir(&base)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("toml") {
+            continue;
+        }
+        let text = fs::read_to_string(&path)?;
+        if !text.contains(marker) {
+            continue;
+        }
+        if let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) {
+            names.push(stem.to_owned());
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
+fn list_editions(root: &Path) -> Result<Vec<String>> {
+    list_named_toml(root, "editions", "[edition]")
+}
+
+fn list_profiles(root: &Path) -> Result<Vec<String>> {
+    list_named_toml(root, "profiles", "[profile]")
+}
+
+fn list_channels(root: &Path) -> Result<Vec<String>> {
+    let base = root.join("brands");
+    if !base.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut names: Vec<String> = Vec::new();
+    for entry in fs::read_dir(&base)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        if !entry.path().join("channel.json").is_file() {
+            continue;
+        }
+        names.push(entry.file_name().to_string_lossy().to_string());
+    }
+    names.sort();
+    Ok(names)
+}
+
+fn contract_index_md(config: &RootConfig, manifests: &BTreeMap<String, Manifest>) -> String {
+    let mut output = String::new();
+    output.push_str("<!-- @generated by zk docs -- do not edit -->\n\n# Contract Index\n\n");
+    output.push_str(&format!(
+        "_{} contracts · {} packages scanned · crate ↔ contract is the [contracts] map (docs/24 §2.1)_\n\n",
+        config.contracts.len(),
+        manifests.len()
+    ));
+    output.push_str(
+        "| contract | crate | roles (editions) | implementing packages |\n| --- | --- | --- | --- |\n",
+    );
+    for (contract_id, crate_name) in &config.contracts {
+        let mut roles: Vec<&String> = config
+            .roles
+            .iter()
+            .filter(|(_, def)| def.contract == *crate_name)
+            .map(|(role, _)| role)
+            .collect();
+        roles.sort();
+        let mut implementers: BTreeSet<&str> = BTreeSet::new();
+        for manifest in manifests.values() {
+            for decl in manifest.role_decls() {
+                if roles.iter().any(|role| **role == decl.name) {
+                    implementers.insert(manifest.id.as_str());
+                }
+            }
+        }
+        let roles_cell = if roles.is_empty() {
+            "-".to_owned()
+        } else {
+            roles
+                .iter()
+                .map(|role| match config.roles.get(*role) {
+                    Some(def) if !def.editions.is_empty() => {
+                        format!("`{role}` ({})", def.editions.join(", "))
+                    }
+                    _ => format!("`{role}`"),
+                })
+                .collect::<Vec<String>>()
+                .join(", ")
+        };
+        let implementers_cell = if implementers.is_empty() {
+            "-".to_owned()
+        } else {
+            implementers
+                .iter()
+                .map(|id| format!("`{id}`"))
+                .collect::<Vec<String>>()
+                .join(", ")
+        };
+        output.push_str(&format!(
+            "| `{contract_id}` | `{crate_name}` | {roles_cell} | {implementers_cell} |\n"
+        ));
+    }
+    output
+}
+
+fn profile_matrix_md(root: &Path, config: &RootConfig) -> Result<String> {
+    let editions = list_editions(root)?;
+    let profiles = list_profiles(root)?;
+    let channels = list_channels(root)?;
+    let personal_only = load_personal_only(root, config)?;
+    let mut personal_baseline: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for channel in &channels {
+        let flags = Flags {
+            edition: "personal".to_owned(),
+            profile: "default".to_owned(),
+            channel: channel.clone(),
+        };
+        if let Ok(resolved) = resolve(root, &flags) {
+            personal_baseline.insert(
+                channel.clone(),
+                resolved
+                    .packages
+                    .iter()
+                    .map(|pkg| pkg.package_id.clone())
+                    .collect(),
+            );
+        }
+    }
+    let mut output = String::new();
+    output.push_str("<!-- @generated by zk docs -- do not edit -->\n\n# Profile Matrix\n\n");
+    output.push_str(&format!(
+        "_{} editions × {} profiles × {} channels. Committed baseline is personal×default×official (docs/24 §1.2); \
+         `excluded_from_personal` compares the row with personal×default×<channel>._\n\n",
+        editions.len(),
+        profiles.len(),
+        channels.len()
+    ));
+    output.push_str(
+        "| edition | profile | channel | status | packages | generated EDITION | personal_only_hits | excluded_from_personal |\n\
+         | --- | --- | --- | --- | --- | --- | --- | --- |\n",
+    );
+    for edition in &editions {
+        for profile in &profiles {
+            for channel in &channels {
+                let flags = Flags {
+                    edition: edition.clone(),
+                    profile: profile.clone(),
+                    channel: channel.clone(),
+                };
+                match resolve(root, &flags) {
+                    Ok(resolved) => {
+                        let ids: Vec<&str> = resolved
+                            .packages
+                            .iter()
+                            .map(|pkg| pkg.package_id.as_str())
+                            .collect();
+                        let hits = ids
+                            .iter()
+                            .filter(|id| personal_only.iter().any(|known| known.as_str() == **id))
+                            .count();
+                        let excluded = personal_baseline
+                            .get(channel.as_str())
+                            .map(|baseline| {
+                                baseline
+                                    .iter()
+                                    .filter(|id| !ids.contains(&id.as_str()))
+                                    .count()
+                            })
+                            .unwrap_or(0);
+                        let status = if resolved.edition != *edition {
+                            "ERROR edition".to_owned()
+                        } else if hits > 0 && edition != "personal" {
+                            format!("ERROR personal-only leak ({hits})")
+                        } else {
+                            "ok".to_owned()
+                        };
+                        output.push_str(&format!(
+                            "| `{edition}` | `{profile}` | `{channel}` | {status} | {} | `{}` | {} | {} |\n",
+                            resolved.packages.len(),
+                            resolved.edition,
+                            hits,
+                            excluded
+                        ));
+                    }
+                    Err(error) => {
+                        let message = error.to_string().replace('\n', " ").replace('|', "/");
+                        output.push_str(&format!(
+                            "| `{edition}` | `{profile}` | `{channel}` | error: {message} | - | - | - | - |\n"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    Ok(output)
 }
 
 fn compose(root: &Path, flags: &Flags, check: bool) -> Result<()> {
@@ -971,14 +1322,7 @@ fn rel_from_composed(root: &Path, dir: &Path) -> String {
     format!("../../{}", rel.display())
 }
 
-fn manifest_dir(root: &Path, manifest_id: &str, resolved: &Resolved) -> Result<PathBuf> {
-    let manifest = resolved
-        .manifests
-        .get(manifest_id)
-        .with_context(|| format!("manifest {manifest_id}"))?;
-    let crate_name = manifest
-        .rust_crate()
-        .with_context(|| format!("manifest {manifest_id} no rust crate"))?;
+fn find_package_dir(root: &Path, manifest_id: &str) -> Result<PathBuf> {
     let packages_dir = root.join("packages");
     for group in fs::read_dir(&packages_dir)? {
         let group = group?;
@@ -987,6 +1331,9 @@ fn manifest_dir(root: &Path, manifest_id: &str, resolved: &Resolved) -> Result<P
         }
         for entry in fs::read_dir(group.path())? {
             let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
             let manifest_path = entry.path().join("zk.toml");
             if !manifest_path.is_file() {
                 continue;
@@ -994,12 +1341,18 @@ fn manifest_dir(root: &Path, manifest_id: &str, resolved: &Resolved) -> Result<P
             let text = fs::read_to_string(&manifest_path)?;
             let parsed: Manifest = toml::from_str(&text)?;
             if parsed.id == manifest_id {
-                let _ = crate_name;
                 return Ok(entry.path());
             }
         }
     }
     bail!("dir not found for package {manifest_id}")
+}
+
+fn manifest_dir(root: &Path, manifest_id: &str, resolved: &Resolved) -> Result<PathBuf> {
+    if !resolved.manifests.contains_key(manifest_id) {
+        bail!("manifest {manifest_id}");
+    }
+    find_package_dir(root, manifest_id)
 }
 
 fn compose_cargo_toml(root: &Path, resolved: &Resolved) -> Result<String> {
@@ -1896,23 +2249,38 @@ struct CapabilityJson<'a> {
 
 fn scan_capabilities(root: &Path) -> Result<Vec<CapabilityJson<'static>>> {
     let mut out: Vec<CapabilityJson<'static>> = Vec::new();
-    let mut roots: Vec<PathBuf> = Vec::new();
-    let contracts = root.join("packages/contracts");
-    if contracts.is_dir() {
-        for entry in fs::read_dir(&contracts)? {
-            let entry = entry?;
-            if entry.file_type()?.is_dir() {
-                roots.push(entry.path().join("src"));
+    let mut roots: BTreeSet<PathBuf> = BTreeSet::new();
+    // Every package crate can declare reusable capabilities (`packages/<group>/<pkg>/src`).
+    let packages_dir = root.join("packages");
+    if packages_dir.is_dir() {
+        for group in fs::read_dir(&packages_dir)? {
+            let group = group?;
+            if !group.file_type()?.is_dir() {
+                continue;
+            }
+            for entry in fs::read_dir(group.path())? {
+                let entry = entry?;
+                if !entry.file_type()?.is_dir() {
+                    continue;
+                }
+                let src = entry.path().join("src");
+                if src.is_dir() {
+                    roots.insert(src);
+                }
             }
         }
     }
+    // Shared implementation libraries are not packages (docs/25 §2).
     let crates_dir = root.join("crates");
     if crates_dir.is_dir() {
         for entry in fs::read_dir(&crates_dir)? {
             let entry = entry?;
             let name = entry.file_name().to_string_lossy().to_string();
             if entry.file_type()?.is_dir() && name.starts_with("zk-kit-") {
-                roots.push(entry.path().join("src"));
+                let src = entry.path().join("src");
+                if src.is_dir() {
+                    roots.insert(src);
+                }
             }
         }
     }
@@ -1921,6 +2289,57 @@ fn scan_capabilities(root: &Path) -> Result<Vec<CapabilityJson<'static>>> {
     }
     out.sort_by(|a, b| a.id.cmp(b.id).then(a.path.cmp(b.path)));
     Ok(out)
+}
+
+/// Minimum capability-registration rule (docs/25 §27): every contract crate and every
+/// `crates/zk-kit-*` crate must declare at least one `@capability` in its source.
+/// Without this check `zk capability --check` could never detect an *unregistered*
+/// public capability (it only compared the comments it found).
+fn missing_capability_targets(
+    root: &Path,
+    manifests: &BTreeMap<String, Manifest>,
+    caps: &[CapabilityJson<'static>],
+) -> Result<Vec<String>> {
+    let mut missing: BTreeSet<String> = BTreeSet::new();
+    for manifest in manifests.values() {
+        if manifest.kind != "contract" {
+            continue;
+        }
+        let Some(crate_name) = manifest.rust_crate() else {
+            continue;
+        };
+        let dir = find_package_dir(root, &manifest.id)?;
+        let src_rel = dir
+            .join("src")
+            .strip_prefix(root)
+            .map(|rel| rel.display().to_string())
+            .unwrap_or_else(|_| dir.join("src").display().to_string());
+        if !caps.iter().any(|cap| cap.path.starts_with(&src_rel)) {
+            missing.insert(format!("package {} (crate {crate_name})", manifest.id));
+        }
+    }
+    let crates_dir = root.join("crates");
+    if crates_dir.is_dir() {
+        for entry in fs::read_dir(&crates_dir)? {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !entry.file_type()?.is_dir() || !name.starts_with("zk-kit-") {
+                continue;
+            }
+            let src = entry.path().join("src");
+            if !src.is_dir() {
+                continue;
+            }
+            let src_rel = src
+                .strip_prefix(root)
+                .map(|rel| rel.display().to_string())
+                .unwrap_or_else(|_| src.display().to_string());
+            if !caps.iter().any(|cap| cap.path.starts_with(&src_rel)) {
+                missing.insert(format!("crate {name}"));
+            }
+        }
+    }
+    Ok(missing.into_iter().collect())
 }
 
 fn walk_rs(dir: &Path, root: &Path, out: &mut Vec<CapabilityJson<'static>>) -> Result<()> {
@@ -1963,7 +2382,16 @@ fn walk_rs(dir: &Path, root: &Path, out: &mut Vec<CapabilityJson<'static>>) -> R
 }
 
 fn capability(root: &Path, check: bool) -> Result<()> {
+    let manifests = scan_manifests(root)?;
     let caps = scan_capabilities(root)?;
+    let missing = missing_capability_targets(root, &manifests, &caps)?;
+    if !missing.is_empty() {
+        bail!(
+            "capability index incomplete: contract/kit crates without a `@capability` declaration: {} \
+             (rule: docs/25 §27)",
+            missing.join(", ")
+        );
+    }
     let json = format!("{}\n", serde_json::to_string_pretty(&caps)?);
     let mut md = String::new();
     md.push_str("<!-- @generated by zk capability -- do not edit -->\n\n# Capability Index\n\n");
@@ -2103,5 +2531,227 @@ mod channel_tests {
         std::os::unix::fs::symlink(&outside, dir.join("logo.svg")).unwrap();
         assert!(super::validate_channel_dir("good-id", &dir).is_err());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod flags_tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+    use super::Flags;
+
+    #[test]
+    fn compose_and_plan_require_channel() {
+        let without_channel = vec!["--edition".to_owned(), "personal".to_owned()];
+        let error = Flags::parse(&without_channel, true).expect_err("--channel must be required");
+        assert!(error.to_string().contains("--channel"));
+        // validate() and other non-compose callers keep the legacy default.
+        assert!(Flags::parse(&without_channel, false).unwrap().is_some());
+        let with_channel = vec![
+            "--edition".to_owned(),
+            "personal".to_owned(),
+            "--channel".to_owned(),
+            "official".to_owned(),
+        ];
+        let flags = Flags::parse(&with_channel, true).unwrap().unwrap();
+        assert_eq!(flags.channel, "official");
+        assert_eq!(flags.profile, "default");
+    }
+}
+
+#[cfg(test)]
+mod protected_tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    use super::{resolve, Flags, Result};
+
+    fn write(path: &Path, body: &str) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, body).unwrap();
+    }
+
+    fn fixture(override_role: bool) -> PathBuf {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("zk-protected-test-{stamp}"));
+        write(
+            &root.join("zk.toml"),
+            r#"schema = 1
+
+[personal_only]
+file = "editions/personal-only.toml"
+
+[roles."tool.fs"]
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal"]
+protected = true
+
+[contracts]
+"zk.contract.tool" = "zk-contract-tool"
+"#,
+        );
+        write(
+            &root.join("editions/personal.toml"),
+            r#"[edition]
+name = "personal"
+targets = ["desktop"]
+
+[packages]
+"tool.fs" = "zeokeel/tool-fs"
+"#,
+        );
+        write(&root.join("editions/personal-only.toml"), "packages = []\n");
+        let profile = if override_role {
+            r#"[profile]
+name = "default"
+
+[packages]
+"tool.fs" = "zeokeel/tool-fs-alt"
+"#
+        } else {
+            "[profile]\nname = \"default\"\n"
+        };
+        write(&root.join("profiles/default.toml"), profile);
+        for (dir, id, crate_name) in [
+            ("tool-fs", "zeokeel/tool-fs", "zk-tool-fs"),
+            ("tool-fs-alt", "zeokeel/tool-fs-alt", "zk-tool-fs-alt"),
+        ] {
+            write(
+                &root.join(format!("packages/client/{dir}/zk.toml")),
+                &format!(
+                    r#"schema = 1
+id = "{id}"
+kind = "capability"
+version = "0.1.0"
+
+[role]
+name = "tool.fs"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal"]
+
+[facets]
+rust = {{ crate = "{crate_name}" }}
+"#
+                ),
+            );
+        }
+        write(
+            &root.join("packages/contracts/tool/zk.toml"),
+            r#"schema = 1
+id = "zeokeel/contract-tool"
+kind = "contract"
+version = "0.1.0"
+
+[facets]
+rust = { crate = "zk-contract-tool" }
+"#,
+        );
+        write(
+            &root.join("brands/official/channel.json"),
+            r##"{"schema":1,"id":"official","identity":{"slug":"x","product_name":"X","app_id":"com.x.y","deep_link_scheme":"x","app_origin_scheme":"x-app","data_dir_name":"X","product_home_dir":".x"},"brand":{"powered_by":"hide","logo":{"light":"logo.svg","dark":"logo-dark.svg"}},"assets":{"accent":"#000000"},"defaults":{"server_url":""},"copy":{}}"##,
+        );
+        for logo in ["logo.svg", "logo-dark.svg"] {
+            write(
+                &root.join(format!("brands/official/{logo}")),
+                "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>",
+            );
+        }
+        root
+    }
+
+    fn resolve_fixture(override_role: bool) -> Result<()> {
+        let root = fixture(override_role);
+        let flags = Flags {
+            edition: "personal".to_owned(),
+            profile: "default".to_owned(),
+            channel: "official".to_owned(),
+        };
+        let result = resolve(&root, &flags).map(|_| ());
+        fs::remove_dir_all(&root).unwrap();
+        result
+    }
+
+    #[test]
+    fn rejects_profile_override_of_protected_role() {
+        let error = resolve_fixture(true).expect_err("protected override must be rejected");
+        assert!(
+            error.to_string().contains("protected"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn allows_unmodified_protected_role() {
+        assert!(resolve_fixture(false).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod capability_tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    fn write(path: &Path, body: &str) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, body).unwrap();
+    }
+
+    fn fixture(declare: bool) -> PathBuf {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("zk-capability-test-{stamp}"));
+        write(
+            &root.join("packages/contracts/tool/zk.toml"),
+            r#"schema = 1
+id = "zeokeel/contract-tool"
+kind = "contract"
+version = "0.1.0"
+
+[facets]
+rust = { crate = "zk-contract-tool" }
+"#,
+        );
+        let source = if declare {
+            "//! Tool contract.\n//!\n//! @capability contract.tool\n"
+        } else {
+            "//! Tool contract without a capability declaration.\n"
+        };
+        write(&root.join("packages/contracts/tool/src/lib.rs"), source);
+        root
+    }
+
+    fn missing(declare: bool) -> Vec<String> {
+        let root = fixture(declare);
+        let manifests = super::scan_manifests(&root).unwrap();
+        let caps = super::scan_capabilities(&root).unwrap();
+        let missing = super::missing_capability_targets(&root, &manifests, &caps).unwrap();
+        fs::remove_dir_all(&root).unwrap();
+        missing
+    }
+
+    #[test]
+    fn detects_unregistered_contract_capability() {
+        let missing = missing(false);
+        assert_eq!(missing.len(), 1);
+        if let Some(first) = missing.first() {
+            assert!(first.contains("zk-contract-tool"), "unexpected: {first}");
+        }
+    }
+
+    #[test]
+    fn accepts_declared_contract_capability() {
+        assert!(missing(true).is_empty());
     }
 }

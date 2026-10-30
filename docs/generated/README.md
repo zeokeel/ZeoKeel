@@ -1,15 +1,20 @@
 # docs/generated — 生成物目录（只读）
 
-> 本目录中的索引/表结构/矩阵**只能由生成器写入**，禁止手改。当前仓库处于 Plan v3.2，尚无产品代码，
-> 因此这里是占位说明；scaffold 后本目录文件由 `zk docs` 写入（数据来自 `zk plan`/`zk api`/`zk db lock`），能力索引用 `zk capability`：
+> 本目录中的索引/矩阵/表结构**只能由生成器写入**，禁止手改。权威 writer 表见 `docs/24` §3。
+> `--check` 只校验、不写源文件；`scripts/docs-check.py` 不检查本目录内容。
 
-| 文件 | 生成者 | 内容 |
+| 文件 | 生成器 | 内容 |
 | --- | --- | --- |
-| `PACKAGE-INDEX.md` | `zk docs`（数据来自 `zk plan`） | 包 id、角色、契约、edition、渠道 |
-| `CONTRACT-INDEX.md` | `zk docs`（数据来自 `zk api`） | 契约 id/crate/版本/单实例校验 |
-| `PROFILE-MATRIX.md` | `zk docs`（数据来自 `zk plan`） | edition × profile × channel 闭包 |
-| `schema.md` | `zk docs`（数据来自 `zk db lock`） | 表结构与迁移版本 |
-| `CAPABILITY-INDEX.md` | `zk capability` | 可复用能力 id/签名/路径/消费方（`25` §3） |
+| `PACKAGE-INDEX.md` | `zk compose` | 当前组合（基线 personal×default×official）的包 id、角色、crate、契约、基数 |
+| `CONTRACT-INDEX.md` | `zk docs` | 契约 id → crate → 角色/editions → 实现包（来自 `[contracts]`/`[roles]`/manifest role 声明） |
+| `PROFILE-MATRIX.md` | `zk docs` | edition × profile × channel 闭包：status、包数、generated EDITION、personal_only_hits、excluded_from_personal |
+| `CAPABILITY-INDEX.md` | `zk capability` | 可复用能力 id/路径（contract/kit/package `@capability`，`docs/25` §3） |
+| `AGENT-TOOL-MATRIX.md` | `scripts/agent-tool-matrix.py` | DSH ↔ ZeoKeel 工具覆盖矩阵（研究/对照用，不是产品 SSOT） |
 
-- **writer 唯一**：本目录由 `zk docs` 写；`CAPABILITY-INDEX.md` 由 `zk capability` 写（`24` §3）。`zk plan`/`zk api`/`zk db lock` 只提供数据，不直接写本目录。
-- 生成物内容一致性用 `zk docs --check` 校验（`--check` 不写源文件）；`scripts/docs-check.py` 不检查本目录内容。
+- **writer 唯一**：`zk docs` 写 `CONTRACT-INDEX.md` + `PROFILE-MATRIX.md`；`zk compose` 写 `PACKAGE-INDEX.md`
+  （及 `shared/contracts/{packages,roles,ui-contributions,brand}.json`、两端 generated glue）；
+  `zk capability` 写 `CAPABILITY-INDEX.md` + `shared/contracts/capability-index.json`。
+- `zk api`（`shared/contracts/{api-catalog,http-routes,openapi,permissions,errors}.json`）与 `schema.md`
+  （迁移表结构）**尚未实现**，见 `target/evidence/audit/build.md`；`docs/24` §3 的对应行仍是 M0 待办。
+- 生成物内容一致性：`zk docs --check`、`zk compose ... --check`、`zk capability --check`；
+  CI 需在 drift job 中同时运行三者（Lead 负责 `.github/workflows/ci.yml`）。

@@ -16,6 +16,10 @@ file = "editions/personal-only.toml"
 contract = "zk-contract-auth"
 cardinality = "singleton"
 editions = ["enterprise"]
+# Security boundary: OEM channels/editions/profiles must not replace the auth session
+# provider (docs/24 §1.5; enforced by zk resolve). Implementation is authoritative for
+# the role name here (docs/24 §1.5 table still says srv.auth.source — see audit report).
+protected = true
 
 [roles."srv.users"]
 contract = "zk-contract-user"

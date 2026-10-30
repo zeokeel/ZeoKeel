@@ -2,29 +2,46 @@
 
 # Capability Index
 
-22 capabilities
+39 capabilities
 
 | id | path |
 | --- | --- |
+| `agent.loop` | `packages/client/agent-loop/src/lib.rs` |
+| `contract.admin-ui` | `packages/contracts/admin-ui/src/lib.rs` |
 | `contract.agent` | `packages/contracts/agent/src/lib.rs` |
+| `contract.app` | `packages/contracts/app/src/lib.rs` |
+| `contract.auth` | `packages/contracts/auth/src/lib.rs` |
+| `contract.auth-client` | `packages/contracts/auth-client/src/lib.rs` |
 | `contract.config` | `packages/contracts/config/src/lib.rs` |
 | `contract.connector` | `packages/contracts/connector/src/lib.rs` |
 | `contract.content` | `packages/contracts/content/src/lib.rs` |
+| `contract.gateway` | `packages/contracts/gateway/src/lib.rs` |
 | `contract.ipc` | `packages/contracts/ipc/src/lib.rs` |
 | `contract.kernel` | `packages/contracts/kernel/src/lib.rs` |
 | `contract.llm` | `packages/contracts/llm/src/lib.rs` |
 | `contract.package` | `packages/contracts/package/src/lib.rs` |
+| `contract.server` | `packages/contracts/server/src/lib.rs` |
 | `contract.session` | `packages/contracts/session/src/lib.rs` |
 | `contract.skill` | `packages/contracts/skill/src/lib.rs` |
 | `contract.tool` | `packages/contracts/tool/src/lib.rs` |
 | `contract.ui` | `packages/contracts/ui/src/lib.rs` |
+| `contract.update` | `packages/contracts/update/src/lib.rs` |
+| `contract.user` | `packages/contracts/user/src/lib.rs` |
+| `contract.wallet` | `packages/contracts/wallet/src/lib.rs` |
 | `kit.approval` | `crates/zk-kit-approval/src/lib.rs` |
 | `kit.content` | `crates/zk-kit-content/src/lib.rs` |
 | `kit.events` | `crates/zk-kit-events/src/lib.rs` |
 | `kit.extractor` | `crates/zk-kit-extractor/src/lib.rs` |
 | `kit.jobs` | `crates/zk-kit-jobs/src/lib.rs` |
 | `kit.questions` | `crates/zk-kit-questions/src/lib.rs` |
+| `kit.server` | `crates/zk-kit-server/src/lib.rs` |
 | `kit.session` | `crates/zk-kit-session/src/lib.rs` |
 | `kit.subagent` | `crates/zk-kit-subagent/src/lib.rs` |
 | `kit.tools` | `crates/zk-kit-tools/src/lib.rs` |
+| `llm.provider.default` | `packages/client/llm-mock/src/lib.rs` |
+| `llm.provider.openai_compatible` | `packages/client/llm-openai-compatible/src/lib.rs` |
+| `llm.provider.rig` | `packages/client/llm-rig/src/lib.rs` |
+| `store.session.sqlite` | `packages/client/store-session-sqlite/src/lib.rs` |
+| `store.settings.json` | `packages/client/store-settings-json/src/lib.rs` |
+| `tool.fs` | `packages/client/tool-fs/src/lib.rs` |
 | `wasm.runtime` | `crates/zk-kit-wasm/src/lib.rs` |
