@@ -1,0 +1,19 @@
+[package]
+name = "zk-srv-pricing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+sha2 = { workspace = true }
+zk-kit-server = { path = "../../../crates/zk-kit-server" }
+zk-contract-wallet = { path = "../../contracts/wallet" }
+
+[lints]
+workspace = true

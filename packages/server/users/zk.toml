@@ -1,0 +1,16 @@
+schema = 1
+id = "zeokeel/users"
+kind = "service"
+version = "0.1.0"
+license = "MIT"
+summary = "M2 server domain package: users"
+
+[role]
+name = "srv.users"
+contract = "zk-contract-user"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-srv-users" }
+server = { router = "routes" }

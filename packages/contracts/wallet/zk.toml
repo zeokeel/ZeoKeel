@@ -1,0 +1,9 @@
+schema = 1
+id = "zeokeel/contract-wallet"
+kind = "contract"
+version = "0.1.0"
+license = "MIT"
+summary = "wallet domain contract marker"
+
+[facets]
+rust = { crate = "zk-contract-wallet" }

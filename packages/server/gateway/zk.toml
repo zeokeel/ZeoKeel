@@ -1,0 +1,16 @@
+schema = 1
+id = "zeokeel/gateway"
+kind = "service"
+version = "0.1.0"
+license = "MIT"
+summary = "M2 server domain package: gateway"
+
+[role]
+name = "srv.gateway"
+contract = "zk-contract-gateway"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-srv-gateway" }
+server = { router = "routes" }

@@ -121,6 +121,11 @@ BALG=$(curl -fsS "$BASE/api/client/v1/wallet" -H "Authorization: Bearer $ALICE_J
 GRANT2=$(curl -fsS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/admin/jobs/wallet-grant/run")
 BALG2=$(curl -fsS "$BASE/api/client/v1/wallet" -H "Authorization: Bearer $ALICE_JWT" | python3 -c 'import json,sys;print(json.load(sys.stdin)["balance_micros"])')
 [[ "$BALG2" == "1499931" ]]
+CODE=$(curl -sS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -o /dev/null -w '%{http_code}' -X PUT "$BASE/api/admin/settings/updates.channel" -H 'content-type: application/json' -d '{"value":{"channel":"official"},"hot":true}')
+[[ "$CODE" == "200" ]]
+BOOT=$(curl -fsS "$BASE/api/client/v1/config/bootstrap" -H "Authorization: Bearer $ALICE_JWT")
+[[ "$(printf '%s' "$BOOT" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d["updates"]["channel"])')" == "official" ]]
+[[ "$(printf '%s' "$BOOT" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["gateway"]["models"]))')" == "1" ]]
 JOB=$(curl -fsS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "$BASE/api/admin/jobs/wallet-reconcile/run")
 printf '%s' "$JOB" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["ok"] is True' 
 echo "auth ok: login/me/refresh/reuse/admin-csrf/users-auditor/wallet-ledger/pricing/gateway"

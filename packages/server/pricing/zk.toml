@@ -1,0 +1,16 @@
+schema = 1
+id = "zeokeel/pricing"
+kind = "service"
+version = "0.1.0"
+license = "MIT"
+summary = "M2 server domain package: pricing"
+
+[role]
+name = "srv.pricing"
+contract = "zk-contract-wallet"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-srv-pricing" }
+server = { router = "routes" }

@@ -1,0 +1,16 @@
+schema = 1
+id = "zeokeel/auth"
+kind = "service"
+version = "0.1.0"
+license = "MIT"
+summary = "M2 server domain package: auth"
+
+[role]
+name = "srv.auth.session"
+contract = "zk-contract-auth"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-srv-auth-local" }
+server = { router = "routes" }

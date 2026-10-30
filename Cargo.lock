@@ -6072,12 +6072,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-contract-auth"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "zk-contract-config"
 version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "zk-contract-gateway"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -6143,6 +6157,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-contract-user"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "zk-contract-wallet"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "zk-desktop"
 version = "0.1.0"
 dependencies = [
@@ -6162,6 +6190,23 @@ dependencies = [
  "zk-contract-ipc",
  "zk-contract-session",
  "zk-contract-tool",
+]
+
+[[package]]
+name = "zk-kit-server"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "axum",
+ "base64 0.22.1",
+ "chrono",
+ "ed25519-dalek",
+ "rand_core 0.6.4",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "uuid",
 ]
 
 [[package]]
@@ -6194,6 +6239,51 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-srv-audit"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "uuid",
+ "zk-contract-server",
+ "zk-kit-server",
+]
+
+[[package]]
+name = "zk-srv-auth-local"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "uuid",
+ "zk-contract-auth",
+ "zk-kit-server",
+]
+
+[[package]]
+name = "zk-srv-gateway"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "uuid",
+ "zk-contract-gateway",
+ "zk-kit-server",
+]
+
+[[package]]
 name = "zk-srv-http"
 version = "0.1.0"
 dependencies = [
@@ -6213,6 +6303,81 @@ dependencies = [
  "tower-http",
  "uuid",
  "zk-contract-server",
+]
+
+[[package]]
+name = "zk-srv-jobs"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "uuid",
+ "zk-contract-server",
+ "zk-kit-server",
+]
+
+[[package]]
+name = "zk-srv-pricing"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "uuid",
+ "zk-contract-wallet",
+ "zk-kit-server",
+]
+
+[[package]]
+name = "zk-srv-settings"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "uuid",
+ "zk-contract-server",
+ "zk-kit-server",
+]
+
+[[package]]
+name = "zk-srv-users"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "uuid",
+ "zk-contract-user",
+ "zk-kit-server",
+]
+
+[[package]]
+name = "zk-srv-wallet"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "uuid",
+ "zk-contract-wallet",
+ "zk-kit-server",
 ]
 
 [[package]]

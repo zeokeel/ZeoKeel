@@ -1,0 +1,16 @@
+schema = 1
+id = "zeokeel/audit"
+kind = "service"
+version = "0.1.0"
+license = "MIT"
+summary = "M2 server domain package: audit"
+
+[role]
+name = "srv.audit"
+contract = "zk-contract-server"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-srv-audit" }
+server = { router = "routes" }

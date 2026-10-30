@@ -48,6 +48,13 @@ test.describe("M2 admin console (real server)", () => {
     await expect(page.locator("tbody tr").first()).toBeVisible();
   });
 
+  test("save a system setting", async ({ page }) => {
+    await page.getByRole("button", { name: "系统设置" }).click();
+    await expect(page.getByRole("heading", { name: "系统设置" })).toBeVisible();
+    await page.getByRole("button", { name: "保存" }).click();
+    await expect(page.getByText("updates.channel")).toBeVisible();
+  });
+
   test("no serious/critical axe violations", async ({ page }) => {
     const results = await new AxeBuilder({ page }).analyze();
     const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
