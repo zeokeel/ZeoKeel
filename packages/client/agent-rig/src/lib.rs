@@ -1,10 +1,13 @@
 //! rig-agent based runtime (`agent.loop`).
 #![forbid(unsafe_code)]
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use futures::StreamExt;
+use rig_agent::streaming::{Item, StreamEvent};
 use rig_agent::AgentBuilder;
+use rig_agent::agent::MultiTurnStreamItem;
 use rig_core::completion::message::{AssistantContent, ToolCall};
 use rig_core::message::ToolName;
 use rig_core::operation::Completion;
@@ -24,6 +27,8 @@ pub struct RigAgent {
     tools: Vec<Arc<dyn Tool>>,
     preamble: String,
     approval: Arc<dyn ApprovalGate>,
+    streaming: bool,
+    cancelled: AtomicBool,
     runtime: tokio::runtime::Runtime,
 }
 
@@ -35,7 +40,14 @@ impl RigAgent {
             .enable_all()
             .build()
             .map_err(|error| AgentError::Invalid(format!("tokio runtime: {error}")))?;
-        Ok(Self { model, tools, preamble, approval: Arc::new(zk_kit_approval::GlobalGate), runtime })
+        Ok(Self { model, tools, preamble, approval: Arc::new(zk_kit_approval::GlobalGate), streaming: true, cancelled: AtomicBool::new(false), runtime })
+    }
+
+    /// Disable token streaming (tests/scripted providers).
+    #[must_use]
+    pub fn with_streaming(mut self, streaming: bool) -> Self {
+        self.streaming = streaming;
+        self
     }
 
     /// Install the approval gate used for `requires_approval` tools.
@@ -110,6 +122,7 @@ impl RigAgent {
     fn run_rig(&self, context: &TurnContext, input: &str, sink: &Arc<dyn EventSink>) -> Result<AgentReply, AgentError> {
         let records = Arc::new(Mutex::new(Vec::<ToolCallRecord>::new()));
         let tools = self.dynamic_tools(context, &records, sink);
+        self.cancelled.store(false, Ordering::SeqCst);
         let preamble = format!("{}\n\n{}", self.preamble, workspace_instructions(context));
         let agent = AgentBuilder::new(self.model.clone())
             .name("zeokeel")
@@ -118,19 +131,39 @@ impl RigAgent {
             .default_max_turns(MAX_STEPS)
             .dynamic_tools(tools)
             .build();
-        let response = self.runtime.block_on(async { agent.prompt(input).await }).map_err(|error| AgentError::Llm(error.to_string()))?;
-        let text = response.to_string();
+        let response = if self.streaming {
+            self.runtime.block_on(async {
+                let mut stream = agent.prompt(input).stream();
+                let mut final_text: Option<String> = None;
+                while let Some(item) = stream.next().await {
+                    if self.cancelled.load(Ordering::SeqCst) { break; }
+                    match item {
+                        Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text { text, .. }))) => {
+                            sink.emit(AgentEvent::TextDelta { delta: text });
+                        }
+                        Ok(MultiTurnStreamItem::FinalResponse(response)) => { final_text = Some(response.output()); }
+                        Ok(_) => {}
+                        Err(error) => return Err(error.to_string()),
+                    }
+                }
+                if self.cancelled.load(Ordering::SeqCst) { Ok(final_text.unwrap_or_default()) } else { final_text.ok_or_else(|| "agent stream ended without a final response".to_owned()) }
+            }).map_err(AgentError::Llm)?
+        } else {
+            self.runtime.block_on(async { agent.prompt(input).await }).map(|response| response.to_string()).map_err(|error| AgentError::Llm(error.to_string()))?
+        };
+        let text = response;
         let calls = records.lock().map(|guard| guard.clone()).unwrap_or_default();
         for call in &calls {
             sink.emit(AgentEvent::ToolCallStarted { name: call.name.clone(), args: call.args.clone() });
             sink.emit(AgentEvent::ToolCallFinished { name: call.name.clone(), result: call.result.clone() });
         }
-        sink.emit(AgentEvent::TextDelta { delta: text.clone() });
         Ok(AgentReply { text, tool_calls: calls })
     }
 }
 
 impl Agent for RigAgent {
+    fn cancel(&self) { self.cancelled.store(true, Ordering::SeqCst); }
+
     fn run(&self, input: &str) -> Result<AgentReply, AgentError> {
         self.run_stream_in(&TurnContext { conversation_id: "default".to_owned(), workspace_id: "default".to_owned(), workspace_root: ".".to_owned() }, "turn", input, &NoopSink)
     }
@@ -149,6 +182,7 @@ impl Agent for RigAgent {
     fn run_stream_in_shared(&self, context: &TurnContext, turn_id: &str, input: &str, sink: Arc<dyn EventSink>) -> Result<AgentReply, AgentError> {
         sink.emit(AgentEvent::TurnStarted { turn_id: turn_id.to_owned() });
         match self.run_rig(context, input, &sink) {
+            Ok(reply) if self.cancelled.load(Ordering::SeqCst) => { sink.emit(AgentEvent::TurnCancelled); Ok(reply) }
             Ok(reply) => { sink.emit(AgentEvent::TurnCompleted { reply: reply.clone() }); Ok(reply) }
             Err(error) => { sink.emit(AgentEvent::Error { message: error.to_string() }); Err(error) }
         }
@@ -208,7 +242,30 @@ pub fn text_from_content(content: &[AssistantContent]) -> String {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
     use super::*;
-    use rig_core::test_utils::{MockCompletionModel, MockTurn};
+    use rig_core::completion::Usage;
+    use rig_core::test_utils::{MockCompletionModel, MockStreamEvent, MockTurn};
+    use std::sync::Mutex as StdMutex;
+
+    struct VecSink(StdMutex<Vec<AgentEvent>>);
+    impl EventSink for VecSink {
+        fn emit(&self, event: AgentEvent) { if let Ok(mut guard) = self.0.lock() { guard.push(event); } }
+    }
+
+    #[test]
+    fn streams_text_deltas() {
+        let model = MockCompletionModel::from_stream_turns([vec![
+            MockStreamEvent::text("hel"),
+            MockStreamEvent::text("lo"),
+            MockStreamEvent::final_response(Usage::default()),
+        ]]);
+        let agent = RigAgent::new(model.into(), Vec::new()).unwrap();
+        let sink = Arc::new(VecSink(StdMutex::new(Vec::new())));
+        let reply = agent.run_stream_in_shared(&TurnContext { conversation_id: "c".to_owned(), workspace_id: "w".to_owned(), workspace_root: ".".to_owned() }, "t", "hi", sink.clone()).unwrap();
+        assert_eq!(reply.text, "hello");
+        let events = sink.0.lock().unwrap();
+        let deltas: Vec<&str> = events.iter().filter_map(|event| match event { AgentEvent::TextDelta { delta } => Some(delta.as_str()), _ => None }).collect();
+        assert_eq!(deltas, vec!["hel", "lo"]);
+    }
 
     #[test]
     fn multi_step_tool_loop() {
@@ -217,7 +274,7 @@ mod tests {
             MockTurn::text("done"),
         ]);
         let tool = Arc::new(TestTool { approval: false });
-        let agent = RigAgent::new(model.into(), vec![tool]).unwrap();
+        let agent = RigAgent::new(model.into(), vec![tool]).unwrap().with_streaming(false);
         let reply = agent.run_in(&TurnContext { conversation_id: "c".to_owned(), workspace_id: "w".to_owned(), workspace_root: ".".to_owned() }, "read a.txt").unwrap();
         assert_eq!(reply.text, "done");
     }
@@ -242,10 +299,24 @@ mod tests {
             MockTurn::tool_call("call-1", "fs.read", serde_json::json!({"path":"a.txt"})),
             MockTurn::text("done"),
         ]);
-        let agent = RigAgent::new(model.into(), vec![Arc::new(TestTool { approval: true })]).unwrap().with_approval(Arc::new(Gate(false)));
+        let agent = RigAgent::new(model.into(), vec![Arc::new(TestTool { approval: true })]).unwrap().with_streaming(false).with_approval(Arc::new(Gate(false)));
         let reply = agent.run_in(&TurnContext { conversation_id: "c".to_owned(), workspace_id: "w".to_owned(), workspace_root: ".".to_owned() }, "read").unwrap();
         assert_eq!(reply.tool_calls.len(), 1);
         assert!(reply.tool_calls.first().map(|call| call.result.contains("denied")).unwrap_or(false));
+    }
+
+    #[test]
+    fn emits_approval_events_on_shared_sink() {
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("call-1", "fs.read", serde_json::json!({"path":"a.txt"})),
+            MockTurn::text("done"),
+        ]);
+        let agent = RigAgent::new(model.into(), vec![Arc::new(TestTool { approval: true })]).unwrap().with_streaming(false).with_approval(Arc::new(Gate(false)));
+        let sink = Arc::new(VecSink(StdMutex::new(Vec::new())));
+        let _ = agent.run_stream_in_shared(&TurnContext { conversation_id: "c".to_owned(), workspace_id: "w".to_owned(), workspace_root: ".".to_owned() }, "t", "read", sink.clone()).unwrap();
+        let events = sink.0.lock().unwrap();
+        assert!(events.iter().any(|event| matches!(event, AgentEvent::ApprovalRequested { .. })));
+        assert!(events.iter().any(|event| matches!(event, AgentEvent::ApprovalResolved { .. })));
     }
 
     #[test]
@@ -254,7 +325,7 @@ mod tests {
             MockTurn::tool_call("call-1", "fs.read", serde_json::json!({"path":"a.txt"})),
             MockTurn::text("done"),
         ]);
-        let agent = RigAgent::new(model.into(), vec![Arc::new(TestTool { approval: true })]).unwrap().with_approval(Arc::new(Gate(true)));
+        let agent = RigAgent::new(model.into(), vec![Arc::new(TestTool { approval: true })]).unwrap().with_streaming(false).with_approval(Arc::new(Gate(true)));
         let reply = agent.run_in(&TurnContext { conversation_id: "c".to_owned(), workspace_id: "w".to_owned(), workspace_root: ".".to_owned() }, "read").unwrap();
         assert_eq!(reply.tool_calls.first().map(|call| call.result.as_str()), Some("content"));
     }

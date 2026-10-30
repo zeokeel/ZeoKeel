@@ -30,6 +30,8 @@ impl Runtime {
         self.agent.run_stream_in_shared(context, turn_id, input, sink)
     }
 
+    pub fn cancel_agent(&self) { self.agent.cancel(); }
+
     pub fn sessions(&self) -> Arc<dyn zk_contract_session::SessionStore> {
         Arc::clone(&self.sessions)
     }

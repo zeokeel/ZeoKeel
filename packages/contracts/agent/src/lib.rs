@@ -140,6 +140,9 @@ pub trait Agent: Send + Sync {
         self.run_stream_in(context, turn_id, input, sink.as_ref())
     }
 
+    /// Request cancellation of the currently running turn (best effort).
+    fn cancel(&self) {}
+
     /// Run one turn with a workspace context and stream events.
     fn run_stream_in(
         &self,

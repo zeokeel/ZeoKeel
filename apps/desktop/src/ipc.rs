@@ -682,6 +682,7 @@ fn chat_cancel(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
         return CommandResponse::err(format!("unknown stream: {stream_id}"));
     };
     flag.store(true, Ordering::SeqCst);
+    state.runtime.cancel_agent();
     emit_kind(&state.bus, stream_id, state.seq(), "agent", json!({ "type": "turn_cancelled" }));
     CommandResponse::ok(json!({ "cancelled": true }))
 }
