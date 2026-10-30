@@ -902,9 +902,9 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
         out.push_str("pub fn check_update(_current: &str, _platform: &str) -> Result<Option<zk_contract_update::ReleaseInfo>, String> { Ok(None) }\n\n");
     }
     if llm.crate_name == "zk-llm-gateway" {
-        out.push_str("pub fn configure_llm(base_url: &str, access_token: &str, model: &str) {\n    zk_llm_gateway::set_credentials(base_url, access_token);\n    zk_llm_gateway::set_model(model);\n}\n\n");
+        out.push_str("pub fn configure_llm(base_url: &str, access_token: &str, model: &str) {\n    zk_llm_gateway::set_credentials(base_url, access_token);\n    zk_llm_gateway::set_model(model);\n}\n\npub fn gateway_credentials() -> Option<(String, String)> { zk_llm_gateway::credentials() }\n\n");
     } else {
-        out.push_str("pub fn configure_llm(_base_url: &str, _access_token: &str, _model: &str) {}\n\n");
+        out.push_str("pub fn configure_llm(_base_url: &str, _access_token: &str, _model: &str) {}\n\npub fn gateway_credentials() -> Option<(String, String)> { None }\n\n");
     }
     out.push_str("pub fn build() -> Result<Runtime, String> {\n");
     out.push_str("    let tools: Vec<Arc<dyn zk_contract_tool::Tool>> = vec![\n");
