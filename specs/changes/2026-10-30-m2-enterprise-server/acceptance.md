@@ -69,3 +69,8 @@
 ## Login UI package
 
 - `@zeokeel/ui-login` 已接入 desktop（仅 enterprise edition 渲染）；`scripts/login-e2e.sh` 首配→登录→进入 app 通过，axe 0 serious/critical。
+
+## Gateway provider
+
+- `packages/client/llm-gateway`（`llm.provider.default` enterprise）：只 POST `/v1/responses`，无上游 key；假 server 测试解析 output_text 通过。
+- 仍缺：登录 access token 注入 provider、bootstrap 模型目录接入 provider。

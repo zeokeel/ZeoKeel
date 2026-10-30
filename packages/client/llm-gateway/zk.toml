@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/llm-gateway"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Enterprise gateway LLM provider (Responses API only)"
+
+[role]
+name = "llm.provider.default"
+contract = "zk-contract-llm"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-llm-gateway" }
