@@ -111,6 +111,7 @@ impl RigAgent {
                         }
                     }
                     let args_text = serde_json::to_string(&args).unwrap_or_default();
+                    sink_for_tool.emit(AgentEvent::ToolCallStarted { name: approval_name.clone(), args: args_text.clone() });
                     let tool_for_call = Arc::clone(&tool);
                     let context_for_call = context.clone();
                     let outcome = tokio::time::timeout(std::time::Duration::from_secs(120), tokio::task::spawn_blocking(move || tool_for_call.call_json(&context_for_call, args))).await;
@@ -121,11 +122,13 @@ impl RigAgent {
                     };
                     match outcome {
                         Ok(text) => {
+                            sink_for_tool.emit(AgentEvent::ToolCallFinished { name: approval_name.clone(), result: text.clone() });
                             if let Ok(mut guard) = records.lock() { guard.push(ToolCallRecord { name: approval_name.clone(), args: args_text, result: text.clone() }); }
                             Ok(ToolOutput::text(text))
                         }
                         Err(error) => {
                             let result = error.to_string();
+                            sink_for_tool.emit(AgentEvent::ToolCallFinished { name: approval_name.clone(), result: result.clone() });
                             if let Ok(mut guard) = records.lock() { guard.push(ToolCallRecord { name: approval_name.clone(), args: args_text, result: result.clone() }); }
                             Err(ToolExecutionError::invalid_args(result))
                         }
@@ -169,16 +172,12 @@ impl RigAgent {
                     }
                 }
                 if self.cancelled.load(Ordering::SeqCst) { Ok(final_text.unwrap_or_default()) } else { final_text.ok_or_else(|| "agent stream ended without a final response".to_owned()) }
-            }).map_err(AgentError::Llm)?
+            }).map_err(map_provider_error)?
         } else {
-            self.runtime.block_on(async { agent.prompt(input).await }).map(|response| response.to_string()).map_err(|error| AgentError::Llm(error.to_string()))?
+            self.runtime.block_on(async { agent.prompt(input).await }).map(|response| response.to_string()).map_err(|error| map_provider_error(error.to_string()))?
         };
         let text = response;
         let calls = records.lock().map(|guard| guard.clone()).unwrap_or_default();
-        for call in &calls {
-            sink.emit(AgentEvent::ToolCallStarted { name: call.name.clone(), args: call.args.clone() });
-            sink.emit(AgentEvent::ToolCallFinished { name: call.name.clone(), result: call.result.clone() });
-        }
         Ok(AgentReply { text, tool_calls: calls })
     }
 }
@@ -242,6 +241,12 @@ impl zk_kit_subagent::SubagentRunner for RigSubagentRunner {
 }
 
 /// Generated-glue factory: build the rig agent from modular tools + a rig model.
+fn map_provider_error(message: impl Into<String>) -> AgentError {
+    let message = message.into();
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("max turn") || lower.contains("turn budget") { AgentError::Invalid("AGENT_MAX_STEPS".to_owned()) } else { AgentError::Llm(message) }
+}
+
 pub fn agent(tools: Vec<Arc<dyn Tool>>, model: DynModel<Completion>) -> Result<RigAgent, AgentError> {
     let runner = Arc::new(RigSubagentRunner { model: model.clone(), tools: tools.clone() });
     zk_kit_subagent::set_runner(runner);

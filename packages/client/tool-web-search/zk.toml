@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-web-search"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Web search via configurable provider"
+
+[role]
+name = "tool.web_search"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-web-search" }

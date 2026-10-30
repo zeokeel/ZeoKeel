@@ -8319,20 +8319,8 @@ version = "0.1.0"
 dependencies = [
  "rig-core",
  "serde_json",
- "zk-admin-admin-apps",
- "zk-admin-admin-audit",
- "zk-admin-admin-connectors",
- "zk-admin-admin-jobs",
- "zk-admin-admin-pricing",
- "zk-admin-admin-settings",
- "zk-admin-admin-skills",
- "zk-admin-admin-usage",
- "zk-admin-admin-users",
- "zk-admin-admin-wallet",
- "zk-admin-shell",
- "zk-admin-ui-kit",
- "zk-agent-loop",
- "zk-client-auth",
+ "zk-agent-rig",
+ "zk-client-update-github",
  "zk-contract-admin-ui",
  "zk-contract-agent",
  "zk-contract-app",
@@ -8354,28 +8342,13 @@ dependencies = [
  "zk-contract-update",
  "zk-contract-user",
  "zk-contract-wallet",
- "zk-llm-gateway",
- "zk-srv-app-db",
- "zk-srv-app-runtime",
- "zk-srv-apps",
- "zk-srv-audit",
- "zk-srv-auth-local",
- "zk-srv-connectors",
- "zk-srv-content",
- "zk-srv-gateway",
- "zk-srv-http",
- "zk-srv-jobs",
- "zk-srv-pricing",
- "zk-srv-settings",
- "zk-srv-skills",
- "zk-srv-updates",
- "zk-srv-users",
- "zk-srv-wallet",
+ "zk-llm-rig",
  "zk-store-session-sqlite",
  "zk-store-settings-json",
  "zk-tool-ask-user",
  "zk-tool-bash",
  "zk-tool-bash-persistent",
+ "zk-tool-cordis",
  "zk-tool-fs",
  "zk-tool-fs-edit",
  "zk-tool-fs-search",
@@ -8388,30 +8361,30 @@ dependencies = [
  "zk-tool-job-output",
  "zk-tool-present",
  "zk-tool-pwsh",
+ "zk-tool-pwsh-persistent",
  "zk-tool-ralph",
  "zk-tool-read-image",
  "zk-tool-schedule",
  "zk-tool-session-query",
  "zk-tool-skill",
  "zk-tool-subagent",
+ "zk-tool-subagent-control",
  "zk-tool-terminal",
  "zk-tool-todo",
  "zk-tool-web-fetch",
+ "zk-tool-web-search",
  "zk-tool-workflow",
  "zk-tool-working-directory",
  "zk-tool-workspace-dependencies",
  "zk-tool-worktree",
- "zk-ui-apps",
  "zk-ui-chat",
  "zk-ui-commands",
- "zk-ui-connectors",
  "zk-ui-inspector",
  "zk-ui-kit",
- "zk-ui-login",
  "zk-ui-sessions",
  "zk-ui-settings",
+ "zk-ui-settings-provider",
  "zk-ui-shell",
- "zk-ui-skills",
 ]
 
 [[package]]
@@ -9068,11 +9041,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-tool-cordis"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zk-contract-tool",
+]
+
+[[package]]
 name = "zk-tool-fs"
 version = "0.1.0"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
+ "zk-kit-tools",
 ]
 
 [[package]]
@@ -9175,6 +9157,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-tool-pwsh-persistent"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zk-contract-tool",
+]
+
+[[package]]
 name = "zk-tool-ralph"
 version = "0.1.0"
 dependencies = [
@@ -9232,6 +9222,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "zk-tool-subagent-control"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zk-contract-tool",
+]
+
+[[package]]
 name = "zk-tool-terminal"
 version = "0.1.0"
 dependencies = [
@@ -9257,6 +9255,15 @@ dependencies = [
  "serde_json",
  "zk-contract-tool",
  "zk-kit-tools",
+]
+
+[[package]]
+name = "zk-tool-web-search"
+version = "0.1.0"
+dependencies = [
+ "reqwest 0.12.28",
+ "serde_json",
+ "zk-contract-tool",
 ]
 
 [[package]]

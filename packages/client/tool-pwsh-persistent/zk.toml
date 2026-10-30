@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-pwsh-persistent"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Persistent PowerShell (platform gated)"
+
+[role]
+name = "tool.pwsh_persistent"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-pwsh-persistent" }

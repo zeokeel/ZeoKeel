@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-subagent-control"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Subagent control (limited)"
+
+[role]
+name = "tool.subagent_control"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-subagent-control" }

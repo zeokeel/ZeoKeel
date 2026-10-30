@@ -1,0 +1,10 @@
+[package]
+name = "zk-tool-pwsh-persistent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+serde_json = { workspace = true }
+zk-contract-tool = { path = "../../contracts/tool" }
+[lints]
+workspace = true

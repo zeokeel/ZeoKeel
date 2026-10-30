@@ -3,6 +3,11 @@ name = "personal"
 targets = ["desktop"]
 
 [packages]
+"tool.web_search" = "zeokeel/tool-web-search"
+"tool.pwsh_persistent" = "zeokeel/tool-pwsh-persistent"
+"tool.subagent_control" = "zeokeel/tool-subagent-control"
+"tool.cordis" = "zeokeel/tool-cordis"
+
 "tool.session_query" = "zeokeel/tool-session-query"
 "tool.ask_user" = "zeokeel/tool-ask-user"
 "tool.workflow" = "zeokeel/tool-workflow"

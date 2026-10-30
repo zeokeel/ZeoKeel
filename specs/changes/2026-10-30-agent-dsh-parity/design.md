@@ -1,6 +1,6 @@
 # 2026-10-30-agent-dsh-parity · 设计
 
-- 状态：`draft`
+- 状态：`approved`
 
 ## 1. 契约/包
 
@@ -14,7 +14,7 @@
 ## 2. 提示词
 
 - `crates/zk-kit-agent`（或 agent-loop 内）`prompt.rs`：DSH identity；工具 section 按 schema 生成；workspace instructions 读取 AGENTS.md/CLAUDE.md（大小上限/去重/截断，DSH 语义）；环境事实（cwd/workspace/date/platform）；工具使用/审批/结果规则。
-- 每条 prompt 注释来源文件/行；无法本地提取的 profile persona 在 docs/33-agent-prompts.md 标注替代。
+- 每条 prompt 注释来源文件/行；无法本地提取的 profile persona 在 docs/39-agent-prompts.md 标注替代。
 
 ## 3. Agent runtime
 

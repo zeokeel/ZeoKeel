@@ -288,6 +288,14 @@
     ]
   },
   {
+    "id": "zeokeel/tool-cordis",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.cordis"
+    ]
+  },
+  {
     "id": "zeokeel/tool-fs",
     "version": "0.1.0",
     "kind": "capability",
@@ -384,6 +392,14 @@
     ]
   },
   {
+    "id": "zeokeel/tool-pwsh-persistent",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.pwsh_persistent"
+    ]
+  },
+  {
     "id": "zeokeel/tool-ralph",
     "version": "0.1.0",
     "kind": "capability",
@@ -432,6 +448,14 @@
     ]
   },
   {
+    "id": "zeokeel/tool-subagent-control",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.subagent_control"
+    ]
+  },
+  {
     "id": "zeokeel/tool-terminal",
     "version": "0.1.0",
     "kind": "capability",
@@ -453,6 +477,14 @@
     "kind": "capability",
     "roles": [
       "tool.web.fetch"
+    ]
+  },
+  {
+    "id": "zeokeel/tool-web-search",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.web_search"
     ]
   },
   {

@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-cordis"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Cordis inspection tool (disabled by composition policy)"
+
+[role]
+name = "tool.cordis"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-cordis" }

@@ -176,3 +176,4 @@
 - [故障排查](36-troubleshooting.md)
 - [1.0 发布清单](37-release-1.0-checklist.md)
 - [Agent runtime（rig）](38-agent-runtime.md)
+- [Agent prompts（DSH 参考）](39-agent-prompts.md)
