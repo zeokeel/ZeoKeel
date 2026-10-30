@@ -26,8 +26,10 @@ type ApprovalData = {
 };
 
 type ApprovalPart = { type: "data-approval"; id?: string; data: ApprovalData };
+type QuestionData = { id: string; questions: unknown; answers: unknown };
+type QuestionPart = { type: "data-question"; id?: string; data: QuestionData };
 
-type ContentPart = TextPart | ToolPart | ApprovalPart;
+type ContentPart = TextPart | ToolPart | ApprovalPart | QuestionPart;
 
 function buildContent(message: ChatMessage): ContentPart[] {
   const content: ContentPart[] = [];
@@ -59,6 +61,9 @@ function buildContent(message: ChatMessage): ContentPart[] {
         decision: approval.decision,
       },
     });
+  }
+  for (const question of message.questions) {
+    content.push({ type: "data-question", id: question.id, data: { id: question.id, questions: question.questions, answers: question.answers } });
   }
   return content;
 }

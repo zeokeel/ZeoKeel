@@ -264,6 +264,14 @@
     ]
   },
   {
+    "id": "zeokeel/tool-ask-user",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.ask_user"
+    ]
+  },
+  {
     "id": "zeokeel/tool-bash",
     "version": "0.1.0",
     "kind": "capability",

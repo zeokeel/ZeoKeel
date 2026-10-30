@@ -42,6 +42,7 @@ export interface UiActions {
   retryBoot: () => void;
   retryMessages: () => void;
   decideApproval: (approvalId: string, decision: "approved" | "rejected") => void;
+  answerQuestion: (questionId: string, answers: unknown) => void;
 }
 
 /** Everything a UI package may read; provided by the app shell. */

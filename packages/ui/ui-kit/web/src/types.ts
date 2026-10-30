@@ -91,6 +91,13 @@ export interface ApprovalView {
 
 export type MessageStatus = "done" | "streaming" | "cancelled" | "error";
 
+/** One user-question batch attached to an assistant message. */
+export interface QuestionView {
+  id: string;
+  questions: unknown;
+  answers: unknown;
+}
+
 /** A message as rendered by the chat view (assistant messages may still be streaming). */
 export interface ChatMessage {
   id: string;
@@ -100,6 +107,7 @@ export interface ChatMessage {
   status: MessageStatus;
   toolCalls: ToolCallView[];
   approvals: ApprovalView[];
+  questions: QuestionView[];
   error: string | null;
 }
 
@@ -115,6 +123,16 @@ export type AgentEvent =
       tool: string;
       args: string;
       reason: string;
+    }
+  | {
+      type: "question_asked";
+      question_id: string;
+      questions: unknown;
+    }
+  | {
+      type: "question_answered";
+      question_id: string;
+      answers: unknown;
     }
   | {
       type: "turn_completed";

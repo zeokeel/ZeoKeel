@@ -197,6 +197,12 @@
     "contract": "zk-contract-config",
     "cardinality": "singleton"
   },
+  "tool.ask_user": {
+    "package": "zeokeel/tool-ask-user",
+    "crate_name": "zk-tool-ask-user",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
   "tool.bash": {
     "package": "zeokeel/tool-bash",
     "crate_name": "zk-tool-bash",

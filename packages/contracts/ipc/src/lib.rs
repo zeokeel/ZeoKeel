@@ -96,6 +96,8 @@ pub mod commands {
     pub const SETTINGS_SET: &str = "settings.set";
     /// Decide an approval request.
     pub const APPROVAL_DECIDE: &str = "approval.decide";
+    /// Answer a pending user question.
+    pub const QUESTION_ANSWER: &str = "question.answer";
     /// List workspace files (bounded, read-only).
     pub const WORKSPACE_FILES: &str = "workspace.files";
     /// Check personal update feed.

@@ -8,6 +8,7 @@ import {
 import type { TextMessagePartProps } from "@assistant-ui/react";
 import { IconCopy, IconRetry, useUi } from "@zeokeel/ui-kit";
 import { ApprovalDataPart, ApprovalDecideContext } from "./ApprovalPart";
+import { QuestionAnswerContext, QuestionDataPart } from "./QuestionPart";
 import { AssistantComposer } from "./AssistantComposer";
 import { EmptyThread } from "./EmptyThread";
 import { MarkdownText } from "./MarkdownText";
@@ -140,7 +141,7 @@ function AssistantMessage() {
           components={{
             Text: MarkdownText,
             tools: { Fallback: ToolCallPart },
-            data: { by_name: { approval: ApprovalDataPart } },
+            data: { by_name: { approval: ApprovalDataPart, question: QuestionDataPart } },
           }}
         />
         <ErrorNote />
@@ -152,6 +153,7 @@ function AssistantMessage() {
 export function AssistantThread() {
   const { actions } = useUi();
   return (
+    <QuestionAnswerContext.Provider value={actions.answerQuestion}>
     <ApprovalDecideContext.Provider value={actions.decideApproval}>
       <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
         <ThreadPrimitive.Viewport className="zk-thread-viewport">
@@ -171,5 +173,6 @@ export function AssistantThread() {
         </ThreadPrimitive.Viewport>
       </ThreadPrimitive.Root>
     </ApprovalDecideContext.Provider>
+    </QuestionAnswerContext.Provider>
   );
 }
