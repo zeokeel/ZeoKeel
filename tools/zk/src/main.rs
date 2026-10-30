@@ -1489,6 +1489,37 @@ fn compose_lib(resolved: &Resolved) -> Result<String> {
         settings.crate_name.replace('-', "_")
     ));
     out.push_str("    Ok(Runtime { agent, sessions, settings })\n}\n");
+    // Host-only capability wiring: media/vector providers are personal-edition
+    // local providers; enterprise AI stays gateway-only (C7). The generated
+    // function only configures capabilities selected by the composition.
+    let capability_crates: Vec<String> = resolved
+        .packages
+        .iter()
+        .filter(|pkg| {
+            matches!(
+                pkg.role.as_str(),
+                "media.image"
+                    | "media.audio"
+                    | "media.transcription"
+                    | "media.rerank"
+                    | "vector.store"
+            )
+        })
+        .map(|pkg| pkg.crate_name.replace('-', "_"))
+        .collect();
+    // Enterprise builds compile the media packages but never wire local providers:
+    // AI must go through the gateway (C7). The generated no-op is the build-time gate.
+    if resolved.edition != "personal" || capability_crates.is_empty() {
+        out.push_str("pub fn configure_capabilities_from_env() {}\n\n");
+    } else {
+        out.push_str("pub fn configure_capabilities_from_env() {\n");
+        for crate_name in &capability_crates {
+            out.push_str(&format!(
+                "    if let Err(error) = {crate_name}::configure_from_env() {{\n        eprintln!(\"zk: capability configure failed ({crate_name}): {{error:?}}\");\n    }}\n"
+            ));
+        }
+        out.push_str("}\n\n");
+    }
     out.push_str("\n}\n\npub use inner::*;\n");
     Ok(out)
 }

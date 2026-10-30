@@ -4,7 +4,7 @@
 - Owner：lead（Agent Teams：auditor-rust/web/build/rig + fixer-server/contracts）
 - 日期：2026-10-31
 - 关联：ADR-064/065/066；docs/38；docs/05/06/10/24
-- 评审：auditor 四路只读审计报告见 `target/evidence/audit/`（用户指令优先，C19 记录在验收）
+- 评审：docs/reviews/2026-10-31-round2-verification.md
 - 变更预算：跨域一次性加固（用户明确要求"循环审计直到完美"）；按域提交 8 个 Conventional Commits
 
 ## 1. 背景 / 问题

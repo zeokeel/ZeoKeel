@@ -609,3 +609,10 @@ S0 验证尚未完成（见 `12`），这不是“未决架构问题”，而是
 **决策**：① rig 适配只允许在 `zk-llm-rig`、`zk-agent-rig`、`zk-llm-gateway`（企业 Responses）三处，契约与工具包仍不得依赖 rig（ADR-007 铁律不变）；② `agent-rig` 暴露 `AgentRuntimeConfig`（completion/memory/hooks/max_steps），优先级 显式配置 > `ZEOKEEL_AGENT_*` env > 内置默认，并在每轮应用到 rig；③ 记录 rig usage 到 `last_usage`/hook 事件；④ rig-memory 多轮历史按 conversation 持久化；⑤ cap-hooks/cap-vector 动态可用并实现 embeddings+向量检索，其余 media 能力必须给出 `unavailable_reason()`，不得静默。
 **理由**：把 rig 的真实能力暴露给 agent，而不是用占位符假装支持；同时保持契约层无 rig 类型。
 **后果**：设置 UI/契约字段（AppSettings.agent、AgentReply.usage）是后续接线项；企业向量/媒体仍受网关能力限制，须在 docs/38 矩阵标注。详见 `docs/38` §5。
+
+### ADR-067 · 媒体能力共享实现放 `crates/zk-kit-media`；个人版宿主接线、企业版构建期关闭 `accepted`
+
+**背景**：rig-core 0.45 提供 image/audio/transcription/rerank 模型（audio/image feature 无额外依赖；pdf 需未缓存依赖，epub 依赖 GPL-3.0），但媒体调用需要 rig 模型构造与运行时桥接。若放在 `zk-llm-rig` 会让 `cap-*` 依赖具体实现包（违反 C4），并让企业闭包出现本地 provider 直连路径（违反 C7）。
+**决策**：媒体与 embedding 的 rig 适配实现（MediaConfig/EmbeddingConfig/错误/模型 builders/block_on）统一放 `crates/zk-kit-media`（kit，`@capability kit.media`）；`cap-*` 只依赖 kit，不再依赖 `zk-llm-rig` 或直接依赖 rig-core。rig 适配点由 ADR-066 的三处扩展为三处 + kit-media（kit 非包，仍满足 C4/C17 单一实现）；`zk-llm-rig` 不再含媒体代码。宿主接线：`zk compose` 仅对 `edition=personal` 生成 `configure_capabilities_from_env()` 的实际调用（enterprise 生成 no-op），桌面仅在 personal 调用——这是构建期 C7 闸门。`rig-core` feature 只启用 `audio,image`；`pdf`（未缓存依赖）与 `epub`（GPL-3.0）不启用，PDF/EPUB 解析仍由 `tool-read-document` 自有实现。
+**理由**：保持契约/kit 分层与单一实现；企业版不因编译进媒体包而获得本地 provider 路径；避免 GPL 传染与离线构建失败。
+**后果**：媒体能力为个人版可配置能力，企业版保持 `available()==false` 并给出原因；真实媒体供应商仍需配置 env（`ZEOKEEL_{IMAGE,AUDIO,TRANSCRIPTION,RERANK}_*`），本轮以 fake/local model 验证，真实 provider UNVERIFIED。详见 `docs/38` §5。

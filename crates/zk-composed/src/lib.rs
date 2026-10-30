@@ -104,6 +104,24 @@ pub fn build() -> Result<Runtime, String> {
     let settings: Arc<dyn zk_contract_config::SettingsStore> = Arc::new(zk_store_settings_json::store());
     Ok(Runtime { agent, sessions, settings })
 }
+pub fn configure_capabilities_from_env() {
+    if let Err(error) = zk_cap_audio::configure_from_env() {
+        eprintln!("zk: capability configure failed (zk_cap_audio): {error:?}");
+    }
+    if let Err(error) = zk_cap_image::configure_from_env() {
+        eprintln!("zk: capability configure failed (zk_cap_image): {error:?}");
+    }
+    if let Err(error) = zk_cap_rerank::configure_from_env() {
+        eprintln!("zk: capability configure failed (zk_cap_rerank): {error:?}");
+    }
+    if let Err(error) = zk_cap_transcription::configure_from_env() {
+        eprintln!("zk: capability configure failed (zk_cap_transcription): {error:?}");
+    }
+    if let Err(error) = zk_cap_vector::configure_from_env() {
+        eprintln!("zk: capability configure failed (zk_cap_vector): {error:?}");
+    }
+}
+
 
 }
 

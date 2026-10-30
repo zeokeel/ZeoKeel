@@ -4,6 +4,7 @@
 - Owner：lead（auditor-rig / auditor-web / fixer-media）
 - 日期：2026-10-31
 - 关联：ADR-066；docs/38 §5；上一轮 acceptance backlog §3.3/3.4
+- 评审：docs/reviews/2026-10-31-round2-verification.md
 - 变更预算：契约配置 + 桌面/设置 UI + cap-* 媒体能力；按域提交
 
 ## 1. 背景 / 问题
