@@ -12,6 +12,7 @@ import {
   parseWorkspaces,
 } from "../src/protocol";
 import {
+  createBoundaryAjv,
   validateAgentEvent,
   validateAppSettings,
   validateCommandResponse,
@@ -177,5 +178,40 @@ describe("protocol boundary rejects invalid data after schema validation", () =>
     expect(settings.agent.max_steps).toBe(50);
     expect(settings.agent.completion.tool_choice).toEqual({ mode: "auto" });
     expect(settings.agent.memory.enabled).toBe(true);
+  });
+});
+
+
+describe("Ajv strictness (C19 P2 regression)", () => {
+  it("rejects unknown keywords/formats at compile time instead of silently ignoring them", () => {
+    const ajv = createBoundaryAjv();
+    expect(() => ajv.compile({ type: "string", format: "not-a-registered-format" })).toThrow(/unknown format/);
+    expect(() => ajv.compile({ type: "string", futureKeyword: true })).toThrow(/unknown keyword/);
+    // Every production boundary schema must compile under strict mode (module load would fail otherwise).
+    expect(() => ajv.compile({ type: "integer", format: "uint64" })).not.toThrow();
+  });
+
+  it("enforces explicit numeric format semantics (uint/int bounds, finite doubles)", () => {
+    const ajv = createBoundaryAjv();
+    const uint64 = ajv.compile({ type: "integer", format: "uint64" });
+    expect(uint64(5)).toBe(true);
+    expect(uint64(-1)).toBe(false);
+    expect(uint64(1.5)).toBe(false);
+    expect(uint64(Number.MAX_SAFE_INTEGER + 1)).toBe(false);
+    const int32 = ajv.compile({ type: "integer", format: "int32" });
+    expect(int32(-2_147_483_648)).toBe(true);
+    expect(int32(2_147_483_648)).toBe(false);
+    const double = ajv.compile({ type: "number", format: "double" });
+    expect(double(0.5)).toBe(true);
+    expect(double(Number.POSITIVE_INFINITY)).toBe(false);
+    expect(double(Number.NaN)).toBe(false);
+  });
+
+  it("keeps unknown settings fields forward-compatible (docs/04:257, docs/18 §5)", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const future = { ...defaultSettings(), future_setting: { nested: true } };
+    expect(validateAppSettings(future)).toBe(true);
+    expect(parseSettings(future)).toEqual(defaultSettings());
+    expect(warn).not.toHaveBeenCalled();
   });
 });
