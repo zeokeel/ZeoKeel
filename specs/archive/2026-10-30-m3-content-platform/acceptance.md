@@ -1,9 +1,10 @@
 # 2026-10-30-m3-content-platform · 验收
 
-- 状态：`in-progress`（task 1 完成；实现未完成）
-- 验收人：pending
-- 日期：pending
-- PR/commit：pending
+- 状态：`completed`
+- 验收人：Lead + audit-arch（独立只读反证 R3 APPROVED）
+- 日期：2026-10-30
+- 复审记录：`docs/reviews/2026-10-30-m3-implementation.md` R1 → R2 → R3
+- PR/commit：`91e6ca8` 及后续验收提交
 - 证据目录：`target/evidence/m3/`
 
 ## 1. 自动验证（实现后填写真实结果）
@@ -115,3 +116,8 @@
 - 回滚：应用层 `rollback` 到历史 release；DB 只前向修复。
 - 剩余风险：zip 库漏洞、PG BYTEA 容量、客户端解压权限；mitigation 见 design。
 - 结论：pending
+
+
+## 8. 最终结论
+
+M3 全部任务完成；独立评审 R3 APPROVED（P0=0, P1=0）。证据：`admin-e2e.sh` 8 passed、`login-e2e.sh` 3 passed、`srv-store-test.sh` exit 0、`srv-migration-test.sh` 28 tables、cargo test/clippy、schema/capability/db lock/compose check 绿。OAuth token 生产走 keychain IPC；headless e2e 仅使用显式 dev fallback（docs/21 记录）。

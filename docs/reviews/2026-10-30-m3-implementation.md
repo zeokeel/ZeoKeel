@@ -2,7 +2,7 @@
 
 - **评审对象**：`2026-10-30-m3-content-platform` 实现（contracts/kit/server/admin/ui/desktop/scripts/e2e）
 - **评审者**：audit-arch（独立只读）
-- **结论**：CHANGES-REQUESTED
+- **结论**：APPROVED
 - **关联 spec**：`specs/changes/2026-10-30-m3-content-platform`
 - 类型：C19 实现验收 / 独立只读对抗性审查（未改产品代码、spec、docs；本文件为唯一新增）
 - 范围：`packages/contracts/{content,skill,connector}`、`crates/zk-kit-content`、`packages/server/{content,skills,connectors}`、`packages/admin/{admin-skills,admin-connectors}`、`packages/ui/{ui-skills,ui-connectors}`、`apps/desktop/src/ipc.rs` 的 `skills.install/remove/installed`、`apps/desktop/web/{store,oauth,App}`、`scripts/{srv-store-test,admin-e2e,login-e2e}.sh`、`e2e/m3-*.spec.ts`、docs/11/21、ADR-060/061、M3 spec。
@@ -244,3 +244,74 @@ M3 的 `m3-admin-skills.spec.ts`、`m3-admin-connectors.spec.ts` 均通过（含
 - **M3 实现仍不可 APPROVED**：修 P1-1/P1-2/P1-3 后复评。
 - 关联 spec：`specs/changes/2026-10-30-m3-content-platform`。
 - 复评结论（第二轮）：**CHANGES-REQUESTED**
+
+---
+
+## 9. 第三轮复评（R3，2026-10-30）
+
+> 对象：R2 修复后的实现。只读复跑；未改产品代码/spec/docs（仅本记录）。
+> 仅列剩余 P0/P1。
+
+### 9.1 结论
+
+**APPROVED**
+
+- **P0：0；P1：0**。
+- **M3 实现可 APPROVED**。
+
+### 9.2 R2 剩余 P1 关闭证据
+
+#### R2 P1-1 compose check：RESOLVED
+
+```text
+$ ./target/debug/zk compose --edition enterprise --profile default --channel official --check
+compose: up to date (16 files)
+EXIT=0
+```
+
+`login-e2e.sh:14` cleanup 与 `:64` 均回到 `--edition enterprise`，不再把个人版生成物留作验收状态；当前 HEAD 下 exact command 绿。
+
+#### R2 P1-2 admin-e2e：RESOLVED
+
+串行实测（不与 login-e2e 并发）：
+
+```text
+$ bash scripts/admin-e2e.sh
+...
+8 passed (34.8s)
+admin e2e ok
+EXIT=0
+```
+
+M3 `m3-admin-skills.spec.ts`、`m3-admin-connectors.spec.ts` 均通过（含 axe）；`e2e/m2-admin.spec.ts:44` jobs 用例等待 `/api/admin/jobs/wallet-reconcile/run` 响应后通过。
+
+运行说明：`admin-e2e.sh` 与 `login-e2e.sh` 共享 Playwright `test-results/`，**必须串行**；并发时 trace 文件竞争会造成假失败（本轮先并发时出现过 `browserContext.close: ENOENT ... recording6.trace`，串行后 8/8）。这是测试隔离 P2，不阻塞 M3。
+
+#### R2 P1-3 OAuth token：RESOLVED
+
+- `apps/desktop/src/ipc.rs:389-457` 新增 `oauth.save/load/clear`；`oauth_entry` 使用 `keyring::Entry::new("zeokeel-connector-oauth", connector_id)`，生产走 OS keychain。
+- `apps/desktop/web/src/oauth.ts` 已无 `localStorage`/`TOKEN_KEY`；`App.tsx:47-50,67-75` 使用 `oauth.save`/`oauth.load`，refresh 后再次保存。
+- 无 Secret Service 的 headless e2e 仅在显式 `ZEOKEEL_DEV_KEYCHAIN_FALLBACK=1` 时写 `$ZEOKEEL_HOME/oauth-dev.json`（`ipc.rs:354-386`）；实测文件 `-rw-------` 0600，内容仅 e2e 假 token；`docs/21:76-77` 已记录回退边界，生产不启用。
+- `bash scripts/login-e2e.sh` 中 M3 client content 用例真实走 OAuth authorize/已授权/启停，3 passed EXIT 0。
+
+### 9.3 最终证据
+
+| 命令 | 结果 |
+| --- | --- |
+| `./target/debug/zk compose --edition enterprise --profile default --channel official --check` | **PASS**：`compose: up to date (16 files)` |
+| `bash scripts/admin-e2e.sh`（串行） | **PASS**：8 passed，EXIT 0 |
+| `bash scripts/login-e2e.sh` | **PASS**：3 passed，EXIT 0；含 M3 client content |
+| `bash scripts/srv-store-test.sh` | **PASS**：EXIT 0，`store ok`，无 traceback |
+| `cargo test --workspace --offline` | **PASS**：EXIT 0 |
+| `pnpm --dir apps/desktop/web test` | **PASS**：44 passed |
+| `./target/debug/zk validate` | **PASS**：63 packages scanned |
+| `./target/debug/zk capability --check` | **PASS**：13 entries |
+| `bash scripts/schema-check.sh` | **PASS** |
+| `./target/debug/zk db lock --check` | **PASS**：11 migrations |
+| `zk api --check` | 已从 M3 gate 移除；命令不存在不再作为 M3 证据 |
+
+### 9.4 结论
+
+- **P0：0；P1：0**。
+- 关联 spec：`specs/changes/2026-10-30-m3-content-platform`。
+- 复评结论（第三轮）：**APPROVED**
