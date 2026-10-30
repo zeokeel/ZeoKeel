@@ -28,8 +28,8 @@ export function Connectors({ onError }: { onError: (message: string) => void }) 
       load();
     })().catch(fail);
   };
-  const act = (id: string, path: string, body: unknown): void => {
-    void api(`/api/admin/connectors/${id}/${path}`, { method: "POST", body: JSON.stringify(body) }).then(load).catch(fail);
+  const act = (id: string, path: string, method: "POST" | "PUT", body: unknown): void => {
+    void api(`/api/admin/connectors/${id}/${path}`, { method, body: JSON.stringify(body) }).then(load).catch(fail);
   };
   const remove = (id: string): void => { void api(`/api/admin/connectors/${id}`, { method: "DELETE" }).then(load).catch(fail); };
   return (
@@ -54,7 +54,7 @@ export function Connectors({ onError }: { onError: (message: string) => void }) 
               <td>{item.oauth_client_id ?? "—"}</td>
               <td>
                 <button type="button" onClick={() => { setSelected(item.id); }}>管理</button>
-                <button type="button" onClick={() => { act(item.id, "grants", { grants: [{ grantee: "all", can_enable: true }] }); }}>全员可用</button>
+                <button type="button" onClick={() => { act(item.id, "grants", "PUT", { grants: [{ grantee: "all", can_enable: true }] }); }}>全员可用</button>
                 <button type="button" onClick={() => { remove(item.id); }}>删除</button>
               </td>
             </tr>

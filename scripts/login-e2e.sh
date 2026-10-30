@@ -117,6 +117,10 @@ APP=$(curl -fsS -X POST "http://127.0.0.1:$SERVER_PORT/api/client/v1/apps" -H "A
 APP_ID=$(printf '%s' "$APP" | python3 -c 'import json,sys;print(json.load(sys.stdin)["app_id"])')
 curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X POST "http://127.0.0.1:$SERVER_PORT/api/admin/apps/$APP_ID/approve" >/dev/null
 curl -fsS -b /tmp/zk-login-admin.cookies -H "X-CSRF-Token: $CSRF" -X PUT "http://127.0.0.1:$SERVER_PORT/api/admin/apps/$APP_ID/grants" -H 'content-type: application/json' -d '{"grants":[{"grantee":"all","can_open":true}]}' >/dev/null
+# First-run spec must run before any logged-in spec: login persists server_url into
+# the shared ZEOKEEL_HOME settings store, which intentionally suppresses first-run.
 ZEOKEEL_CLIENT_SKILL_ZIP=/tmp/zk-client-skill.zip ZEOKEEL_LOGIN_URL="http://127.0.0.1:$UI_PORT" ZEOKEEL_LOGIN_SERVER="http://127.0.0.1:$SERVER_PORT" \
-  pnpm exec playwright test e2e/m2-login.spec.ts e2e/m2-gateway-chat.spec.ts e2e/m3-client-content.spec.ts e2e/m4-client-apps.spec.ts --reporter=line
+  pnpm exec playwright test e2e/m2-login.spec.ts --reporter=line
+ZEOKEEL_CLIENT_SKILL_ZIP=/tmp/zk-client-skill.zip ZEOKEEL_LOGIN_URL="http://127.0.0.1:$UI_PORT" ZEOKEEL_LOGIN_SERVER="http://127.0.0.1:$SERVER_PORT" \
+  pnpm exec playwright test e2e/m2-gateway-chat.spec.ts e2e/m3-client-content.spec.ts e2e/m4-client-apps.spec.ts --reporter=line
 echo "login e2e ok"

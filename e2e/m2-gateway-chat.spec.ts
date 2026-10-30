@@ -9,7 +9,8 @@ test.describe("M2 enterprise chat through gateway", () => {
 
   test("logged-in client sends a gateway-backed message", async ({ page }) => {
     await page.goto(`${LOGIN_URL}/`, { waitUntil: "networkidle" });
-    await page.getByLabel("服务器地址").fill(SERVER_URL);
+    const addressField = page.getByLabel("服务器地址");
+    if (await addressField.isVisible().catch(() => false)) await addressField.fill(SERVER_URL);
     await page.getByLabel("账号").fill("admin");
     await page.getByLabel("密码").fill("admin-pass");
     await page.getByRole("button", { name: "登录" }).click();
