@@ -1,6 +1,6 @@
 # 2026-10-31-round3-completeness · 验收
 
-- 状态：`in-progress`（实现与 P1/P2 修复完成；C19 复评待）
+- 状态：`done`（C19 复评 APPROVED at HEAD bcf74b4；P1/P2 修复已记录）
 - 验收人：lead；独立评审：auditor-rust（C19）
 
 ## 1. 待填
@@ -8,12 +8,12 @@
 | 命令 | 通过条件 | 证据 |
 | --- | --- | --- |
 | cargo fmt/clippy/test --workspace | 0/0/0（本机已跑） | 日志 |
-| export_schema + schema-check + generated diff clean | 0/0（62 schemas，稳定） | shared/contracts |
+| export_schema + schema-check + generated diff clean | 0/0（63 schemas，稳定） | shared/contracts |
 | zk validate/compose personal --check/capability/docs/db lock/lint duplicates | 全 0 | 日志 |
 | pnpm -r typecheck/lint/test:unit/build | 0/0/0/0（105 tests） | 日志 |
 | m1/agent/login/admin e2e | 14 passed/15 skipped · 9 passed · 4 passed · 11 passed（lead 本机；reviewer 于 HEAD 复核同结果） | target/evidence/{m1,m2,agent-rig}；reviewer 日志 target/evidence/audit/logs-rust/r28-*-e2e.log |
 | 设置超时/向量持久化/Ajv 负向/内核取消/重复门禁 | 单测通过（contract/agent-rig/desktop/cap-vector/jobs/automation/zk） | 各 crate tests |
-| C19 评审 | APPROVED（初次 CHANGES-REQUESTED P1 已修复：Tauri 事件桥改内核 task） | docs/reviews/2026-10-31-round3-verification.md |
+| C19 评审 | APPROVED（初次 CHANGES-REQUESTED：P1 Tauri 事件桥已改内核 task；P2 安全/向量/jobs/docs 已修） | docs/reviews/2026-10-31-round3-verification.md |
 
 ## 1.1 复审修复记录
 
@@ -21,7 +21,7 @@
 - P2 安全：全局 runtime settings 改为非密 `RuntimeSettings{agent,tools}`，provider key/base_url 不进入 registry（测试断言序列化不含 secret）。
 - P2 向量：insert_many 原子批、目录 0700 收紧、model/dims/width 指纹不兼容降级、容量前置检查、去掉算术 allow。
 - P2 jobs：`wait` 10s 有界 + Drop 停止；P2 文档：docs/24 关闭顺序、docs/27/28 inspector changes、docs/25 去重措辞、proposal 重复评审行已修。
-- P2 其余（usage 持久化、T22 host 手写 JSON、cargo-deny 本地 UNVERIFIED）保留在 review §3，不阻塞。
+- P2 其余（usage 持久化、T22 host 手写 JSON/validateQuestionAsked、FileEntry TS 镜像、mixed settings precedence edge、文档 jscpd 声明、cargo-deny 本地 UNVERIFIED、Tauri 窗口自动断言）保留在 review §6，不阻塞，列入下一轮。
 
 ## 2. UNVERIFIED
 
