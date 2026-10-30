@@ -1,0 +1,12 @@
+# zk-srv-http (`srv.http`)
+
+**功能说明（M2 P1）**：企业服务端 HTTP 入口与数据库就绪检查。
+
+## 职责
+- 构建 axum Router：`/healthz`（进程）、`/readyz`（PostgreSQL `SELECT 1`）、`/api/meta`。
+- `connect(database_url)`：PgPool；`run_migrations`：应用不可变 SQL 并写 `schema_migrations` 校验和。
+- 启动 fail-closed：数据库不可用/迁移失败则进程退出；SIGTERM 优雅关闭由 `apps/server` 负责。
+- 路由/权限 catalog（`[[routes]]`/`zk api`）与认证/管理台中间件在 P1 后续任务中加入；本包只做入口地基。
+
+## 依赖
+`zk-contract-server`（角色/描述符）、axum、sqlx、tower-http。不依赖任何客户端/UI 实现。

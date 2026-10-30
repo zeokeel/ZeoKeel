@@ -1,0 +1,16 @@
+schema = 1
+id = "zeokeel/srv-http"
+kind = "service"
+version = "0.1.0"
+license = "MIT"
+summary = "Enterprise HTTP entrypoint and DB readiness (M2 P1)"
+
+[role]
+name = "srv.http"
+contract = "zk-contract-server"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-srv-http" }
+server = { router = "router" }

@@ -12,6 +12,11 @@ docs_generated = "docs/generated"
 [personal_only]
 file = "editions/personal-only.toml"
 
+[roles."srv.http"]
+contract = "zk-contract-server"
+cardinality = "singleton"
+editions = ["enterprise"]
+
 [roles."tool.fs"]
 contract = "zk-contract-tool"
 cardinality = "singleton"
@@ -82,3 +87,4 @@ editions = ["personal", "enterprise"]
 "zk.contract.session" = "zk-contract-session"
 "zk.contract.config" = "zk-contract-config"
 "zk.contract.ui" = "zk-contract-ui"
+"zk.contract.server" = "zk-contract-server"

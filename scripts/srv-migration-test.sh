@@ -7,7 +7,7 @@ createdb() { sudo -u postgres createdb "$DB"; }
 cleanup() { sudo -u postgres dropdb --if-exists "$DB" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 createdb
-for file in deploy/migrations/*.sql; do
+for file in packages/server/http/migrations/*.sql; do
   "${PSQL[@]}" -d "$DB" -f "$file" >/dev/null
 done
 count=$("${PSQL[@]}" -d "$DB" -Atqc "select count(*) from information_schema.tables where table_schema='public'")

@@ -1,3 +1,6 @@
+[packages]
+"srv.http" = "zeokeel/srv-http"
+
 [edition]
 name = "enterprise"
 base_edition = "personal"

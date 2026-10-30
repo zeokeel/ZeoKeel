@@ -1,114 +1,45 @@
-//! `zk-server`: minimal axum skeleton.
+//! `zk-server`: enterprise thin-management companion (M2 P1).
 //!
-//! The server is the thin management companion (ADR-028): it only exposes
-//! health and metadata endpoints for the composed build. **It never runs an
-//! agent**; the agent loop is client-side.
+//! The server never runs an agent or skill. P1 exposes health/readiness and applies
+//! the immutable schema; auth/admin/wallet/gateway land in subsequent P1–P2 slices.
 #![forbid(unsafe_code)]
 
-use axum::{routing::get, Json, Router};
-use serde_json::{json, Value};
+use axum::Router;
+use zk_srv_http::{connect, router, run_migrations};
 
-/// Default listen address when `ZEOKEEL_SERVER_ADDR` is unset.
 const DEFAULT_ADDR: &str = "127.0.0.1:8787";
-
-fn health_payload() -> Value {
-    json!({
-        "status": "ok",
-        "edition": zk_composed::EDITION,
-        "packages": zk_composed::PACKAGES,
-    })
-}
-
-fn ready_payload() -> Value {
-    json!({ "status": "ready" })
-}
-
-fn meta_payload() -> Value {
-    json!({
-        "status": "ok",
-        "edition": zk_composed::EDITION,
-        "packages": zk_composed::PACKAGES,
-        "version": env!("CARGO_PKG_VERSION"),
-    })
-}
-
-async fn healthz() -> Json<Value> {
-    Json(health_payload())
-}
-
-async fn readyz() -> Json<Value> {
-    Json(ready_payload())
-}
-
-async fn api_meta() -> Json<Value> {
-    Json(meta_payload())
-}
-
-fn app() -> Router {
-    Router::new()
-        .route("/healthz", get(healthz))
-        .route("/readyz", get(readyz))
-        .route("/api/meta", get(api_meta))
-}
-
-fn server_addr() -> String {
-    std::env::var("ZEOKEEL_SERVER_ADDR").unwrap_or_else(|_| DEFAULT_ADDR.to_owned())
-}
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
-    let addr = server_addr();
+    let database_url = std::env::var("ZEOKEEL_DATABASE_URL")
+        .map_err(|_| "ZEOKEEL_DATABASE_URL is required".to_owned())?;
+    let pool = connect(&database_url)
+        .await
+        .map_err(|error| format!("connect PostgreSQL: {error}"))?;
+    run_migrations(&pool)
+        .await
+        .map_err(|error| format!("apply migrations: {error}"))?;
+    serve(router(pool)).await
+}
+
+async fn serve(app: Router) -> Result<(), String> {
+    let addr = std::env::var("ZEOKEEL_SERVER_ADDR").unwrap_or_else(|_| DEFAULT_ADDR.to_owned());
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
-        .map_err(|err| format!("failed to bind {addr}: {err}"))?;
-
+        .map_err(|error| format!("bind {addr}: {error}"))?;
     println!("zk-server listening on http://{addr}");
-    axum::serve(listener, app())
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async {
+            let _ = tokio::signal::ctrl_c().await;
+        })
         .await
-        .map_err(|err| format!("zk-server failed: {err}"))
+        .map_err(|error| format!("zk-server failed: {error}"))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
-    fn edition_is_composed_and_non_empty() {
-        assert!(
-            !zk_composed::EDITION.is_empty(),
-            "composed edition must not be empty"
-        );
-    }
-
-    #[test]
-    fn health_payload_shape() {
-        let payload = health_payload();
-        assert_eq!(payload.get("status").and_then(Value::as_str), Some("ok"));
-        assert_eq!(
-            payload.get("edition").and_then(Value::as_str),
-            Some(zk_composed::EDITION)
-        );
-        assert!(payload.get("packages").is_some_and(Value::is_array));
-    }
-
-    #[test]
-    fn ready_payload_shape() {
-        let payload = ready_payload();
-        assert_eq!(payload.get("status").and_then(Value::as_str), Some("ready"));
-    }
-
-    #[test]
-    fn meta_payload_has_version() {
-        let payload = meta_payload();
-        assert_eq!(
-            payload.get("version").and_then(Value::as_str),
-            Some(env!("CARGO_PKG_VERSION"))
-        );
-        assert!(payload.get("packages").is_some_and(Value::is_array));
-    }
-
-    #[test]
-    fn default_addr_is_local_only() {
-        assert_eq!(DEFAULT_ADDR, "127.0.0.1:8787");
+    fn edition_is_composed() {
+        assert!(!zk_composed::EDITION.is_empty());
     }
 }

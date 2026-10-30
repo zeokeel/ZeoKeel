@@ -1,0 +1,9 @@
+schema = 1
+id = "zeokeel/contract-server"
+kind = "contract"
+version = "0.1.0"
+license = "MIT"
+summary = "服务端域角色/描述符契约（M2 最小集）"
+
+[facets]
+rust = { crate = "zk-contract-server" }
