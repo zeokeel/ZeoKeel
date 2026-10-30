@@ -162,3 +162,57 @@ fn usage_aggregates_across_all_model_hops() {
     assert_eq!(usage.output_tokens, 6, "sum over both model hops");
     assert_eq!(usage.total_tokens, 14);
 }
+
+struct SlowTool;
+
+impl zk_contract_tool::Tool for SlowTool {
+    fn spec(&self) -> zk_contract_tool::ToolSpec {
+        zk_contract_tool::ToolSpec {
+            name: "slow.echo".to_owned(),
+            description: "slow".to_owned(),
+            parameters: serde_json::json!({"type":"object"}),
+            mutating: false,
+            requires_approval: false,
+        }
+    }
+    fn call(&self, _args: &str) -> Result<String, zk_contract_tool::ToolError> {
+        Ok("unused".to_owned())
+    }
+    fn call_json(
+        &self,
+        _context: &TurnContext,
+        _args: serde_json::Value,
+    ) -> Result<String, zk_contract_tool::ToolError> {
+        std::thread::sleep(std::time::Duration::from_millis(1_300));
+        Ok("late".to_owned())
+    }
+}
+
+#[test]
+fn configured_tool_timeout_is_enforced_per_turn() {
+    let model = MockCompletionModel::from_turns([
+        MockTurn::tool_call("call-slow", "slow.echo", serde_json::json!({})),
+        MockTurn::text("done"),
+    ]);
+    let agent = RigAgent::new(model.into(), vec![Arc::new(SlowTool)])
+        .unwrap()
+        .with_streaming(false)
+        .with_agent_config(zk_agent_rig::AgentRuntimeConfig {
+            tools: zk_contract_config::ToolSettings {
+                tool_timeout_ms: zk_contract_config::ToolSettings::MIN_TOOL_TIMEOUT_MS,
+                approval_timeout_ms: zk_contract_config::ToolSettings::default()
+                    .approval_timeout_ms,
+            },
+            ..zk_agent_rig::AgentRuntimeConfig::default()
+        });
+    let reply = agent.run_in(&context(), "use slow").unwrap();
+    let result = reply
+        .tool_calls
+        .first()
+        .map(|call| call.result.as_str())
+        .unwrap_or_default();
+    assert!(
+        result.contains("timed out"),
+        "configured 1000ms tool timeout must abort the 1300ms tool: {result}"
+    );
+}

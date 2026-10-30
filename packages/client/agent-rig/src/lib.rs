@@ -61,6 +61,16 @@ pub fn global_hook_sink() -> Option<Arc<dyn HookSink>> {
     global_hook_slot().lock().ok().and_then(|slot| slot.clone())
 }
 
+/// Per-turn context handed to DynamicTool construction.
+struct ToolRunContext<'a> {
+    turn_id: &'a str,
+    records: &'a Arc<Mutex<Vec<ToolCallRecord>>>,
+    sink: &'a Arc<dyn EventSink>,
+    hooks_config: &'a HooksConfig,
+    hook_sink: Option<&'a Arc<dyn HookSink>>,
+    tool_timeout_ms: u64,
+}
+
 /// rig-backed agent.
 pub struct RigAgent {
     model: Arc<Mutex<DynModel<Completion>>>,
@@ -211,16 +221,15 @@ impl RigAgent {
     fn dynamic_tools(
         &self,
         context: &TurnContext,
-        turn_id: &str,
-        records: &Arc<Mutex<Vec<ToolCallRecord>>>,
-        sink: &Arc<dyn EventSink>,
-        hooks_config: &HooksConfig,
-        hook_sink: Option<&Arc<dyn HookSink>>,
+        runtime: &ToolRunContext<'_>,
     ) -> Vec<DynamicTool> {
         let cancelled = Arc::clone(&self.cancelled);
-        let turn_id = turn_id.to_owned();
-        let hooks_config = hooks_config.clone();
-        let hook_sink = hook_sink.cloned();
+        let turn_id = runtime.turn_id.to_owned();
+        let records = runtime.records;
+        let sink = runtime.sink;
+        let hooks_config = runtime.hooks_config.clone();
+        let hook_sink = runtime.hook_sink.cloned();
+        let tool_timeout_ms = runtime.tool_timeout_ms;
         let mut out = Vec::with_capacity(self.tools.len());
         for tool in &self.tools {
             let spec = tool.spec();
@@ -339,11 +348,7 @@ impl RigAgent {
                         );
                         let tool_for_call = Arc::clone(&tool);
                         let context_for_call = context.clone();
-                        let timeout_ms = std::env::var("ZEOKEEL_TOOL_TIMEOUT_MS")
-                            .ok()
-                            .and_then(|value| value.parse::<u64>().ok())
-                            .unwrap_or(120_000)
-                            .clamp(1, 600_000);
+                        let timeout_ms = tool_timeout_ms;
                         let outcome = tokio::time::timeout(
                             std::time::Duration::from_millis(timeout_ms),
                             tokio::task::spawn_blocking(move || {
@@ -430,17 +435,21 @@ impl RigAgent {
         let config = self.effective_config();
         let hooks_config = config.hooks.clone();
         let hook_sink = self.hook_sink.clone();
+        let tool_timeout_ms = config.tools.tool_timeout();
         if let Ok(mut usage) = self.last_usage.lock() {
             *usage = None;
         }
         let records = Arc::new(Mutex::new(Vec::<ToolCallRecord>::new()));
         let tools = self.dynamic_tools(
             context,
-            turn_id,
-            &records,
-            sink,
-            &hooks_config,
-            hook_sink.as_ref(),
+            &ToolRunContext {
+                turn_id,
+                records: &records,
+                sink,
+                hooks_config: &hooks_config,
+                hook_sink: hook_sink.as_ref(),
+                tool_timeout_ms,
+            },
         );
         self.cancelled.store(false, Ordering::SeqCst);
         let max_steps = config.max_steps.clamp(1, 200);
@@ -1431,6 +1440,7 @@ mod tests {
                 enabled: false,
                 log: String::new(),
             },
+            tools: zk_contract_config::ToolSettings::default(),
             max_steps: 4,
         };
         let agent = RigAgent::new(model.clone().into(), Vec::new())
