@@ -71,6 +71,12 @@
     "contract": "zk-contract-ui",
     "cardinality": "singleton"
   },
+  "ui.slot.settings-provider": {
+    "package": "zeokeel/ui-settings-provider",
+    "crate_name": "zk-ui-settings-provider",
+    "contract": "zk-contract-ui",
+    "cardinality": "singleton"
+  },
   "update.client": {
     "package": "zeokeel/client-update-github",
     "crate_name": "zk-client-update-github",

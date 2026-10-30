@@ -96,6 +96,14 @@
     ]
   },
   {
+    "id": "zeokeel/ui-settings-provider",
+    "version": "0.1.0",
+    "kind": "ui",
+    "roles": [
+      "ui.slot.settings-provider"
+    ]
+  },
+  {
     "id": "zeokeel/client-update-github",
     "version": "0.1.0",
     "kind": "capability",

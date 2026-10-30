@@ -35,6 +35,13 @@
     "slot": "ui.settings"
   },
   {
+    "component": "settings.provider",
+    "order": 10,
+    "package": "zeokeel/ui-settings-provider",
+    "role": "ui.slot.settings-provider",
+    "slot": "ui.settings.provider"
+  },
+  {
     "component": "shell.frame",
     "order": 10,
     "package": "zeokeel/ui-shell",
