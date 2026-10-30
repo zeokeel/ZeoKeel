@@ -15,6 +15,7 @@ serde_json = { workspace = true }
 zk-composed = { path = "../../crates/zk-composed" }
 zk-kit-approval = { path = "../../crates/zk-kit-approval" }
 zk-kit-questions = { path = "../../crates/zk-kit-questions" }
+zk-kit-session = { path = "../../crates/zk-kit-session" }
 zk-contract-agent = { path = "../../packages/contracts/agent" }
 zk-contract-config = { path = "../../packages/contracts/config" }
 zk-contract-ipc = { path = "../../packages/contracts/ipc" }

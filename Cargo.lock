@@ -8391,6 +8391,7 @@ dependencies = [
  "zk-tool-ralph",
  "zk-tool-read-image",
  "zk-tool-schedule",
+ "zk-tool-session-query",
  "zk-tool-skill",
  "zk-tool-subagent",
  "zk-tool-terminal",
@@ -8613,6 +8614,7 @@ dependencies = [
  "zk-kit-approval",
  "zk-kit-content",
  "zk-kit-questions",
+ "zk-kit-session",
 ]
 
 [[package]]
@@ -8668,6 +8670,13 @@ dependencies = [
  "sha2 0.10.9",
  "sqlx",
  "uuid",
+]
+
+[[package]]
+name = "zk-kit-session"
+version = "0.1.0"
+dependencies = [
+ "zk-contract-session",
 ]
 
 [[package]]
@@ -9191,6 +9200,17 @@ dependencies = [
  "serde_json",
  "zk-contract-tool",
  "zk-kit-tools",
+]
+
+[[package]]
+name = "zk-tool-session-query"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zk-contract-session",
+ "zk-contract-tool",
+ "zk-kit-session",
+ "zk-store-session-sqlite",
 ]
 
 [[package]]

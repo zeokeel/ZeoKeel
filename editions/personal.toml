@@ -3,6 +3,7 @@ name = "personal"
 targets = ["desktop"]
 
 [packages]
+"tool.session_query" = "zeokeel/tool-session-query"
 "tool.ask_user" = "zeokeel/tool-ask-user"
 "tool.workflow" = "zeokeel/tool-workflow"
 "tool.ralph" = "zeokeel/tool-ralph"

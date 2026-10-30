@@ -305,6 +305,12 @@
     "contract": "zk-contract-tool",
     "cardinality": "singleton"
   },
+  "tool.session_query": {
+    "package": "zeokeel/tool-session-query",
+    "crate_name": "zk-tool-session-query",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
   "tool.skill": {
     "package": "zeokeel/tool-skill",
     "crate_name": "zk-tool-skill",

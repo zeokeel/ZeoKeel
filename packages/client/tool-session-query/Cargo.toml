@@ -1,0 +1,15 @@
+[package]
+name = "zk-tool-session-query"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+serde_json = { workspace = true }
+zk-contract-tool = { path = "../../contracts/tool" }
+zk-contract-session = { path = "../../contracts/session" }
+zk-kit-session = { path = "../../../crates/zk-kit-session" }
+[dev-dependencies]
+zk-store-session-sqlite = { path = "../store-session-sqlite" }
+
+[lints]
+workspace = true

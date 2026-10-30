@@ -78,6 +78,7 @@ zk-tool-pwsh = { path = "../../packages/client/tool-pwsh" }
 zk-tool-ralph = { path = "../../packages/client/tool-ralph" }
 zk-tool-read-image = { path = "../../packages/client/tool-read-image" }
 zk-tool-schedule = { path = "../../packages/client/tool-schedule" }
+zk-tool-session-query = { path = "../../packages/client/tool-session-query" }
 zk-tool-skill = { path = "../../packages/client/tool-skill" }
 zk-tool-subagent = { path = "../../packages/client/tool-subagent" }
 zk-tool-terminal = { path = "../../packages/client/tool-terminal" }

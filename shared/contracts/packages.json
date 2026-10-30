@@ -408,6 +408,14 @@
     ]
   },
   {
+    "id": "zeokeel/tool-session-query",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.session_query"
+    ]
+  },
+  {
     "id": "zeokeel/tool-skill",
     "version": "0.1.0",
     "kind": "capability",

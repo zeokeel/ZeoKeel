@@ -1,0 +1,9 @@
+[package]
+name = "zk-kit-session"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+zk-contract-session = { path = "../../packages/contracts/session" }
+[lints]
+workspace = true

@@ -33,6 +33,7 @@ impl AppState {
         let approvals = ApprovalBroker::new();
         let questions = QuestionBroker::new();
         zk_kit_questions::set_global(Arc::clone(&questions));
+        zk_kit_session::set_global(runtime.sessions());
         let concrete = Arc::clone(&approvals);
         let gate: Arc<dyn zk_contract_tool::ApprovalGate> = concrete;
         zk_kit_approval::set_global_gate(gate);

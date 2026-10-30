@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-session-query"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Read/search conversation history"
+
+[role]
+name = "tool.session_query"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-session-query" }
