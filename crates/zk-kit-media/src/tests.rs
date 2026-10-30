@@ -210,6 +210,23 @@ fn embedding_config_requires_endpoint_key_and_model() {
 }
 
 #[test]
+fn embedding_model_exposes_id_and_dims_for_fingerprints() {
+    let config = EmbeddingConfig::new(
+        "http://127.0.0.1:1/v1",
+        "test-key",
+        "text-embedding-3-small",
+        Some(256),
+    );
+    let model = embedding_model_from_config(&config).unwrap();
+    assert_eq!(model.id(), Some("text-embedding-3-small"));
+    assert_eq!(model.dims(), Some(256));
+
+    let fake = fake_embedding_model();
+    assert_eq!(fake.id(), Some("fake-embed"));
+    assert_eq!(fake.dims(), None);
+}
+
+#[test]
 fn fake_embedding_model_round_trips_text() {
     let alpha = embed_text(&fake_embedding_model(), "alpha document").unwrap();
     assert_eq!(alpha, vec![1.0, 0.0, 1.0]);

@@ -5,8 +5,8 @@
 use zk_kit_media::test_support::fake_embedding_model;
 
 use super::{
-    configure_with_dir, insert, len, save_documents, store, unconfigure, StoredDocument,
-    VectorError, INDEX_FILE, MAX_DOCUMENTS,
+    configure_with_dir, insert, len, save_documents, store, unconfigure, Fingerprint,
+    StoredDocument, VectorError, INDEX_FILE, MAX_DOCUMENTS,
 };
 
 fn document(index: usize) -> StoredDocument {
@@ -20,7 +20,7 @@ fn document(index: usize) -> StoredDocument {
 #[test]
 fn save_rejects_more_than_max_documents() {
     let documents: Vec<StoredDocument> = (0..=MAX_DOCUMENTS).map(document).collect();
-    match save_documents(None, &documents).unwrap_err() {
+    match save_documents(None, &documents, &Fingerprint::default()).unwrap_err() {
         VectorError::Capacity(message) => {
             assert!(message.contains(&MAX_DOCUMENTS.to_string()), "{message}");
         }
@@ -41,7 +41,7 @@ fn save_rejects_index_over_byte_cap() {
         text: "x".repeat(17_000_000),
         vector: vec![1.0],
     }];
-    match save_documents(Some(&dir), &documents).unwrap_err() {
+    match save_documents(Some(&dir), &documents, &Fingerprint::default()).unwrap_err() {
         VectorError::Capacity(message) => assert!(message.contains("exceed"), "{message}"),
         other => panic!("expected Capacity, got {other:?}"),
     }

@@ -803,6 +803,27 @@ impl From<MediaError> for EmbeddingError {
 #[derive(Clone)]
 pub struct EmbeddingModel {
     inner: DynModel<Embedding>,
+    dims: Option<usize>,
+}
+
+impl EmbeddingModel {
+    /// Provider model id this handle addresses, when rig reports one.
+    ///
+    /// Used by compatibility fingerprints (e.g. `cap-vector`'s persisted
+    /// index) to refuse embeddings from a different model.
+    #[must_use]
+    pub fn id(&self) -> Option<&str> {
+        self.inner.id()
+    }
+
+    /// Requested output width, or `None` when the provider default applies.
+    ///
+    /// Used by compatibility fingerprints to refuse persisted vectors whose
+    /// width no longer matches the configured model.
+    #[must_use]
+    pub fn dims(&self) -> Option<usize> {
+        self.dims
+    }
 }
 
 impl fmt::Debug for EmbeddingModel {
@@ -841,6 +862,7 @@ pub fn embedding_model_from_config(
         .client();
     Ok(EmbeddingModel {
         inner: client.embedding(model.to_owned(), config.dims).into(),
+        dims: config.dims,
     })
 }
 
@@ -1085,11 +1107,14 @@ pub mod test_support {
     impl EmbeddingModel {
         fn fake() -> Self {
             let model: DynModel<Embedding> = Model::new(
-                Local::<Embedding>::new("fake-embed"),
+                Local::<Embedding>::new("fake-embed").with_id("fake-embed"),
                 FakeEmbeddingTransport,
             )
             .into();
-            Self { inner: model }
+            Self {
+                inner: model,
+                dims: None,
+            }
         }
     }
 

@@ -43,6 +43,16 @@ fn cleanup(dir: &Path) {
     let _ = fs::remove_dir_all(dir);
 }
 
+fn write_index(dir: &Path, value: &serde_json::Value) {
+    fs::create_dir_all(dir).unwrap();
+    fs::write(index_path(dir), serde_json::to_vec(value).unwrap()).unwrap();
+}
+
+fn read_index(dir: &Path) -> serde_json::Value {
+    let bytes = fs::read(index_path(dir)).unwrap();
+    serde_json::from_slice(&bytes).unwrap()
+}
+
 #[test]
 fn persisted_index_survives_reconfigure() {
     let _guard = guard();
@@ -60,6 +70,11 @@ fn persisted_index_survives_reconfigure() {
         zk_cap_vector::persistence_dir().as_deref(),
         Some(dir.as_path())
     );
+    // The file records the embedding-model fingerprint and vector width.
+    let persisted = read_index(&dir);
+    assert_eq!(persisted["version"], 1);
+    assert_eq!(persisted["model"], "fake-embed");
+    assert_eq!(persisted["width"], 3);
 
     // New store instance: drop the process-global state, then reload from disk.
     zk_cap_vector::unconfigure().unwrap();
@@ -209,8 +224,21 @@ fn unix_permissions_are_private() {
 fn configure_from_env_loads_zeokeel_vector_dir() {
     let _guard = guard();
     let dir = temp_dir("env");
-    zk_cap_vector::configure_with_dir(fake_embedding_model(), &dir).unwrap();
-    zk_cap_vector::insert("doc-env", "alpha document").unwrap();
+    // The persisted index must match the model configured from env; write it
+    // directly (the fake model has a different id and would be rejected).
+    write_index(
+        &dir,
+        &serde_json::json!({
+            "version": 1,
+            "model": "text-embedding-3-small",
+            "width": 3,
+            "documents": [{
+                "id": "doc-env",
+                "text": "alpha document",
+                "embedding": [1.0, 0.0, 1.0]
+            }]
+        }),
+    );
     zk_cap_vector::unconfigure().unwrap();
 
     std::env::set_var("ZEOKEEL_EMBEDDING_BASE_URL", "http://127.0.0.1:1/v1");
@@ -221,6 +249,7 @@ fn configure_from_env_loads_zeokeel_vector_dir() {
     assert!(configured);
     assert!(zk_cap_vector::available());
     assert_eq!(zk_cap_vector::len(), 1);
+    assert!(zk_cap_vector::persistence_reason().is_none());
     assert_eq!(
         zk_cap_vector::persistence_dir().as_deref(),
         Some(dir.as_path())
@@ -234,6 +263,160 @@ fn configure_from_env_loads_zeokeel_vector_dir() {
     ] {
         std::env::remove_var(key);
     }
+    zk_cap_vector::unconfigure().unwrap();
+    cleanup(&dir);
+}
+
+#[test]
+fn insert_many_is_an_atomic_batch() {
+    let _guard = guard();
+    let dir = temp_dir("batch");
+    zk_cap_vector::configure_with_dir(fake_embedding_model(), &dir).unwrap();
+    zk_cap_vector::insert("existing", "alpha document").unwrap();
+
+    // Validation fails for the whole batch: nothing is inserted or persisted.
+    let error = zk_cap_vector::insert_many([
+        ("ok".to_owned(), "alpha".to_owned()),
+        ("   ".to_owned(), "bad".to_owned()),
+    ])
+    .unwrap_err();
+    assert!(matches!(error, zk_cap_vector::VectorError::Config(_)));
+    assert_eq!(zk_cap_vector::len(), 1);
+    let persisted = read_index(&dir);
+    assert_eq!(persisted["documents"].as_array().unwrap().len(), 1);
+
+    // A valid batch is applied and saved in one go.
+    zk_cap_vector::insert_many([
+        ("a".to_owned(), "alpha one".to_owned()),
+        ("b".to_owned(), "beta two".to_owned()),
+        ("c".to_owned(), "gamma three".to_owned()),
+    ])
+    .unwrap();
+    assert_eq!(zk_cap_vector::len(), 4);
+    zk_cap_vector::unconfigure().unwrap();
+    zk_cap_vector::configure_with_dir(fake_embedding_model(), &dir).unwrap();
+    assert_eq!(zk_cap_vector::len(), 4);
+
+    zk_cap_vector::unconfigure().unwrap();
+    cleanup(&dir);
+}
+
+#[test]
+fn incompatible_embedding_model_degrades() {
+    let _guard = guard();
+    let dir = temp_dir("model-mismatch");
+    write_index(
+        &dir,
+        &serde_json::json!({
+            "version": 1,
+            "model": "old-embedding-model",
+            "width": 3,
+            "documents": [{
+                "id": "doc",
+                "text": "alpha",
+                "embedding": [1.0, 0.0, 1.0]
+            }]
+        }),
+    );
+    zk_cap_vector::configure_with_dir(fake_embedding_model(), &dir).unwrap();
+    assert!(zk_cap_vector::available());
+    assert_eq!(zk_cap_vector::len(), 0);
+    let reason = zk_cap_vector::persistence_reason().expect("reason");
+    assert!(reason.contains("embedding model"), "{reason}");
+    zk_cap_vector::unconfigure().unwrap();
+    cleanup(&dir);
+}
+
+#[test]
+fn incompatible_dimensions_degrade() {
+    let _guard = guard();
+    let dir = temp_dir("dims-mismatch");
+    let current = zk_kit_media::embedding_model_from_config(&zk_kit_media::EmbeddingConfig::new(
+        "http://127.0.0.1:1/v1",
+        "test-key",
+        "text-embedding-3-small",
+        Some(4),
+    ))
+    .unwrap();
+    write_index(
+        &dir,
+        &serde_json::json!({
+            "version": 1,
+            "model": "text-embedding-3-small",
+            "dims": 8,
+            "width": 8,
+            "documents": [{
+                "id": "doc",
+                "text": "alpha",
+                "embedding": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+            }]
+        }),
+    );
+    zk_cap_vector::configure_with_dir(current, &dir).unwrap();
+    assert!(zk_cap_vector::available());
+    assert_eq!(zk_cap_vector::len(), 0);
+    let reason = zk_cap_vector::persistence_reason().expect("reason");
+    assert!(reason.contains("incompatible"), "{reason}");
+    zk_cap_vector::unconfigure().unwrap();
+    cleanup(&dir);
+}
+
+#[test]
+fn legacy_index_without_fingerprint_loads() {
+    let _guard = guard();
+    let dir = temp_dir("legacy");
+    write_index(
+        &dir,
+        &serde_json::json!({
+            "version": 1,
+            "documents": [{
+                "id": "doc",
+                "text": "alpha document",
+                "embedding": [1.0, 0.0]
+            }]
+        }),
+    );
+    zk_cap_vector::configure_with_dir(fake_embedding_model(), &dir).unwrap();
+    assert_eq!(zk_cap_vector::len(), 1);
+    assert!(zk_cap_vector::persistence_reason().is_none());
+    zk_cap_vector::unconfigure().unwrap();
+    cleanup(&dir);
+}
+
+#[test]
+fn inconsistent_vector_widths_degrade() {
+    let _guard = guard();
+    let dir = temp_dir("widths");
+    write_index(
+        &dir,
+        &serde_json::json!({
+            "version": 1,
+            "documents": [
+                {"id": "a", "text": "a", "embedding": [1.0, 0.0]},
+                {"id": "b", "text": "b", "embedding": [1.0, 0.0, 1.0]}
+            ]
+        }),
+    );
+    zk_cap_vector::configure_with_dir(fake_embedding_model(), &dir).unwrap();
+    assert_eq!(zk_cap_vector::len(), 0);
+    let reason = zk_cap_vector::persistence_reason().expect("reason");
+    assert!(reason.contains("inconsistent"), "{reason}");
+    zk_cap_vector::unconfigure().unwrap();
+    cleanup(&dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn pre_existing_directory_is_tightened_to_0700() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let _guard = guard();
+    let dir = temp_dir("tighten");
+    fs::create_dir_all(&dir).unwrap();
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+    zk_cap_vector::configure_with_dir(fake_embedding_model(), &dir).unwrap();
+    let mode = fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o700);
     zk_cap_vector::unconfigure().unwrap();
     cleanup(&dir);
 }

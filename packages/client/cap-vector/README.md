@@ -11,9 +11,13 @@ cosine 索引，可选本地 JSON 持久化。
   env：`ZEOKEEL_EMBEDDING_BASE_URL/_API_KEY/_MODEL/_DIMS`（模型）与 `ZEOKEEL_VECTOR_DIR`（持久化目录）。
 - API：`insert`/`insert_many`/`search`/`clear`/`len`；未配置时 `available()==false` +
   `unavailable_reason()`，调用返回 `CAPABILITY_UNAVAILABLE` 错误。
-- 持久化（opt-in）：目录存在时索引写入 `vector-index.json`（`{version, documents:[{id,text,embedding}]}`），
-  insert/clear 原子保存（同目录 temp 文件 `0600` → rename，目录 `0700`）；configure 时加载。
-  上限 `MAX_DOCUMENTS`(10k) / `MAX_INDEX_BYTES`(16MB)，超限返回 `VectorError::Capacity`。
+- 持久化（opt-in）：目录存在时索引写入 `vector-index.json`
+  （`{version, model, dims, width, documents:[{id,text,embedding}]}`）；`insert_many` 为批量原子提交
+  （全部 embedding 成功后一次保存），insert/clear 原子保存（同目录 temp 文件 `0600` → rename，
+  目录 `0700`，已存在的目录也收紧为 `0700`）；configure 时加载并校验
+  model/dims/width 指纹（换模型或维度会降级为空 + reason，避免无意义相似度）。
+  上限 `MAX_DOCUMENTS`(10k) / `MAX_INDEX_BYTES`(16MB)，超限返回 `VectorError::Capacity`；
+  文档数上限在发起 embedding 前预检（批量插入的容量错误不产生 provider 调用）。
   文件缺失 → 空索引；损坏/不可读/超限 → 降级为空索引（不 panic），原因经
   `persistence_reason()` 暴露并写 stderr，下一次成功保存会修复文件。
 - 宿主接线：personal boot 调用生成 glue 的 `zk_composed::configure_capabilities_from_env()`
