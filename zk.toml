@@ -107,6 +107,11 @@ contract = "zk-contract-update"
 cardinality = "singleton"
 editions = ["personal"]
 
+[roles."srv.content"]
+contract = "zk-contract-content"
+cardinality = "singleton"
+editions = ["enterprise"]
+
 [roles."srv.http"]
 contract = "zk-contract-server"
 cardinality = "singleton"

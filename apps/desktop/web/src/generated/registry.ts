@@ -4,9 +4,9 @@ import { components as c0 } from "@zeokeel/ui-shell";
 import { components as c1 } from "@zeokeel/ui-chat";
 import { components as c2 } from "@zeokeel/ui-commands";
 import { components as c3 } from "@zeokeel/ui-inspector";
-import { components as c4 } from "@zeokeel/ui-sessions";
-import { components as c5 } from "@zeokeel/ui-settings";
-import { components as c6 } from "@zeokeel/ui-settings-provider";
+import { components as c4 } from "@zeokeel/ui-login";
+import { components as c5 } from "@zeokeel/ui-sessions";
+import { components as c6 } from "@zeokeel/ui-settings";
 
 export const COMPONENTS = {
   ...c0,
@@ -22,7 +22,8 @@ export const ShellSlot = c0["shell.frame"];
 export const ChatSlot = c1["chat.thread"];
 export const CommandsSlot = c2["commands.palette"];
 export const InspectorSlot = c3["inspector.panel"];
-export const SessionsSlot = c4["sessions.sidebar"];
-export const SettingsSlot = c5["settings.dialog"];
-export const SettingsProviderSlot = c6["settings.provider"];
-export function LoginSlot(_props: { serverUrl: string | null; channelLocked: boolean; loading: boolean; error: string | null; onSubmit: (input: { serverUrl?: string; username: string; password: string; deviceName: string }) => void }) { return null; }
+export const LoginSlot = c4["login.page"];
+export const SessionsSlot = c5["sessions.sidebar"];
+export const SettingsSlot = c6["settings.dialog"];
+import type { ProviderSettingsProps } from "@zeokeel/ui-kit";
+export function SettingsProviderSlot(_props: ProviderSettingsProps) { return null; }

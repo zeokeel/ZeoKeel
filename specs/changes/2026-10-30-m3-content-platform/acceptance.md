@@ -8,6 +8,13 @@
 
 ## 1. 自动验证（实现后填写真实结果）
 
+### task 2 evidence (2026-10-30)
+
+- `cargo run -q -p zk -- validate`：enterprise 33 / personal 14 packages，57 scanned
+- `cargo build -q -p zk-server`：pass
+- `bash scripts/srv-store-test.sh`：`store ok: content schema wired`（5 张 content 表）
+- `zk db lock --check`：pending（工具尚未生成 content lock，任务 10 前补）
+
 ### task 1 evidence (2026-10-30)
 
 - `cargo test -p zk-contract-content -p zk-contract-skill -p zk-contract-connector -p zk-kit-content`：pass

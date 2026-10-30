@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/content"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Content aggregate core (skills/apps): status, releases, grants, deployments"
+
+[role]
+name = "srv.content"
+contract = "zk-contract-content"
+cardinality = "singleton"
+editions = ["enterprise"]
+
+[facets]
+rust = { crate = "zk-srv-content" }
