@@ -259,6 +259,20 @@ impl zk_kit_subagent::SubagentRunner for RigSubagentRunner {
     }
 }
 
+struct RigExtractRunner { model: DynModel<Completion> }
+impl zk_kit_extractor::ExtractRunner for RigExtractRunner {
+    fn extract(&self, text: &str, _context: &TurnContext) -> Result<serde_json::Value, String> {
+        let model = self.model.clone();
+        let text = text.to_owned();
+        let handle = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(|error| error.to_string())?;
+            let extractor = rig_agent::extractor::ExtractorBuilder::<serde_json::Value>::new(model).retries(2).build();
+            runtime.block_on(async move { extractor.extract(text).await }).map(|response| response.output).map_err(|error| error.to_string())
+        });
+        handle.join().map_err(|_| "extractor thread panicked".to_owned())?
+    }
+}
+
 /// Generated-glue factory: build the rig agent from modular tools + a rig model.
 fn map_provider_error(message: impl Into<String>) -> AgentError {
     let message = message.into();
@@ -269,6 +283,7 @@ fn map_provider_error(message: impl Into<String>) -> AgentError {
 pub fn agent(tools: Vec<Arc<dyn Tool>>, model: DynModel<Completion>) -> Result<RigAgent, AgentError> {
     let runner = Arc::new(RigSubagentRunner { model: model.clone(), tools: tools.clone() });
     zk_kit_subagent::set_runner(runner);
+    zk_kit_extractor::set_runner(Arc::new(RigExtractRunner { model: model.clone() }));
     RigAgent::new(model, tools)
 }
 

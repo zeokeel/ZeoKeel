@@ -3,6 +3,7 @@ name = "personal"
 targets = ["desktop"]
 
 [packages]
+"tool.extract" = "zeokeel/tool-extract"
 "tool.agent_team" = "zeokeel/tool-agent-team"
 "tool.web_search" = "zeokeel/tool-web-search"
 "tool.pwsh_persistent" = "zeokeel/tool-pwsh-persistent"

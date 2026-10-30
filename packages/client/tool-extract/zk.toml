@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-extract"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Structured JSON extraction via rig extractor"
+
+[role]
+name = "tool.extract"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-extract" }

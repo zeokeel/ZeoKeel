@@ -227,6 +227,12 @@
     "contract": "zk-contract-tool",
     "cardinality": "singleton"
   },
+  "tool.extract": {
+    "package": "zeokeel/tool-extract",
+    "crate_name": "zk-tool-extract",
+    "contract": "zk-contract-tool",
+    "cardinality": "singleton"
+  },
   "tool.fs": {
     "package": "zeokeel/tool-fs",
     "crate_name": "zk-tool-fs",

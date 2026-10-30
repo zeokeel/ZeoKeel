@@ -2,7 +2,7 @@
 
 # Package Index
 
-edition `enterprise` · channel `official` · 77 packages
+edition `enterprise` · channel `official` · 78 packages
 
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
@@ -44,6 +44,7 @@ edition `enterprise` · channel `official` · 77 packages
 | `tool.bash` | `zeokeel/tool-bash` | `zk-tool-bash` | `zk-contract-tool` | singleton |
 | `tool.bash_persistent` | `zeokeel/tool-bash-persistent` | `zk-tool-bash-persistent` | `zk-contract-tool` | singleton |
 | `tool.cordis` | `zeokeel/tool-cordis` | `zk-tool-cordis` | `zk-contract-tool` | singleton |
+| `tool.extract` | `zeokeel/tool-extract` | `zk-tool-extract` | `zk-contract-tool` | singleton |
 | `tool.fs` | `zeokeel/tool-fs` | `zk-tool-fs` | `zk-contract-tool` | singleton |
 | `tool.fs.edit` | `zeokeel/tool-fs-edit` | `zk-tool-fs-edit` | `zk-contract-tool` | singleton |
 | `tool.fs.search` | `zeokeel/tool-fs-search` | `zk-tool-fs-search` | `zk-contract-tool` | singleton |

@@ -15,6 +15,7 @@ rows = [
  ("ask-user","tool.ask_user","zeokeel/tool-ask-user","implemented","UI question card + IPC"),
  ("present","tool.present","zeokeel/tool-present","implemented",""),
  ("web fetch","tool.web.fetch","zeokeel/tool-web-fetch","implemented","SSRF guarded"),
+ ("structured extraction","tool.extract","zeokeel/tool-extract","implemented","rig extractor runner"),
  ("web search","tool.web_search","zeokeel/tool-web-search","implemented","DuckDuckGo/HTTPS provider env"),
  ("skill","tool.skill","zeokeel/tool-skill","implemented","read-only"),
  ("goal","tool.goal","zeokeel/tool-goal","partial","no round driver"),

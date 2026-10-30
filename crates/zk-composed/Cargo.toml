@@ -65,6 +65,7 @@ zk-tool-ask-user = { path = "../../packages/client/tool-ask-user" }
 zk-tool-bash = { path = "../../packages/client/tool-bash" }
 zk-tool-bash-persistent = { path = "../../packages/client/tool-bash-persistent" }
 zk-tool-cordis = { path = "../../packages/client/tool-cordis" }
+zk-tool-extract = { path = "../../packages/client/tool-extract" }
 zk-tool-fs = { path = "../../packages/client/tool-fs" }
 zk-tool-fs-edit = { path = "../../packages/client/tool-fs-edit" }
 zk-tool-fs-search = { path = "../../packages/client/tool-fs-search" }

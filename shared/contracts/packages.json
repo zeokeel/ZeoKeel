@@ -304,6 +304,14 @@
     ]
   },
   {
+    "id": "zeokeel/tool-extract",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "tool.extract"
+    ]
+  },
+  {
     "id": "zeokeel/tool-fs",
     "version": "0.1.0",
     "kind": "capability",
