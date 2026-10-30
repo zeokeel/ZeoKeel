@@ -79,7 +79,9 @@ pub enum SessionError {
     #[error("workspace not found: {0}")]
     WorkspaceNotFound(String),
     /// Conversation does not belong to the given workspace.
-    #[error("session/workspace-mismatch: conversation {conversation} is not in workspace {workspace}")]
+    #[error(
+        "session/workspace-mismatch: conversation {conversation} is not in workspace {workspace}"
+    )]
     WorkspaceMismatch {
         /// Conversation id.
         conversation: String,
@@ -185,5 +187,4 @@ pub trait SessionStore: WorkspaceStore + Send + Sync {
         workspace_id: &str,
         conversation_id: &str,
     ) -> Result<Vec<Message>, SessionError>;
-
 }

@@ -5,5 +5,9 @@ fn export_schema() {
     let dir = root.join("shared/contracts/schema");
     std::fs::create_dir_all(&dir).unwrap();
     let schema = schemars::schema_for!(zk_contract_connector::Connector);
-    std::fs::write(dir.join("connector.json"), format!("{}\n", serde_json::to_string_pretty(&schema).unwrap())).unwrap();
+    std::fs::write(
+        dir.join("connector.json"),
+        format!("{}\n", serde_json::to_string_pretty(&schema).unwrap()),
+    )
+    .unwrap();
 }

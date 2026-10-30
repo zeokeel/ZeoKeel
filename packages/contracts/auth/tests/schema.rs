@@ -11,6 +11,12 @@ fn write(name: &str, schema: &schemars::schema::RootSchema) {
 
 #[test]
 fn export_schema() {
-    write("auth-login.json", &schemars::schema_for!(zk_contract_auth::LoginRequest));
-    write("admin-login.json", &schemars::schema_for!(zk_contract_auth::AdminLoginRequest));
+    write(
+        "auth-login.json",
+        &schemars::schema_for!(zk_contract_auth::LoginRequest),
+    );
+    write(
+        "admin-login.json",
+        &schemars::schema_for!(zk_contract_auth::AdminLoginRequest),
+    );
 }

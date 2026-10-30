@@ -4,4 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// Admin page descriptor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AdminPage { pub id: String, pub title: String }
+pub struct AdminPage {
+    pub id: String,
+    pub title: String,
+}

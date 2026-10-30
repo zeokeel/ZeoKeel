@@ -36,7 +36,12 @@ pub struct ProviderConfig {
 
 impl Default for ProviderConfig {
     fn default() -> Self {
-        Self { kind: ProviderKind::Mock, base_url: String::new(), model: "mock".to_owned(), api_key: String::new() }
+        Self {
+            kind: ProviderKind::Mock,
+            base_url: String::new(),
+            model: "mock".to_owned(),
+            api_key: String::new(),
+        }
     }
 }
 
@@ -60,7 +65,14 @@ pub struct AppSettings {
 
 impl Default for AppSettings {
     fn default() -> Self {
-        Self { schema: 1, provider: ProviderConfig::default(), theme: "auto".to_owned(), locale: "zh-CN".to_owned(), auto_approve_read_only: true, server_url: String::new() }
+        Self {
+            schema: 1,
+            provider: ProviderConfig::default(),
+            theme: "auto".to_owned(),
+            locale: "zh-CN".to_owned(),
+            auto_approve_read_only: true,
+            server_url: String::new(),
+        }
     }
 }
 

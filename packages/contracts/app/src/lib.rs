@@ -7,7 +7,10 @@ use serde::{Deserialize, Serialize};
 /// App visibility/access.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum AppAccess { All, Selected }
+pub enum AppAccess {
+    All,
+    Selected,
+}
 
 /// App catalog item (docs/04).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -78,7 +81,10 @@ pub struct AppManifest {
 
 /// One host-managed schema migration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct AppMigration { pub version: u32, pub sql: String }
+pub struct AppMigration {
+    pub version: u32,
+    pub sql: String,
+}
 
 /// Placeholder for future protocol constants.
 pub const ABI: &str = "zeokeel-app/1";

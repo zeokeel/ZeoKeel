@@ -7,17 +7,28 @@ use serde::{Deserialize, Serialize};
 /// Content kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum ContentKind { Skill, App }
+pub enum ContentKind {
+    Skill,
+    App,
+}
 
 /// Content lifecycle status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum ContentStatus { Pending, Approved, Rejected, Delisted }
+pub enum ContentStatus {
+    Pending,
+    Approved,
+    Rejected,
+    Delisted,
+}
 
 /// Visibility scope.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum Visibility { All, Selected }
+pub enum Visibility {
+    All,
+    Selected,
+}
 
 /// One immutable release.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]

@@ -7,7 +7,11 @@ use serde::{Deserialize, Serialize};
 /// MCP transport.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum ConnectorTransport { Stdio, Http, Sse }
+pub enum ConnectorTransport {
+    Stdio,
+    Http,
+    Sse,
+}
 
 /// Connector definition (no secret/token).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]

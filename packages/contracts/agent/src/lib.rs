@@ -6,8 +6,8 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use zk_contract_tool::TurnContext;
 use thiserror::Error;
+use zk_contract_tool::TurnContext;
 
 /// One executed tool call, recorded for UI and diagnostics.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,13 +56,27 @@ pub enum AgentEvent {
     /// A tool call finished (success or error text in `result`).
     ToolCallFinished { name: String, result: String },
     /// The turn needs a user approval decision.
-    ApprovalRequested { approval_id: String, tool: String, args: String, reason: String },
+    ApprovalRequested {
+        approval_id: String,
+        tool: String,
+        args: String,
+        reason: String,
+    },
     /// An approval request was resolved (UI may render the outcome).
-    ApprovalResolved { approval_id: String, decision: ApprovalDecision },
+    ApprovalResolved {
+        approval_id: String,
+        decision: ApprovalDecision,
+    },
     /// The agent asks the user questions and pauses until answered.
-    QuestionAsked { question_id: String, questions: serde_json::Value },
+    QuestionAsked {
+        question_id: String,
+        questions: serde_json::Value,
+    },
     /// Questions were answered (or timed out with `null`).
-    QuestionAnswered { question_id: String, answers: serde_json::Value },
+    QuestionAnswered {
+        question_id: String,
+        answers: serde_json::Value,
+    },
     /// Turn finished successfully.
     TurnCompleted { reply: AgentReply },
     /// Turn was cancelled by the user.
@@ -119,15 +133,23 @@ pub trait Agent: Send + Sync {
         input: &str,
         sink: &dyn EventSink,
     ) -> Result<AgentReply, AgentError> {
-        sink.emit(AgentEvent::TurnStarted { turn_id: turn_id.to_owned() });
+        sink.emit(AgentEvent::TurnStarted {
+            turn_id: turn_id.to_owned(),
+        });
         match self.run(input) {
             Ok(reply) => {
-                sink.emit(AgentEvent::TextDelta { delta: reply.text.clone() });
-                sink.emit(AgentEvent::TurnCompleted { reply: reply.clone() });
+                sink.emit(AgentEvent::TextDelta {
+                    delta: reply.text.clone(),
+                });
+                sink.emit(AgentEvent::TurnCompleted {
+                    reply: reply.clone(),
+                });
                 Ok(reply)
             }
             Err(err) => {
-                sink.emit(AgentEvent::Error { message: err.to_string() });
+                sink.emit(AgentEvent::Error {
+                    message: err.to_string(),
+                });
                 Err(err)
             }
         }
@@ -148,7 +170,13 @@ pub trait Agent: Send + Sync {
     fn cancel(&self) {}
 
     /// Swap the underlying model/provider at runtime (settings hot-reload).
-    fn configure_model(&self, _base_url: &str, _api_key: &str, _model: &str, _provider: &str) -> Result<(), String> {
+    fn configure_model(
+        &self,
+        _base_url: &str,
+        _api_key: &str,
+        _model: &str,
+        _provider: &str,
+    ) -> Result<(), String> {
         Err("agent does not support runtime model configuration".to_owned())
     }
 
@@ -160,15 +188,23 @@ pub trait Agent: Send + Sync {
         input: &str,
         sink: &dyn EventSink,
     ) -> Result<AgentReply, AgentError> {
-        sink.emit(AgentEvent::TurnStarted { turn_id: turn_id.to_owned() });
+        sink.emit(AgentEvent::TurnStarted {
+            turn_id: turn_id.to_owned(),
+        });
         match self.run_in(context, input) {
             Ok(reply) => {
-                sink.emit(AgentEvent::TextDelta { delta: reply.text.clone() });
-                sink.emit(AgentEvent::TurnCompleted { reply: reply.clone() });
+                sink.emit(AgentEvent::TextDelta {
+                    delta: reply.text.clone(),
+                });
+                sink.emit(AgentEvent::TurnCompleted {
+                    reply: reply.clone(),
+                });
                 Ok(reply)
             }
             Err(err) => {
-                sink.emit(AgentEvent::Error { message: err.to_string() });
+                sink.emit(AgentEvent::Error {
+                    message: err.to_string(),
+                });
                 Err(err)
             }
         }

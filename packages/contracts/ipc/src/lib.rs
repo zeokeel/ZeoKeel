@@ -32,12 +32,20 @@ pub struct CommandResponse {
 impl CommandResponse {
     /// Success helper.
     pub fn ok(data: Value) -> Self {
-        Self { ok: true, data: Some(data), error: None }
+        Self {
+            ok: true,
+            data: Some(data),
+            error: None,
+        }
     }
 
     /// Error helper.
     pub fn err(message: impl Into<String>) -> Self {
-        Self { ok: false, data: None, error: Some(message.into()) }
+        Self {
+            ok: false,
+            data: None,
+            error: Some(message.into()),
+        }
     }
 }
 

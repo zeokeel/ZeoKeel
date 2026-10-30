@@ -6,7 +6,10 @@ use zk_contract_ipc::{CommandRequest, CommandResponse, UiEvent};
 
 #[test]
 fn envelopes_round_trip() {
-    let req = CommandRequest { name: "chat.send".to_owned(), payload: json!({"text":"hi"}) };
+    let req = CommandRequest {
+        name: "chat.send".to_owned(),
+        payload: json!({"text":"hi"}),
+    };
     let text = serde_json::to_string(&req).unwrap();
     let back: CommandRequest = serde_json::from_str(&text).unwrap();
     assert_eq!(req, back);
@@ -17,7 +20,12 @@ fn envelopes_round_trip() {
     let err = CommandResponse::err("boom");
     assert!(!err.ok);
 
-    let ev = UiEvent { stream_id: "s1".to_owned(), seq: 1, kind: "agent".to_owned(), payload: json!({"type":"text_delta","delta":"hi"}) };
+    let ev = UiEvent {
+        stream_id: "s1".to_owned(),
+        seq: 1,
+        kind: "agent".to_owned(),
+        payload: json!({"type":"text_delta","delta":"hi"}),
+    };
     let text = serde_json::to_string(&ev).unwrap();
     let back: UiEvent = serde_json::from_str(&text).unwrap();
     assert_eq!(ev, back);

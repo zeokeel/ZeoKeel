@@ -4,4 +4,6 @@ use serde::{Deserialize, Serialize};
 
 /// Domain module descriptor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DomainModule { pub id: String }
+pub struct DomainModule {
+    pub id: String,
+}

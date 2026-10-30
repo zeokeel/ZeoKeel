@@ -16,6 +16,9 @@ impl ServerModule {
     /// Build a descriptor.
     #[must_use]
     pub fn new(id: &str, version: &str) -> Self {
-        Self { id: id.to_owned(), version: version.to_owned() }
+        Self {
+            id: id.to_owned(),
+            version: version.to_owned(),
+        }
     }
 }

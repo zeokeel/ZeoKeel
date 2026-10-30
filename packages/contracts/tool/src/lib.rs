@@ -55,14 +55,23 @@ pub enum ToolError {
 /// Approval gate for mutating tool calls. The desktop/UI implements it.
 pub trait ApprovalGate: Send + Sync {
     /// Ask the user; implementations may block. Fail closed on timeout/error.
-    fn decide(&self, approval_id: &str, tool: &str, args: &serde_json::Value, reason: &str) -> bool;
+    fn decide(&self, approval_id: &str, tool: &str, args: &serde_json::Value, reason: &str)
+        -> bool;
 }
 
 /// Deny everything (safe default).
 pub struct DenyAll;
 
 impl ApprovalGate for DenyAll {
-    fn decide(&self, _approval_id: &str, _tool: &str, _args: &serde_json::Value, _reason: &str) -> bool { false }
+    fn decide(
+        &self,
+        _approval_id: &str,
+        _tool: &str,
+        _args: &serde_json::Value,
+        _reason: &str,
+    ) -> bool {
+        false
+    }
 }
 
 /// A replaceable capability executed by the local agent loop.
@@ -79,7 +88,11 @@ pub trait Tool: Send + Sync {
 
     /// Execute with JSON arguments (agent tool calling). Tools that implement a
     /// real schema should override this; the default keeps legacy string tools usable.
-    fn call_json(&self, context: &TurnContext, args: serde_json::Value) -> Result<String, ToolError> {
+    fn call_json(
+        &self,
+        context: &TurnContext,
+        args: serde_json::Value,
+    ) -> Result<String, ToolError> {
         self.call_in(context, &args.to_string())
     }
 }
