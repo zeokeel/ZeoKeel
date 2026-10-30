@@ -39,6 +39,15 @@ pub(crate) fn client_header_value() -> String {
     )
 }
 
+/// Export the native client identity for the enterprise gateway provider.
+///
+/// The composed `llm-gateway` package cannot reach the desktop's generated
+/// channel directly; boot hands it the exact header value through the process
+/// environment (`ZEOKEEL_CLIENT_HEADER`). Calls outside boot are harmless.
+pub(crate) fn install_client_header_env() {
+    std::env::set_var("ZEOKEEL_CLIENT_HEADER", client_header_value());
+}
+
 /// Fresh request id (server echoes it in `X-Request-Id` and 426 bodies).
 #[must_use]
 pub(crate) fn request_id() -> String {
@@ -89,5 +98,16 @@ mod tests {
             .and_then(|value| value.to_str().ok())
             .expect("request id");
         assert!(uuid::Uuid::parse_str(request_id).is_ok(), "{request_id}");
+    }
+    #[test]
+    fn boot_installs_client_header_environment() {
+        let previous = std::env::var_os("ZEOKEEL_CLIENT_HEADER");
+        super::install_client_header_env();
+        let installed = std::env::var("ZEOKEEL_CLIENT_HEADER").expect("installed env");
+        assert_eq!(installed, super::client_header_value());
+        match previous {
+            Some(value) => std::env::set_var("ZEOKEEL_CLIENT_HEADER", value),
+            None => std::env::remove_var("ZEOKEEL_CLIENT_HEADER"),
+        }
     }
 }

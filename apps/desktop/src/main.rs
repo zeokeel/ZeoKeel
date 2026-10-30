@@ -260,6 +260,7 @@ fn apply_persisted_provider(runtime: &zk_composed::Runtime) {
 }
 
 fn main() {
+    native_client::install_client_header_env();
     let serve_mode = std::env::args().any(|arg| arg == "--serve")
         || std::env::var("ZEOKEEL_SERVE")
             .map(|v| v == "1")

@@ -28,8 +28,8 @@ use uuid::Uuid;
 
 use zk_kit_server::AppState;
 use zk_kit_server::{
-    audit_tx, current_user as current_user_public, error as auth_error, require_admin,
-    setting_value, ServerError as AuthError,
+    audit_tx, current_user as current_user_public, error as auth_error, request_id_for_request,
+    require_admin, setting_value, ServerError as AuthError,
 };
 
 const DEFAULT_OUTPUT_TOKENS: i64 = 1024;
@@ -100,9 +100,10 @@ async fn responses(
         multiplier_bps,
     );
 
-    // Server-generated settlement key: a client cannot force two distinct
-    // upstream calls onto one idempotency key (P0: free re-use of x-request-id).
-    let request_id = Uuid::new_v4().to_string();
+    // Request-scoped settlement key: the outermost middleware generates one id
+    // per request (or accepts a caller correlation id) so HTTP, gateway usage and
+    // audit all agree; no second UUID is generated here.
+    let request_id = request_id_for_request(&headers);
     admit(
         &state,
         user_uuid,

@@ -15,7 +15,7 @@ use zk_kit_server::AppState;
 use zk_kit_server::{
     client_is_too_old, client_version, content_etag, current_user as current_user_public,
     error as auth_error, if_none_match, min_client_version_for_server, permissions_for_role,
-    request_id_from_headers, require_admin, upgrade_required_response, ServerError as AuthError,
+    request_id_for_request, require_admin, upgrade_required_response, ServerError as AuthError,
 };
 
 #[derive(Debug, Deserialize)]
@@ -117,7 +117,7 @@ async fn bootstrap(
 ) -> Result<Response, AuthError> {
     let (user_id, role, _) = current_user_public(&state, &headers).await?;
     if client_is_too_old(&headers) {
-        let request_id = request_id_from_headers(&headers);
+        let request_id = request_id_for_request(&headers);
         let current = client_version(&headers);
         let minimum = min_client_version_for_server();
         return Ok(upgrade_required_response(

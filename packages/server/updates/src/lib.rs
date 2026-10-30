@@ -37,7 +37,7 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use zk_kit_server::{
-    error, request_id_from_headers, upgrade_required_response, AppState, ServerError,
+    error, request_id_for_request, upgrade_required_response, AppState, ServerError,
 };
 
 /// Environment variable holding the ed25519 public key (base64 or hex).
@@ -267,7 +267,7 @@ async fn manifest(
         // Below the supported floor is a forced upgrade (426); any other 1:1
         // mismatch stays a channel/config error (409).
         if below_min {
-            let request_id = request_id_from_headers(&headers);
+            let request_id = request_id_for_request(&headers);
             return Ok(upgrade_required_response(
                 &request_id,
                 Some(&client_version),

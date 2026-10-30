@@ -533,6 +533,13 @@ pub fn current_request_id() -> Option<String> {
     REQUEST_ID.try_with(Clone::clone).ok()
 }
 
+/// Request id for the current request: the outermost middleware value when
+/// installed, otherwise a header read/generated fallback (unit handlers/tests).
+#[must_use]
+pub fn request_id_for_request(headers: &HeaderMap) -> String {
+    current_request_id().unwrap_or_else(|| request_id_from_headers(headers))
+}
+
 /// Canonical nested 426 body shared by the HTTP gate, bootstrap and updates.
 #[must_use]
 pub fn upgrade_required_body(

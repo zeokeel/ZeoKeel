@@ -17,19 +17,23 @@ pub use zk_kit_server::AppState;
 use zk_kit_server::{
     attach_request_id, brand_snapshot, client_version, content_etag, if_none_match,
     min_client_version, min_client_version_for_server, parse_semver, permissions_for_role,
-    request_id_from_headers, require_admin, upgrade_required_response, with_request_id,
-    ServerError,
+    request_id_for_request, request_id_from_headers, require_admin, upgrade_required_response,
+    with_request_id, ServerError,
 };
 
 /// Stable API version for the cross-major `/api/meta/*` surface (`docs/04` §2).
 pub const API_VERSION: &str = "v1";
 
-/// Whether `path` belongs to the version-gated business surface.
+/// Whether `path` belongs to a version-gated surface.
 ///
-/// Stable surfaces (`/api/meta/*`, `/api/channel`, `/api/updates/*`) are outside
-/// `/api/client/v1/*`; login/refresh and bootstrap stay reachable so an old
-/// client can authenticate and discover the upgrade path.
+/// Business `/api/client/v1/*`, with login/refresh/bootstrap exempt so an old
+/// client can authenticate and discover the upgrade path; gateway `/v1/*` is
+/// also gated (enterprise native gateway sends the client identity header).
+/// Stable surfaces (`/api/meta/*`, `/api/channel`, `/api/updates/*`) are outside.
 fn is_client_business_path(path: &str) -> bool {
+    if path == "/v1" || path.starts_with("/v1/") {
+        return true;
+    }
     if path != "/api/client/v1" && !path.starts_with("/api/client/v1/") {
         return false;
     }
@@ -41,25 +45,31 @@ fn is_client_business_path(path: &str) -> bool {
     )
 }
 
-/// Gate `/api/client/v1/*` on the `X-ZeoKeel-Client` semver.
-///
-/// Missing or malformed headers fail closed with 426 so the client can show the
-/// forced-upgrade surface; login/refresh/bootstrap and stable surfaces pass.
-/// A client without the header cannot prove it is new enough for business calls.
-/// The minimum is resolved from the authoritative server channel (env/brand),
-/// never from the client-controlled channel segment; the request id is read from
-/// `X-Request-Id` or generated and echoed on responses.
-pub async fn client_version_gate(request: Request, next: Next) -> Response {
+/// Outermost request-id middleware: read or generate exactly once, install the
+/// task-local for gate/bootstrap/updates/gateway/audit, and echo the response
+/// header for every wrapped response.
+pub async fn request_context(request: Request, next: Next) -> Response {
     let request_id = request_id_from_headers(request.headers());
+    let mut response = with_request_id(request_id.clone(), next.run(request)).await;
+    attach_request_id(&mut response, &request_id);
+    response
+}
+
+/// Gate `/api/client/v1/*` and `/v1/*` on the `X-ZeoKeel-Client` semver.
+///
+/// Missing or malformed headers fail closed with 426. The request id comes from
+/// the outermost [`request_context`] task-local (no second generation); the
+/// minimum is resolved from the authoritative server channel, never from the
+/// client-controlled channel segment.
+pub async fn client_version_gate(request: Request, next: Next) -> Response {
     // CORS preflights never carry custom request headers; let the CORS layer
     // answer them, otherwise a browser client cannot reach the business surface.
     if request.method() == axum::http::Method::OPTIONS
         || !is_client_business_path(request.uri().path())
     {
-        let mut response = with_request_id(request_id.clone(), next.run(request)).await;
-        attach_request_id(&mut response, &request_id);
-        return response;
+        return next.run(request).await;
     }
+    let request_id = request_id_for_request(request.headers());
     let minimum = min_client_version_for_server();
     let current = client_version(request.headers());
     let Some(version) = current.as_deref().and_then(parse_semver) else {
@@ -72,9 +82,7 @@ pub async fn client_version_gate(request: Request, next: Next) -> Response {
     };
     let Some(minimum_version) = parse_semver(&minimum) else {
         // The kit helper validates env overrides and falls back to 0.1.0.
-        let mut response = with_request_id(request_id.clone(), next.run(request)).await;
-        attach_request_id(&mut response, &request_id);
-        return response;
+        return next.run(request).await;
     };
     if version < minimum_version {
         return upgrade_required_response(
@@ -84,9 +92,7 @@ pub async fn client_version_gate(request: Request, next: Next) -> Response {
             "client version is below the minimum supported version",
         );
     }
-    let mut response = with_request_id(request_id.clone(), next.run(request)).await;
-    attach_request_id(&mut response, &request_id);
-    response
+    next.run(request).await
 }
 
 /// Stable module descriptor.
@@ -320,6 +326,8 @@ mod tests {
     fn gate_router() -> Router {
         Router::new()
             .route("/api/client/v1/workspaces", get(|| async { "ok" }))
+            .route("/v1/models", get(|| async { "models" }))
+            .route("/v1/responses", get(|| async { "responses" }))
             .route("/api/client/v1/auth/login", get(|| async { "login" }))
             .route("/api/client/v1/auth/refresh", get(|| async { "refresh" }))
             .route(
@@ -330,6 +338,7 @@ mod tests {
             .route("/api/channel", get(|| async { "channel" }))
             .route("/api/updates/manifest", get(|| async { "updates" }))
             .layer(axum::middleware::from_fn(client_version_gate))
+            .layer(axum::middleware::from_fn(request_context))
     }
 
     async fn call_raw(
@@ -520,6 +529,41 @@ mod tests {
                 assert_eq!(status, StatusCode::OK, "{path} {header:?}");
             }
         }
+    }
+
+    #[tokio::test]
+    async fn gateway_paths_are_version_gated_too() {
+        for path in ["/v1/models", "/v1/responses"] {
+            let (status, _headers, body) =
+                call(gate_router(), path, Some("0.0.0;official;linux-x64;test")).await;
+            assert_eq!(status, StatusCode::UPGRADE_REQUIRED, "{path}");
+            assert_eq!(error_code(&body), "CLIENT_TOO_OLD", "{path}");
+            let (status, _headers, _body) =
+                call(gate_router(), path, Some("9.9.9;official;linux-x64;test")).await;
+            assert_eq!(status, StatusCode::OK, "{path}");
+            let (status, _headers, body) = call(gate_router(), path, None).await;
+            assert_eq!(status, StatusCode::UPGRADE_REQUIRED, "{path}");
+            assert_eq!(error_code(&body), "CLIENT_TOO_OLD", "{path}");
+        }
+    }
+
+    #[tokio::test]
+    async fn request_id_is_generated_once_and_shared_with_gate_body() {
+        let (status, headers, body) = call(
+            gate_router(),
+            "/api/client/v1/workspaces",
+            Some("0.0.0;official;linux-x64;test"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UPGRADE_REQUIRED);
+        let value: Value = serde_json::from_slice(&body).expect("json");
+        let body_id = value["error"]["request_id"].as_str().expect("body id");
+        assert_eq!(
+            headers
+                .get("x-request-id")
+                .and_then(|value| value.to_str().ok()),
+            Some(body_id)
+        );
     }
 
     #[test]

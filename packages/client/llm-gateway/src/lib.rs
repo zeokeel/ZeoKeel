@@ -262,6 +262,25 @@ pub fn provider() -> GatewayLlm {
     }
 }
 
+/// Client identity header for gateway requests, injected by the desktop boot via
+/// `ZEOKEEL_CLIENT_HEADER` (the same value the server gate compares).
+fn client_header_from_env() -> Option<String> {
+    std::env::var("ZEOKEEL_CLIENT_HEADER")
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty() && !value.contains('\n') && !value.contains('\r'))
+}
+
+fn with_client_header(
+    builder: reqwest::blocking::RequestBuilder,
+    header: Option<&str>,
+) -> reqwest::blocking::RequestBuilder {
+    match header {
+        Some(value) => builder.header("x-zeokeel-client", value),
+        None => builder,
+    }
+}
+
 impl GatewayLlm {
     /// Explicit config (tests/bootstrap); also updates the shared credential slot.
     #[must_use]
@@ -335,11 +354,13 @@ impl LlmProvider for GatewayLlm {
         on_delta: &mut dyn FnMut(&str),
     ) -> Result<String, LlmError> {
         let (base_url, access_token, model) = self.credentials()?;
-        let response = self
+        let builder = self
             .http
             .post(format!("{base_url}/v1/responses"))
             .bearer_auth(&access_token)
-            .json(&serde_json::json!({ "model": model, "input": prompt, "stream": true }))
+            .json(&serde_json::json!({ "model": model, "input": prompt, "stream": true }));
+        let header = client_header_from_env();
+        let response = with_client_header(builder, header.as_deref())
             .send()
             .map_err(|error| LlmError::Upstream(error.to_string()))?;
         let status = response.status();
@@ -475,5 +496,44 @@ mod tests {
         );
         let gateway = model_from_config("gateway", "http://127.0.0.1:1", "token", "model");
         assert!(gateway.is_ok());
+    }
+    #[test]
+    fn gateway_request_builder_attaches_configured_client_header() {
+        let client = reqwest::blocking::Client::new();
+        let builder = client.post("http://127.0.0.1:1/v1/responses");
+        let request = with_client_header(builder, Some("0.1.0;official;linux-x64;dev"))
+            .build()
+            .expect("request");
+        assert_eq!(
+            request
+                .headers()
+                .get("x-zeokeel-client")
+                .and_then(|value| value.to_str().ok()),
+            Some("0.1.0;official;linux-x64;dev")
+        );
+        let request = with_client_header(
+            reqwest::blocking::Client::new().post("http://127.0.0.1:1/v1/responses"),
+            None,
+        )
+        .build()
+        .expect("request");
+        assert!(request.headers().get("x-zeokeel-client").is_none());
+    }
+
+    #[test]
+    fn client_header_comes_from_process_environment() {
+        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+        let guard = LOCK
+            .get_or_init(|| std::sync::Mutex::new(()))
+            .lock()
+            .expect("env lock");
+        std::env::set_var("ZEOKEEL_CLIENT_HEADER", "0.1.0;oem-acme;windows-x64;dev");
+        assert_eq!(
+            client_header_from_env().as_deref(),
+            Some("0.1.0;oem-acme;windows-x64;dev")
+        );
+        std::env::remove_var("ZEOKEEL_CLIENT_HEADER");
+        assert_eq!(client_header_from_env(), None);
+        drop(guard);
     }
 }
