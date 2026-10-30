@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/client-update-github"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Personal update check via GitHub Releases latest.json"
+
+[role]
+name = "update.client"
+contract = "zk-contract-update"
+cardinality = "singleton"
+editions = ["personal"]
+
+[facets]
+rust = { crate = "zk-client-update-github" }

@@ -33,3 +33,8 @@
 ## Inspector
 
 - `workspace.files` IPC（workspace 边界内、深度≤2、≤300 项、跳过 `.git`）→ `@zeokeel/ui-inspector`；⌘B 开关；Playwright 真 serve 文件树 + axe 0 serious/critical。
+
+## Update check package
+
+- `zk-client-update-github`（`update.client`，personal）：读 GitHub `latest.json`、semver 比较、按平台选资产；企业版 exclude。
+- 仍缺：设置页“检查更新”入口、下载/校验/安装。

@@ -1,0 +1,18 @@
+[package]
+name = "zk-client-update-github"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+reqwest = { workspace = true }
+semver = { workspace = true }
+serde_json = { workspace = true }
+zk-contract-update = { path = "../../contracts/update" }
+
+[dev-dependencies]
+axum = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

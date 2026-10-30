@@ -102,6 +102,11 @@ contract = "zk-contract-auth-client"
 cardinality = "singleton"
 editions = ["enterprise"]
 
+[roles."update.client"]
+contract = "zk-contract-update"
+cardinality = "singleton"
+editions = ["personal"]
+
 [roles."srv.http"]
 contract = "zk-contract-server"
 cardinality = "singleton"
@@ -185,6 +190,7 @@ editions = ["personal", "enterprise"]
 "zk.contract.server" = "zk-contract-server"
 "zk.contract.admin-ui" = "zk-contract-admin-ui"
 "zk.contract.auth-client" = "zk-contract-auth-client"
+"zk.contract.update" = "zk-contract-update"
 "zk.contract.gateway" = "zk-contract-gateway"
 "zk.contract.wallet" = "zk-contract-wallet"
 "zk.contract.user" = "zk-contract-user"

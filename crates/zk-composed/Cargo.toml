@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 zk-agent-loop = { path = "../../packages/client/agent-loop" }
+zk-client-update-github = { path = "../../packages/client/update" }
 zk-contract-admin-ui = { path = "../../packages/contracts/admin-ui" }
 zk-contract-agent = { path = "../../packages/contracts/agent" }
 zk-contract-auth = { path = "../../packages/contracts/auth" }
@@ -21,6 +22,7 @@ zk-contract-server = { path = "../../packages/contracts/server" }
 zk-contract-session = { path = "../../packages/contracts/session" }
 zk-contract-tool = { path = "../../packages/contracts/tool" }
 zk-contract-ui = { path = "../../packages/contracts/ui" }
+zk-contract-update = { path = "../../packages/contracts/update" }
 zk-contract-user = { path = "../../packages/contracts/user" }
 zk-contract-wallet = { path = "../../packages/contracts/wallet" }
 zk-llm-mock = { path = "../../packages/client/llm-mock" }

@@ -1,0 +1,9 @@
+schema = 1
+id = "zeokeel/contract-update"
+kind = "contract"
+version = "0.1.0"
+license = "MIT"
+summary = "Personal update feed contract marker"
+
+[facets]
+rust = { crate = "zk-contract-update" }

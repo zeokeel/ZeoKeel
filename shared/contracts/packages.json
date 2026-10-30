@@ -94,5 +94,13 @@
     "roles": [
       "ui.slot.settings"
     ]
+  },
+  {
+    "id": "zeokeel/client-update-github",
+    "version": "0.1.0",
+    "kind": "capability",
+    "roles": [
+      "update.client"
+    ]
   }
 ]

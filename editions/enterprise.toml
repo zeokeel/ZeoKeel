@@ -26,4 +26,4 @@
 name = "enterprise"
 base_edition = "personal"
 targets = ["server", "desktop"]
-exclude = []
+exclude = ["zeokeel/client-update-github"]
