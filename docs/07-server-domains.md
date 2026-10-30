@@ -176,6 +176,9 @@ epoch/fuel + StoreLimits 做超时/内存；内存/CPU/时间/并发限额；
 | `job_runs` | job, key, status, started_at, finished_at, error |
 
 - 审计写入在业务事务内（写失败即业务失败）；审计员只读查询。
+- **实现状态（M2）**：钱包调整、用户增改删、价格版本、系统设置的业务变更已使用同事务审计哈希链（`audit_tx` + advisory lock），
+  审计 INSERT 失败时业务整体失败（已用真实 PG 触发器验证）；内容/技能/连接器/应用的业务变更目前仍在提交后写审计
+  （存在 fail-open 窗口，待按同样事务化方式补齐，见 `specs/` 后续 change）。
 - 保留期：审计 ≥180 天、用量 ≥12 个月；**可配置但不得低于下限**（`system_settings.min_value` 校验）。
 - 运维：`/healthz`、`/readyz`、备份/恢复、升级/回滚（`06` §7）；**员工客户端下载门户**（服务端提供，非 OEM 自助门户）。
 - 系统配置：`hot`（30s TTL）与 `restart` 标注；管理台保存后显示生效状态。

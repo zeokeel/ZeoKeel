@@ -75,6 +75,8 @@ active/suspended ──销户──► closed（余额按规则清零/转移，�
 - 断线/取消/上游 5xx：按已生成 token 结算；无法确定时 `estimated` + 对账复核。
 - 重试：同一 `request_id` 只结算一次；首字节后禁止重试/换 provider。
 - 崩溃：启动扫 pending，超时后按最后记录结算或 void，差异进对账。
+- **实现状态（M2）**：`usage_pending` 是 pending 账本（准入写入、网关结算/作废、`usage-pending` job 扫描）；
+  超过 1h 未结算 → `voided` 并作废对应 hold，结算错误写入日志且不静默丢弃。
 
 ### 5.3 价格版本（不可变）
 
