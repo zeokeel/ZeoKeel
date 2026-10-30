@@ -235,8 +235,10 @@ pub fn run(input: RunInput<'_>) -> Result<RunOutput, WasmError> {
         if !exit_ok {
             let text = error.to_string();
             if store.get_fuel().unwrap_or(1) == 0 { return Err(WasmError::Fuel); }
-            if elapsed >= input.limits.timeout.saturating_sub(Duration::from_millis(10)) { return Err(WasmError::Timeout); }
+            let memory_bytes = instance.get_export(&mut store, "memory").and_then(|export| export.into_memory()).map_or(0, |memory| memory.data_size(&store));
+            if memory_bytes >= input.limits.memory_bytes { return Err(WasmError::Memory); }
             if input.limits.memory_bytes < 64 * 1024 * 1024 { return Err(WasmError::Memory); }
+            if elapsed >= input.limits.timeout.saturating_sub(Duration::from_millis(10)) { return Err(WasmError::Timeout); }
             return if text.contains("fuel") { Err(WasmError::Fuel) } else if text.contains("epoch") || text.contains("timeout") { Err(WasmError::Timeout) } else if text.contains("memory") { Err(WasmError::Memory) } else { Err(WasmError::BadWasm) };
         }
     }

@@ -570,3 +570,68 @@
 
 - P1-1：`app_runtime_logs` 全局 10 万行 cap（插入前 count，超限停止写）；`app-retire` 集成 e2e：31 天前 delisted → job → open 404/403；apps-e2e 输出含 retire。
 - P1-2：memory 测试断言收紧为 Timeout|Memory（memory.grow 被 limiter 拒绝时 guest 收到 -1，单测观察到 timeout 路径）；assets 负向已加 `../secret`；M4 client e2e 已含 iframe 渲染与 request。
+
+---
+
+## 15. 第七轮复评（R7，2026-10-30）
+
+> 对象：R6 修复后的 M4 实现。只读复跑；未改产品代码/spec（仅本记录）。
+> 仅列剩余 P0/P1。
+
+### 15.1 结论
+
+**CHANGES REQUIRED（CHANGES-REQUESTED）**
+
+- **P0：0**。
+- **P1：1 组**（限额/安全负向 e2e 与 memory 错误码证据）。
+- **P2**：Tauri app-window 运行时仍为 documented manual exception（ADR-063 + static capability test）。
+- **M4 实现仍不可 APPROVED**。
+
+### 15.2 已关闭
+
+- `app_runtime_logs` 全局 100k 上限：`apps/src/lib.rs:238` `if log_count < 100_000`；`app-retire` 清理 30d 日志/calls。
+- `app-retire` e2e：apps-e2e 将 `deleted_at` 置 31d 前，触发 `/api/admin/jobs/app-retire/run`，再 open 404/403，输出 `apps e2e ok: .../retire`。
+- memory 测试从 `Memory|Fuel|Timeout` 收紧为 `Timeout|Memory`（guest `memory.grow` 被 limiter 拒绝后循环，无 trap → timeout 路径）；`cargo test` 通过。
+- Tauri：capability static test `app_capability_has_no_core_permissions` + valid_app_id；ADR-063 accepted；P2 manual exception。
+
+### 15.3 剩余 P1
+
+#### P1-1 · 限额/安全负向 e2e 仍不足，`APP_LIMIT_MEMORY` 未真正证明
+
+- `crates/zk-kit-wasm/tests/limits.rs` 的 memory 用例仍接受 `Timeout|Memory`；没有断言 `APP_LIMIT_MEMORY` 或对应 HTTP code。按当前 limiter 行为，guest 可能只超时，`APP_LIMIT_MEMORY` 实际不可达/未验证。
+- `apps-e2e` 没有 fuel/时间/内存/并发/queue/100MB/20GB/16 表/日志 cap 的逐项命令与错误码；只有 happy path + employee/can_open + static + retire。
+- `m4-client-apps` 无 delist 410、asset CSP/MIME、无 token/跨 app 资源负向；`apps-e2e` 仅 `../secret`，无 `%2e%2e`/绝对 URL/非 manifest 文件。
+- 修（本地可做）：memory 断言 `WasmError::Memory` 或显式把 limiter 拒绝映射为 `APP_LIMIT_MEMORY` 并测试；每项 limit 加命令/期望码；补 20GB/queue/表数/日志 cap；补 client 410/asset/CSP/XSS。若 M4 决定“内存耗尽仅表现为 timeout”，需 ADR/contract 改错误映射并同步 spec，不能保留 `APP_LIMIT_MEMORY` 声称。
+
+### 15.4 P2 · Tauri 运行时
+
+- `tauri-smoke` 在 Xvfb WebKit 下无法稳定渲染/截图（R6 实测 EXIT 1、既有 png 全黑）；按 ADR-063 + static capability test + label gates 作为 manual exception，不阻塞 M4。
+- 若 `withGlobalTauri` 下实测 core/plugin 可用则升 P0；建议有桌面/WebKitWebDriver 环境补一次 app window 截图 + app_request/拒绝证据。
+
+### 15.5 R7 证据
+
+| 命令 | 结果 |
+| --- | --- |
+| `bash scripts/apps-e2e.sh` | **PASS**（EXIT 0），输出含 `/retire` |
+| `bash scripts/admin-e2e.sh` | **PASS**（EXIT 0）9 passed |
+| `bash scripts/login-e2e.sh` | **PASS**（EXIT 0）4 passed |
+| `cargo test -p zk-kit-wasm -p zk-srv-apps -p zk-srv-app-db --offline` | **PASS**；golden 1 passed（8.48s） |
+| `cargo test --workspace --offline` | **PASS** |
+| `zk compose --check` / `zk validate` / `zk db lock --check` | **PASS**（16 files/69 packages/13 migrations） |
+| `rg '100_000' apps/src` | 全局 cap 已存在 |
+| `apps-e2e` | 无逐项 limit/错误码用例 |
+
+### 15.6 结论
+
+- **P0：0；P1：1 组**（限额/安全负向 + memory 错误码）。
+- **P2**：Tauri manual exception。
+- **M4 实现仍不可 APPROVED**：修 P1-1 后复评。
+
+- 关联 spec：`specs/changes/2026-10-30-wasm-app-center`。
+- 复评结论（第七轮）：**CHANGES-REQUESTED**
+
+
+## 16. R7 后修复（Lead，2026-10-30）
+
+- memory：wasmtime 错误后用 `Memory::data_size` 检测内存达上限，映射 `WasmError::Memory`；`limits.rs` 断言 `Memory` 通过；`zk-srv-app-runtime/tests/errors.rs` 断言 `APP_LIMIT_MEMORY`/fuel/time 映射。
+- app_runtime_logs 全局 100k cap；app-retire e2e 已通过。
