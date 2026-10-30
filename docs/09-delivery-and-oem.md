@@ -115,11 +115,11 @@ depth = "basic"
 | `identity.company` / `copyright` / `linux{maintainer,synopsis,category}` | 文本 | 非空 | 安装器与 deb/AppImage 元数据 |
 | `identity.deep_link_scheme` / `app_origin_scheme` | `[a-z][a-z0-9+.-]*` | 两者互不相等、各自跨渠道唯一、非保留字 | 深链 `acme://auth`；WebView 自定义协议 |
 | `identity.data_dir_name` / `product_home_dir` | 目录名 | 路径安全；**同一 edition+channel 升级不得变**；不同产品身份必须不同 | 数据根 |
-| `assets.logo_primary` / `logo_dark` | SVG（平坦 hex 方块 + 方块外 mark） | 可派生托盘 alpha；暗色面存在 | 派生托盘/favicon/门户/管理台 |
-| `assets.app_icon` | PNG 1024² RGBA | 尺寸/色深/ICC 可读 | 安装包/窗口/mac 824 安全区 |
-| `assets.accent` | `#RRGGBB` | 与前景色对比度阈值 | 托盘、门户、管理台强调色 |
+| `brand.logo.light` / `brand.logo.dark` | 渠道目录内相对 SVG 路径 | 非空、相对路径、canonicalize 后必须位于渠道目录内、禁 `..`/绝对路径/符号链接逃逸、大小上限（256KB）、`<script>`/外链资源拒绝 | 构建期注入 `public/brand/`；派生托盘/favicon（`scripts/gen-icons.sh`） |
+| `brand.icon_source`（可选） | 渠道目录内相对 PNG/SVG 路径 | 同 logo 路径安全；缺省 = `brand.logo.light` 派生 | 安装包/窗口图标；由 `scripts/gen-icons.sh` 生成，不手改 |
+| `assets.accent` | `#RRGGBB` | 与前景色对比度阈值；仅派生资源/门户，不覆盖客户端 live accent（`27`） | 托盘、门户、管理台强调色 |
 | `copy.*` | 文本，支持 `{product}`/`{version}` | 占位符集合与官方一致、关键键非空 | 安装器/登录页/窗口标题/门户 |
-| `brand.powered_by` | `show` / `hide` | 官方默认 `show`；OEM 默认 `hide`；未知值构建红 | 是否显示“Powered by ZeoKeel” |
+| `brand.powered_by` | `show` / `hide` | **必填枚举**；官方默认 `show`；OEM 默认 `hide`；未知值构建红；`zk compose` 校验 | 是否显示“Powered by ZeoKeel” |
 | `defaults.server_url` | 绝对 https URL（回环例外）或空 | **任意渠道都可空**：为空 → 首配页显示地址输入（客户自己配置，官方企业版默认如此）；非空 → 客户端内置并锁定地址（OEM 免填）；设置了就必须合法；个人版必须为空且无登录；同渠道跨版本不得变 | **渠道决定登录形态**：非空 = 只显示账号/密码、地址不可编辑；空 = 首次输入并本地保存，设置中可改（需重新登录） |
 | `strings/<locale>.json` | 词条覆盖 | 键在 i18n catalog 内且只允许 `brand.*` 前缀 | UI 品牌文案 |
 | `config/defaults.toml` | 服务端默认值 | 键在服务端部署配置注册表白名单内 | 服务端默认配置/管理台主题 |

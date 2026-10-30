@@ -6,6 +6,12 @@
  */
 @import "tailwindcss";
 
+/* UI package sources live outside this app root; scan them for utilities. */
+@source "../../../../packages/ui/ui-kit/web/src";
+@source "../../../../packages/ui/ui-sessions/web/src";
+@source "../../../../packages/ui/ui-chat/web/src";
+@source "../../../../packages/ui/ui-settings/web/src";
+
 /* ---------- design tokens ---------- */
 
 :root {
@@ -77,7 +83,7 @@
   --color-muted-foreground: var(--zk-muted-foreground);
   --color-border: var(--zk-border);
   --color-input: var(--zk-border);
-  --color-ring: var(--zk-blue-500);
+  --color-ring: var(--zk-foreground);
   --color-primary: var(--zk-foreground);
   --color-primary-foreground: var(--zk-background);
   --color-secondary: var(--zk-muted);
@@ -125,11 +131,11 @@
   }
 
   ::selection {
-    background: color-mix(in oklch, var(--zk-blue-500) 20%, transparent);
+    background: color-mix(in oklch, var(--zk-foreground) 14%, transparent);
   }
 
   :focus-visible {
-    outline: 2px solid var(--zk-blue-500);
+    outline: 2px solid color-mix(in oklch, var(--zk-foreground) 55%, transparent);
     outline-offset: 2px;
   }
 
@@ -413,7 +419,7 @@
 }
 
 .zk-switch:checked {
-  background: var(--zk-blue-500);
+  background: var(--zk-foreground);
 }
 
 .zk-switch:checked::after {
@@ -421,7 +427,7 @@
 }
 
 .zk-switch:focus-visible {
-  outline: 2px solid var(--zk-blue-500);
+  outline: 2px solid color-mix(in oklch, var(--zk-foreground) 55%, transparent);
   outline-offset: 2px;
 }
 

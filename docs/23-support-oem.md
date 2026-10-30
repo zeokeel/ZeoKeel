@@ -120,3 +120,9 @@ dist/<version>/<channel>/
 - [ ] 交接包齐套；客户 IT 按 runbook 独立完成一次升级/回滚。
 - [ ] 支持 SLA 与升级路径写入交付说明。
 - [ ] OEM 渠道白标/地址/更新/审计验收全绿。
+
+
+## 渠道品牌资源（logo）
+
+规则与 schema 见 `09`（渠道字段）与 `27` §4（构建期注入/UI 使用）；本文不重复。客户交接时确认渠道已提供
+`brand.name`、`brand.powered_by`、`brand.logo.{light,dark}`，并在 `zk compose --check` 证据中留档。

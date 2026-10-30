@@ -16,6 +16,7 @@
 | 运维/备份 | 022、051 |
 | 业务口径 | 055–056 |
 | 复用/质量 | 039、040、057 |
+| 工作区/会话 | 058 |
 
 > 索引只做导航；决策正文仍以对应 ADR 为准，实现细节链接 `19–24`。
 
@@ -131,8 +132,9 @@ CI `zk compose --check` + `git diff --exit-code`。
 
 ### ADR-014 · 用户数据格式只增不改 `accepted`
 
-**决策**：本产品自有数据目录（`$ZEOKEEL_HOME` 下 `config.json` / `workspaces.json` / conversations），
-新增字段一律 `#[serde(default)]`，前端类型同步可选；破坏性变更需迁移器 + 备份。
+**决策**：本产品自有数据目录（`$ZEOKEEL_HOME`）；**配置类**数据仍为 JSON（`config.json`），
+**会话/工作区存储按 ADR-058 为 SQLite**（`workspaces.json` 不再使用）；新增字段一律 `#[serde(default)]`，
+前端类型同步可选；破坏性变更需迁移器 + 备份。
 **理由**：桌面应用升级不可回滚用户数据；这是长期兼容性要求，不承接任何先例数据格式（D1）。
 **后果**：会话/配置包（`store-*`）必须提供 schema 版本字段与迁移入口。
 
@@ -481,6 +483,35 @@ JWT 双 key 重叠；MCP 改为公共客户端 + PKCE。详见 `21` §3。
 **后果**：`crates/zk-kit-*` 作为非包共享库（同 ADR-009 引导代码）；新增 kit 需 ≥2 消费方；例外必须 spec+ADR 并在索引登记。
 详见 `25`。
 
+### ADR-058 · 对话必须归属工作区（workspace-scoped conversations）`accepted`
+
+**背景**：参考 DSH 的设计，Workspace 是持久实体（目录+id+标题），Session 归属 Workspace，agent loop 的 cwd 绑定
+Session 的 workspace root；首用先创建/选择默认 Workspace，再建 Session。没有工作区时对话会漂浮在全局 cwd，
+导致上下文/文件根不一致、会话无法按项目归档、agent 工具默认根不可预测。
+**决策**：所有会话必须且只能属于一个 Workspace（`conversations.workspace_id` 创建后不可变；唯一显式例外：用户二次确认的 `workspace.remove{reassign_to}`，系统内部不得迁移）；无 Workspace 不建会话；
+列表/消息/归档按 Workspace 隔离；agent loop 的 cwd、shell/fs/搜索/附件/checkpoint 默认根 = Workspace 根；
+首用创建/选择 `Documents/ZeoKeel/default-workspace` 或用户目录，但**初始化不自动建 Session、不发消息**；
+Workspace 移除只从注册表移除、不删目录；有会话时必须 `reassign_to` 迁移到另一 Workspace 后移除（不允许 ungrouped；默认 Workspace 需先 `set_default` 才能移除）。归档/置顶为 post-M1。工作区是上下文/默认根，**不是安全沙箱**（弱管控）。
+**理由**：对话即项目上下文；按工作区组织才能可解释、可恢复、可归档；与 DSH 的 workspace/session/agent-loop 同构。
+**后果**：session store 增 `workspaces` 表与 `workspace_id` 外键；IPC 增 `workspace.*`；UI 增 workspace switcher/首用；
+M1 验收包含"无工作区不建会话/跨工作区隔离/重启归属不丢"；历史 demo 数据迁移到默认工作区。
+详见 `26`。
+
+### ADR-059 · M1 IPC 边界校验过渡例外（C10）`accepted`
+
+**背景**：C10 要求"外部输入必须运行时校验：Rust 生成 JSON Schema，前端 Ajv 校验；禁止类型断言代替校验"。
+M1 的 IPC 命令/事件/设置边界目前用 `ui-kit/types.ts` 手写镜像 + `guards.ts` 运行时 guard + 负向测试；
+ts-rs/schemars/Ajv 代码生成尚未接入（T22），若把 C10 直接判 red，M1 无法交付。
+**决策（时间盒例外）**：M1 允许"手写 TS 镜像 + 运行时 guard"作为 C10 的**过渡实现**，但必须满足：
+1. 禁止 `any`/`as` 断言；所有外部输入在边界用显式 guard 校验，未知/非法形状拒绝并记日志；
+2. 每个 IPC 命令/事件/设置字段有 conformance/负向测试（缺字段、错类型、未知命令、跨 workspace）；
+3. 契约变更必须同步改镜像与 guard，并在 PR 写"未生成代码"的差异；
+4. **退出条件（硬）**：M2 服务端/网关/客户端联调前完成 T22（ts-rs export_bindings → `shared/ts/*`、schemars schema → `shared/schema/*`、前端 Ajv 校验），
+   删除手写镜像；未完成不得发布 M2。T22 未完成时 CI 必须显示 warning/跟踪 issue，不得静默。
+**理由**：M1 范围是本地单机 UI/agent/会话，边界面小且已有 guard；完整代码生成需要契约新增导出与构建链，放到 M2 前完成风险更低。
+**后果**：C10 在 M1 有明确例外与退出条件；`16`/`27` 不得把手写镜像写成"最终方案"；ADR 与 T22 必须在 M2 spec 回链。
+详见 `11` §9、`15` T22。
+
 ## B. 风险登记
 
 等级：L=可能性 H/M/L，I=影响 H/M/L。触发条件写进 CI 或监控，避免"感觉还好"。
@@ -514,10 +545,11 @@ JWT 双 key 重叠；MCP 改为公共客户端 + PKCE。详见 `21` §3。
 | R25 | 弱管控下员工行为导致的数据/费用/合规风险 | M | M | 服务端不兜底；文档/销售明确边界；客户终端与网络管理承担责任；审计只记录可观测部分 | 销售材料评审；安全声明随发布 |
 | R26 | 只支持 Responses API 导致部分模型/客户端兼容性下降 | M | M | 上游 provider 仍为 OpenAI 兼容；必要时在上游做转换；客户端只做 Responses 适配 | 兼容性测试矩阵；用户反馈 |
 | R27 | AI/人类重复实现已有能力（平行 utils、复制近似代码、两套抽象） | H | H | C17/ADR-057：能力索引 + `zk find` + 禁止目录/import 门禁 + 克隆 ratchet + PR 复用四问 | `zk capability --check`、`zk lint --duplicates` 超 baseline 即红 |
+| R28 | 会话脱离工作区，agent cwd/工具根漂移，消息无法按项目归档 | H | H | C18/ADR-058：workspace_id 必填、cwd=workspace、列表/归档按工作区隔离 | 无工作区创建会话必失败；跨工作区隔离 e2e |
 
 ## C. 决策状态
 
-`15-open-questions.md` 的 Q1–Q20 **均已决**（D1–D65 / ADR-001…057）；域内补充规范见 `19–25`。
+`15-open-questions.md` 的 Q1–Q20 **均已决**（D1–D66 / ADR-001…058）；域内补充规范见 `19–27`。
 **唯一显式 `open` 的是 ADR-013（`host-wasm` 非本期扩展点，不阻塞 S0/M0）**；业务口径 D60–D65 已拍板。
 S0 验证尚未完成（见 `12`），这不是“未决架构问题”，而是待跑 spike。剩余实现细节统一索引 `15` §C：
 

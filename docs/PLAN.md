@@ -92,7 +92,7 @@
 | 客户端 | 由生成器统计 | agent、工具、provider（gateway/本地）、审批、存储、登录、技能客户端、连接器客户端、WASM 宿主、UI 包 |
 | 服务端 | 由生成器统计 | auth、users、wallet、gateway、skills、connectors、apps、audit、admin（API 路由由 zk-srv-* 提供）、portal、client-release |
 | 管理台 UI | 由生成器统计 | 用户/角色/网关/用量/技能/连接器/应用/审计/系统配置/品牌 |
-| 落地节奏 | 清单由 `02`/`zk plan` 派生（不手写数量） | M1 先做个人版核心，M2 追加企业管控包 |
+| 落地节奏 | 清单由 `02`/`zk plan` 派生（不手写数量） | M1 先做个人版核心（含工作区/会话归属，`26`），M2 追加企业管控包 |
 
 ## 4.5 优先级顺序（客户端优先）
 

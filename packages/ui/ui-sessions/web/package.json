@@ -9,5 +9,11 @@
     "react": "^19",
     "react-dom": "^19"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@zeokeel/ui-kit": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0"
+  }
 }

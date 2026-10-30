@@ -4,6 +4,7 @@
 - Owner：<name>
 - 日期：<YYYY-MM-DD>
 - 关联：<D/ADR/issue/PR>
+- 评审：<docs/reviews/YYYY-MM-DD-topic.md#结论；无则 n/a（C19 前遗留）>
 - 变更预算：<预计文件数/行数；超过 10 文件或 400 行需拆分>
 
 ## 1. 背景 / 问题

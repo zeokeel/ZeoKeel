@@ -19,12 +19,14 @@
 
 ### 当前阶段（重要）
 
-仓库目前是 **Plan v3.2：只有规划文档、研究简报、两个实验原型，没有产品代码**。
+仓库已从 Plan 阶段进入 **M0 骨架 + M1 个人版客户端**：
 
-- 已存在：`docs/`、`research/`、`experiments/composition-poc/`、`experiments/wasm-poc/`、`configs/`。
-- **尚未创建**：`packages/`、`apps/`、`editions/`、`profiles/`、`tools/zk/`、`deploy/`、根 `Cargo.toml` / `pnpm-workspace.yaml`。
-- 因此下面标 **【scaffold 后】** 的命令现在会失败；标 **【当前可用】** 的可以跑。
-- 不要假装缺失的目录/命令存在；要新增结构，先改 `docs/10-repo-and-build.md` 与本文件。
+- 已有：`Cargo.toml` 单 workspace、`zk` 组合器（validate/compose/plan/capability/find）、契约（package/kernel/tool/llm/agent/ipc/session/config/ui）、
+  client 包（tool-fs/llm-mock/agent-loop/store-session-sqlite/store-settings-json/llm-openai-compatible）、
+  `crates/zk-composed`（生成 glue）、Tauri 桌面 app + axum 服务端骨架、serve 载体、assistant-ui React 前端（UI 包化）、官方渠道 logo 构建期注入。
+- 尚未完成：M1 工作区/会话归属（`docs/26`，C18/ADR-058）、provider 运行时按设置选择/系统密钥库（M1b）、审批/工具扩展、
+  M2 企业版服务端（认证/JWT/钱包/网关/商店/管理台）、M3–M6。
+- 文档仍是规范真源；代码与文档冲突时先改文档/ADR 再改实现。
 
 ## 2. 最高约束（必须遵守）
 
@@ -40,7 +42,7 @@
 | C8 | **无部门/用户组**；角色只有超管/审计员/员工；内容可见性 = 全员/指定用户 | 见 ADR-032 |
 | C9 | **TS/Rust 最严格检查**：`docs/18-strictness.md`；禁止 `any`/`as`/`unwrap`/`expect`/`panic`，禁止放宽全局 lint | CI 0 容忍 |
 | C9b | **Rust 手写代码零 `unsafe`**：所有产品 crate（packages/apps/tools/crates）`#![forbid(unsafe_code)]`，禁止手写 `unsafe`/`#[allow(unsafe_code)]`；FFI/WASM 导入只能用**自动生成绑定**（`@generated`，单独审计）或独立 sys crate；第三方与生成代码内的 unsafe 用 `cargo-geiger`/`cargo-deny` 管理 | 拒绝合并 |
-| C10 | **外部输入必须运行时校验**：Rust 生成 JSON Schema，前端 Ajv 校验；禁止类型断言代替校验 | CI/测试失败 |
+| C10 | **外部输入必须运行时校验**：Rust 生成 JSON Schema，前端 Ajv 校验；禁止类型断言代替校验（**M1 过渡例外见 ADR-059；T22 是 M2 前硬退出条件**） | CI/测试失败 |
 | C11 | **生成物只能由生成器写**：`@generated` 文件禁止手改；`--check` 必须绿 | CI 失败 |
 | C12 | **任何决策先文档后代码**：未在 `docs/` 落定的功能不实现；不确定就问用户 | 返工 |
 | C13 | **更新通道固定**：个人版只走 GitHub Releases；企业版客户端只从登录服务端按 1:1 更新；企业版服务端必须手动导入镜像升级；禁止客户端直连公共更新面/跨渠道 | 见 ADR-041 |
@@ -48,6 +50,8 @@
 | C15 | **参考仓库只作参考**：`zeokeel/channels`、`ZeoKeel-Harness`、`ZeoKeel-Next` 等只可作事实/设计参考，**不得**作为我们的依赖、构建输入、索引仓或数据源；我们的 OEM 索引仓必须自有命名（demo 为 `zeokeel/demo-oem-index`） | 拒绝合并 |
 | C16 | **无 spec 不开工**：代码/契约/数据/行为变更必须先有 `specs/changes/<id>/` 五件套；spec 经用户确认后改 `approved`；完成必须填 `acceptance.md` 并归档 | 拒绝合并 |
 | C17 | **复用优先 / 单一实现**：可复用能力只允许一处实现（契约 / `crates/zk-kit-*` / `packages/ui/ui-kit`）；禁止新建 `utils/helpers/common` 或复制近似实现；新增可复用能力必须先查能力索引并登记 `@capability`；CI 重复/越界门禁（`docs/25`、ADR-057） | 拒绝合并 |
+| C18 | **对话必须归属工作区**：无工作区不建会话；会话 `workspace_id` 创建后不可变（唯一例外：用户显式 `workspace.remove{reassign_to}`，需二次确认/审计）；agent cwd/工具默认根 = 工作区根；会话列表/消息按工作区隔离（归档为 post-M1；`docs/26`、ADR-058） | 拒绝合并 |
+| C19 | **发现即文档，评审后施工**：发现有用方案（库/设计系统/DSH 模式/颜色/品牌规则等）先写入 `docs/`（或 ADR），由非实现者只读评审；实现者修复 P0/P1；同一评审者复评通过后，才可写 approved spec/代码；禁止"先写好看/好用代码再补文档"（`docs/11` §9、`docs/27` §5） | 拒绝合并 |
 
 ## 3. Architecture model（binding）
 
@@ -55,9 +59,9 @@
 
 - Tauri 2 窗口 + 同源 HTTP 副载体（`serve`）用于 e2e/远程；WebView 加载 React UI。
 - 本地 agent 循环（自有状态机）+ `rig-core` 只做模型调用；工具/审批/会话/检查点都在本地。
-- provider：个人版本地（DeepSeek/OpenAI 兼容/Ollama，key 存系统密钥库）；企业版 `llm.provider.default`。
+- provider：个人版本地（DeepSeek/OpenAI 兼容/Ollama）；M1 key 暂存本地 JSON（0600），M2 接系统密钥库；企业版 `llm.provider.default`。
 - 前端组件是包：pnpm workspace + `[[ui.contributions]]` 静态声明 + 构建期生成 registry；shell 只认 componentId/slotId。
-- UI 基线：Radix 原语 + 自有聊天层（可参考 assistant-ui）；流式 Markdown 用现成库；长列表用 TanStack Virtual。
+- UI 基线：assistant-ui primitives + Radix 原语 + Tailwind 4；流式 Markdown 用 `@assistant-ui/react-markdown`；长列表后置 TanStack Virtual。视觉/包组合/品牌见 `27`。
 - 未登录（企业版）：`server_url` 非空（渠道预置，OEM 常见）→ 登录页只显示账号/密码；为空（官方企业版默认）→ **首配页（`ui.first-run`）** 显示地址输入并保存（设置可改，需重登），然后进登录页；登录页本身不显示地址输入。
 
 ### 3.2 服务端（弱管控）
@@ -78,20 +82,22 @@
 
 ## 4. Repository layout
 
-### 当前（Plan 阶段）
+### 当前（M1 进行中）
 
 ```text
 ZeoKeel/
-├─ AGENTS.md            # 本文件
-├─ README.md
-├─ docs/                # 规划（00–25）+ PLAN + README(SSOT)
+├─ AGENTS.md  README.md  Cargo.toml  zk.toml  pnpm-workspace.yaml
+├─ docs/                # 规划（00–27）+ PLAN + README(SSOT)
 ├─ specs/               # 变更规格（changes/templates/archive）
-├─ .agents/skills/      # 项目 Agent Skills（change/add-package/docs）
-├─ research/            # 一手研究 + 评审
-├─ experiments/
-│  ├─ composition-poc/  # 构建期换包 POC（可运行）
-│  └─ wasm-poc/         # Go/Rust wasm + 帧 ABI + SQLite POC（可运行）
-└─ configs/             # 严格检查参考配置
+├─ editions/ profiles/ brands/
+├─ crates/zk-composed/  # 生成 glue
+├─ packages/contracts/  # package/kernel/tool/llm/agent/ipc/session/config/ui
+├─ packages/client/     # tool-fs/llm-mock/agent-loop/store-*/llm-openai-compatible
+├─ packages/ui/         # ui-kit/ui-sessions/ui-chat/ui-settings（web facet）
+├─ apps/desktop/        # Tauri shell + serve 载体 + React web
+├─ apps/server/         # axum 骨架（M2 扩展）
+├─ tools/zk/ scripts/ shared/ target/（不入库）
+└─ research/ experiments/ configs/
 ```
 
 ### 目标（scaffold 后）
@@ -160,6 +166,7 @@ python3 resolve.py vendor-acme && cargo run -q -p zk   # workspace 外实现
 # 文档 / 变更规格门禁
 python3 scripts/docs-check.py
 python3 scripts/spec-check.py
+python3 scripts/review-check.py
 bash scripts/new-change.sh <kebab-slug>   # 新建 change 五件套
 
 # WASM 应用 POC：host + Go/Rust guest + 帧 ABI + SQLite + fuel
@@ -193,6 +200,7 @@ zk compose --edition enterprise --profile default --channel official --check
 zk api --edition personal --profile default --channel official --check
 zk capability --check
 zk docs --check
+python3 scripts/review-check.py
 zk db lock --check
 cargo test --workspace export_bindings && git diff --exit-code
 cargo test --workspace export_schema && git diff --exit-code
@@ -262,7 +270,7 @@ cargo test --workspace export_schema && git diff --exit-code
 - 改行为必须同步改文档；新增 ADR 放 `docs/13`，决策变更先改 ADR 再改实现。
 - 生成物头部 `@generated`，禁止手改；`--check` 失败时改生成器或输入，不改产物。
 - **ADR 状态机**：决策被取代时，旧 ADR 必须标 `superseded-by-ADR-0xx` 并回写所有引用/重复表述；禁止两篇 `accepted` ADR 互相矛盾。
-- **唯一已定清单**：`docs/15`（D1–D65；实现细节待定索引见 §C）+ `docs/13`（ADR-001…057，其中 ADR-013 为显式 `open` 的非本期扩展点）+ `docs/19–25`（域内规范）是已定事项真源；PLAN/其它文档只引用编号，不手抄结论。
+- **唯一已定清单**：`docs/15`（D1–D67；实现细节待定索引见 §C）+ `docs/13`（ADR-001…058，其中 ADR-013 为显式 `open` 的非本期扩展点）+ `docs/19–27`（域内规范）是已定事项真源；PLAN/其它文档只引用编号，不手抄结论。
 - **变更规格**：`specs/changes/<id>/` 五件套；`spec-check` 门禁；耐久结论回写 `docs/`，spec 归档。
 - **Skills**：`.agents/skills/` 只写步骤/命令/判据，不复制规范；冲突时以本文件与 `docs/README.md` 为准。
 
@@ -294,18 +302,19 @@ cargo test --workspace export_schema && git diff --exit-code
 - 实现细节待定：统一索引 `docs/15` §C（T1–T21），不阻塞 spec 编写与机制 spike；实现前在对应 milestone spec 冻结。
 - 复用/去重门禁：能力索引、路径/import 检查、克隆检测与 baseline，M0 落地（`25`、T20/T21）。
 - 已拍板（v3.2）：余额=企业配额、不做开票/收款、OEM 代码自研、Powered by OEM 默认隐藏、不做 DPA、暂不定义 RPO/RTO、安全内部评审（D60–D65）。
-- 已定清单：`docs/15-open-questions.md`（D1–D65）；决策理由：`docs/13-risks-and-adr.md`；`docs/17-v3.1-decisions.md` 是历史存档，不作依据。
+- 已定清单：`docs/15-open-questions.md`（D1–D67）；决策理由：`docs/13-risks-and-adr.md`；`docs/17-v3.1-decisions.md` 是历史存档，不作依据。
 
 ## 13. Agent workflow（怎么干活）
 
 1. **先读**：本文件 → `docs/README.md`（SSOT/任务路径）→ `specs/README.md`（变更规则）→ 任务对应权威文档 → `docs/18`/`docs/25`（写代码时）。
 2. **先搜复用**：`zk find <能力>` / 读 `docs/generated/CAPABILITY-INDEX.md` / `rg` 现有符号；确定复用、扩展或新建，并留证据（`25` §5）。
-3. **先查 spec**：`specs/changes/` 是否已有同目标变更；没有则 `bash scripts/new-change.sh <slug>`，写 `proposal.md` 并让用户确认后改 `approved`。
-4. **先问**：需求/契约/数据格式/安全边界不明确时问用户；不要替用户做产品决策。
-5. **小步**：按 `tasks.md` 一次一个可提交步骤；改契约先跑 conformance 与 public-api diff。
-6. **验证**：按 §6 跑对应命令；失败就修到绿，不许跳过。
-7. **收尾**：填 `acceptance.md`；更新文档/ADR/README；检查 `docs-check`/`spec-check`/`zk capability --check` 与生成物 `--check`；归档 spec。
-8. **提交**：Conventional Commits（`feat(scope): ...`）；一个 PR 一件事；PR 描述链接 `specs/changes/<id>`，并回答复用四问。
+3. **先写文档 + 评审**：发现新方案/设计/模式时，先落 `docs/` 或 ADR；由非实现者只读评审 → 修复 → 复评通过（`11` §9、`27` §5）。
+4. **先查 spec**：`specs/changes/` 是否已有同目标变更；没有则 `bash scripts/new-change.sh <slug>`，写 `proposal.md` 并让用户确认后改 `approved`。
+5. **先问**：需求/契约/数据格式/安全边界不明确时问用户；不要替用户做产品决策。
+6. **小步**：按 `tasks.md` 一次一个可提交步骤；改契约先跑 conformance 与 public-api diff。
+7. **验证**：按 §6 跑对应命令；失败就修到绿，不许跳过。
+8. **收尾**：填 `acceptance.md`；更新文档/ADR/README；检查 `docs-check`/`spec-check`/`zk capability --check` 与生成物 `--check`；归档 spec。
+9. **提交**：Conventional Commits（`feat(scope): ...`）；一个 PR 一件事；PR 描述链接 `specs/changes/<id>`，并回答复用四问。
 
 ## 14. PR / commit 约定
 

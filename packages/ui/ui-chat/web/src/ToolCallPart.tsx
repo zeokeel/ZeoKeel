@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type { ToolCallMessagePartProps } from "@assistant-ui/react";
-import { useT } from "../../i18n";
-import { IconChevron } from "../icons";
+import { IconChevron, useUi } from "@zeokeel/ui-kit";
 
 const PREVIEW_LIMIT = 240;
 type ToolStatus = "running" | "done" | "error";
@@ -38,7 +37,7 @@ function statusOf(type: string): ToolStatus {
 }
 
 export function ToolCallPart(props: ToolCallMessagePartProps) {
-  const t = useT();
+  const { t } = useUi();
   const [expanded, setExpanded] = useState(false);
   const status = statusOf(props.status.type);
   const statusLabel =
@@ -68,7 +67,9 @@ export function ToolCallPart(props: ToolCallMessagePartProps) {
             }}
             className="ms-auto inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[12px] text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
           >
-            <IconChevron className={expanded ? "rotate-180 transition-transform" : "transition-transform"} />
+            <IconChevron
+              className={expanded ? "rotate-180 transition-transform" : "transition-transform"}
+            />
             {expanded ? t("toolCollapse") : t("toolExpand")}
           </button>
         ) : null}

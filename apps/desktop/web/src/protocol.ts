@@ -21,24 +21,9 @@ import {
   type UiEvent,
 } from "./types";
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+import { isRecord, readBoolean, readNumber, readString } from "@zeokeel/ui-kit";
 
-export function readString(record: Record<string, unknown>, key: string): string | null {
-  const value = record[key];
-  return typeof value === "string" ? value : null;
-}
-
-export function readNumber(record: Record<string, unknown>, key: string): number | null {
-  const value = record[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-export function readBoolean(record: Record<string, unknown>, key: string): boolean | null {
-  const value = record[key];
-  return typeof value === "boolean" ? value : null;
-}
+export { isRecord, readBoolean, readNumber, readString };
 
 export function readArray(record: Record<string, unknown>, key: string): unknown[] | null {
   const value = record[key];

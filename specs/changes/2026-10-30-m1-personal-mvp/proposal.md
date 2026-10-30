@@ -3,6 +3,7 @@
 - 状态：`approved`
 - Owner：lead + 多 teammate
 - 日期：2026-10-30
+- 评审：n/a（C19 前遗留）
 - 关联：docs/12 M1、docs/05/19/24、spec 2026-10-30-m0-scaffold-minimal-demo
 - 变更预算：按子任务分片提交
 

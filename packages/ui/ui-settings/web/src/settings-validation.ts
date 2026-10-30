@@ -1,9 +1,8 @@
 /**
- * Settings form validation — pure so it can be unit-tested without rendering.
- * Errors are returned as i18n keys (the dialog translates them).
+ * Settings form validation — pure, shared by the dialog and tests.
+ * Errors are i18n keys (the dialog translates them via useUi().t).
  */
-import type { MessageKey } from "../i18n";
-import type { AppSettings, Locale, ProviderKind, Theme } from "../types";
+import type { AppSettings, Locale, ProviderKind, Theme } from "@zeokeel/ui-kit";
 
 export interface SettingsForm {
   providerKind: ProviderKind;
@@ -15,9 +14,11 @@ export interface SettingsForm {
   autoApproveReadOnly: boolean;
 }
 
+export type SettingsFieldError = string | null;
+
 export interface SettingsErrors {
-  baseUrl: MessageKey | null;
-  model: MessageKey | null;
+  baseUrl: SettingsFieldError;
+  model: SettingsFieldError;
 }
 
 function isHttpUrl(value: string): boolean {

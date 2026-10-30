@@ -1,12 +1,10 @@
 /**
- * assistant-ui adapter: maps the existing reducer state / transport commands
- * onto an ExternalStoreRuntime (no second message store).
+ * assistant-ui adapter for the app's existing message state and actions.
+ * The app reducer/transport remains the only message store.
  */
 import { useExternalStoreRuntime } from "@assistant-ui/react";
 import type { AppendMessage, AssistantRuntime, ThreadMessageLike } from "@assistant-ui/react";
-import { isRecord } from "../protocol";
-import type { AppController } from "../state/controller";
-import type { ChatMessage } from "../types";
+import { isRecord, type ChatMessage, type UiValue } from "@zeokeel/ui-kit";
 
 type TextPart = { type: "text"; text: string };
 
@@ -29,10 +27,10 @@ type ApprovalData = {
 
 type ApprovalPart = { type: "data-approval"; id?: string; data: ApprovalData };
 
-type AssistantPart = TextPart | ToolPart | ApprovalPart;
+type ContentPart = TextPart | ToolPart | ApprovalPart;
 
-function buildContent(message: ChatMessage): AssistantPart[] {
-  const content: AssistantPart[] = [];
+function buildContent(message: ChatMessage): ContentPart[] {
+  const content: ContentPart[] = [];
   if (message.content.trim() !== "") {
     content.push({ type: "text", text: message.content });
   }
@@ -110,25 +108,24 @@ function appendText(message: AppendMessage): string {
   return pieces.join("\n");
 }
 
-export function useChatRuntime(controller: AppController): AssistantRuntime {
-  const { state } = controller;
+export function useChatRuntime(ui: UiValue): AssistantRuntime {
   return useExternalStoreRuntime<ChatMessage>({
-    messages: state.messages,
+    messages: ui.messages,
     convertMessage,
-    isRunning: state.streaming,
-    isDisabled: state.offline,
-    isSendDisabled: state.offline,
+    isRunning: ui.streaming,
+    isDisabled: ui.offline,
+    isSendDisabled: ui.offline,
     onNew: async (message) => {
       const text = appendText(message).trim();
       if (text !== "") {
-        controller.send(text);
+        ui.actions.send(text);
       }
     },
     onCancel: async () => {
-      controller.cancel();
+      ui.actions.cancel();
     },
     onReload: async () => {
-      controller.retrySend();
+      ui.actions.retry();
     },
   });
 }

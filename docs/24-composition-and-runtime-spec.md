@@ -236,6 +236,8 @@ protected = false
 | `shared/contracts/events.json` | `zk compose`（事件 topic 注册表，`04` §8） | 同上 |
 | `shared/ts/*.ts` | `cargo test --workspace export_bindings`（ts-rs） | `git diff --exit-code` |
 | `shared/schema/*.json`、包内 `schema/*.json` | `cargo test --workspace export_schema`（schemars） | 同上 |
+| `shared/contracts/brand.json`、`apps/desktop/web/public/brand/*.svg`、`apps/desktop/web/src/generated/brand.ts` | `zk compose`（读 `brands/<channel>/channel.json`，校验路径/大小/内容） | 临时目录比较 |
+| `apps/desktop/icons/icon.png` | `scripts/gen-icons.sh`（从渠道 `logo.svg` 渲染，派生而非手绘） | 运行脚本后 `git diff --exit-code`（T21 接入 CI） |
 | `docs/generated/*.md` | `zk docs`（数据来自 `zk plan`/`zk api`/`zk capability`/`zk db lock`） | 临时目录比较，不写 |
 | `shared/contracts/capability-index.json`、`docs/generated/CAPABILITY-INDEX.md` | `zk capability`（从 `@capability` 注释生成，`25` §3） | 只校验 |
 | `migrations.lock` | `zk db lock`（`--check` 只校验） | 不写 |
@@ -254,6 +256,7 @@ protected = false
 - **运行期校验**：服务端 `Register()` 读取生成表，与包实际注册的路由逐项比对；缺 `api_version/rate_limit/step_up` 或多/少/方法冲突/路径冲突 → **拒启**。
 - 中间件顺序固定：request_id → auth → rate limit → body limit → permission → audit → handler；不允许包自定义全局顺序。
 - 客户端 IPC 同样：`commands.gen.ts` 与主进程 handler 表比对，缺一拒启/构建失败。
+- 工作区命令（`workspace.*`/`session.*`/`chat.*` 的 workspace 形参）由 `26` §5 冻结；M1 的 `[[commands]]` 声明在 M1 spec 落（T4）。
 
 ## 5. 迁移命名与执行
 
@@ -283,9 +286,13 @@ SIGTERM
 
 ## 7. 客户端会话存储（冻结）
 
-- **SQLite WAL 唯一真源**：`conversations/messages/turns/tool_calls/approvals/checkpoints`；schema v1 + 迁移。
-- 一个 turn 原子提交：user message + assistant partial/final + tool calls + usage 同事务。
-- 中断：`turn.status=interrupted`，保留已生成部分；重开可继续/重试；checkpoint 周期落盘。
+> 工作区 schema/规则/API/验收的唯一权威是 **`26`**；本文件只保留存储引擎不变量，不重复工作区规则。
+> 状态：M1 规范，**代码尚未实现**（当前 store 只有 conversations/messages 无 workspace；实现清单见 `26` §9）。
+
+- **SQLite WAL 唯一真源**：M1 表清单/DDL 见 `26` §3（仅 `workspaces/conversations/messages`；`turns/tool_calls/approvals/checkpoints` 为 post-M1）；schema v2 + `PRAGMA user_version`。
+- `conversations.workspace_id` 必填、创建后不可变（唯一例外：用户二次确认的 `workspace.remove{reassign_to}`，见 `26` §2）；隔离/cwd 语义见 `26` §2。
+- **post-M1**：一个 turn 原子提交（user message + assistant partial/final + tool calls + usage 同事务）；M1 按消息逐条落库。
+- **post-M1**：`turn.status=interrupted`/checkpoint；M1 只保留已生成消息。
 - 单实例锁（文件锁）；多窗口只读订阅；崩溃恢复扫描未完成 turn。
 - JSONL 仅导入/导出，不作为运行时存储。
 

@@ -1,12 +1,22 @@
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { BrandLogo } from "./components/BrandLogo";
-import { ChatView } from "./components/ChatView";
-import { IconClose, IconMenu, IconRetry, IconSliders, IconWifiOff } from "./components/icons";
-import { SettingsDialog } from "./components/SettingsDialog";
-import { Sidebar } from "./components/Sidebar";
-import { I18nProvider, useT } from "./i18n";
+import {
+  BrandLogo,
+  Button,
+  Chip,
+  IconClose,
+  IconMenu,
+  IconRetry,
+  IconWifiOff,
+  StatusDot,
+  UiProvider,
+  type BrandConfig,
+  type UiValue,
+} from "@zeokeel/ui-kit";
+import { BRAND } from "./generated/brand";
+import { ChatSlot, SessionsSlot, SettingsSlot } from "./generated/registry";
+import { translate } from "./i18n";
 import { useAppController, type AppController } from "./state/controller";
-import { ThemeProvider, useResolvedTheme } from "./theme";
+import { useResolvedTheme } from "./theme";
 import type { Transport } from "./types";
 
 const tooltipClass = "z-50 rounded-surface bg-foreground px-2 py-1 text-[12px] text-background";
@@ -19,22 +29,65 @@ function isMockMode(): boolean {
 
 export function App(props: { transport: Transport }) {
   const controller = useAppController(props.transport);
-  const resolvedTheme = useResolvedTheme(controller.state.settings.theme);
+  const { state } = controller;
+  const theme = useResolvedTheme(state.settings.theme);
+  const brand: BrandConfig = BRAND;
+
+  const t = (key: string, vars?: Record<string, string | number>): string =>
+    translate(state.settings.locale, key, vars);
+
+  const ui: UiValue = {
+    t,
+    locale: state.settings.locale,
+    theme,
+    brand,
+    boot: state.boot,
+    bootError: state.bootError,
+    meta: state.meta,
+    conversations: state.conversations,
+    activeConversationId: state.activeConversationId,
+    messages: state.messages,
+    messagesState: state.messagesState,
+    messagesError: state.messagesError,
+    streaming: state.streaming,
+    offline: state.offline,
+    settings: state.settings,
+    settingsOpen: state.settingsOpen,
+    sidebarOpen: state.sidebarOpen,
+    mock: isMockMode(),
+    actions: {
+      send: controller.send,
+      cancel: controller.cancel,
+      retry: controller.retrySend,
+      createConversation: controller.createConversation,
+      selectConversation: controller.selectConversation,
+      openSettings: () => {
+        controller.setSettingsOpen(true);
+      },
+      closeSettings: () => {
+        controller.setSettingsOpen(false);
+      },
+      saveSettings: controller.saveSettings,
+      toggleSidebar: controller.toggleSidebar,
+      retryBoot: controller.retryBoot,
+      retryMessages: controller.retryMessages,
+      decideApproval: controller.decideApproval,
+    },
+  };
+
   return (
-    <I18nProvider locale={controller.state.settings.locale}>
-      <ThemeProvider theme={resolvedTheme}>
-        <AppShell controller={controller} />
-      </ThemeProvider>
-    </I18nProvider>
+    <UiProvider value={ui}>
+      <AppShell controller={controller} ui={ui} />
+    </UiProvider>
   );
 }
 
-function AppShell(props: { controller: AppController }) {
-  const t = useT();
-  const { state } = props.controller;
-  const mock = isMockMode();
+function AppShell(props: { controller: AppController; ui: UiValue }) {
+  const { ui, controller } = props;
+  const t = ui.t;
+  const state = controller.state;
 
-  if (state.boot === "loading") {
+  if (ui.boot === "loading") {
     return (
       <div
         className="flex h-dvh flex-col items-center justify-center gap-4 bg-background text-center"
@@ -47,7 +100,7 @@ function AppShell(props: { controller: AppController }) {
     );
   }
 
-  if (state.boot === "error") {
+  if (ui.boot === "error") {
     return (
       <div className="flex h-dvh flex-col items-center justify-center gap-3 bg-background px-6 text-center">
         <BrandLogo className="h-10 w-10 rounded-document" />
@@ -55,25 +108,21 @@ function AppShell(props: { controller: AppController }) {
           {t("bootErrorTitle")}
         </h1>
         <p className="max-w-[480px] text-[13px] text-muted-foreground">{t("bootErrorHint")}</p>
-        {state.bootError !== null ? (
+        {ui.bootError !== null ? (
           <p className="max-w-[480px] rounded-document bg-muted px-3 py-2 font-mono text-[12px] text-destructive">
-            {state.bootError}
+            {ui.bootError}
           </p>
         ) : null}
-        <button
-          type="button"
-          className="mt-1 inline-flex items-center gap-1.5 rounded-control bg-foreground px-3.5 py-1.5 text-[13px] font-medium text-background transition-colors hover:bg-foreground/90"
-          onClick={props.controller.retryBoot}
-        >
+        <Button variant="primary" className="mt-1" onClick={ui.actions.retryBoot}>
           <IconRetry />
           <span>{t("retry")}</span>
-        </button>
+        </Button>
       </div>
     );
   }
 
-  const active = state.conversations.find(
-    (conversation) => conversation.id === state.activeConversationId,
+  const active = ui.conversations.find(
+    (conversation) => conversation.id === ui.activeConversationId,
   );
   const title = active === undefined ? t("noConversation") : active.title;
 
@@ -83,7 +132,7 @@ function AppShell(props: { controller: AppController }) {
         {t("skipToInput")}
       </a>
       <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-        {state.offline ? (
+        {ui.offline ? (
           <div
             className="flex items-center justify-center gap-2 border-b border-border bg-muted px-4 py-1.5 text-[12px] text-destructive"
             role="status"
@@ -94,23 +143,13 @@ function AppShell(props: { controller: AppController }) {
         ) : null}
 
         <div className="flex min-h-0 flex-1">
-          <Sidebar
-            conversations={state.conversations}
-            activeId={state.activeConversationId}
-            streaming={state.streaming}
-            open={state.sidebarOpen}
-            meta={state.meta}
-            mock={mock}
-            onNew={props.controller.createConversation}
-            onSelect={props.controller.selectConversation}
-            onClose={props.controller.toggleSidebar}
-          />
-          {state.sidebarOpen ? (
+          <SessionsSlot />
+          {ui.sidebarOpen ? (
             <button
               type="button"
               className="zk-sidebar-backdrop"
               aria-label={t("sidebarClose")}
-              onClick={props.controller.toggleSidebar}
+              onClick={ui.actions.toggleSidebar}
             />
           ) : null}
 
@@ -122,7 +161,7 @@ function AppShell(props: { controller: AppController }) {
                     type="button"
                     className={`${iconButtonClass} zk-sidebar-toggle`}
                     aria-label={t("sidebarToggle")}
-                    onClick={props.controller.toggleSidebar}
+                    onClick={ui.actions.toggleSidebar}
                   >
                     <IconMenu />
                   </button>
@@ -139,52 +178,18 @@ function AppShell(props: { controller: AppController }) {
                   {title}
                 </h1>
                 <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted-foreground">
-                  <span
-                    className={`h-1.5 w-1.5 rounded-capsule ${
-                      state.streaming ? "zk-pulse-dot bg-live" : "bg-muted-foreground"
-                    }`}
-                    aria-hidden="true"
-                  />
-                  <span>{state.streaming ? t("statusStreaming") : t("statusReady")}</span>
-                  {mock ? (
-                    <span className="rounded-sm border border-border px-1.5 py-0.5 text-[12px] text-muted-foreground">
-                      {t("mockBadge")}
-                    </span>
-                  ) : null}
+                  <StatusDot live={ui.streaming} />
+                  <span>{ui.streaming ? t("statusStreaming") : t("statusReady")}</span>
+                  {ui.mock ? <Chip>{t("mockBadge")}</Chip> : null}
                 </p>
               </div>
-
-              <Tooltip.Root>
-                <Tooltip.Trigger asChild>
-                  <button
-                    type="button"
-                    className={iconButtonClass}
-                    aria-label={t("openSettings")}
-                    onClick={() => {
-                      props.controller.setSettingsOpen(true);
-                    }}
-                  >
-                    <IconSliders />
-                  </button>
-                </Tooltip.Trigger>
-                <Tooltip.Portal>
-                  <Tooltip.Content className={tooltipClass} sideOffset={6}>
-                    {t("settings")}
-                  </Tooltip.Content>
-                </Tooltip.Portal>
-              </Tooltip.Root>
             </header>
 
-            <ChatView controller={props.controller} mock={mock} />
+            <ChatSlot />
           </main>
         </div>
 
-        <SettingsDialog
-          open={state.settingsOpen}
-          settings={state.settings}
-          onOpenChange={props.controller.setSettingsOpen}
-          onSave={props.controller.saveSettings}
-        />
+        <SettingsSlot />
 
         {state.toast !== null ? (
           <div
@@ -196,7 +201,7 @@ function AppShell(props: { controller: AppController }) {
               type="button"
               className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
               aria-label={t("dismissToast")}
-              onClick={props.controller.dismissToast}
+              onClick={controller.dismissToast}
             >
               <IconClose />
             </button>

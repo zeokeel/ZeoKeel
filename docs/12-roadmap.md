@@ -75,12 +75,15 @@ P1（双 app 组合）、P3（认证+JWT）、P4（OEM submodule CI）、P5（�
 - 客户端壳（Tauri）、UI shell/chat/composer/settings、本地化与主题；
 - 本地 agent-loop（自研状态机，rig-core 只做模型调用）、工具 fs/shell/todo、审批、会话存储（SQLite WAL 唯一真源；JSONL 仅导入导出，`24` §7）；
 - provider：DeepSeek / OpenAI 兼容 / Ollama（自配 key，系统密钥库）；
+- **工作区（Workspace）**：会话必须归属工作区；首次使用创建/选择默认工作区（`docs/26`）；侧栏按工作区组织会话；
 - 本地技能目录、本地 MCP（可选，若时间允许）；
 - 三平台安装包（**Windows 不签名**，ADR-033）、**GitHub Releases** 更新源。
 
 **退出条件**
 
 - [ ] 真模型一轮：流式 + 工具调用 + 审批 + 会话落库 + 重开恢复。
+- [ ] 无工作区不能建会话；两个工作区的会话/消息隔离；重启后 workspace_id 归属不丢（`26` §7）。
+- [ ] `chat.send` 无 `workspace_id/conversation_id` 时失败（删除 auto-create fallback）；agent cwd/工具根 = workspace。
 - [ ] 离线 e2e（mock provider）全绿；无服务端依赖。
 - [ ] 三平台安装/卸载/启动冒烟通过。
 - [ ] 冷启动 < 2s、首 token < 2s（本地 mock 基线）。

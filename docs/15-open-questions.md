@@ -1,4 +1,4 @@
-# 15 · 决策记录（D1–D65；文件名保留兼容）
+# 15 · 决策记录（D1–D67；文件名保留兼容）
 
 > 规则：**未确认的事不写进实现**。已定项来自直接沟通；Q1–Q20 已全部回答；剩余细节见 §C（待定清单）与 `AGENTS.md` §12。
 > v3.1 的核心变化：**服务端弱管控**（只管认证/钱包/商店/审计/构建期），详见 ADR-030；历史背景见 `17`（存档）。
@@ -126,8 +126,8 @@
 | T1 | 契约发布形态与单实例方案（vendor/git rev vs 发布 + `[patch]`） | `03` §6.5、ADR-016 | S0-P1 结论落 ADR |
 | T2 | 根 `zk.toml` 的 `[roles]`/`[contracts]` 全量、M0 crate/包清单 | `24` §1.5/§2.1、`10` §1 | M0 spec |
 | T3 | 生成物 writer/路径/头部标记的最终清单 | `24` §3 | M0 spec |
-| T4 | 客户端 IPC 命令全集、事件 kind、错误码封闭集 | `05` §6、`04` §7/§8 | M1 spec |
-| T5 | 客户端 SQLite schema v1（DDL/索引/迁移/checkpoint） | `24` §7 | M1 spec |
+| T4 | 客户端 IPC 命令全集（含 workspace.*/session.* workspace 形参）、事件 kind、错误码封闭集 | `05` §6、`26` §5、`04` §7/§8 | M1 spec |
+| T5 | 客户端 SQLite schema v2（workspaces/conversations/messages；turns 等 post-M1） | `26` §3、`24` §7 | M1 spec |
 | T6 | provider 配置/模型目录/keychain 键名 schema | `05` §2/§5、`19` §3.1 | M1 spec |
 | T7 | 服务端 users/devices/refresh 表与迁移顺序、JWT 密钥派生/kid 轮换 | `07` §2、`06` §3 | M2 spec |
 | T8 | 维护期本地 agent 是否可用（与 04-Q4 同族） | `19` §1/§2 | M2 spec |
@@ -155,3 +155,5 @@
 | D63 | **不做 DPA/子处理者流程**（开源产品，不提供商业数据处理服务；安全/隐私声明保留） |
 | D64 | **暂不定义 RPO/RTO**；备份/恢复按最佳实践与演练记录 |
 | D65 | 安全门槛 = **内部安全评审**；不做第三方渗透/等保/SOC2 作为发布前置 |
+| D66 | **所有对话必须归属工作区**（本地目录 + 稳定 id）；无工作区不建会话；agent cwd/工具默认根 = 工作区根；会话列表/消息按工作区隔离（参考 DSH workspace/session 设计） |
+| D67 | **M1 IPC 边界校验走 C10 过渡例外（ADR-059）**：手写 TS 镜像 + 运行时 guard；T22（ts-rs/schemars/Ajv）为 M2 前硬退出条件 |

@@ -130,10 +130,10 @@ v3 追加两类实现包：`server`（服务端域）与 `admin-ui`（管理台�
 | --- | --- | --- |
 | `zk-contract-package` | `Package`（`descriptor()` / `install() -> Installed`，**不持有 Context**） | 全部 |
 | `zk-contract-kernel` | `Registrar`（封装 `ctx.plugin`）、`Clock`、`Tasks`、`Config`、生命周期类型 | runtime/platform |
-| `zk-contract-tool` | `Tool`（spec + call）、`ToolRegistry` | tool-* |
+| `zk-contract-tool` | `Tool`（spec + `call(ctx,args)`）、`TurnContext`（workspace/conversation/cwd）、`ToolRegistry` | tool-* |
 | `zk-contract-llm` | `LlmProvider`（chat/stream/capabilities）、`ModelRef` | llm-* |
-| `zk-contract-agent` | `AgentLoop`、`Turn`、`ToolCall`、`ApprovalRequest` | agent-* |
-| `zk-contract-session` | `SessionStore`、`Conversation`、`Message`、`Checkpoint` | store-*、agent-* |
+| `zk-contract-agent` | `AgentLoop`、`Turn`、`ToolCall`、`ApprovalRequest`（run/run_stream 带 `TurnContext`） | agent-* |
+| `zk-contract-session` | `SessionStore`（workspace-scoped）、`WorkspaceStore`、`Workspace`、`Conversation{workspace_id}`、`Message`、`Checkpoint` | store-*、agent-* |
 | `zk-contract-host` | `FsAccess`、`ProcessRunner`、`NetClient`、`Secrets` | host-*、capability |
 | `zk-contract-platform` | `ShellHost`（窗口/主题/生命周期）、`HttpHost`（bind/serve/token） | platform-* |
 | `zk-contract-ui` | `UiContribution`、`SlotId`、`ComponentId`、`ThemeTokens`、`I18nBundle` | ui-* |

@@ -8,4 +8,5 @@ cargo run -q -p zk -- capability --check
 cargo check --workspace
 python3 scripts/docs-check.py
 python3 scripts/spec-check.py
+python3 scripts/review-check.py
 echo "check: ok"

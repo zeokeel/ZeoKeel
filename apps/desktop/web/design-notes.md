@@ -35,7 +35,7 @@ hue 调到 `--tint: 250`（冷灰蓝）以显清新；不再使用暖米色、�
 - `apps/desktop/web/src/generated/brand.ts`（`@generated`）：`BRAND = {name, poweredBy, channel, logoLight, logoDark}`。
 - `apps/desktop/web/public/brand/logo.svg`、`logo-dark.svg`。
 
-UI 只用 `src/components/BrandLogo.tsx`：按当前解析后的主题选择 `logoLight`/`logoDark`，`<img>` 渲染。
+UI 只用 `packages/ui/ui-kit/web/src/BrandLogo.tsx`：按当前解析后的主题选择 `logoLight`/`logoDark`，`<img>` 渲染。
 使用位置：Sidebar、EmptyThread、启动 loading、启动 error、设置弹窗品牌位。仓库中不存在其它 logo
 产物（`BrandMark.tsx` 已删除，无自绘 SVG、无“ZK”方块）。
 
@@ -56,7 +56,42 @@ UI 只用 `src/components/BrandLogo.tsx`：按当前解析后的主题选择 `lo
 
 Tailwind 4 通过 `@tailwindcss/vite` 接入；`src/app.css` 里 `@import "tailwindcss";` + `@theme inline`。
 
-## 5. Design tokens（`src/app.css`）
+## 5. 包拆分、registry 与 UiProvider
+
+UI 按“一切皆包”拆到 `packages/ui/*/web`；app 只保留基础设施与薄壳：
+
+| 包 | npm | 角色 / 贡献 | 内容 | 依赖 |
+| --- | --- | --- | --- | --- |
+| ui-kit | `@zeokeel/ui-kit` | `ui.kit`（无 slot） | DTO/类型、`UiProvider/useUi`、`BrandLogo`、icons、Button/Switch/StatusDot/Chip | react |
+| ui-sessions | `@zeokeel/ui-sessions` | `ui.slot.sessions` → `sessions.sidebar` | Sidebar（列表/新建/选中/设置入口/窄窗） | ui-kit |
+| ui-chat | `@zeokeel/ui-chat` | `ui.slot.chat` → `chat.thread` | ChatView + assistant-ui Thread/Composer/ActionBar + 工具卡/审批卡/空态 + ExternalStoreRuntime adapter | ui-kit、`@assistant-ui/*` |
+| ui-settings | `@zeokeel/ui-settings` | `ui.slot.settings` → `settings.dialog` | SettingsDialog + settings 表单校验 | ui-kit、`@radix-ui/react-dialog` |
+
+依赖图（只向下）：
+
+```text
+apps/desktop/web (shell/infra)
+  └─ generated/registry.ts (zk compose)
+       ├─ @zeokeel/ui-sessions ─ @zeokeel/ui-kit
+       ├─ @zeokeel/ui-chat ───── @zeokeel/ui-kit + @assistant-ui/*
+       └─ @zeokeel/ui-settings ─ @zeokeel/ui-kit + @radix-ui/react-dialog
+```
+
+- **registry 使用**：`src/generated/registry.ts` 导出 `SessionsSlot` / `ChatSlot` / `SettingsSlot`（以及 `COMPONENTS`）。
+  App shell **只**从这里取组件：`<SessionsSlot />`、`<ChatSlot />`、`<SettingsSlot />`。换包 = 改 edition/profile →
+  `zk compose` → 重新 build；app 不 import 具体 UI 包（只依赖 registry）。
+- **UiProvider（ui-kit）**：app 把 controller 的只读状态与动作、解析后的 theme、`BRAND`、translator 注入 `UiValue`；
+  包只通过 `useUi()` 读取，**不 import app**。`UiValue` 含 t/locale/theme/brand/boot/meta/conversations/activeId/
+  messages/messagesState/messagesError/streaming/offline/settings/settingsOpen/sidebarOpen/mock + actions
+  （send/cancel/retry/create/select/openSettings/closeSettings/saveSettings/toggleSidebar/retryBoot/retryMessages/decideApproval）。
+- **样式扫描**：Tailwind 4 的 `@source` 需要在 `src/app.css` 显式列出四个包目录（`packages/ui/*/web/src` 的 glob 在 Vite 下不生效）；包内只写 utility class，`zk-*` 结构样式仍由 app 的 `app.css` 提供。
+- **已删除 app 内展示副本**：`apps/desktop/web/src/components/**`、`src/assistant/**`、`state/settings-validation.ts` 已迁出，app 不再保留第二份实现。
+- **留在 app 的基础设施**：transport、protocol、controller、reducer、i18n 字典、theme resolve、App shell
+  （providers、boot loading/error、header、offline banner、toast）；类型 DTO 在 ui-kit，app 通过 `src/types.ts` re-export。
+- **边界**：包间不互相 import（仅允许 `@zeokeel/ui-kit`）；`@assistant-ui/*` 只出现在 ui-chat；`react`/`react-dom` 为
+  peerDependency；品牌 logo 只在 ui-kit `BrandLogo` 里读 `UiValue.brand`。
+
+## 6. Design tokens（`src/app.css`）
 
 ### 5.1 中性色 / live / destructive
 
@@ -86,9 +121,9 @@ Tailwind 4 通过 `@tailwindcss/vite` 接入；`src/app.css` 里 `@import "tailw
 - 动效：hover/transition 150ms；侧栏 180ms；流式光标/typing dots 是唯一循环动画；全部在
   `prefers-reduced-motion` 下关闭。
 
-## 6. assistant-ui 集成映射
+## 7. assistant-ui 集成映射
 
-`src/assistant/runtime.ts`：`useExternalStoreRuntime<ChatMessage>`，现有 `transport`/reducer 仍是唯一数据源。
+`packages/ui/ui-chat/web/src/runtime.ts`：`useExternalStoreRuntime<ChatMessage>`，现有 `transport`/reducer 仍是唯一数据源。
 
 | adapter | 映射 |
 | --- | --- |
@@ -105,9 +140,9 @@ Tailwind 4 通过 `@tailwindcss/vite` 接入；`src/app.css` 里 `@import "tailw
 工具卡 = `MessagePrimitive.Content` 的 `tools.Fallback`；审批 = `data.by_name.approval`；
 侧栏会话列表自研（复用 `session.*`），未用 `ThreadList`/`BranchPicker`。
 
-## 7. 组件规则
+## 8. 组件规则
 
-- **侧栏**：288px，`--zk-sidebar` 纸面，右侧一条 hairline；header = 官方 logo + `BRAND.name`（无 tagline）；
+- **侧栏**（ui-sessions）：288px，`--zk-sidebar` 纸面，右侧一条 hairline；header = 官方 logo + `BRAND.name`（无 tagline）；
   New conversation 8px 圆角 hairline 按钮；会话行无分隔线，hover `foreground/3%` 填充；选中行
   `bg-muted` + 左侧 2px blue-500 指示（“已选中 = live”）；footer 12px 元信息；≤900px 抽屉（180ms）。
 - **Header**：56px，仅标题 + 状态（idle 中性点 / streaming 蓝点）+ mock 中性徽标 + 设置；无大字/无渐变。
@@ -117,12 +152,12 @@ Tailwind 4 通过 `@tailwindcss/vite` 接入；`src/app.css` 里 `@import "tailw
   mono args/result、可折叠、240 字符截断；无左侧色条。
 - **Composer**：`rounded-thread`(16)、1px hairline、focus 时 blue ring；发送按钮 ink 面（非蓝），
   streaming 时换 destructive 描边 Stop；底部一行 12px 键盘提示 + 字数。
-- **设置**：Radix Dialog（`rounded-xl` 12 + lift），header 带官方 logo；分组为 `bg-muted` field panel（无边框），
+- **设置**（ui-settings）：Radix Dialog（`rounded-xl` 12 + lift），header 带官方 logo；分组为 `bg-muted` field panel（无边框），
   两栏栅格；标签 12px 句首大小写、正常字距；switch 为 capsule，开启时 blue-500；字段错误用 destructive。
-- **空态**：官方 logo + sans 32px/500 问句 + 3 个 `ThreadPrimitive.Suggestion` 建议（`bg-muted` 卡片，
+- **空态**（ui-chat）：官方 logo + sans 32px/500 问句 + 3 个 `ThreadPrimitive.Suggestion` 建议（`bg-muted` 卡片，
   hover 填充，无阴影/无上浮）；无 tagline/口号（遵循官方 copy 规则）。
 
-## 8. 六态映射
+## 9. 六态映射
 
 | 状态 | 呈现 |
 | --- | --- |
@@ -133,7 +168,7 @@ Tailwind 4 通过 `@tailwindcss/vite` 接入；`src/app.css` 里 `@import "tailw
 | 流式中 | `thread.isRunning`：Stop、蓝点状态、blue-500 光标、typing dots |
 | 已取消 | `incomplete/cancelled` → “已取消” 12px 文案，保留内容 |
 
-## 9. 可访问性与验证
+## 10. 可访问性与验证
 
 - 键盘：Enter 发送 / Shift+Enter 换行 / IME 不误发（assistant-ui Composer + 测试）；Esc 关设置；Tab 正常；
   focus-visible 2px blue-500。
@@ -143,7 +178,7 @@ Tailwind 4 通过 `@tailwindcss/vite` 接入；`src/app.css` 里 `@import "tailw
   `axe-core` 在空态/流式中/完成后/设置弹窗四态 **0 serious/critical**（`screenshots/axe.json`）。
 - 命令：`pnpm build`（`tsc --noEmit` + vite build）、`pnpm test`（vitest + testing-library，31 例）。
 
-## 10. 证据与截图
+## 11. 证据与截图
 
 `apps/desktop/web/screenshots/`（`?mock=1`，vite preview + Playwright）：
 
@@ -160,10 +195,11 @@ Tailwind 4 通过 `@tailwindcss/vite` 接入；`src/app.css` 里 `@import "tailw
 
 构建产物：`dist/index.html` + `assets/*`（相对路径）+ `brand/*` + 本地字体 woff/woff2；无外部 CDN。
 
-## 11. 已知取舍 / 后续
+## 12. 已知取舍 / 后续
 
 - assistant-ui 使 bundle 增大（约 842 kB raw / 255 kB gzip，构建有 >500 kB 提示）；M1 未做路由级 code-split。
 - 字体只打包 latin 子集 + 中文回退系统字体（中文无本地字体文件，符合“不引入外部字体/CDN”）。
 - 未接 ESLint/jsx-a11y 与 Playwright e2e/CI（docs/18 门禁与 e2e 属后续任务）；axe 为本次手工审计。
 - 审批仍是 `data-approval` 占位（后端尚未发 tool-approval 协议）；未使用 assistant-ui approval 机制。
+- UI 已按包拆分（ui-kit/sessions/chat/settings），app 不再包含展示组件；registry 与 `zk.toml`/Cargo 未手改。
 - 品牌资产为 `zk compose` 生成的 `src/generated/brand.ts` + `public/brand/*`，不手改。

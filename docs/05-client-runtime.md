@@ -142,6 +142,11 @@ shutdown_tokio();                                 // 之后才关 tokio
 窗口关闭/退出/崩溃前的最后一次机会都要走这条路径；否则 orphan 队列不 drain，可能出现
 "退出后还有日志/写盘"的悬空任务。
 
+## 3.5 工作区（Workspace）绑定
+
+M1 规范，**代码待实现**：每个会话必须绑定一个 Workspace；无 Workspace 不建会话/不启动 turn；agent cwd 与工具默认根 =
+Workspace 根。完整规则、schema、契约/包影响见 **`26`**（唯一权威），本文不复述。
+
 ## 4. Agent 循环的分层
 
 ```text
@@ -297,6 +302,9 @@ permission = "chat:write"
   ② 每个命令在 CI 里有一条"契约驱动"的集成测试（从 `ipc-commands.json` 生成用例，正向 + 参数缺失）；
   ③ Rust 侧命令处理函数签名统一为 `(Json) -> Result<Json, IpcError>`，序列化失败在边界处转结构化错误，
   不允许 panic。
+- **工作区/会话命令（M1，权威表见 `26` §5）**：`workspace.list/create/rename/set_default/remove`、
+  `session.create/list/messages`（均带 `workspace_id`）、`chat.send/cancel`（带 `workspace_id` 并校验归属）；
+  `chat.send` 不自动建会话；无 workspace 一律报错。
 - 命令全集（name/args/result/permission）、事件 kind 枚举、IPC 错误码在 M1 spec 冻结（索引见
   [15 §C](15-open-questions.md#c-待定清单)）；本节只冻结协议形状。
 

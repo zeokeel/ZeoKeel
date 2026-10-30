@@ -1,20 +1,14 @@
 import { ThreadPrimitive } from "@assistant-ui/react";
-import { useT, type MessageKey } from "../../i18n";
-import { BrandLogo } from "../BrandLogo";
+import { BrandLogo, useUi } from "@zeokeel/ui-kit";
 
-interface Suggestion {
-  title: MessageKey;
-  prompt: MessageKey;
-}
-
-const SUGGESTIONS: Suggestion[] = [
+const suggestions = [
   { title: "suggestionReadTitle", prompt: "suggestionReadText" },
   { title: "suggestionWriteTitle", prompt: "suggestionWriteText" },
   { title: "suggestionExplainTitle", prompt: "suggestionExplainText" },
 ];
 
-export function EmptyThread(props: { mock: boolean }) {
-  const t = useT();
+export function EmptyThread() {
+  const { t, mock } = useUi();
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-2 py-14 text-center">
       <BrandLogo className="h-10 w-10 rounded-document" />
@@ -22,7 +16,7 @@ export function EmptyThread(props: { mock: boolean }) {
         {t("chatEmptyTitle")}
       </h2>
       <div className="mt-8 grid w-full max-w-[680px] gap-2 sm:grid-cols-3">
-        {SUGGESTIONS.map((suggestion) => (
+        {suggestions.map((suggestion) => (
           <ThreadPrimitive.Suggestion
             key={suggestion.title}
             prompt={t(suggestion.prompt)}
@@ -36,7 +30,7 @@ export function EmptyThread(props: { mock: boolean }) {
           </ThreadPrimitive.Suggestion>
         ))}
       </div>
-      {props.mock ? (
+      {mock ? (
         <p className="mt-4 text-[12px] text-muted-foreground">{t("chatEmptyMockHint")}</p>
       ) : null}
     </div>

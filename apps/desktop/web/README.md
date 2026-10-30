@@ -14,6 +14,20 @@ React 19 + TypeScript + Vite + Tailwind 4 + **assistant-ui** 的桌面聊天界�
   数据源（适配见 `src/assistant/runtime.ts`）。
 - Markdown：`@assistant-ui/react-markdown`（react-markdown 安全渲染，未启用 raw HTML）。
 
+
+## 包结构（一切皆包）
+
+| 包 | 内容 |
+| --- | --- |
+| `packages/ui/ui-kit`（`@zeokeel/ui-kit`） | 共享 DTO/类型、`UiProvider/useUi`、`BrandLogo`、icons、Button/Switch/StatusDot/Chip |
+| `packages/ui/ui-sessions`（`@zeokeel/ui-sessions`） | Sidebar：会话列表/新建/选中/设置入口/窄窗（`sessions.sidebar`） |
+| `packages/ui/ui-chat`（`@zeokeel/ui-chat`） | ChatView + assistant-ui Thread/Composer/ActionBar/工具卡/审批/空态（`chat.thread`） |
+| `packages/ui/ui-settings`（`@zeokeel/ui-settings`） | SettingsDialog + 表单校验（`settings.dialog`） |
+| `apps/desktop/web`（本目录） | 薄壳：transport/controller/reducer/i18n/theme resolve + `UiProvider` + registry 组装 |
+
+`src/generated/registry.ts` 由 `zk compose` 生成，导出 `SessionsSlot/ChatSlot/SettingsSlot`；App 只从这里取组件，
+换包 = 改 profile → `zk compose` → build。包间只允许依赖 `@zeokeel/ui-kit`（`@assistant-ui/*` 只在 ui-chat）。
+
 ## 开发与验证
 
 ```bash

@@ -2,7 +2,7 @@
 
 # Capability Index
 
-8 capabilities
+9 capabilities
 
 | id | path |
 | --- | --- |
@@ -14,3 +14,4 @@
 | `contract.package` | `packages/contracts/package/src/lib.rs` |
 | `contract.session` | `packages/contracts/session/src/lib.rs` |
 | `contract.tool` | `packages/contracts/tool/src/lib.rs` |
+| `contract.ui` | `packages/contracts/ui/src/lib.rs` |

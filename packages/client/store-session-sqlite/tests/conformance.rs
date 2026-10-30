@@ -1,12 +1,19 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
 
 use std::path::PathBuf;
-use zk_contract_session::{Message, SessionStore};
-use zk_store_session_sqlite::open;
+use zk_contract_session::{Message, SessionError, SessionStore, WorkspaceStore};
+use zk_store_session_sqlite::{open_with_root, SqliteSessionStore};
 
-fn temp_db(name: &str) -> PathBuf {
-    let unique = format!("{}-{}-{}", std::process::id(), name, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos());
-    std::env::temp_dir().join(format!("zeokeel-test-{unique}.db"))
+fn unique(name: &str) -> String {
+    format!("{}-{}-{}", std::process::id(), name, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos())
+}
+
+fn open_store(name: &str) -> (SqliteSessionStore, PathBuf) {
+    let base = std::env::temp_dir().join(format!("zeokeel-ws-{}", unique(name)));
+    std::fs::create_dir_all(&base).unwrap();
+    let db = base.join("sessions.db");
+    let root = base.join("default-workspace");
+    (open_with_root(db, root).unwrap(), base)
 }
 
 fn message(id: &str, conversation_id: &str, role: &str, content: &str) -> Message {
@@ -14,30 +21,98 @@ fn message(id: &str, conversation_id: &str, role: &str, content: &str) -> Messag
 }
 
 #[test]
-fn create_list_append_read_and_isolate() {
-    let path = temp_db("sessions");
-    let store = open(path.clone()).unwrap();
-    let a = store.create_conversation("会话 A").unwrap();
-    let b = store.create_conversation("会话 B").unwrap();
-    store.append_message(&message("m1", &a.id, "user", "你好")).unwrap();
-    store.append_message(&message("m2", &a.id, "assistant", "收到")).unwrap();
-    assert_eq!(store.messages(&a.id).unwrap().len(), 2);
-    assert!(store.messages(&b.id).unwrap().is_empty());
-    let list = store.list_conversations().unwrap();
-    assert_eq!(list.len(), 2);
-    assert!(store.messages("missing").is_err());
+fn default_workspace_is_created_and_listed() {
+    let (store, _) = open_store("default");
+    let list = store.list_workspaces().unwrap();
+    assert_eq!(list.len(), 1);
+    assert!(list[0].is_default);
+    assert!(list[0].path.ends_with("default-workspace"));
 }
 
 #[test]
-fn reopens_persisted_data() {
-    let path = temp_db("reopen");
-    let id = {
-        let store = open(path.clone()).unwrap();
-        let c = store.create_conversation("持久化").unwrap();
-        store.append_message(&message("m1", &c.id, "user", "hi")).unwrap();
-        c.id
-    };
-    let store = open(path).unwrap();
-    assert_eq!(store.messages(&id).unwrap().len(), 1);
-    assert_eq!(store.list_conversations().unwrap().len(), 1);
+fn create_workspace_and_isolate_conversations() {
+    let (store, base) = open_store("isolate");
+    let other_dir = base.join("other");
+    std::fs::create_dir_all(&other_dir).unwrap();
+    let other = store.create_workspace(other_dir.to_str().unwrap(), "其他").unwrap();
+    assert!(!other.is_default);
+    let w1 = store.list_workspaces().unwrap().into_iter().find(|w| w.is_default).unwrap();
+    let a = store.create_conversation_in(&w1.id, "会话 A").unwrap();
+    assert_eq!(a.workspace_id, w1.id);
+    let b = store.create_conversation_in(&other.id, "会话 B").unwrap();
+    store.append_message(&message("m1", &a.id, "user", "你好")).unwrap();
+    store.append_message(&message("m2", &a.id, "assistant", "收到")).unwrap();
+    assert_eq!(store.messages_in(&w1.id, &a.id).unwrap().len(), 2);
+    assert!(store.messages_in(&other.id, &b.id).unwrap().is_empty());
+    assert_eq!(store.list_conversations_in(&w1.id).unwrap().len(), 1);
+    assert_eq!(store.list_conversations_in(&other.id).unwrap().len(), 1);
+    assert!(matches!(store.messages_in(&other.id, &a.id), Err(SessionError::WorkspaceMismatch { .. })));
+}
+
+#[test]
+fn workspace_crud_default_and_removal() {
+    let (store, base) = open_store("crud");
+    let dir = base.join("project");
+    std::fs::create_dir_all(&dir).unwrap();
+    let ws = store.create_workspace(dir.to_str().unwrap(), "项目").unwrap();
+    assert!(matches!(store.create_workspace(dir.to_str().unwrap(), "dup"), Err(SessionError::DuplicateWorkspacePath(_))));
+    let renamed = store.rename_workspace(&ws.id, "项目二").unwrap();
+    assert_eq!(renamed.title, "项目二");
+    let list = store.set_default_workspace(&ws.id).unwrap();
+    assert_eq!(list.iter().filter(|w| w.is_default).count(), 1);
+    assert!(list.iter().find(|w| w.id == ws.id).unwrap().is_default);
+
+    let conv = store.create_conversation_in(&ws.id, "会话").unwrap();
+    assert!(matches!(store.remove_workspace(&ws.id, None, true), Err(SessionError::WorkspaceInUse(_))));
+    let old_default = store.list_workspaces().unwrap().into_iter().find(|w| !w.is_default).unwrap();
+    store.set_default_workspace(&old_default.id).unwrap();
+    assert!(matches!(store.remove_workspace(&ws.id, Some(&old_default.id), false), Err(SessionError::ConfirmRequired(_))));
+    let res = store.remove_workspace(&ws.id, Some(&old_default.id), true).unwrap();
+    assert!(res.removed);
+    assert_eq!(res.moved_sessions, 1);
+    assert_eq!(store.messages_in(&old_default.id, &conv.id).unwrap().len(), 0);
+
+    let default_now = store.list_workspaces().unwrap().into_iter().find(|w| w.is_default).unwrap();
+    assert!(matches!(store.remove_workspace(&default_now.id, None, true), Err(SessionError::WorkspaceInUse(_))));
+}
+
+#[test]
+fn legacy_v1_database_migrates_without_losing_messages() {
+    let base = std::env::temp_dir().join(format!("zeokeel-legacy-{}", unique("migrate")));
+    std::fs::create_dir_all(&base).unwrap();
+    let db = base.join("sessions.db");
+    {
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE conversations (id TEXT PRIMARY KEY, title TEXT NOT NULL, created_at_ms INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL);
+             CREATE TABLE messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE, role TEXT NOT NULL, content TEXT NOT NULL, created_at_ms INTEGER NOT NULL);
+             INSERT INTO conversations VALUES ('c1','旧会话',1,2);
+             INSERT INTO messages VALUES ('m1','c1','user','旧消息',1);
+             PRAGMA user_version=1;",
+        )
+        .unwrap();
+    }
+    let root = base.join("ws");
+    let store = open_with_root(db, root).unwrap();
+    let ws = store.list_workspaces().unwrap().into_iter().find(|w| w.is_default).unwrap();
+    let list = store.list_conversations_in(&ws.id).unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].id, "c1");
+    assert_eq!(list[0].workspace_id, ws.id);
+    assert_eq!(store.messages_in(&ws.id, "c1").unwrap()[0].content, "旧消息");
+}
+
+#[test]
+fn reopens_persisted_workspace_and_conversation() {
+    let (store, base) = open_store("reopen");
+    let dir = base.join("persist");
+    std::fs::create_dir_all(&dir).unwrap();
+    let ws = store.create_workspace(dir.to_str().unwrap(), "持久化").unwrap();
+    let conv = store.create_conversation_in(&ws.id, "会话").unwrap();
+    store.append_message(&message("m1", &conv.id, "user", "hi")).unwrap();
+    let db = base.join("sessions.db");
+    drop(store);
+    let reopened = open_with_root(db, base.join("default-workspace")).unwrap();
+    assert_eq!(reopened.list_conversations_in(&ws.id).unwrap().len(), 1);
+    assert_eq!(reopened.messages_in(&ws.id, &conv.id).unwrap().len(), 1);
 }

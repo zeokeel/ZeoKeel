@@ -140,3 +140,13 @@ Rust 改动无热替换（重编译+重启）；前端 vite HMR；改 `zk.toml`/
 - 服务端包额外要求：迁移哈希、路由权限声明、作业幂等说明。
 - 文案不写死在代码里：i18n key + 词条包；OEM 覆盖走词条。
 - 生成物禁止手改；数字/索引一律生成。
+
+
+## M1 当前实际结构（与上文目标一致的最小集）
+
+```text
+tools/zk/  crates/zk-composed/  packages/{contracts,client,ui}/  apps/{desktop,server}/  editions/ profiles/ brands/ shared/ scripts/
+```
+
+- 生成物：`crates/zk-composed/`、`apps/*/Cargo.toml`、`apps/*/src/generated/`、`shared/contracts/{packages,roles,brand,ui-contributions}.json`、`docs/generated/*`、`apps/desktop/web/src/generated/{brand,registry}.ts`；只由 `zk compose` 写。
+- UI 包 facet 在包内 `web/`；pnpm workspace 覆盖 `apps/*/web` 与 `packages/*/*/web`。

@@ -1,7 +1,6 @@
 import type { DataMessagePartProps } from "@assistant-ui/react";
 import { createContext, useContext } from "react";
-import { useT } from "../../i18n";
-import { isRecord, readString } from "../../protocol";
+import { isRecord, readString, useUi } from "@zeokeel/ui-kit";
 
 export type ApprovalDecision = "approved" | "rejected";
 
@@ -10,7 +9,7 @@ export const ApprovalDecideContext = createContext<
 >(() => {});
 
 export function ApprovalDataPart(props: DataMessagePartProps) {
-  const t = useT();
+  const { t } = useUi();
   const onDecide = useContext(ApprovalDecideContext);
   const data = props.data;
   if (!isRecord(data)) {
@@ -39,7 +38,7 @@ export function ApprovalDataPart(props: DataMessagePartProps) {
       className="mt-3 rounded-document bg-muted px-3 py-2.5"
     >
       <div className="flex items-center gap-2">
-        <strong className="text-[13px] font-medium text-destructive">{t("approvalTitle")}</strong>
+        <strong className="text-[13px] font-medium text-foreground">{t("approvalTitle")}</strong>
         <span className="ms-auto text-[12px] text-muted-foreground">{statusLabel}</span>
       </div>
       <p className="mt-2 font-mono text-[13px] font-medium text-foreground">{tool}</p>

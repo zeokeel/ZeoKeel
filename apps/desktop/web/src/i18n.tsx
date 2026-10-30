@@ -2,7 +2,6 @@
  * Minimal i18n for the M1 shell: two dictionaries (zh-CN default, en-US required)
  * and a context-based translator. No string concatenation in components.
  */
-import { createContext, useCallback, useContext, type ReactNode } from "react";
 import type { Locale } from "./types";
 
 const zhCN = {
@@ -205,12 +204,10 @@ const enUS: Record<MessageKey, string> = {
   messageListAria: "Message list",
 };
 
-const dictionaries: Record<Locale, Record<MessageKey, string>> = {
+const dictionaries: Record<Locale, Record<string, string>> = {
   "zh-CN": zhCN,
   "en-US": enUS,
 };
-
-export type Translate = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
 function format(template: string, vars: Record<string, string | number>): string {
   return template.replace(/\{(\w+)\}/g, (match: string, name: string) => {
@@ -219,25 +216,12 @@ function format(template: string, vars: Record<string, string | number>): string
   });
 }
 
+/** App infrastructure translator; packages receive it through UiProvider. */
 export function translate(
   locale: Locale,
-  key: MessageKey,
+  key: string,
   vars?: Record<string, string | number>,
 ): string {
-  const template = dictionaries[locale][key];
+  const template = dictionaries[locale][key] ?? key;
   return vars === undefined ? template : format(template, vars);
-}
-
-const I18nContext = createContext<Translate>((key) => translate("zh-CN", key));
-
-export function I18nProvider(props: { locale: Locale; children: ReactNode }) {
-  const t = useCallback<Translate>(
-    (key, vars) => translate(props.locale, key, vars),
-    [props.locale],
-  );
-  return <I18nContext.Provider value={t}>{props.children}</I18nContext.Provider>;
-}
-
-export function useT(): Translate {
-  return useContext(I18nContext);
 }

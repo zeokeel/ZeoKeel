@@ -1,14 +1,15 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
-import { SettingsDialog } from "../src/components/SettingsDialog";
+import { defaultSettings, UiProvider, type AppSettings } from "@zeokeel/ui-kit";
 import {
+  SettingsDialog,
   toForm,
   validateSettings,
   type SettingsForm,
-} from "../src/state/settings-validation";
-import { defaultSettings, type AppSettings } from "../src/types";
+} from "@zeokeel/ui-settings";
+import { describe, expect, it, vi } from "vitest";
+import { testUi } from "./ui-fixtures";
 
 function nonMockForm(): SettingsForm {
   return { ...toForm(defaultSettings()), providerKind: "open_ai_compatible", baseUrl: "" };
@@ -29,7 +30,11 @@ describe("settings validation", () => {
   });
 
   it("requires a non-empty model", () => {
-    const form: SettingsForm = { ...nonMockForm(), baseUrl: "https://api.example.com/v1", model: " " };
+    const form: SettingsForm = {
+      ...nonMockForm(),
+      baseUrl: "https://api.example.com/v1",
+      model: " ",
+    };
     expect(validateSettings(form).model).toBe("settingsInvalidModel");
     const fixed: SettingsForm = { ...form, model: "gpt-4o-mini" };
     expect(validateSettings(fixed).model).toBeNull();
@@ -38,16 +43,25 @@ describe("settings validation", () => {
 
 function Harness(props: { onSaved: (settings: AppSettings) => void }) {
   const [open, setOpen] = useState(true);
-  return (
-    <SettingsDialog
-      open={open}
-      settings={defaultSettings()}
-      onOpenChange={setOpen}
-      onSave={async (settings) => {
-        props.onSaved(settings);
+  const [settings, setSettings] = useState<AppSettings>(defaultSettings());
+  const ui = testUi({
+    settings,
+    settingsOpen: open,
+    actions: {
+      saveSettings: async (next: AppSettings) => {
+        setSettings(next);
+        props.onSaved(next);
         setOpen(false);
-      }}
-    />
+      },
+      closeSettings: () => {
+        setOpen(false);
+      },
+    },
+  });
+  return (
+    <UiProvider value={ui}>
+      <SettingsDialog />
+    </UiProvider>
   );
 }
 

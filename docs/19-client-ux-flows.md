@@ -30,13 +30,18 @@ Boot
 
 ## 2. 页面 / 槽位 / 状态（冻结）；归属包 id 示意（T2 冻结）
 
+> **工作区前置**：所有对话在 Workspace 内进行（`26`，M1 代码待实现）。首用/切换/目录不可用规则见 `26` §6；本文不复述。
+> **M1 范围**：个人版 onboarding（`19` 引导页）与审批完整流程为 post-M1；M1 设置弹窗覆盖 provider 配置，审批是占位卡。
+> 视觉/六态/证据见 `27`；UI 包见 `16`。
+
 | 页面 | slotId | 归属包（示意） | 必测状态 |
 | --- | --- | --- | --- |
 | 启动/加载 | `app.boot`（页面 id，非 slotId） | T2 冻结（shell 提供） | loading、包失败、超时 |
 | 个人版引导 | `ui.onboarding` | `client-onboarding-personal` | 首次、已配置、key 无效、网络不通 |
 | 登录 | `ui.login` | `client-auth` | 空、加载、错误、锁定、强制改密、OEM 地址锁定 |
 | 首配服务端地址（官方企业版） | `ui.first-run` | `client-auth` | 地址非法、不可达、证书错误、保存成功 |
-| 主界面 | `ui.shell` | `ui-shell` | 正常、离线、连接中、断线重连中 |
+| 主界面（M1 三 slot 组合） | —（M1 无 ui.shell） | app 薄壳 | 正常、离线、连接中、断线重连中 |
+| 工作区切换/首用 | `ui.sessions` | `ui-sessions` | 无工作区、加载中、目录不可用、切换/取消流式 |
 | 对话 | `ui.chat` | `ui-chat` | 六态 + 长会话 + 取消/重试 |
 | 输入 | `ui.composer` | `ui-composer` | 空、 composing（IME）、附件中、超长、发送失败 |
 | 工具调用 | `ui.toolcall` | `ui-tools` | pending/running/success/failed/cancelled |
@@ -53,7 +58,7 @@ Boot
 
 规则：
 
-- `slotId` 由 `16` §3 的 `SLOT_DEFS` 冻结，本节不重复枚举；第二列是 slotId（`16` §3），`app.boot` 是页面 id 例外。
+- **M1 仅实现 `ui.sessions`/`ui.chat`/`ui.settings` 三个 slot**（`16` §2.2）；本表其余 slot 为 post-M1/T21 目标，不得作为 M1 验收。`app.boot` 是页面 id 例外。
 - 归属包 id 为示意（T2 冻结）；本表冻结页面、slotId 与必测状态。
 - 页面只能通过 `slotId` 注册；shell 不 import 具体页面组件。
 - `client-auth` 在企业版必选、个人版排除；`client-onboarding-personal` 反之。
@@ -64,12 +69,12 @@ Boot
 
 ### 3.1 个人版首次使用
 
-1. 安装 → 启动 → 引导页（欢迎 + provider 选择 + key 输入 + "测试连接"）。
+1. 安装 → 启动 → 引导页（欢迎 + provider 选择 + key 输入 + "测试连接"）。**M1：引导页为 post-M1，先用设置弹窗完成 provider 配置。**
 2. 测试连接成功 → 进入 Chat；失败 → 显示错误类型（网络/401/模型不存在），key 不落日志。
-3. 首次对话 → 流式回复 → 工具调用 → 审批 → 结果写入会话 → 重启后可恢复。
+3. 首次对话 → 流式回复 → 工具调用 →（审批 post-M1）→ 结果写入会话 → 重启后可恢复。
 4. 更新提示 → 下载/校验/安装/重启；失败可回滚。
 
-验收：无服务端依赖；断网时本地 agent/会话可用；key 只在系统密钥库；首 token < 2s（mock 基线）。
+验收：无服务端依赖；断网时本地 agent/会话可用；key 在 M1 暂存本地 JSON（0600），M2 接系统密钥库；首 token < 2s（mock 基线）。
 
 ### 3.2 企业版 OEM（地址预置）
 
@@ -152,7 +157,7 @@ Boot
 ## 8. 本地数据生命周期
 
 - 会话存储：**SQLite WAL 唯一真源**（见 `24` §7）；JSONL 仅导入/导出。
-- 密钥：provider key/OAuth token 存系统密钥库；无 keychain 时加密文件 + 明确警告。
+- 密钥：M1 provider key 暂存本地 JSON（0600，设置页明示）；M2 接系统密钥库；OAuth token 在企业版由安全存储/服务端处理。
 - 导出：会话/设置/日志（脱敏）可导出；导出包含版本/channel 便于支持。
 - 删除：清除本地数据需二次确认；企业版登出可选保留/清除缓存；不得删除服务端审计。
 - 多设备：同一账号允许；本地会话不跨设备同步（除服务端内容）。
@@ -167,9 +172,9 @@ Boot
 
 可执行命令与证据路径见 `11` §2/§4/§5/§8.4；本清单是业务断言。
 
-- [ ] 个人版：首装→配 key→首轮对话→工具→审批→重启恢复→更新回滚，全流程 e2e。
+- [ ] **M1** 个人版：首装→配 key（设置）→首轮对话→工具→重启恢复→工作区隔离，e2e；审批/引导/更新回滚为 M2。
 - [ ] 企业版 OEM：免填地址登录→bootstrap→对话→强制更新→回滚，全流程 e2e。
 - [ ] 企业版官方：首配地址→登录→修改地址需重登，e2e。
-- [ ] 所有页面六态 + 键盘/axe；审批卡读屏与超时通知。
+- [ ] M1 页面六态 + 键盘/axe；审批卡读屏/超时通知为 M2。
 - [ ] 应用窗口 capability 隔离测试通过；`serve` Host/Origin/rebinding 测试通过。
 - [ ] i18n 缺词/复数/日期；OEM 覆盖缺键构建失败。

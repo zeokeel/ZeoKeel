@@ -6,10 +6,8 @@ import {
   useAuiState,
 } from "@assistant-ui/react";
 import type { TextMessagePartProps } from "@assistant-ui/react";
-import { BRAND } from "../../generated/brand";
-import { useT } from "../../i18n";
-import { IconCopy, IconRetry } from "../icons";
-import { ApprovalDataPart, ApprovalDecideContext, type ApprovalDecision } from "./ApprovalPart";
+import { IconCopy, IconRetry, useUi } from "@zeokeel/ui-kit";
+import { ApprovalDataPart, ApprovalDecideContext } from "./ApprovalPart";
 import { AssistantComposer } from "./AssistantComposer";
 import { EmptyThread } from "./EmptyThread";
 import { MarkdownText } from "./MarkdownText";
@@ -30,7 +28,7 @@ function UserText(props: TextMessagePartProps) {
 }
 
 function UserMessage() {
-  const t = useT();
+  const { t } = useUi();
   return (
     <MessagePrimitive.Root className="mx-auto w-full max-w-[760px] py-5">
       <div className="flex flex-col items-end gap-1.5">
@@ -42,7 +40,7 @@ function UserMessage() {
 }
 
 function AssistantStatus() {
-  const t = useT();
+  const { t } = useUi();
   const status = useAuiState((state) => state.message.status);
   if (status === undefined) {
     return null;
@@ -65,7 +63,7 @@ function AssistantStatus() {
 }
 
 function CopyAction() {
-  const t = useT();
+  const { t } = useUi();
   return (
     <ActionBarPrimitive.Copy aria-label={t("copy")} title={t("copy")} className={actionButton}>
       <IconCopy />
@@ -74,7 +72,7 @@ function CopyAction() {
 }
 
 function ReloadAction() {
-  const t = useT();
+  const { t } = useUi();
   return (
     <ActionBarPrimitive.Reload
       aria-label={t("retrySend")}
@@ -87,7 +85,7 @@ function ReloadAction() {
 }
 
 function ErrorNote() {
-  const t = useT();
+  const { t } = useUi();
   const status = useAuiState((state) => state.message.status);
   if (status === undefined || status.type !== "incomplete" || status.reason !== "error") {
     return null;
@@ -102,7 +100,7 @@ function ErrorNote() {
 }
 
 function TypingDots() {
-  const t = useT();
+  const { t } = useUi();
   return (
     <span className="flex items-center gap-1 py-2" aria-label={t("generating")}>
       <span className="zk-typing-dot h-1.5 w-1.5 rounded-capsule bg-muted-foreground" />
@@ -113,6 +111,7 @@ function TypingDots() {
 }
 
 function AssistantMessage() {
+  const { t, brand } = useUi();
   const running = useAuiState((state) => state.message.status?.type === "running");
   const empty = useAuiState(
     (state) =>
@@ -125,7 +124,7 @@ function AssistantMessage() {
       data-running={running ? "true" : "false"}
     >
       <div className="flex min-h-6 items-center gap-2">
-        <span className="text-[12px] font-medium text-foreground">{BRAND.name}</span>
+        <span className="text-[12px] font-medium text-foreground">{brand.name}</span>
         <AssistantStatus />
         <ActionBarPrimitive.Root
           className="ms-auto flex items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-within:opacity-100"
@@ -150,18 +149,15 @@ function AssistantMessage() {
   );
 }
 
-export function AssistantThread(props: {
-  mock: boolean;
-  offline: boolean;
-  onDecide: (approvalId: string, decision: ApprovalDecision) => void;
-}) {
+export function AssistantThread() {
+  const { actions } = useUi();
   return (
-    <ApprovalDecideContext.Provider value={props.onDecide}>
+    <ApprovalDecideContext.Provider value={actions.decideApproval}>
       <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
         <ThreadPrimitive.Viewport className="zk-thread-viewport">
           <div className="mx-auto flex min-h-full w-full max-w-[760px] flex-col">
             <AuiIf condition={(state) => state.thread.isEmpty}>
-              <EmptyThread mock={props.mock} />
+              <EmptyThread />
             </AuiIf>
             <div className="flex-1">
               <ThreadPrimitive.Messages>
@@ -169,7 +165,7 @@ export function AssistantThread(props: {
               </ThreadPrimitive.Messages>
             </div>
             <ThreadPrimitive.ViewportFooter className="zk-thread-footer">
-              <AssistantComposer offline={props.offline} />
+              <AssistantComposer />
             </ThreadPrimitive.ViewportFooter>
           </div>
         </ThreadPrimitive.Viewport>

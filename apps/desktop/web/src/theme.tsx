@@ -1,9 +1,5 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import type { Theme } from "./types";
-
-export type ResolvedTheme = "light" | "dark";
-
-const ThemeContext = createContext<ResolvedTheme>("light");
+import { useEffect, useState } from "react";
+import type { ResolvedTheme, Theme } from "./types";
 
 function systemPrefersDark(): boolean {
   if (typeof window.matchMedia !== "function") {
@@ -12,7 +8,7 @@ function systemPrefersDark(): boolean {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-/** Resolve `auto` against the OS preference and keep it live. */
+/** Resolve `auto` against the OS preference and keep it live for BrandLogo. */
 export function useResolvedTheme(theme: Theme): ResolvedTheme {
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
 
@@ -31,12 +27,4 @@ export function useResolvedTheme(theme: Theme): ResolvedTheme {
   }, []);
 
   return theme === "dark" || (theme === "auto" && systemDark) ? "dark" : "light";
-}
-
-export function ThemeProvider(props: { theme: ResolvedTheme; children: ReactNode }) {
-  return <ThemeContext.Provider value={props.theme}>{props.children}</ThemeContext.Provider>;
-}
-
-export function useThemeResolution(): ResolvedTheme {
-  return useContext(ThemeContext);
 }
