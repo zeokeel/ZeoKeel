@@ -189,7 +189,10 @@ impl Agent for RigAgent {
 
     fn run_stream_in_shared(&self, context: &TurnContext, turn_id: &str, input: &str, sink: Arc<dyn EventSink>) -> Result<AgentReply, AgentError> {
         sink.emit(AgentEvent::TurnStarted { turn_id: turn_id.to_owned() });
-        match self.run_rig(context, input, &sink) {
+        zk_kit_events::set_sink(Arc::clone(&sink));
+        let result = self.run_rig(context, input, &sink);
+        zk_kit_events::clear();
+        match result {
             Ok(reply) if self.cancelled.load(Ordering::SeqCst) => { sink.emit(AgentEvent::TurnCancelled); Ok(reply) }
             Ok(reply) => { sink.emit(AgentEvent::TurnCompleted { reply: reply.clone() }); Ok(reply) }
             Err(error) => { sink.emit(AgentEvent::Error { message: error.to_string() }); Err(error) }

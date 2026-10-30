@@ -1,0 +1,13 @@
+[package]
+name = "zk-tool-ask-user"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+serde_json = { workspace = true }
+zk-contract-tool = { path = "../../contracts/tool" }
+zk-contract-agent = { path = "../../contracts/agent" }
+zk-kit-questions = { path = "../../../crates/zk-kit-questions" }
+zk-kit-events = { path = "../../../crates/zk-kit-events" }
+[lints]
+workspace = true

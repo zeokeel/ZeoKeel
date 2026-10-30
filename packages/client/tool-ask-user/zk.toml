@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-ask-user"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Ask the user questions and wait for answers"
+
+[role]
+name = "tool.ask_user"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-ask-user" }

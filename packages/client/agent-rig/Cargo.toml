@@ -16,6 +16,7 @@ zk-contract-tool = { path = "../../contracts/tool" }
 zk-contract-llm = { path = "../../contracts/llm" }
 zk-kit-approval = { path = "../../../crates/zk-kit-approval" }
 zk-kit-subagent = { path = "../../../crates/zk-kit-subagent" }
+zk-kit-events = { path = "../../../crates/zk-kit-events" }
 
 [dev-dependencies]
 zk-tool-subagent = { path = "../tool-subagent" }

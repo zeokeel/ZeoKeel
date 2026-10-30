@@ -59,6 +59,10 @@ pub enum AgentEvent {
     ApprovalRequested { approval_id: String, tool: String, args: String, reason: String },
     /// An approval request was resolved (UI may render the outcome).
     ApprovalResolved { approval_id: String, decision: ApprovalDecision },
+    /// The agent asks the user questions and pauses until answered.
+    QuestionAsked { question_id: String, questions: serde_json::Value },
+    /// Questions were answered (or timed out with `null`).
+    QuestionAnswered { question_id: String, answers: serde_json::Value },
     /// Turn finished successfully.
     TurnCompleted { reply: AgentReply },
     /// Turn was cancelled by the user.

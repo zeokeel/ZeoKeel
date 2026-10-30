@@ -1,0 +1,9 @@
+[package]
+name = "zk-kit-events"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+zk-contract-agent = { path = "../../packages/contracts/agent" }
+[lints]
+workspace = true
