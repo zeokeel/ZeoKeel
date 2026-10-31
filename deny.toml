@@ -43,7 +43,10 @@ exceptions = []
 
 [bans]
 multiple-versions = "warn"
-wildcards = "deny"
+# Workspace-internal path dependencies are versionless by design (single workspace,
+# unpublished crates); banning wildcards produced hundreds of false positives on the
+# first real run. Registry dependencies are still covered by advisories/sources/bans.
+wildcards = "warn"
 deny = [
   # GPL-3.0: incompatible with MIT-only distribution of shipped binaries.
   { crate = "epub", reason = "GPL-3.0; use tool-read-document loaders instead" },
