@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: System deps (Tauri + icon renderer)
         run: |
           sudo apt-get update
@@ -31,12 +31,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3
       # zk-desktop's Tauri `generate_context!` embeds `web/dist`; cargo fmt/clippy/test
       # compile it, so the web build must exist before any Rust gate (CI checkout has no dist).
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with: { version: "12.16.1" }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: "22", cache: "pnpm" }
       - name: Build desktop web dist (Tauri frontendDist prerequisite)
         run: |
@@ -78,12 +78,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: pnpm/action-setup@v4
+      - uses: Swatinem/rust-cache@v2.9.3
+      - uses: pnpm/action-setup@v6
         with: { version: "12.16.1" }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: "22", cache: "pnpm" }
       - run: pnpm install --frozen-lockfile
       - name: Typecheck (all web packages, tsc -b)
@@ -103,9 +103,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3
       - name: Local PostgreSQL
         run: |
           sudo apt-get update
@@ -133,7 +133,7 @@ jobs:
         run: bash scripts/srv-auth-test.sh
       - name: "Updates e2e (real PG): manifest/channel-reject/version-reject/artifact/portal"
         run: bash scripts/updates-e2e.sh
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: experiments/wasm-poc/guest-go/go.mod
           cache: false
@@ -143,7 +143,7 @@ jobs:
             GOOS=wasip1 GOARCH=wasm go build -ldflags="-s -w" -o guest-go.wasm .)
       - name: Apps e2e (real PG + real wasm app lifecycle)
         run: bash scripts/apps-e2e.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: integration-evidence
@@ -156,17 +156,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: System deps (Tauri + icon renderer)
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
             libjavascriptcoregtk-4.1-dev librsvg2-bin xvfb
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: pnpm/action-setup@v4
+      - uses: Swatinem/rust-cache@v2.9.3
+      - uses: pnpm/action-setup@v6
         with: { version: "12.16.1" }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: "22", cache: "pnpm" }
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
@@ -176,7 +176,7 @@ jobs:
         run: bash scripts/agent-e2e.sh
       - name: Schedule executor auto-run e2e
         run: bash e2e/serve-schedule.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-evidence
@@ -192,17 +192,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: System deps (Tauri + serve carrier)
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
             libjavascriptcoregtk-4.1-dev librsvg2-bin xvfb
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: pnpm/action-setup@v4
+      - uses: Swatinem/rust-cache@v2.9.3
+      - uses: pnpm/action-setup@v6
         with: { version: "12.16.1" }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: "22", cache: "pnpm" }
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
@@ -212,7 +212,7 @@ jobs:
           sudo apt-get install -y postgresql
           sudo systemctl start postgresql
           sudo -u postgres psql -c "SELECT version();"
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: experiments/wasm-poc/guest-go/go.mod
           cache: false
@@ -224,7 +224,7 @@ jobs:
         run: bash scripts/login-e2e.sh
       - name: Admin + portal a11y (admin pages + portal axe, serious/critical = 0)
         run: bash scripts/admin-e2e.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: a11y-evidence
@@ -239,9 +239,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3
       - name: OEM/delivery e2e (channel schema, index/pin, compose matrix, dist verify)
         run: bash scripts/oem-e2e.sh
 
@@ -249,17 +249,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: System deps (Tauri + serve carrier)
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
             libjavascriptcoregtk-4.1-dev librsvg2-bin xvfb
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: pnpm/action-setup@v4
+      - uses: Swatinem/rust-cache@v2.9.3
+      - uses: pnpm/action-setup@v6
         with: { version: "12.16.1" }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: "22", cache: "pnpm" }
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
@@ -271,7 +271,7 @@ jobs:
           sudo -u postgres psql -c "SELECT version();"
       - name: Forced client upgrade e2e (real server 426 + non-dismissable UpgradeGate)
         run: bash scripts/client-upgrade-e2e.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: client-upgrade-evidence
@@ -282,8 +282,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with: { python-version: "3.12" }
       - run: python3 scripts/docs-check.py
       - run: python3 scripts/spec-check.py
@@ -294,9 +294,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3
       - name: Validate compose
         env:
           DOMAIN: zeokeel.example.com
@@ -312,7 +312,7 @@ jobs:
         run: |
           cargo run -q -p zk -- sbom --edition enterprise --profile default --channel official --output target/evidence/sbom/zeokeel-enterprise.cdx.json
           cargo run -q -p zk -- sbom --edition enterprise --profile default --channel official --output target/evidence/sbom/zeokeel-enterprise.cdx.json --check
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sbom-cyclonedx
           path: target/evidence/sbom/

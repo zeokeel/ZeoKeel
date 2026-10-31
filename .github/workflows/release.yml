@@ -59,7 +59,7 @@ jobs:
       edition: ${{ steps.resolve.outputs.edition }}
       channel: ${{ steps.resolve.outputs.channel }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
@@ -160,14 +160,14 @@ jobs:
       CHANNEL: ${{ needs.version-check.outputs.channel }}
       VERSION: ${{ needs.version-check.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: pnpm/action-setup@v4
+      - uses: Swatinem/rust-cache@v2.9.3
+      - uses: pnpm/action-setup@v6
         with: { version: "12.16.1" }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: "22" }
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with: { python-version: "3.12" }
       - name: Compose selected edition x channel
         run: |
@@ -221,14 +221,14 @@ jobs:
           - { name: macos, os: macos-14, targets: '["dmg"]' }
           - { name: windows, os: windows-2022, targets: '["nsis"]' }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: pnpm/action-setup@v4
+      - uses: Swatinem/rust-cache@v2.9.3
+      - uses: pnpm/action-setup@v6
         with: { version: "12.16.1" }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: "22", cache: "pnpm" }
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with: { python-version: "3.12" }
       - name: Linux system deps (Tauri)
         if: matrix.name == 'linux'
@@ -295,7 +295,7 @@ jobs:
             \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.dmg' -o -name '*.exe' -o -name '*.msi' \) \
             -exec cp -v {} clients/ \;
           test -n "$(ls -A clients)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: clients-${{ matrix.name }}
           path: clients
@@ -311,16 +311,16 @@ jobs:
       CHANNEL: ${{ needs.version-check.outputs.channel }}
       VERSION: ${{ needs.version-check.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: pnpm/action-setup@v4
+      - uses: Swatinem/rust-cache@v2.9.3
+      - uses: pnpm/action-setup@v6
         with: { version: "12.16.1" }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: "22", cache: "pnpm" }
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with: { python-version: "3.12" }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: clients-*
           path: installers
@@ -383,7 +383,7 @@ jobs:
           set -euo pipefail
           cargo run -q -p zk -- channel verify --channel "$CHANNEL" --dist "dist/$VERSION/$CHANNEL"
           (cd "dist/$VERSION/$CHANNEL" && sha256sum -c SHA256SUMS)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
           path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}
@@ -407,8 +407,8 @@ jobs:
       CHANNEL: ${{ needs.version-check.outputs.channel }}
       VERSION: ${{ needs.version-check.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
           path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}
@@ -422,7 +422,7 @@ jobs:
             --channel "$CHANNEL" --edition "$EDITION" \
             --backup-dir target/evidence/m6/upgrade-drill-backup \
             --evidence target/evidence/m6/upgrade-drill.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: upgrade-drill-evidence
@@ -441,8 +441,8 @@ jobs:
       CHANNEL: ${{ needs.version-check.outputs.channel }}
       VERSION: ${{ needs.version-check.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
           path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}
@@ -476,7 +476,7 @@ jobs:
             --password "$MACOS_NOTARY_PASSWORD" --wait
           xcrun stapler staple "$DMG"
           echo "notarized + stapled: $DMG"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: clients-macos-notarized
           path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}/clients
@@ -498,8 +498,8 @@ jobs:
       SERVER_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       NOTARIZE_ENABLED: ${{ vars.MACOS_NOTARIZE_ENABLED }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
           path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}
@@ -577,7 +577,7 @@ jobs:
               "- Windows installers are unsigned by decision (ADR-033); this is VERIFIED-UNSIGNED, not a build/signing failure.",
               "- macOS notarization/staple: "
               + ("job `notarize` is enabled for this run; release dist was assembled before stapling and is NOT itself notarized — use the `clients-macos-notarized` artifact." if notarize == "true" else "not executed (MACOS_NOTARIZE_ENABLED != true) — UNVERIFIED, certificate-gated (ADR-037)."),
-              "- Docker images are built from source in CI but not image-scanned (no trivy in this pipeline) — UNVERIFIED.",
+              "- Docker images are built from source in CI; image CVEs are enforced by the security workflow gate 10 (fixable-only policy; unfixed base-image CVEs are listed in KNOWN-LIMITATIONS.md §2).",
               "- GitHub-hosted runner execution is itself the environment proof for this workflow run; other environments remain UNVERIFIED.",
           ]
           pathlib.Path(out).write_text("\n".join(body) + "\n")
@@ -587,7 +587,12 @@ jobs:
         run: |
           set -euo pipefail
           DIST="dist/$VERSION/$CHANNEL"
-          mapfile -t ASSETS < <(find "$DIST/clients" -type f; printf '%s\n' "$DIST/SHA256SUMS" "$DIST/CLIENT-RELEASE.json" "$DIST/CHANNEL.json" "$DIST/BUILD-STATUS.json" "$DIST/KNOWN-LIMITATIONS.md" "$DIST/VERSION" "$DIST/SBOM/cyclonedx.json")
+          # Full dist archive: GitHub Release upload flattens paths, so deploy/* and
+          # SBOM/cyclonedx.json cannot be verified via SHA256SUMS as loose assets.
+          # The archive preserves the exact dist tree and is the verifiable deliverable.
+          ARCHIVE="dist/zeokeel-dist-$VERSION-$CHANNEL.tar.gz"
+          tar -C "dist/$VERSION" -czf "$ARCHIVE" "$CHANNEL"
+          mapfile -t ASSETS < <(find "$DIST/clients" -type f; printf '%s\n' "$ARCHIVE" "$DIST/SHA256SUMS" "$DIST/CLIENT-RELEASE.json" "$DIST/CHANNEL.json" "$DIST/BUILD-STATUS.json" "$DIST/KNOWN-LIMITATIONS.md" "$DIST/VERSION" "$DIST/SBOM/cyclonedx.json")
           if [ -d "$DIST/images" ]; then
             while IFS= read -r image; do ASSETS+=("$image"); done < <(find "$DIST/images" -type f)
           fi
@@ -613,6 +618,8 @@ jobs:
           names = {asset["name"] for asset in payload.get("assets", [])}
           required = {"SHA256SUMS", "CLIENT-RELEASE.json", "CHANNEL.json", "BUILD-STATUS.json", "KNOWN-LIMITATIONS.md", "cyclonedx.json"}
           missing = sorted(required - names)
+          if not any(name.startswith("zeokeel-dist-") and name.endswith(".tar.gz") for name in names):
+              problems.append("no full dist archive (zeokeel-dist-*.tar.gz) in the GitHub Release")
           clients = sorted(name for name in names if name.endswith((".AppImage", ".deb", ".rpm", ".dmg", ".exe", ".msi")))
           problems = []
           if missing:
@@ -626,7 +633,12 @@ jobs:
               sys.exit(1)
           print(f"release verified: {payload.get('url')} ({len(names)} assets, {len(clients)} installers)")
           PY
-      - uses: actions/upload-artifact@v4
+          # Verify the published dist archive end-to-end: extract and check SHA256SUMS.
+          mkdir -p "$RUNNER_TEMP/verify-dist"
+          gh release download "$TAG" --pattern "zeokeel-dist-*.tar.gz" --dir "$RUNNER_TEMP/verify-dist" --clobber
+          tar -C "$RUNNER_TEMP/verify-dist" -xzf "$(ls "$RUNNER_TEMP"/verify-dist/zeokeel-dist-*.tar.gz)"
+          (cd "$RUNNER_TEMP/verify-dist/$CHANNEL" && sha256sum -c SHA256SUMS)
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: release-evidence

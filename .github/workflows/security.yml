@@ -49,9 +49,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3
       # gates 2/3/7 (srv-auth-test, SSRF probe, audit-chain markers) need a real PG; the
       # repository scripts use local peer auth via `sudo -u postgres`. Tauri system libs
       # are needed to build/run zk-desktop for the rebinding probe (gate 3).
@@ -81,9 +81,9 @@ jobs:
         run: cargo fetch
       # zk-desktop's Tauri `generate_context!` embeds `web/dist`; the audit binaries must
       # be built after the web assets exist (clean runner checkouts have no dist).
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with: { version: "12.16.1" }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: "22" }
       - name: Build desktop web dist (Tauri frontendDist prerequisite)
         run: |
@@ -109,17 +109,17 @@ jobs:
         run: |
           mkdir -p target/evidence/security
           cargo geiger --all-features | tee target/evidence/security/cargo-geiger.txt
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with: { version: "12.16.1" }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: "22", cache: "pnpm" }
       - name: pnpm audit (production dependencies)
         run: pnpm install --frozen-lockfile && pnpm audit --prod
       # gate 10 prerequisite: a real server image plus a pinned trivy scan. BuildKit's
       # GHA cache keeps the release build from being recomputed from scratch each run.
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build server image (gate 10 prerequisite)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/docker/Dockerfile.server
@@ -230,7 +230,7 @@ jobs:
                 f"ci_unverified={sorted(ci_unverified)}")
           sys.exit(rc)
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: security-evidence
