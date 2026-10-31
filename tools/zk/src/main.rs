@@ -888,6 +888,8 @@ struct Selected {
 struct Resolved {
     edition: String,
     channel: String,
+    /// Composition targets selected by the edition (`desktop`/`server`; R8.2/F6).
+    targets: Vec<String>,
     packages: Vec<Selected>,
     manifests: BTreeMap<String, Manifest>,
     roles: BTreeMap<String, RoleDef>,
@@ -959,6 +961,27 @@ fn edition_closure(root: &Path, name: &str) -> Result<BTreeSet<String>> {
         }
     }
     Ok(set)
+}
+
+/// Composition targets for an edition (base-chain union; R8.2/F6).
+fn edition_targets(root: &Path, name: &str) -> Result<Vec<String>> {
+    let mut targets: BTreeSet<String> = BTreeSet::new();
+    let mut chain: BTreeSet<String> = BTreeSet::new();
+    let mut current = name.to_owned();
+    loop {
+        if !chain.insert(current.clone()) {
+            break;
+        }
+        let file = load_edition(root, &current)?;
+        for target in file.edition.targets {
+            targets.insert(target);
+        }
+        match file.edition.base_edition {
+            Some(base) => current = base,
+            None => break,
+        }
+    }
+    Ok(targets.into_iter().collect())
 }
 
 fn load_edition(root: &Path, name: &str) -> Result<EditionFile> {
@@ -1163,6 +1186,7 @@ fn resolve(root: &Path, flags: &Flags) -> Result<Resolved> {
     enforce_protected_roles(root, &config, flags, &packages)?;
     validate_contracts(&config, &manifests)?;
 
+    let targets = edition_targets(root, &flags.edition)?;
     let mut selected = Vec::new();
     let mut by_role: BTreeMap<String, Vec<&PackageSel>> = BTreeMap::new();
     for (role, sel) in &packages {
@@ -1239,6 +1263,7 @@ fn resolve(root: &Path, flags: &Flags) -> Result<Resolved> {
     Ok(Resolved {
         edition: flags.edition.clone(),
         channel: flags.channel.clone(),
+        targets,
         packages: selected,
         manifests,
         roles: config.roles,
@@ -1658,40 +1683,66 @@ fn profile_matrix_md(root: &Path, config: &RootConfig) -> Result<String> {
     Ok(output)
 }
 
-fn compose(root: &Path, flags: &Flags, check: bool) -> Result<()> {
-    let resolved = resolve(root, flags)?;
+fn compose_files(root: &Path, resolved: &Resolved) -> Result<BTreeMap<PathBuf, String>> {
     let mut files: BTreeMap<PathBuf, String> = BTreeMap::new();
     files.insert(
         root.join("crates/zk-composed/Cargo.toml"),
-        compose_cargo_toml(root, &resolved)?,
+        compose_cargo_toml(root, resolved)?,
     );
     files.insert(
         root.join("crates/zk-composed/src/lib.rs"),
-        compose_lib(root, &resolved)?,
+        compose_lib(root, resolved)?,
     );
+    let server_target = resolved.targets.iter().any(|target| target == "server");
     for app in ["desktop", "server"] {
+        if app == "server" && !server_target {
+            // R8.2/F6: personal edition targets = ["desktop"]; do not generate the
+            // server-domain product glue/manifest. The workspace stays buildable
+            // because the trimmed manifest has no srv-* dependencies and main is a
+            // generated stub (full server is regenerated for enterprise compose).
+            let template = root.join("tools/zk/templates/app_server_trimmed.Cargo.toml");
+            files.insert(
+                root.join("apps/server/Cargo.toml"),
+                fs::read_to_string(&template)
+                    .with_context(|| format!("read {}", template.display()))?,
+            );
+            files.insert(root.join("apps/server/src/main.rs"), trimmed_server_main());
+            files.insert(
+                root.join("apps/server/src/generated/packages.rs"),
+                generated_packages_rs_trimmed(resolved),
+            );
+            continue;
+        }
         let template = root.join(format!("tools/zk/templates/app_{app}.Cargo.toml"));
         if template.is_file() {
             let content = fs::read_to_string(&template)
                 .with_context(|| format!("read {}", template.display()))?;
             files.insert(root.join(format!("apps/{app}/Cargo.toml")), content);
         }
+        if app == "server" {
+            let template = root.join("tools/zk/templates/app_server.main.rs");
+            files.insert(
+                root.join("apps/server/src/main.rs"),
+                fs::read_to_string(&template)
+                    .with_context(|| format!("read {}", template.display()))?,
+            );
+        }
         files.insert(
             root.join(format!("apps/{app}/src/generated/packages.rs")),
-            generated_packages_rs(&resolved),
+            generated_packages_rs(resolved),
         );
     }
     files.insert(
         root.join("shared/contracts/packages.json"),
-        packages_json(&resolved)?,
+        packages_json(resolved)?,
     );
     files.insert(
         root.join("shared/contracts/roles.json"),
-        roles_json(&resolved)?,
+        roles_json(resolved)?,
     );
     files.insert(
         root.join("docs/generated/PACKAGE-INDEX.md"),
-        package_index_md(&resolved),
+        package_index_md(resolved),
     );
     // Channel brand assets: authoritative logos come from the channel repo; copy them into the app.
     let light_src = resolved.channel_dir.join(&resolved.brand.logo.light);
@@ -1706,25 +1757,31 @@ fn compose(root: &Path, flags: &Flags, check: bool) -> Result<()> {
     );
     files.insert(
         root.join("apps/desktop/web/src/generated/brand.ts"),
-        brand_ts(&resolved, &desktop_version(root)?),
+        brand_ts(resolved, &desktop_version(root)?),
     );
     files.insert(
         root.join("shared/contracts/brand.json"),
-        brand_json(&resolved)?,
+        brand_json(resolved)?,
     );
     files.insert(
         root.join("apps/desktop/web/src/generated/registry.ts"),
-        ui_registry_ts(&resolved),
+        ui_registry_ts(resolved),
     );
     files.insert(
         root.join("apps/admin/web/src/generated/registry.ts"),
-        admin_registry_ts(&resolved),
+        admin_registry_ts(resolved),
     );
     files.insert(
         root.join("shared/contracts/ui-contributions.json"),
-        ui_contributions_json(&resolved)?,
+        ui_contributions_json(resolved)?,
     );
 
+    Ok(files)
+}
+
+fn compose(root: &Path, flags: &Flags, check: bool) -> Result<()> {
+    let resolved = resolve(root, flags)?;
+    let files = compose_files(root, &resolved)?;
     if check {
         // Only the committed baseline (personal×default×official, docs/24 §1.2) is
         // drift-checked against the working tree. Non-baseline editions are composed
@@ -1908,7 +1965,7 @@ fn compose_lib(root: &Path, resolved: &Resolved) -> Result<String> {
     }
     out.push_str("];\n\n");
     out.push_str("pub struct Runtime {\n    agent: Arc<dyn zk_contract_agent::Agent>,\n    sessions: Arc<dyn zk_contract_session::SessionStore>,\n    settings: Arc<dyn zk_contract_config::SettingsStore>,\n}\n\n");
-    out.push_str("impl Runtime {\n    pub fn run(&self, input: &str) -> Result<serde_json::Value, String> {\n        let reply = self.agent.run(input).map_err(|e| e.to_string())?;\n        serde_json::to_value(reply).map_err(|e| e.to_string())\n    }\n\n    pub fn run_stream(&self, turn_id: &str, input: &str, sink: &dyn zk_contract_agent::EventSink) -> Result<zk_contract_agent::AgentReply, zk_contract_agent::AgentError> {\n        self.agent.run_stream(turn_id, input, sink)\n    }\n\n    pub fn run_stream_in(&self, context: &zk_contract_tool::TurnContext, turn_id: &str, input: &str, sink: &dyn zk_contract_agent::EventSink) -> Result<zk_contract_agent::AgentReply, zk_contract_agent::AgentError> {\n        self.agent.run_stream_in(context, turn_id, input, sink)\n    }\n\n    pub fn run_stream_in_shared(&self, context: &zk_contract_tool::TurnContext, turn_id: &str, input: &str, sink: std::sync::Arc<dyn zk_contract_agent::EventSink>) -> Result<zk_contract_agent::AgentReply, zk_contract_agent::AgentError> {\n        self.agent.run_stream_in_shared(context, turn_id, input, sink)\n    }\n\n    pub fn cancel_agent(&self) { self.agent.cancel(); }\n\n    pub fn configure_llm(&self, base_url: &str, api_key: &str, model: &str, provider: &str) -> Result<(), String> { self.agent.configure_model(base_url, api_key, model, provider) }\n\n    pub fn sessions(&self) -> Arc<dyn zk_contract_session::SessionStore> {\n        Arc::clone(&self.sessions)\n    }\n\n    pub fn settings(&self) -> Arc<dyn zk_contract_config::SettingsStore> {\n        Arc::clone(&self.settings)\n    }\n\n    pub fn packages(&self) -> &'static [&'static str] {\n        PACKAGES\n    }\n}\n\n");
+    out.push_str("impl Runtime {\n    pub fn run(&self, input: &str) -> Result<serde_json::Value, String> {\n        let reply = self.agent.run(input).map_err(|e| e.to_string())?;\n        serde_json::to_value(reply).map_err(|e| e.to_string())\n    }\n\n    pub fn run_stream(&self, turn_id: &str, input: &str, sink: &dyn zk_contract_agent::EventSink) -> Result<zk_contract_agent::AgentReply, zk_contract_agent::AgentError> {\n        self.agent.run_stream(turn_id, input, sink)\n    }\n\n    pub fn run_stream_in(&self, context: &zk_contract_tool::TurnContext, turn_id: &str, input: &str, sink: &dyn zk_contract_agent::EventSink) -> Result<zk_contract_agent::AgentReply, zk_contract_agent::AgentError> {\n        self.agent.run_stream_in(context, turn_id, input, sink)\n    }\n\n    pub fn run_stream_in_shared(&self, context: &zk_contract_tool::TurnContext, turn_id: &str, input: &str, sink: std::sync::Arc<dyn zk_contract_agent::EventSink>) -> Result<zk_contract_agent::AgentReply, zk_contract_agent::AgentError> {\n        self.agent.run_stream_in_shared(context, turn_id, input, sink)\n    }\n\n    pub fn run_stream_in_shared_with_history(&self, context: &zk_contract_tool::TurnContext, turn_id: &str, input: &str, history: &[zk_contract_agent::HistoryMessage], sink: std::sync::Arc<dyn zk_contract_agent::EventSink>) -> Result<zk_contract_agent::AgentReply, zk_contract_agent::AgentError> {\n        self.agent.run_stream_in_shared_with_history(context, turn_id, input, history, sink)\n    }\n\n    pub fn cancel_agent(&self) { self.agent.cancel(); }\n\n    pub fn configure_llm(&self, base_url: &str, api_key: &str, model: &str, provider: &str) -> Result<(), String> { self.agent.configure_model(base_url, api_key, model, provider) }\n\n    pub fn sessions(&self) -> Arc<dyn zk_contract_session::SessionStore> {\n        Arc::clone(&self.sessions)\n    }\n\n    pub fn settings(&self) -> Arc<dyn zk_contract_config::SettingsStore> {\n        Arc::clone(&self.settings)\n    }\n\n    pub fn packages(&self) -> &'static [&'static str] {\n        PACKAGES\n    }\n}\n\n");
     if let Some(update_pkg) = update {
         out.push_str(&format!(
             "pub fn check_update(current: &str, platform: &str) -> Result<Option<zk_contract_update::ReleaseInfo>, String> {{\n    {}::check(current, platform).map(|check| if check.available {{ check.release }} else {{ None }}).map_err(|error| error.to_string())\n}}\n\n",
@@ -2871,6 +2928,35 @@ fn ui_contributions_json(resolved: &Resolved) -> Result<String> {
             .to_owned()
     });
     Ok(format!("{}\n", stable_json(&out)?))
+}
+
+/// Generated stub for the excluded `server` target (R8.2/F6): not a server binary.
+fn trimmed_server_main() -> String {
+    String::from(
+        "// @generated by zk compose -- do not edit\n\
+         //! `zk-server` stub: the personal edition does not include the `server` target\n\
+         //! (R8.2/F6 target trimming). Enterprise compose regenerates the real server.\n\
+         #![forbid(unsafe_code)]\n\n\
+         fn main() {\n    \
+         eprintln!(\n        \
+         \"zk-server: server target is not part of the personal composition (A18 target trimming)\"\n    \
+         );\n    \
+         std::process::exit(2);\n\
+         }\n"
+    )
+}
+
+/// Generated server glue for the excluded `server` target: zero package entries.
+fn generated_packages_rs_trimmed(resolved: &Resolved) -> String {
+    format!(
+        "// @generated by zk compose -- do not edit\n\
+         // `server` target is excluded for edition `{}` (R8.2/F6: no server-domain glue).\n\
+         #![allow(dead_code)]\n\n\
+         pub const EDITION: &str = \"{}\";\n\
+         pub const CHANNEL: &str = \"{}\";\n\
+         pub const PACKAGES: &[&str] = &[];\n",
+        resolved.edition, resolved.edition, resolved.channel
+    )
 }
 
 fn generated_packages_rs(resolved: &Resolved) -> String {
@@ -4143,5 +4229,108 @@ mod sbom_tests {
             "pkg:npm/%40zeokeel/ui-kit@0.1.0"
         );
         assert_eq!(npm_purl("react", "19.3.0"), "pkg:npm/react@19.3.0");
+    }
+}
+
+#[cfg(test)]
+mod target_trim_tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects
+    )] // test-only
+    use std::path::PathBuf;
+
+    use super::{compose_files, resolve, Flags};
+
+    fn repo_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .unwrap()
+    }
+
+    fn flags(edition: &str) -> Flags {
+        Flags {
+            edition: edition.to_owned(),
+            profile: "default".to_owned(),
+            channel: "official".to_owned(),
+        }
+    }
+
+    #[test]
+    fn personal_target_trimming_asserts_closure_glue_and_release_gate() {
+        let root = repo_root();
+        let resolved = resolve(&root, &flags("personal")).unwrap();
+        // (1) plan closure: no server/admin domain packages, targets = desktop only.
+        assert!(resolved
+            .packages
+            .iter()
+            .all(|pkg| !pkg.crate_name.starts_with("zk-srv-")));
+        assert!(resolved
+            .packages
+            .iter()
+            .all(|pkg| !pkg.role.starts_with("srv.") && !pkg.role.starts_with("admin.")));
+        assert!(resolved.targets.iter().any(|target| target == "desktop"));
+        assert!(!resolved.targets.iter().any(|target| target == "server"));
+
+        let files = compose_files(&root, &resolved).unwrap();
+        // (2) generated personal server glue/manifest: zero packages, no srv deps.
+        let glue = files
+            .get(&root.join("apps/server/src/generated/packages.rs"))
+            .unwrap();
+        assert!(
+            glue.contains("pub const PACKAGES: &[&str] = &[];"),
+            "{glue}"
+        );
+        assert!(!glue.contains("srv."), "{glue}");
+        let manifest = files.get(&root.join("apps/server/Cargo.toml")).unwrap();
+        assert!(!manifest.contains("zk-srv-"), "{manifest}");
+        let main = files.get(&root.join("apps/server/src/main.rs")).unwrap();
+        assert!(
+            main.contains("not part of the personal composition"),
+            "{main}"
+        );
+        let composed = files
+            .get(&root.join("crates/zk-composed/Cargo.toml"))
+            .unwrap();
+        assert!(!composed.contains("zk-srv-"), "{composed}");
+
+        // (3) release gating: server build/image steps are enterprise-only.
+        let release = std::fs::read_to_string(root.join(".github/workflows/release.yml")).unwrap();
+        let lines: Vec<&str> = release.lines().collect();
+        let mut gated = 0_usize;
+        for (index, line) in lines.iter().enumerate() {
+            if !(line.contains("cargo build --release -p zk-server")
+                || line.contains("Dockerfile.server"))
+            {
+                continue;
+            }
+            let start = index.saturating_sub(4);
+            let window = lines[start..=index].join("\n");
+            assert!(
+                window.contains("edition == 'enterprise'"),
+                "server artifact step is not enterprise-gated: {line}"
+            );
+            gated = gated.saturating_add(1);
+        }
+        assert!(gated >= 2, "release workflow server gating steps not found");
+    }
+
+    #[test]
+    fn enterprise_target_keeps_server_product_glue() {
+        let root = repo_root();
+        let resolved = resolve(&root, &flags("enterprise")).unwrap();
+        assert!(resolved.targets.iter().any(|target| target == "server"));
+        let files = compose_files(&root, &resolved).unwrap();
+        let manifest = files.get(&root.join("apps/server/Cargo.toml")).unwrap();
+        assert!(manifest.contains("zk-srv-http"), "{manifest}");
+        let main = files.get(&root.join("apps/server/src/main.rs")).unwrap();
+        assert!(main.contains("zk_srv_http"), "{main}");
+        let composed = files
+            .get(&root.join("crates/zk-composed/Cargo.toml"))
+            .unwrap();
+        assert!(composed.contains("zk-srv-"), "{composed}");
     }
 }

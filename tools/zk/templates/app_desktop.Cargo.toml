@@ -19,9 +19,11 @@ zk-kit-questions = { path = "../../crates/zk-kit-questions" }
 zk-kit-session = { path = "../../crates/zk-kit-session" }
 zk-contract-agent = { path = "../../packages/contracts/agent" }
 zk-contract-config = { path = "../../packages/contracts/config" }
+zk-contract-connector = { path = "../../packages/contracts/connector" }
 zk-contract-ipc = { path = "../../packages/contracts/ipc" }
 zk-contract-session = { path = "../../packages/contracts/session" }
 zk-contract-tool = { path = "../../packages/contracts/tool" }
+zk-connector-mcp = { path = "../../packages/client/connector-mcp" }
 axum = { workspace = true }
 tokio = { workspace = true }
 tower-http = { workspace = true }
@@ -34,6 +36,7 @@ keyring = { workspace = true }
 zk-kit-content = { path = "../../crates/zk-kit-content" }
 zip = { workspace = true }
 base64 = { workspace = true }
+sha2 = { workspace = true }
 
 [lints]
 workspace = true
