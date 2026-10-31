@@ -79,6 +79,16 @@ jobs:
       # the personal-baseline Cargo.lock legitimately needs the union of both compositions.
       - name: Fetch dependencies (needed by the audit's --offline tests)
         run: cargo fetch
+      # zk-desktop's Tauri `generate_context!` embeds `web/dist`; the audit binaries must
+      # be built after the web assets exist (clean runner checkouts have no dist).
+      - uses: pnpm/action-setup@v4
+        with: { version: "12.16.1" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: Build desktop web dist (Tauri frontendDist prerequisite)
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --dir apps/desktop/web build
       # gates 2/3/7/12 need runnable binaries; ZEOKEEL_SECURITY_SKIP_BUILD=1 keeps the
       # audit from rebuilding them (single build here).
       - name: Build audit binaries (zk-server + zk-desktop; gates 3/7/12 prerequisites)
