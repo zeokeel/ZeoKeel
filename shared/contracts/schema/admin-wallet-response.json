@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AdminWalletResponse",
+  "description": "`GET /api/admin/wallet` response.",
+  "type": "object",
+  "required": [
+    "items",
+    "ok"
+  ],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/AdminWalletItem"
+      }
+    },
+    "ok": {
+      "type": "boolean"
+    }
+  },
+  "definitions": {
+    "AdminWalletItem": {
+      "description": "One admin wallet row (`GET /api/admin/wallet`).",
+      "type": "object",
+      "required": [
+        "balance_micros",
+        "user_id",
+        "username"
+      ],
+      "properties": {
+        "balance_micros": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "user_id": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

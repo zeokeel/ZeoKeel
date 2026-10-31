@@ -7,6 +7,9 @@ license.workspace = true
 [dependencies]
 schemars = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+zk-contract-connector = { path = "../connector" }
+zk-contract-gateway = { path = "../gateway" }
 
 [dev-dependencies]
 serde_json = { workspace = true }

@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AdminJobsResponse",
+  "description": "`GET /api/admin/jobs` response.",
+  "type": "object",
+  "required": [
+    "items",
+    "ok"
+  ],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/AdminJobItem"
+      }
+    },
+    "ok": {
+      "type": "boolean"
+    }
+  },
+  "definitions": {
+    "AdminJobItem": {
+      "description": "One job run row (`GET /api/admin/jobs`).",
+      "type": "object",
+      "required": [
+        "detail",
+        "idempotency_key",
+        "job",
+        "status"
+      ],
+      "properties": {
+        "detail": true,
+        "idempotency_key": {
+          "type": "string"
+        },
+        "job": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

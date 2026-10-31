@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AdminSkillsResponse",
+  "description": "`GET /api/admin/skills` response.",
+  "type": "object",
+  "required": [
+    "items",
+    "ok"
+  ],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/AdminSkillItem"
+      }
+    },
+    "ok": {
+      "type": "boolean"
+    }
+  },
+  "definitions": {
+    "AdminSkillItem": {
+      "description": "One admin skill/content row (`GET /api/admin/skills`).",
+      "type": "object",
+      "required": [
+        "force_update",
+        "id",
+        "kind",
+        "min_client_version",
+        "name",
+        "owner_id",
+        "status",
+        "version",
+        "visibility"
+      ],
+      "properties": {
+        "current_release_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "force_update": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "min_client_version": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "visibility": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

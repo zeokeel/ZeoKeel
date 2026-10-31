@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AdminLoginResponse",
+  "description": "Admin console login response (`POST /api/admin/auth/login`).",
+  "type": "object",
+  "required": [
+    "csrf_token",
+    "expires_in",
+    "idle_timeout_secs",
+    "ok",
+    "role"
+  ],
+  "properties": {
+    "csrf_token": {
+      "description": "CSRF token required by subsequent admin writes.",
+      "type": "string"
+    },
+    "expires_in": {
+      "description": "Admin session lifetime in seconds.",
+      "type": "integer",
+      "format": "int64"
+    },
+    "idle_timeout_secs": {
+      "description": "Admin session idle timeout in seconds.",
+      "type": "integer",
+      "format": "int64"
+    },
+    "ok": {
+      "description": "Always `true` on success (errors use the HTTP error body).",
+      "type": "boolean"
+    },
+    "role": {
+      "description": "Admin role (`super_admin` or `auditor`).",
+      "type": "string"
+    }
+  }
+}

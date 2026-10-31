@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AdminOkResponse",
+  "description": "Success envelope for admin mutations whose payload the SPA ignores.",
+  "type": "object",
+  "required": [
+    "ok"
+  ],
+  "properties": {
+    "ok": {
+      "description": "Always `true` on success (errors use the HTTP error body).",
+      "type": "boolean"
+    }
+  }
+}

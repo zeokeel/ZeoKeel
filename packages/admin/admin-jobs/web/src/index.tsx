@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { adminT, api, messageOf, type JobItem } from "@zeokeel/admin-ui-kit";
+import { adminT, api, apiJson, decodeAdminJobs, messageOf, type AdminJobItem } from "@zeokeel/admin-ui-kit";
 
 const ACTIONS = [
   { id: "hold-expire", label: "jobs.holdExpire" },
@@ -9,9 +9,9 @@ const ACTIONS = [
 ] as const;
 
 export function Jobs({ onError }: { onError: (message: string) => void }) {
-  const [items, setItems] = useState<JobItem[]>([]);
+  const [items, setItems] = useState<AdminJobItem[]>([]);
   const fail = useCallback((error: unknown) => { onError(messageOf(error)); }, [onError]);
-  const load = useCallback(() => { void api<{ items: JobItem[] }>("/api/admin/jobs").then((r) => { setItems(r.items); }).catch(fail); }, [fail]);
+  const load = useCallback(() => { void apiJson("/api/admin/jobs", decodeAdminJobs).then((r) => { setItems(r.items); }).catch(fail); }, [fail]);
   useEffect(() => { load(); }, [load]);
   const run = (job: string): void => { void api(`/api/admin/jobs/${job}/run`, { method: "POST" }).then(load).catch(fail); };
   return (

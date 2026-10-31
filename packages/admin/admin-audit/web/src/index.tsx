@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { adminT, api, messageOf, type AuditItem } from "@zeokeel/admin-ui-kit";
+import { adminT, apiJson, decodeAdminAudit, messageOf, type AdminAuditItem } from "@zeokeel/admin-ui-kit";
 
 export function AuditLog({ onError }: { onError: (message: string) => void }) {
-  const [items, setItems] = useState<AuditItem[]>([]);
+  const [items, setItems] = useState<AdminAuditItem[]>([]);
   const fail = useCallback((error: unknown) => { onError(messageOf(error)); }, [onError]);
-  const load = useCallback(() => { void api<{ items: AuditItem[] }>("/api/admin/audit").then((r) => { setItems(r.items); }).catch(fail); }, [fail]);
+  const load = useCallback(() => { void apiJson("/api/admin/audit", decodeAdminAudit).then((r) => { setItems(r.items); }).catch(fail); }, [fail]);
   useEffect(() => { load(); }, [load]);
   return (
     <section>

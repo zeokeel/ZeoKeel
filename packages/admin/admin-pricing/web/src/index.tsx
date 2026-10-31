@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { adminT, api, messageOf, type Price } from "@zeokeel/admin-ui-kit";
+import { adminT, api, apiJson, decodeAdminPrices, messageOf, type ModelPrice } from "@zeokeel/admin-ui-kit";
 
 export function Pricing({ onError }: { onError: (message: string) => void }) {
-  const [items, setItems] = useState<Price[]>([]);
+  const [items, setItems] = useState<ModelPrice[]>([]);
   const [model, setModel] = useState("deepseek-chat");
   const [input, setInput] = useState("1000");
   const [output, setOutput] = useState("2000");
   const fail = useCallback((error: unknown) => { onError(messageOf(error)); }, [onError]);
-  const load = useCallback(() => { void api<{ items: Price[] }>("/api/admin/pricing").then((r) => { setItems(r.items); }).catch(fail); }, [fail]);
+  const load = useCallback(() => { void apiJson("/api/admin/pricing", decodeAdminPrices).then((r) => { setItems(r.items); }).catch(fail); }, [fail]);
   useEffect(() => { load(); }, [load]);
   const save = (event: { preventDefault: () => void }): void => {
     event.preventDefault();

@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AdminConnectorsResponse",
+  "description": "`GET /api/admin/connectors` response.",
+  "type": "object",
+  "required": [
+    "items",
+    "ok"
+  ],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/AdminConnectorItem"
+      }
+    },
+    "ok": {
+      "type": "boolean"
+    }
+  },
+  "definitions": {
+    "AdminConnectorItem": {
+      "description": "One admin connector row (`GET /api/admin/connectors`).",
+      "type": "object",
+      "required": [
+        "force_update",
+        "grants",
+        "id",
+        "min_client_version",
+        "name",
+        "transport"
+      ],
+      "properties": {
+        "force_update": {
+          "type": "boolean"
+        },
+        "grants": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ConnectorGrant"
+          }
+        },
+        "id": {
+          "type": "string"
+        },
+        "min_client_version": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "oauth_client_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "redirect_uri": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "transport": {
+          "type": "string"
+        }
+      }
+    },
+    "ConnectorGrant": {
+      "description": "Connector grant.",
+      "type": "object",
+      "required": [
+        "can_enable",
+        "grantee"
+      ],
+      "properties": {
+        "can_enable": {
+          "type": "boolean"
+        },
+        "grantee": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

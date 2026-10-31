@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AdminSettingsResponse",
+  "description": "`GET /api/admin/settings` response.",
+  "type": "object",
+  "required": [
+    "items",
+    "ok"
+  ],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/AdminSettingItem"
+      }
+    },
+    "ok": {
+      "type": "boolean"
+    }
+  },
+  "definitions": {
+    "AdminSettingItem": {
+      "description": "One system-setting row (`GET /api/admin/settings`).",
+      "type": "object",
+      "required": [
+        "hot",
+        "key",
+        "value"
+      ],
+      "properties": {
+        "hot": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "value": true
+      }
+    }
+  }
+}

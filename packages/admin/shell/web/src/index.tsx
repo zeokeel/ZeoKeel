@@ -1,6 +1,6 @@
 /** Admin shell: login + nav + page slot. Pages are supplied by admin-page packages. */
 import { useState } from "react";
-import { adminT, api, setCsrf, clearCsrf, validateAdminLogin, assertValid, messageOf, type AdminMessageKey } from "@zeokeel/admin-ui-kit";
+import { adminT, api, apiJson, decodeAdminLogin, setCsrf, clearCsrf, validateAdminLogin, assertValid, messageOf, type AdminMessageKey } from "@zeokeel/admin-ui-kit";
 
 export type AdminPage = "users" | "wallet" | "pricing" | "audit" | "usage" | "jobs" | "skills" | "connectors" | "apps" | "settings";
 const NAV_KEYS: Record<AdminPage, AdminMessageKey> = {
@@ -44,7 +44,7 @@ function Login({ onDone }: { onDone: () => void }) {
     void (async () => {
       const payload = { username, password };
       assertValid(validateAdminLogin, payload, "LOGIN");
-      const result = await api<{ csrf_token: string }>("/api/admin/auth/login", { method: "POST", body: JSON.stringify(payload) });
+      const result = await apiJson("/api/admin/auth/login", decodeAdminLogin, { method: "POST", body: JSON.stringify(payload) });
       setCsrf(result.csrf_token);
       onDone();
     })().catch((cause: unknown) => { setError(messageOf(cause)); });

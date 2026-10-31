@@ -9,14 +9,152 @@ export interface AdjustRequest {
   reason: string;
 }
 
+export interface AdminAppItem {
+  id: string;
+  name: string;
+  owner_id: string;
+  status: string;
+  version: string;
+  wasm_sha256: string;
+}
+
+export interface AdminAppsResponse {
+  items: Array<AdminAppItem>;
+  ok: boolean;
+}
+
+export interface AdminAuditItem {
+  action: string;
+  actor_id?: string | null;
+  detail: unknown;
+  id: number;
+  target: string;
+}
+
+export interface AdminAuditResponse {
+  items: Array<AdminAuditItem>;
+  ok: boolean;
+}
+
+export interface AdminConnectorItem {
+  force_update: boolean;
+  grants: Array<ConnectorGrant>;
+  id: string;
+  min_client_version: string;
+  name: string;
+  oauth_client_id?: string | null;
+  redirect_uri?: string | null;
+  transport: string;
+}
+
+export interface AdminConnectorsResponse {
+  items: Array<AdminConnectorItem>;
+  ok: boolean;
+}
+
+export interface AdminJobItem {
+  detail: unknown;
+  idempotency_key: string;
+  job: string;
+  status: string;
+}
+
+export interface AdminJobsResponse {
+  items: Array<AdminJobItem>;
+  ok: boolean;
+}
+
 export interface AdminLoginRequest {
   password: string;
   username: string;
 }
 
+export interface AdminLoginResponse {
+  csrf_token: string;
+  expires_in: number;
+  idle_timeout_secs: number;
+  ok: boolean;
+  role: string;
+}
+
+export interface AdminOkResponse {
+  ok: boolean;
+}
+
 export interface AdminPage {
   id: string;
   title: string;
+}
+
+export interface AdminPriceListResponse {
+  items: Array<ModelPrice>;
+  ok: boolean;
+}
+
+export interface AdminSettingItem {
+  hot: boolean;
+  key: string;
+  value: unknown;
+}
+
+export interface AdminSettingsResponse {
+  items: Array<AdminSettingItem>;
+  ok: boolean;
+}
+
+export interface AdminSkillItem {
+  current_release_id?: string | null;
+  force_update: boolean;
+  id: string;
+  kind: string;
+  min_client_version: string;
+  name: string;
+  owner_id: string;
+  status: string;
+  version: string;
+  visibility: string;
+}
+
+export interface AdminSkillsResponse {
+  items: Array<AdminSkillItem>;
+  ok: boolean;
+}
+
+export interface AdminUsageItem {
+  cost_micros: number;
+  input_tokens: number;
+  output_tokens: number;
+  requests: number;
+  username: string;
+}
+
+export interface AdminUsageResponse {
+  items: Array<AdminUsageItem>;
+  ok: boolean;
+}
+
+export interface AdminUserItem {
+  display_name: string;
+  id: string;
+  role: string;
+  status: string;
+  username: string;
+}
+
+export interface AdminUsersResponse {
+  ok: boolean;
+  users: Array<AdminUserItem>;
+}
+
+export interface AdminWalletItem {
+  balance_micros: number;
+  user_id: string;
+  username: string;
+}
+
+export interface AdminWalletResponse {
+  items: Array<AdminWalletItem>;
+  ok: boolean;
 }
 
 export type AgentEvent = {
@@ -206,6 +344,11 @@ export interface Connector {
   name: string;
   scopes?: Array<string>;
   transport: ConnectorTransport;
+}
+
+export interface ConnectorGrant {
+  can_enable: boolean;
+  grantee: string;
 }
 
 export type ConnectorTransport = "stdio" | "http" | "sse";
@@ -544,9 +687,33 @@ export interface WorkspaceRenamePayload {
 
 // --- Embedded JSON Schemas (runtime Ajv validation, C10/T22) ---
 
+export const admin_apps_responseSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"AdminAppItem":{"description":"One admin app row (`GET /api/admin/apps`).","properties":{"id":{"type":"string"},"name":{"type":"string"},"owner_id":{"type":"string"},"status":{"type":"string"},"version":{"type":"string"},"wasm_sha256":{"type":"string"}},"required":["id","name","owner_id","status","version","wasm_sha256"],"type":"object"}},"description":"`GET /api/admin/apps` response.","properties":{"items":{"items":{"$ref":"#/definitions/AdminAppItem"},"type":"array"},"ok":{"type":"boolean"}},"required":["items","ok"],"title":"AdminAppsResponse","type":"object"} as const;
+
+export const admin_audit_responseSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"AdminAuditItem":{"description":"One admin audit row (`GET /api/admin/audit`).","properties":{"action":{"type":"string"},"actor_id":{"type":["string","null"]},"detail":true,"id":{"format":"int64","type":"integer"},"target":{"type":"string"}},"required":["action","detail","id","target"],"type":"object"}},"description":"`GET /api/admin/audit` response.","properties":{"items":{"items":{"$ref":"#/definitions/AdminAuditItem"},"type":"array"},"ok":{"type":"boolean"}},"required":["items","ok"],"title":"AdminAuditResponse","type":"object"} as const;
+
+export const admin_connectors_responseSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"AdminConnectorItem":{"description":"One admin connector row (`GET /api/admin/connectors`).","properties":{"force_update":{"type":"boolean"},"grants":{"items":{"$ref":"#/definitions/ConnectorGrant"},"type":"array"},"id":{"type":"string"},"min_client_version":{"type":"string"},"name":{"type":"string"},"oauth_client_id":{"type":["string","null"]},"redirect_uri":{"type":["string","null"]},"transport":{"type":"string"}},"required":["force_update","grants","id","min_client_version","name","transport"],"type":"object"},"ConnectorGrant":{"description":"Connector grant.","properties":{"can_enable":{"type":"boolean"},"grantee":{"type":"string"}},"required":["can_enable","grantee"],"type":"object"}},"description":"`GET /api/admin/connectors` response.","properties":{"items":{"items":{"$ref":"#/definitions/AdminConnectorItem"},"type":"array"},"ok":{"type":"boolean"}},"required":["items","ok"],"title":"AdminConnectorsResponse","type":"object"} as const;
+
+export const admin_jobs_responseSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"AdminJobItem":{"description":"One job run row (`GET /api/admin/jobs`).","properties":{"detail":true,"idempotency_key":{"type":"string"},"job":{"type":"string"},"status":{"type":"string"}},"required":["detail","idempotency_key","job","status"],"type":"object"}},"description":"`GET /api/admin/jobs` response.","properties":{"items":{"items":{"$ref":"#/definitions/AdminJobItem"},"type":"array"},"ok":{"type":"boolean"}},"required":["items","ok"],"title":"AdminJobsResponse","type":"object"} as const;
+
+export const admin_login_responseSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Admin console login response (`POST /api/admin/auth/login`).","properties":{"csrf_token":{"description":"CSRF token required by subsequent admin writes.","type":"string"},"expires_in":{"description":"Admin session lifetime in seconds.","format":"int64","type":"integer"},"idle_timeout_secs":{"description":"Admin session idle timeout in seconds.","format":"int64","type":"integer"},"ok":{"description":"Always `true` on success (errors use the HTTP error body).","type":"boolean"},"role":{"description":"Admin role (`super_admin` or `auditor`).","type":"string"}},"required":["csrf_token","expires_in","idle_timeout_secs","ok","role"],"title":"AdminLoginResponse","type":"object"} as const;
+
 export const admin_loginSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Admin cookie login payload.","properties":{"password":{"type":"string"},"username":{"type":"string"}},"required":["password","username"],"title":"AdminLoginRequest","type":"object"} as const;
 
+export const admin_ok_responseSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Success envelope for admin mutations whose payload the SPA ignores.","properties":{"ok":{"description":"Always `true` on success (errors use the HTTP error body).","type":"boolean"}},"required":["ok"],"title":"AdminOkResponse","type":"object"} as const;
+
 export const admin_pageSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Admin page descriptor.","properties":{"id":{"type":"string"},"title":{"type":"string"}},"required":["id","title"],"title":"AdminPage","type":"object"} as const;
+
+export const admin_price_list_responseSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"ModelPrice":{"description":"Per-model price row (admin pricing API and `/v1/models` display).\n\nAmounts are integer micro-units; `*_multiplier_bps` are basis points (10_000 = 1.0x) for peak/off-peak billing (`docs/22` §4). Mirrors the wire shape currently emitted by `srv.pricing` (T22 contract-first follow-up).","properties":{"cached_per_1k_micros":{"default":0,"description":"Cached-input price per 1K tokens in micro-units.","format":"int64","type":"integer"},"enabled":{"default":true,"description":"Whether the model is billable/available.","type":"boolean"},"input_per_1k_micros":{"description":"Input price per 1K tokens in micro-units.","format":"int64","type":"integer"},"model":{"description":"Model id (e.g. `deepseek-chat`).","type":"string"},"offpeak_multiplier_bps":{"default":10000,"description":"Off-peak multiplier in basis points.","format":"int32","type":"integer"},"output_per_1k_micros":{"description":"Output price per 1K tokens in micro-units.","format":"int64","type":"integer"},"peak_multiplier_bps":{"default":10000,"description":"Peak-hour multiplier in basis points.","format":"int32","type":"integer"}},"required":["input_per_1k_micros","model","output_per_1k_micros"],"type":"object"}},"description":"`GET /api/admin/pricing` response (rows match `ModelPrice`).","properties":{"items":{"items":{"$ref":"#/definitions/ModelPrice"},"type":"array"},"ok":{"type":"boolean"}},"required":["items","ok"],"title":"AdminPriceListResponse","type":"object"} as const;
+
+export const admin_settings_responseSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"AdminSettingItem":{"description":"One system-setting row (`GET /api/admin/settings`).","properties":{"hot":{"type":"boolean"},"key":{"type":"string"},"value":true},"required":["hot","key","value"],"type":"object"}},"description":"`GET /api/admin/settings` response.","properties":{"items":{"items":{"$ref":"#/definitions/AdminSettingItem"},"type":"array"},"ok":{"type":"boolean"}},"required":["items","ok"],"title":"AdminSettingsResponse","type":"object"} as const;
+
+export const admin_skills_responseSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"AdminSkillItem":{"description":"One admin skill/content row (`GET /api/admin/skills`).","properties":{"current_release_id":{"type":["string","null"]},"force_update":{"type":"boolean"},"id":{"type":"string"},"kind":{"type":"string"},"min_client_version":{"type":"string"},"name":{"type":"string"},"owner_id":{"type":"string"},"status":{"type":"string"},"version":{"type":"string"},"visibility":{"type":"string"}},"required":["force_update","id","kind","min_client_version","name","owner_id","status","version","visibility"],"type":"object"}},"description":"`GET /api/admin/skills` response.","properties":{"items":{"items":{"$ref":"#/definitions/AdminSkillItem"},"type":"array"},"ok":{"type":"boolean"}},"required":["items","ok"],"title":"AdminSkillsResponse","type":"object"} as const;
+
+export const admin_usage_responseSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"AdminUsageItem":{"description":"One admin usage row (`GET /api/admin/usage`).","properties":{"cost_micros":{"format":"int64","type":"integer"},"input_tokens":{"format":"int64","type":"integer"},"output_tokens":{"format":"int64","type":"integer"},"requests":{"format":"int64","type":"integer"},"username":{"type":"string"}},"required":["cost_micros","input_tokens","output_tokens","requests","username"],"type":"object"}},"description":"`GET /api/admin/usage` response.","properties":{"items":{"items":{"$ref":"#/definitions/AdminUsageItem"},"type":"array"},"ok":{"type":"boolean"}},"required":["items","ok"],"title":"AdminUsageResponse","type":"object"} as const;
+
+export const admin_users_responseSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"AdminUserItem":{"description":"One admin user row (`GET /api/admin/users`).","properties":{"display_name":{"type":"string"},"id":{"type":"string"},"role":{"type":"string"},"status":{"type":"string"},"username":{"type":"string"}},"required":["display_name","id","role","status","username"],"type":"object"}},"description":"`GET /api/admin/users` response.","properties":{"ok":{"type":"boolean"},"users":{"items":{"$ref":"#/definitions/AdminUserItem"},"type":"array"}},"required":["ok","users"],"title":"AdminUsersResponse","type":"object"} as const;
+
+export const admin_wallet_responseSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"AdminWalletItem":{"description":"One admin wallet row (`GET /api/admin/wallet`).","properties":{"balance_micros":{"format":"int64","type":"integer"},"user_id":{"type":"string"},"username":{"type":"string"}},"required":["balance_micros","user_id","username"],"type":"object"}},"description":"`GET /api/admin/wallet` response.","properties":{"items":{"items":{"$ref":"#/definitions/AdminWalletItem"},"type":"array"},"ok":{"type":"boolean"}},"required":["items","ok"],"title":"AdminWalletResponse","type":"object"} as const;
 
 export const agent_approval_decisionSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Result of an approval request.","oneOf":[{"description":"Allow exactly this call.","enum":["allow_once"],"type":"string"},{"description":"Reject this call.","enum":["reject"],"type":"string"},{"description":"Cancel the turn.","enum":["cancel"],"type":"string"}],"title":"ApprovalDecision"} as const;
 
@@ -682,8 +849,20 @@ export const workspaceSchema = {"$schema":"http://json-schema.org/draft-07/schem
 
 /** JSON Schemas keyed by contract name (schema file, `-` -> `_`). */
 export const SCHEMAS = {
+  admin_apps_response: admin_apps_responseSchema,
+  admin_audit_response: admin_audit_responseSchema,
+  admin_connectors_response: admin_connectors_responseSchema,
+  admin_jobs_response: admin_jobs_responseSchema,
+  admin_login_response: admin_login_responseSchema,
   admin_login: admin_loginSchema,
+  admin_ok_response: admin_ok_responseSchema,
   admin_page: admin_pageSchema,
+  admin_price_list_response: admin_price_list_responseSchema,
+  admin_settings_response: admin_settings_responseSchema,
+  admin_skills_response: admin_skills_responseSchema,
+  admin_usage_response: admin_usage_responseSchema,
+  admin_users_response: admin_users_responseSchema,
+  admin_wallet_response: admin_wallet_responseSchema,
   agent_approval_decision: agent_approval_decisionSchema,
   agent_approval_request: agent_approval_requestSchema,
   agent_event: agent_eventSchema,

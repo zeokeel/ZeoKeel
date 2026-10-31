@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { adminT, api, messageOf, type AppAdmin } from "@zeokeel/admin-ui-kit";
+import { adminT, api, apiJson, decodeAdminApps, messageOf, type AdminAppItem } from "@zeokeel/admin-ui-kit";
 
 export function Apps({ onError }: { onError: (message: string) => void }) {
-  const [items, setItems] = useState<AppAdmin[]>([]);
+  const [items, setItems] = useState<AdminAppItem[]>([]);
   const fail = useCallback((error: unknown) => { onError(messageOf(error)); }, [onError]);
-  const load = useCallback(() => { void api<{ items: AppAdmin[] }>("/api/admin/apps").then((r) => { setItems(r.items); }).catch(fail); }, [fail]);
+  const load = useCallback(() => { void apiJson("/api/admin/apps", decodeAdminApps).then((r) => { setItems(r.items); }).catch(fail); }, [fail]);
   useEffect(() => { load(); }, [load]);
   const act = (id: string, action: string): void => { void api(`/api/admin/apps/${id}/${action}`, { method: "POST" }).then(load).catch(fail); };
   const grantAll = (id: string): void => {

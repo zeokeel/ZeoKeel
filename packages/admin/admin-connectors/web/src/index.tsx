@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { adminT, api, isRecord, messageOf, type ConnectorAdmin } from "@zeokeel/admin-ui-kit";
+import { adminT, api, apiJson, decodeAdminConnectors, isRecord, messageOf, type AdminConnectorItem } from "@zeokeel/admin-ui-kit";
 
 export function Connectors({ onError }: { onError: (message: string) => void }) {
-  const [items, setItems] = useState<ConnectorAdmin[]>([]);
+  const [items, setItems] = useState<AdminConnectorItem[]>([]);
   const [name, setName] = useState("");
   const [transport, setTransport] = useState("http");
   const [selected, setSelected] = useState<string | null>(null);
@@ -12,7 +12,7 @@ export function Connectors({ onError }: { onError: (message: string) => void }) 
   const [tokenUrl, setTokenUrl] = useState("https://auth.example/token");
   const [createConfig, setCreateConfig] = useState("{}");
   const fail = useCallback((error: unknown) => { onError(messageOf(error)); }, [onError]);
-  const load = useCallback(() => { void api<{ items: ConnectorAdmin[] }>("/api/admin/connectors").then((r) => { setItems(r.items); }).catch(fail); }, [fail]);
+  const load = useCallback(() => { void apiJson("/api/admin/connectors", decodeAdminConnectors).then((r) => { setItems(r.items); }).catch(fail); }, [fail]);
   useEffect(() => { load(); }, [load]);
   const create = (event: { preventDefault: () => void }): void => {
     event.preventDefault();

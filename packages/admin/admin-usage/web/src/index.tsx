@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { adminT, api, messageOf, type UsageItem } from "@zeokeel/admin-ui-kit";
+import { adminT, apiJson, decodeAdminUsage, messageOf, type AdminUsageItem } from "@zeokeel/admin-ui-kit";
 
 export function Usage({ onError }: { onError: (message: string) => void }) {
-  const [items, setItems] = useState<UsageItem[]>([]);
+  const [items, setItems] = useState<AdminUsageItem[]>([]);
   const fail = useCallback((error: unknown) => { onError(messageOf(error)); }, [onError]);
-  const load = useCallback(() => { void api<{ items: UsageItem[] }>("/api/admin/usage").then((r) => { setItems(r.items); }).catch(fail); }, [fail]);
+  const load = useCallback(() => { void apiJson("/api/admin/usage", decodeAdminUsage).then((r) => { setItems(r.items); }).catch(fail); }, [fail]);
   useEffect(() => { load(); }, [load]);
   return (
     <section>

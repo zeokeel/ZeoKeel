@@ -336,9 +336,10 @@ impl JobsLoop {
         self.stop.stop();
     }
 
-    /// Wait up to [`STOP_WAIT_TIMEOUT`] for the loop to exit; returns `true`
-    /// when it exited cleanly, `false` when it had to be aborted after the
-    /// timeout (the abort is awaited, so the task cannot outlive this call).
+    /// Wait up to the bounded shutdown timeout (`STOP_WAIT_TIMEOUT`) for the
+    /// loop to exit; returns `true` when it exited cleanly, `false` when it
+    /// had to be aborted after the timeout (the abort is awaited, so the task
+    /// cannot outlive this call).
     #[must_use]
     pub async fn wait(mut self) -> bool {
         self.wait_bounded(STOP_WAIT_TIMEOUT).await

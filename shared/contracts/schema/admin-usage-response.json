@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AdminUsageResponse",
+  "description": "`GET /api/admin/usage` response.",
+  "type": "object",
+  "required": [
+    "items",
+    "ok"
+  ],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/AdminUsageItem"
+      }
+    },
+    "ok": {
+      "type": "boolean"
+    }
+  },
+  "definitions": {
+    "AdminUsageItem": {
+      "description": "One admin usage row (`GET /api/admin/usage`).",
+      "type": "object",
+      "required": [
+        "cost_micros",
+        "input_tokens",
+        "output_tokens",
+        "requests",
+        "username"
+      ],
+      "properties": {
+        "cost_micros": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "input_tokens": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "output_tokens": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "requests": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "username": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

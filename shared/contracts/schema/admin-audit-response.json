@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AdminAuditResponse",
+  "description": "`GET /api/admin/audit` response.",
+  "type": "object",
+  "required": [
+    "items",
+    "ok"
+  ],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/AdminAuditItem"
+      }
+    },
+    "ok": {
+      "type": "boolean"
+    }
+  },
+  "definitions": {
+    "AdminAuditItem": {
+      "description": "One admin audit row (`GET /api/admin/audit`).",
+      "type": "object",
+      "required": [
+        "action",
+        "detail",
+        "id",
+        "target"
+      ],
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "actor_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detail": true,
+        "id": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "target": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

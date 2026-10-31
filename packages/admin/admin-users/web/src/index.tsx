@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { adminT, api, messageOf, type User } from "@zeokeel/admin-ui-kit";
+import { adminT, api, apiJson, decodeAdminUsers, messageOf, type AdminUserItem } from "@zeokeel/admin-ui-kit";
 
 export function Users({ onError }: { onError: (message: string) => void }) {
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<AdminUserItem[]>([]);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("employee");
   const fail = useCallback((error: unknown) => { onError(messageOf(error)); }, [onError]);
-  const load = useCallback(() => { void api<{ users: User[] }>("/api/admin/users").then((r) => { setUsers(r.users); }).catch(fail); }, [fail]);
+  const load = useCallback(() => { void apiJson("/api/admin/users", decodeAdminUsers).then((r) => { setUsers(r.users); }).catch(fail); }, [fail]);
   useEffect(() => { load(); }, [load]);
   const create = (event: { preventDefault: () => void }): void => {
     event.preventDefault();

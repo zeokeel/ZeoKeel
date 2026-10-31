@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { adminT, api, messageOf, type SettingItem } from "@zeokeel/admin-ui-kit";
+import { adminT, api, apiJson, decodeAdminSettings, messageOf, type AdminSettingItem } from "@zeokeel/admin-ui-kit";
 
 export function Settings({ onError }: { onError: (message: string) => void }) {
-  const [items, setItems] = useState<SettingItem[]>([]);
+  const [items, setItems] = useState<AdminSettingItem[]>([]);
   const [key, setKey] = useState("updates.channel");
   const [value, setValue] = useState('{"channel":"official"}');
   const [hot, setHot] = useState(true);
   const fail = useCallback((error: unknown) => { onError(messageOf(error)); }, [onError]);
-  const load = useCallback(() => { void api<{ items: SettingItem[] }>("/api/admin/settings").then((r) => { setItems(r.items); }).catch(fail); }, [fail]);
+  const load = useCallback(() => { void apiJson("/api/admin/settings", decodeAdminSettings).then((r) => { setItems(r.items); }).catch(fail); }, [fail]);
   useEffect(() => { load(); }, [load]);
   const save = (event: { preventDefault: () => void }): void => {
     event.preventDefault();

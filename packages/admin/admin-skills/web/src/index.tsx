@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { adminT, api, apiForm, messageOf, type SkillContent } from "@zeokeel/admin-ui-kit";
+import { adminT, api, apiForm, apiJson, decodeAdminSkills, messageOf, type AdminSkillItem } from "@zeokeel/admin-ui-kit";
 
 export function Skills({ onError }: { onError: (message: string) => void }) {
-  const [items, setItems] = useState<SkillContent[]>([]);
+  const [items, setItems] = useState<AdminSkillItem[]>([]);
   const [name, setName] = useState("");
   const [version, setVersion] = useState("1.0.0");
   const [file, setFile] = useState<File | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const fail = useCallback((error: unknown) => { onError(messageOf(error)); }, [onError]);
-  const load = useCallback(() => { void api<{ items: SkillContent[] }>("/api/admin/skills").then((r) => { setItems(r.items); }).catch(fail); }, [fail]);
+  const load = useCallback(() => { void apiJson("/api/admin/skills", decodeAdminSkills).then((r) => { setItems(r.items); }).catch(fail); }, [fail]);
   useEffect(() => { load(); }, [load]);
   const create = (event: { preventDefault: () => void }): void => {
     event.preventDefault();

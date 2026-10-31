@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AdminUsersResponse",
+  "description": "`GET /api/admin/users` response.",
+  "type": "object",
+  "required": [
+    "ok",
+    "users"
+  ],
+  "properties": {
+    "ok": {
+      "type": "boolean"
+    },
+    "users": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/AdminUserItem"
+      }
+    }
+  },
+  "definitions": {
+    "AdminUserItem": {
+      "description": "One admin user row (`GET /api/admin/users`).",
+      "type": "object",
+      "required": [
+        "display_name",
+        "id",
+        "role",
+        "status",
+        "username"
+      ],
+      "properties": {
+        "display_name": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

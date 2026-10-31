@@ -1,4 +1,6 @@
 /** Shared admin API/CSRF/session state (no page/domain logic). */
+import { decodeAdminOk, type Decoder } from "./validation";
+
 let csrf = "";
 
 /** Narrow an untrusted JSON value to a record (no type assertions at call sites). */
@@ -26,66 +28,78 @@ function apiFailure(body: unknown, ok: boolean, status: number): string | null {
   return error ?? `HTTP ${String(status)}`;
 }
 
-export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+/** Fetch + parse + error-envelope check shared by every admin request. */
+async function responseBody(path: string, init: RequestInit): Promise<unknown> {
+  const response = await fetch(path, { ...init, credentials: "include" });
+  const body: unknown = await response.json();
+  const failure = apiFailure(body, response.ok, response.status);
+  if (failure !== null) throw new Error(failure);
+  return body;
+}
+
+async function jsonRequest(path: string, init: RequestInit): Promise<unknown> {
   const headers = new Headers(init.headers);
   headers.set("content-type", "application/json");
   if (csrf !== "") headers.set("x-csrf-token", csrf);
-  const response = await fetch(path, { ...init, headers, credentials: "include" });
-  const body: unknown = await response.json();
-  const failure = apiFailure(body, response.ok, response.status);
-  if (failure !== null) throw new Error(failure);
-  // Generic decode boundary: callers declare T and pages validate their request payloads with Ajv (C10/T22).
-  // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- ADR-059/T22 generic response boundary
-  return body as T;
+  return responseBody(path, { ...init, headers });
 }
 
-export interface User { id: string; username: string; display_name: string; role: string; status: string }
-export interface Wallet { user_id: string; username: string; balance_micros: number }
-export interface Price { model: string; input_per_1k_micros: number; output_per_1k_micros: number; enabled: boolean }
-export interface AuditItem { id: number; action: string; target: string; actor_id: string | null }
-export interface UsageItem { username: string; requests: number; input_tokens: number; output_tokens: number; cost_micros: number }
-export interface JobItem { job: string; idempotency_key: string; status: string; detail: unknown }
-export interface SettingItem { key: string; value: unknown; hot: boolean }
+/**
+ * Admin JSON mutation whose payload pages ignore: validates the contract `ok`
+ * envelope before resolving, so a malformed body is reported instead of silently
+ * accepted (C10). Rejections surface through `messageOf` in the page error slot.
+ */
+export async function api(path: string, init: RequestInit = {}): Promise<void> {
+  decodeAdminOk(await jsonRequest(path, init));
+}
 
-export { validateLogin, validateAdminLogin, validateCreateUser, validateAdjust, assertValid } from "./validation";
-export { adminT, adminTranslate, getAdminLocale, setAdminLocale } from "./i18n";
-export type { AdminLocale, AdminMessageKey } from "./i18n";
-
-export interface SkillContent {
-  id: string;
-  kind: string;
-  name: string;
-  owner_id: string;
-  status: string;
-  visibility: string;
-  current_release_id: string | null;
-  force_update: boolean;
-  min_client_version: string;
-  version: string;
+/**
+ * Admin JSON request decoded through a generated contract schema (C10/T22).
+ * The caller supplies the generated decoder; no generic type assertion here.
+ */
+export async function apiJson<T>(path: string, decode: Decoder<T>, init: RequestInit = {}): Promise<T> {
+  return decode(await jsonRequest(path, init));
 }
 
 /** Multipart POST with CSRF (zip upload; no content-type override). */
-export async function apiForm<T>(path: string, form: FormData): Promise<T> {
+export async function apiForm(path: string, form: FormData): Promise<void> {
   const headers = new Headers();
   if (csrf !== "") headers.set("x-csrf-token", csrf);
-  const response = await fetch(path, { method: "POST", headers, body: form, credentials: "include" });
-  const body: unknown = await response.json();
-  const failure = apiFailure(body, response.ok, response.status);
-  if (failure !== null) throw new Error(failure);
-  // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- ADR-059/T22 generic response boundary
-  return body as T;
+  decodeAdminOk(await responseBody(path, { method: "POST", headers, body: form }));
 }
 
-export interface ConnectorGrant { grantee: string; can_enable: boolean }
-export interface ConnectorAdmin {
-  id: string;
-  name: string;
-  transport: string;
-  force_update: boolean;
-  min_client_version: string;
-  grants: ConnectorGrant[];
-  oauth_client_id: string | null;
-  redirect_uri: string | null;
-}
+// Generated wire types (T22: no hand-written DTO mirrors; the server contract is
+// the single source of truth, pages consume these generated names).
+export type {
+  AdminAppItem,
+  AdminAuditItem,
+  AdminConnectorItem,
+  AdminJobItem,
+  AdminSettingItem,
+  AdminSkillItem,
+  AdminUsageItem,
+  AdminUserItem,
+  AdminWalletItem,
+  ModelPrice,
+} from "../../../../../shared/contracts/ts/contracts";
 
-export interface AppAdmin { id: string; name: string; status: string; owner_id: string; version: string; wasm_sha256: string }
+export {
+  validateLogin,
+  validateAdminLogin,
+  validateCreateUser,
+  validateAdjust,
+  assertValid,
+  decodeAdminLogin,
+  decodeAdminUsers,
+  decodeAdminWallet,
+  decodeAdminPrices,
+  decodeAdminAudit,
+  decodeAdminUsage,
+  decodeAdminJobs,
+  decodeAdminSettings,
+  decodeAdminSkills,
+  decodeAdminConnectors,
+  decodeAdminApps,
+} from "./validation";
+export { adminT, adminTranslate, getAdminLocale, setAdminLocale } from "./i18n";
+export type { AdminLocale, AdminMessageKey } from "./i18n";
