@@ -308,6 +308,15 @@ const zhCN = {
   settingsEmbeddingDims: "向量维度（1-65536，可选）",
   settingsEmbeddingDir: "向量索引目录",
   settingsEmbeddingHint: "留空则使用环境变量回退；保存后应用。",
+  settingsSectionMedia: "媒体能力",
+  settingsMediaBaseUrl: "媒体服务地址",
+  settingsMediaApiKey: "媒体 API Key",
+  settingsMediaApiKeyHint: "留空表示保留已保存的 Key；Key 不会回显。",
+  settingsMediaImageModel: "图像模型",
+  settingsMediaAudioModel: "音频模型",
+  settingsMediaTranscriptionModel: "转写模型",
+  settingsMediaRerankModel: "重排模型",
+  settingsMediaHint: "留空字段使用环境变量回退；保存后应用。",
 } as const;
 
 export type MessageKey = keyof typeof zhCN;
@@ -616,6 +625,15 @@ const enUS: Record<MessageKey, string> = {
   settingsEmbeddingDims: "Dimensions (1-65536, optional)",
   settingsEmbeddingDir: "Vector index directory",
   settingsEmbeddingHint: "Empty fields fall back to environment settings; applies on save.",
+  settingsSectionMedia: "Media capabilities",
+  settingsMediaBaseUrl: "Media base URL",
+  settingsMediaApiKey: "Media API key",
+  settingsMediaApiKeyHint: "Leave empty to keep the saved key; keys are never shown.",
+  settingsMediaImageModel: "Image model",
+  settingsMediaAudioModel: "Audio model",
+  settingsMediaTranscriptionModel: "Transcription model",
+  settingsMediaRerankModel: "Rerank model",
+  settingsMediaHint: "Empty fields fall back to environment settings; applies on save.",
 };
 
 const dictionaries: Record<Locale, Record<string, string>> = {

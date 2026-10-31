@@ -60,6 +60,12 @@ describe("settings validation", () => {
       embeddingModel: "text-embedding-3-small",
       embeddingDims: "1024",
       embeddingDir: "/tmp/zk-vectors",
+      mediaBaseUrl: "https://media.example/v1",
+      mediaApiKey: "sk-media",
+      mediaImageModel: "dall-e-3",
+      mediaAudioModel: "tts-1",
+      mediaTranscriptionModel: "whisper-1",
+      mediaRerankModel: "rerank-1",
     };
     expect(validateSettings(form)).toEqual(EMPTY_SETTINGS_ERRORS);
     const settings = formToSettings(form, 1);
@@ -88,6 +94,14 @@ describe("settings validation", () => {
       dims: 1024,
       dir: "/tmp/zk-vectors",
     });
+    expect(settings.media).toEqual({
+      base_url: "https://media.example/v1",
+      api_key: "sk-media",
+      image_model: "dall-e-3",
+      audio_model: "tts-1",
+      transcription_model: "whisper-1",
+      rerank_model: "rerank-1",
+    });
     expect(toForm(settings).embeddingDims).toBe("1024");
     expect(toForm(settings).maxSteps).toBe("12");
     expect(toForm(settings).toolChoiceMode).toBe("specific");
@@ -108,6 +122,8 @@ describe("settings validation", () => {
     expect(toForm(defaultSettings()).scheduleEnabled).toBe(false);
     expect(settings.tools).toEqual({ tool_timeout_ms: 120000, approval_timeout_ms: 300000 });
     expect(settings.embedding).toEqual({ base_url: "", api_key: "", model: "", dims: null, dir: "" });
+    expect(settings.media).toEqual({ base_url: "", api_key: "", image_model: "", audio_model: "", transcription_model: "", rerank_model: "" });
+    expect(toForm(defaultSettings()).mediaImageModel).toBe("");
     expect(toForm(defaultSettings()).embeddingDims).toBe("");
     expect(toForm(defaultSettings()).embeddingBaseUrl).toBe("");
   });
@@ -132,6 +148,14 @@ describe("settings validation", () => {
     expect(validateSettings({ ...base, embeddingDims: "65536" }).embeddingDims).toBeNull();
     expect(validateSettings({ ...base, embeddingDims: "1.5" }).embeddingDims).toBe("settingsInvalidInteger");
     expect(validateSettings({ ...base, embeddingDims: "" }).embeddingDims).toBeNull();
+  });
+
+  it("validates media base URL (empty or http(s))", () => {
+    const base = toForm(defaultSettings());
+    expect(validateSettings({ ...base, mediaBaseUrl: "https://media.example/v1" }).mediaBaseUrl).toBeNull();
+    expect(validateSettings({ ...base, mediaBaseUrl: "" }).mediaBaseUrl).toBeNull();
+    expect(validateSettings({ ...base, mediaBaseUrl: "not a url" }).mediaBaseUrl).toBe("settingsInvalidUrl");
+    expect(validateSettings({ ...base, mediaBaseUrl: "ftp://media.example" }).mediaBaseUrl).toBe("settingsInvalidUrl");
   });
 
   it("keeps a saved server URL (docs/19 §3.3)", () => {

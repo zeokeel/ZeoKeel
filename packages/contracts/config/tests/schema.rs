@@ -43,6 +43,10 @@ fn export_schema() {
         "embedding-settings.json",
         &schemars::schema_for!(zk_contract_config::EmbeddingSettings),
     );
+    write(
+        "media-settings.json",
+        &schemars::schema_for!(zk_contract_config::MediaSettings),
+    );
 
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../..")

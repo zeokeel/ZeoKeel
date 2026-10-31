@@ -42,6 +42,8 @@ export interface SettingsDialogProps {
   updateBusy?: boolean;
   /** Personal only: render local embedding/vector-index credentials (C7). Default true. */
   showEmbedding?: boolean;
+  /** Personal only: render media-capability credentials (C7). Default true. */
+  showMedia?: boolean;
   /** Enterprise only: render the login server address (docs/19 §3.3). */
   showServerUrl?: boolean;
   /** Channel-locked address (C14/ADR-042): read-only. */
@@ -88,6 +90,7 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
 
   const isMock = form.providerKind === "mock";
   const showEmbedding = props.showEmbedding ?? true;
+  const showMedia = props.showMedia ?? true;
   const fieldError = (error: SettingsFieldError): ReactNode =>
     error === null ? null : (
       <span className="text-[12px] text-destructive" role="alert">{t(error)}</span>
@@ -445,6 +448,62 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
                 </label>
               </div>
               <p className="mt-2 text-[12px] text-muted-foreground">{t("settingsEmbeddingHint")}</p>
+            </fieldset>
+            ) : null}
+            {showMedia ? (
+            <fieldset className="rounded-document bg-muted p-4">
+              <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
+                {t("settingsSectionMedia")}
+              </legend>
+              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 sm:col-span-2" htmlFor="settings-media-base-url">
+                  <span className={labelClass}>{t("settingsMediaBaseUrl")}</span>
+                  <input
+                    id="settings-media-base-url"
+                    aria-label={t("settingsMediaBaseUrl")}
+                    className={inputClass}
+                    type="url"
+                    inputMode="url"
+                    value={form.mediaBaseUrl}
+                    onChange={(event) => { update("mediaBaseUrl", event.target.value); }}
+                    placeholder="https://api.example.com/v1"
+                    aria-invalid={errors.mediaBaseUrl !== null}
+                  />
+                  {fieldError(errors.mediaBaseUrl)}
+                </label>
+                <label className="flex flex-col gap-1" htmlFor="settings-media-api-key">
+                  <span className={labelClass}>{t("settingsMediaApiKey")}</span>
+                  <input
+                    id="settings-media-api-key"
+                    aria-label={t("settingsMediaApiKey")}
+                    className={inputClass}
+                    type="password"
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={form.mediaApiKey}
+                    onChange={(event) => { update("mediaApiKey", event.target.value); }}
+                    placeholder="sk-..."
+                  />
+                  <span className="text-[12px] text-muted-foreground">{t("settingsMediaApiKeyHint")}</span>
+                </label>
+                <label className="flex flex-col gap-1" htmlFor="settings-media-image-model">
+                  <span className={labelClass}>{t("settingsMediaImageModel")}</span>
+                  <input id="settings-media-image-model" aria-label={t("settingsMediaImageModel")} className={inputClass} value={form.mediaImageModel} onChange={(event) => { update("mediaImageModel", event.target.value); }} placeholder="dall-e-3" />
+                </label>
+                <label className="flex flex-col gap-1" htmlFor="settings-media-audio-model">
+                  <span className={labelClass}>{t("settingsMediaAudioModel")}</span>
+                  <input id="settings-media-audio-model" aria-label={t("settingsMediaAudioModel")} className={inputClass} value={form.mediaAudioModel} onChange={(event) => { update("mediaAudioModel", event.target.value); }} placeholder="tts-1" />
+                </label>
+                <label className="flex flex-col gap-1" htmlFor="settings-media-transcription-model">
+                  <span className={labelClass}>{t("settingsMediaTranscriptionModel")}</span>
+                  <input id="settings-media-transcription-model" aria-label={t("settingsMediaTranscriptionModel")} className={inputClass} value={form.mediaTranscriptionModel} onChange={(event) => { update("mediaTranscriptionModel", event.target.value); }} placeholder="whisper-1" />
+                </label>
+                <label className="flex flex-col gap-1" htmlFor="settings-media-rerank-model">
+                  <span className={labelClass}>{t("settingsMediaRerankModel")}</span>
+                  <input id="settings-media-rerank-model" aria-label={t("settingsMediaRerankModel")} className={inputClass} value={form.mediaRerankModel} onChange={(event) => { update("mediaRerankModel", event.target.value); }} placeholder="rerank-1" />
+                </label>
+              </div>
+              <p className="mt-2 text-[12px] text-muted-foreground">{t("settingsMediaHint")}</p>
             </fieldset>
             ) : null}
 

@@ -2,8 +2,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
 
 use zk_contract_config::{
-    AgentSettings, AppSettings, EmbeddingSettings, ProviderKind, RuntimeSettings, ScheduleSettings,
-    ToolChoiceSetting, ToolSettings,
+    AgentSettings, AppSettings, EmbeddingSettings, MediaSettings, ProviderKind, RuntimeSettings,
+    ScheduleSettings, ToolChoiceSetting, ToolSettings,
 };
 
 #[test]
@@ -40,6 +40,9 @@ fn legacy_settings_without_agent_still_parse() {
     assert_eq!(settings.embedding, EmbeddingSettings::default());
     assert!(!settings.embedding.is_configured());
     settings.embedding.validate().unwrap();
+    assert_eq!(settings.media, MediaSettings::default());
+    assert!(!settings.media.is_configured());
+    settings.media.validate().unwrap();
     assert!(!settings.agent.schedule.enabled);
     assert_eq!(settings.agent.schedule.scan_seconds, 10);
     settings.agent.schedule.validate().unwrap();
@@ -332,4 +335,64 @@ fn embedding_settings_defaults_validation_and_legacy_parse() {
     )
     .unwrap();
     assert_eq!(legacy.embedding, EmbeddingSettings::default());
+}
+
+#[test]
+fn media_settings_defaults_validation_debug_and_legacy_parse() {
+    let defaults = MediaSettings::default();
+    assert_eq!(defaults.base_url, "");
+    assert_eq!(defaults.api_key, "");
+    assert_eq!(defaults.image_model, "");
+    assert_eq!(defaults.audio_model, "");
+    assert_eq!(defaults.transcription_model, "");
+    assert_eq!(defaults.rerank_model, "");
+    assert!(!defaults.is_configured());
+    defaults.validate().unwrap();
+
+    let configured = MediaSettings {
+        base_url: "https://api.example.invalid/v1".to_owned(),
+        api_key: "sk-media-secret".to_owned(),
+        image_model: "gpt-image-1".to_owned(),
+        audio_model: "tts-1".to_owned(),
+        transcription_model: "whisper-1".to_owned(),
+        rerank_model: "rerank-2.5".to_owned(),
+    };
+    assert!(configured.is_configured());
+    configured.validate().unwrap();
+    assert_eq!(
+        configured,
+        serde_json::from_str::<MediaSettings>(&serde_json::to_string(&configured).unwrap())
+            .unwrap()
+    );
+    let debug = format!("{configured:?}");
+    assert!(
+        !debug.contains("sk-media-secret"),
+        "Debug leaked key: {debug}"
+    );
+    assert!(debug.contains("[redacted]"), "{debug}");
+
+    for base_url in ["ftp://example.invalid", "api.example.invalid"] {
+        let invalid = MediaSettings {
+            base_url: base_url.to_owned(),
+            ..configured.clone()
+        };
+        assert!(
+            invalid.validate().is_err(),
+            "scheme {base_url} must be rejected"
+        );
+    }
+    let invalid_app = AppSettings {
+        media: MediaSettings {
+            base_url: "ftp://example.invalid".to_owned(),
+            ..MediaSettings::default()
+        },
+        ..AppSettings::default()
+    };
+    assert!(invalid_app.validate().is_err());
+
+    let legacy: AppSettings = serde_json::from_str(
+        r#"{"schema":1,"provider":{"kind":"mock"},"theme":"auto","locale":"zh-CN","auto_approve_read_only":true}"#,
+    )
+    .unwrap();
+    assert_eq!(legacy.media, MediaSettings::default());
 }

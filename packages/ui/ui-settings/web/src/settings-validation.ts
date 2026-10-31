@@ -45,6 +45,13 @@ export interface SettingsForm {
   embeddingModel: string;
   embeddingDims: string;
   embeddingDir: string;
+  // Media capabilities (personal only; empty fields fall back to env).
+  mediaBaseUrl: string;
+  mediaApiKey: string;
+  mediaImageModel: string;
+  mediaAudioModel: string;
+  mediaTranscriptionModel: string;
+  mediaRerankModel: string;
 }
 
 export type SettingsFieldError = string | null;
@@ -63,6 +70,7 @@ export interface SettingsErrors {
   approvalTimeoutMs: SettingsFieldError;
   embeddingBaseUrl: SettingsFieldError;
   embeddingDims: SettingsFieldError;
+  mediaBaseUrl: SettingsFieldError;
 }
 
 export const EMPTY_SETTINGS_ERRORS: SettingsErrors = {
@@ -79,6 +87,7 @@ export const EMPTY_SETTINGS_ERRORS: SettingsErrors = {
   approvalTimeoutMs: null,
   embeddingBaseUrl: null,
   embeddingDims: null,
+  mediaBaseUrl: null,
 };
 
 function isHttpUrl(value: string): boolean {
@@ -188,6 +197,12 @@ export function toForm(settings: AppSettings): SettingsForm {
     embeddingModel: settings.embedding.model,
     embeddingDims: settings.embedding.dims === null ? "" : String(settings.embedding.dims),
     embeddingDir: settings.embedding.dir,
+    mediaBaseUrl: settings.media.base_url,
+    mediaApiKey: settings.media.api_key,
+    mediaImageModel: settings.media.image_model,
+    mediaAudioModel: settings.media.audio_model,
+    mediaTranscriptionModel: settings.media.transcription_model,
+    mediaRerankModel: settings.media.rerank_model,
   };
 }
 
@@ -225,6 +240,10 @@ export function validateSettings(form: SettingsForm): SettingsErrors {
         ? null
         : "settingsInvalidUrl",
     embeddingDims: embeddingDims.error ?? (embeddingDims.value === null && form.embeddingDims.trim() !== "" ? "settingsInvalidInteger" : null),
+    mediaBaseUrl:
+      form.mediaBaseUrl.trim() === "" || isHttpUrl(form.mediaBaseUrl.trim())
+        ? null
+        : "settingsInvalidUrl",
   };
 }
 
@@ -282,6 +301,14 @@ export function formToSettings(form: SettingsForm, schema: number): AppSettings 
         ? null
         : numberField(form.embeddingDims, { min: 1, max: 65536, integer: true }).value,
       dir: form.embeddingDir.trim(),
+    },
+    media: {
+      base_url: form.mediaBaseUrl.trim(),
+      api_key: form.mediaApiKey,
+      image_model: form.mediaImageModel.trim(),
+      audio_model: form.mediaAudioModel.trim(),
+      transcription_model: form.mediaTranscriptionModel.trim(),
+      rerank_model: form.mediaRerankModel.trim(),
     },
   };
 }

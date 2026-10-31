@@ -637,6 +637,7 @@ function AppShell(props: AppShellProps) {
             updateBusy={updateBusy}
             renderProvider={SettingsProviderSlot}
             showEmbedding={ui.meta.edition === "personal"}
+            showMedia={ui.meta.edition === "personal"}
             showServerUrl={showServerUrl}
             serverUrlLocked={serverUrlLocked}
             onLogout={onLogout}

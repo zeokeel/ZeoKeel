@@ -8,6 +8,7 @@
 import {
   defaultAgentSettings,
   defaultEmbeddingSettings,
+  defaultMediaSettings,
   defaultSettings,
   defaultToolSettings,
   type AgentEvent,
@@ -18,6 +19,7 @@ import {
   type Conversation,
   type EmbeddingSettings,
   type Locale,
+  type MediaSettings,
   type Message,
   type Meta,
   type ProviderConfig,
@@ -415,6 +417,22 @@ export function parseSettings(value: unknown): AppSettings {
     agent: parseAgentSettings(value["agent"]),
     tools: parseToolSettings(value["tools"]),
     embedding: parseEmbeddingSettings(value["embedding"]),
+    media: parseMediaSettings(value["media"]),
+  };
+}
+
+function parseMediaSettings(value: unknown): MediaSettings {
+  const base = defaultMediaSettings();
+  if (!isRecord(value)) {
+    return base;
+  }
+  return {
+    base_url: readString(value, "base_url") ?? base.base_url,
+    api_key: readString(value, "api_key") ?? base.api_key,
+    image_model: readString(value, "image_model") ?? base.image_model,
+    audio_model: readString(value, "audio_model") ?? base.audio_model,
+    transcription_model: readString(value, "transcription_model") ?? base.transcription_model,
+    rerank_model: readString(value, "rerank_model") ?? base.rerank_model,
   };
 }
 

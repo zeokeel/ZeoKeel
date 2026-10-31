@@ -176,6 +176,14 @@ describe("protocol boundary rejects invalid data after schema validation", () =>
     })).toBe(true);
   });
 
+  it("validates media settings via the regenerated app_settings schema", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const current = defaultSettings();
+    expect(validateAppSettings({ ...current, media: { base_url: "https://media.example/v1", api_key: "", image_model: "dall-e-3", audio_model: "tts-1", transcription_model: "whisper-1", rerank_model: "rerank-1" } })).toBe(true);
+    expect(validateAppSettings({ ...current, media: { ...current.media } })).toBe(true);
+    expect(validateAppSettings({ ...current, media: { ...current.media, api_key: 1 } })).toBe(false);
+  });
+
   it("validates embedding settings via the regenerated app_settings schema", () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const current = defaultSettings();
@@ -199,6 +207,17 @@ describe("protocol boundary rejects invalid data after schema validation", () =>
     expect(validateAppSettings({ ...defaultSettings(), tools: { tool_timeout_ms: 60000, approval_timeout_ms: 450000 } })).toBe(true);
     expect(validateAppSettings({ ...defaultSettings(), tools: { tool_timeout_ms: "60000", approval_timeout_ms: 450000 } })).toBe(false);
     expect(validateAppSettings({ ...defaultSettings(), tools: { tool_timeout_ms: -1, approval_timeout_ms: 450000 } })).toBe(false);
+  });
+
+  it("parses media settings with serde defaults for old settings", () => {
+    const current = defaultSettings();
+    const emptyMedia = { base_url: "", api_key: "", image_model: "", audio_model: "", transcription_model: "", rerank_model: "" };
+    expect(parseSettings({ ...current, media: undefined }).media).toEqual(emptyMedia);
+    expect(parseSettings({ ...current, media: { base_url: "https://media.example/v1", image_model: "dall-e-3" } }).media).toEqual({
+      ...emptyMedia,
+      base_url: "https://media.example/v1",
+      image_model: "dall-e-3",
+    });
   });
 
   it("parses embedding settings with serde defaults for old settings", () => {

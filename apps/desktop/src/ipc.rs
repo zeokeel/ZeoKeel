@@ -241,35 +241,38 @@ pub(crate) fn apply_persisted_schedule(
     }
 }
 
-/// Boot path for the embedding provider.
+/// Boot path for personal-edition local capability providers (embedding + media).
 ///
-/// Personal edition: load the saved settings and apply them (propagating a
-/// failed config so `main` records it in `meta.get.agent_config_error`).
-/// Enterprise: never hold/persist a local provider (C7) — ignore it and clear
+/// Personal edition: load the saved settings and apply them (propagating the
+/// first failed config so `main` records it in `meta.get.agent_config_error`).
+/// Enterprise: never hold/persist local providers (C7) — ignore them and clear
 /// any stale personal-edition values from the settings file.
-pub(crate) fn configure_persisted_embedding(runtime: &zk_composed::Runtime) -> Result<(), String> {
+pub(crate) fn configure_persisted_capabilities(
+    runtime: &zk_composed::Runtime,
+) -> Result<(), String> {
+    let mut settings = runtime
+        .settings()
+        .load()
+        .map_err(|error| format!("settings load: {error}"))?;
     if zk_composed::EDITION != "personal" {
-        let mut settings = runtime
-            .settings()
-            .load()
-            .map_err(|error| format!("settings load: {error}"))?;
-        if settings.embedding != zk_contract_config::EmbeddingSettings::default() {
+        let embedding_stale =
+            settings.embedding != zk_contract_config::EmbeddingSettings::default();
+        let media_stale = settings.media != zk_contract_config::MediaSettings::default();
+        if embedding_stale || media_stale {
             settings.embedding = zk_contract_config::EmbeddingSettings::default();
+            settings.media = zk_contract_config::MediaSettings::default();
             runtime
                 .settings()
                 .save(&settings)
-                .map_err(|error| format!("clear persisted embedding provider: {error}"))?;
+                .map_err(|error| format!("clear persisted capability providers: {error}"))?;
             eprintln!(
-                "zk-desktop: cleared persisted embedding provider (enterprise is gateway-only, C7)"
+                "zk-desktop: cleared persisted embedding/media providers (enterprise is gateway-only, C7)"
             );
         }
         return Ok(());
     }
-    let settings = runtime
-        .settings()
-        .load()
-        .map_err(|error| format!("settings load: {error}"))?;
-    apply_embedding_settings(&settings)
+    apply_embedding_settings(&settings)?;
+    apply_media_settings(&settings)
 }
 
 /// Boot path: load persisted settings and publish the agent section only when
@@ -461,6 +464,9 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 return CommandResponse::err(error);
             }
             if let Err(error) = apply_embedding_settings(&settings) {
+                return CommandResponse::err(error);
+            }
+            if let Err(error) = apply_media_settings(&settings) {
                 return CommandResponse::err(error);
             }
             // Apply agent + tool settings first: validation/runtime failures
@@ -1134,6 +1140,9 @@ fn masked_settings(settings: &AppSettings) -> Value {
     if let Some(embedding) = value.get_mut("embedding").and_then(Value::as_object_mut) {
         embedding.insert("api_key".to_owned(), Value::String(String::new()));
     }
+    if let Some(media) = value.get_mut("media").and_then(Value::as_object_mut) {
+        media.insert("api_key".to_owned(), Value::String(String::new()));
+    }
     value
 }
 
@@ -1183,6 +1192,51 @@ pub(crate) fn apply_embedding_settings(settings: &AppSettings) -> Result<(), Str
     Ok(())
 }
 
+/// Whether a media section carries any non-default configuration.
+fn media_attempted(media: &zk_contract_config::MediaSettings) -> bool {
+    media.is_configured()
+        || !media.base_url.trim().is_empty()
+        || !media.image_model.trim().is_empty()
+        || !media.audio_model.trim().is_empty()
+        || !media.transcription_model.trim().is_empty()
+        || !media.rerank_model.trim().is_empty()
+}
+
+/// Enterprise (C7) never accepts local media providers; personal edition does.
+fn media_edition_rejection(
+    edition: &str,
+    media: &zk_contract_config::MediaSettings,
+) -> Option<String> {
+    if edition == "personal" {
+        return None;
+    }
+    media_attempted(media).then(|| {
+        "media providers are personal-edition only; enterprise AI must use the gateway (C7)"
+            .to_owned()
+    })
+}
+
+/// Apply the media capability settings (image/audio/transcription/rerank).
+///
+/// Personal edition validates and pushes the config into the generated glue;
+/// errors propagate so `settings.set` rejects without saving and boot records
+/// `agent_config_error`. Enterprise rejects any attempted local provider and
+/// otherwise no-ops (C7).
+pub(crate) fn apply_media_settings(settings: &AppSettings) -> Result<(), String> {
+    settings
+        .media
+        .validate()
+        .map_err(|error| format!("media settings: {error}"))?;
+    if let Some(rejection) = media_edition_rejection(zk_composed::EDITION, &settings.media) {
+        return Err(rejection);
+    }
+    if zk_composed::EDITION == "personal" {
+        zk_composed::configure_media_from_settings(&settings.media)
+            .map_err(|error| format!("media settings: {error}"))?;
+    }
+    Ok(())
+}
+
 /// Keep stored write-only secrets when the UI sends a masked (empty) value.
 ///
 /// The embedding key is only kept for personal edition: enterprise must never
@@ -1196,6 +1250,9 @@ fn keep_existing_secrets(settings: &mut AppSettings, existing: Option<&AppSettin
     }
     if zk_composed::EDITION == "personal" && settings.embedding.api_key.trim().is_empty() {
         settings.embedding.api_key = existing.embedding.api_key.clone();
+    }
+    if zk_composed::EDITION == "personal" && settings.media.api_key.trim().is_empty() {
+        settings.media.api_key = existing.media.api_key.clone();
     }
 }
 
@@ -1220,6 +1277,9 @@ fn validate_settings(settings: &AppSettings) -> Result<(), String> {
         return Err(error.to_string());
     }
     if let Err(error) = settings.embedding.validate() {
+        return Err(error.to_string());
+    }
+    if let Err(error) = settings.media.validate() {
         return Err(error.to_string());
     }
     if settings.provider.kind != ProviderKind::Mock {
@@ -1598,6 +1658,50 @@ mod tests {
         let without = super::assistant_message("c1", "answer".to_owned(), None, "cancelled");
         assert!(without.usage.is_none());
         assert_eq!(without.status, "cancelled");
+    }
+
+    #[test]
+    fn media_settings_apply_mask_validation_and_edition() {
+        let settings = zk_contract_config::AppSettings {
+            media: zk_contract_config::MediaSettings {
+                base_url: "https://api.example.invalid/v1".to_owned(),
+                api_key: "sk-media-secret".to_owned(),
+                image_model: "gpt-image-1".to_owned(),
+                audio_model: String::new(),
+                transcription_model: "whisper-1".to_owned(),
+                rerank_model: "rerank-2.5".to_owned(),
+            },
+            ..zk_contract_config::AppSettings::default()
+        };
+        super::apply_media_settings(&settings).unwrap();
+
+        // settings.get masks the write-only media key (like provider/embedding).
+        let masked = super::masked_settings(&settings);
+        assert_eq!(masked["media"]["api_key"], "");
+        assert_eq!(masked["media"]["image_model"], "gpt-image-1");
+        assert_eq!(masked["embedding"]["api_key"], "");
+
+        // A masked (empty) incoming key keeps the stored secret on save.
+        let mut incoming = settings.clone();
+        incoming.media.api_key = String::new();
+        super::keep_existing_secrets(&mut incoming, Some(&settings));
+        assert_eq!(incoming.media.api_key, "sk-media-secret");
+        assert_eq!(super::masked_settings(&incoming)["media"]["api_key"], "");
+
+        // Invalid shared base URL is rejected before persisting/applying.
+        let mut invalid = settings.clone();
+        invalid.media.base_url = "ftp://example.invalid".to_owned();
+        assert!(super::apply_media_settings(&invalid).is_err());
+        assert!(super::validate_settings(&invalid).is_err());
+
+        // Enterprise (C7) rejects any attempted local media provider.
+        assert!(super::media_edition_rejection("enterprise", &settings.media).is_some());
+        assert!(super::media_edition_rejection(
+            "enterprise",
+            &zk_contract_config::MediaSettings::default()
+        )
+        .is_none());
+        assert!(super::media_edition_rejection("personal", &settings.media).is_none());
     }
 
     #[test]

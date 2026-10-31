@@ -36,6 +36,11 @@ describe("settings integration", () => {
     await userEvent.type(embedModel, "text-embedding-3-small");
     const embedDims = screen.getByLabelText("向量维度（1-65536，可选）");
     await userEvent.type(embedDims, "1024");
+    await userEvent.type(screen.getByLabelText("媒体服务地址"), "https://media.example/v1");
+    await userEvent.type(screen.getByLabelText("图像模型"), "dall-e-3");
+    await userEvent.type(screen.getByLabelText("音频模型"), "tts-1");
+    await userEvent.type(screen.getByLabelText("转写模型"), "whisper-1");
+    await userEvent.type(screen.getByLabelText("重排模型"), "rerank-1");
     const toolTimeout = screen.getByLabelText("工具超时（ms，1000-600000）");
     await userEvent.clear(toolTimeout);
     await userEvent.type(toolTimeout, "60000");
@@ -63,6 +68,14 @@ describe("settings integration", () => {
       model: "text-embedding-3-small",
       dims: 1024,
       dir: "",
+    });
+    expect(sentSettings.media).toEqual({
+      base_url: "https://media.example/v1",
+      api_key: "",
+      image_model: "dall-e-3",
+      audio_model: "tts-1",
+      transcription_model: "whisper-1",
+      rerank_model: "rerank-1",
     });
 
     expect(document.documentElement.lang).toBe("en-US");
@@ -107,6 +120,9 @@ describe("enterprise settings (C7)", () => {
     expect(screen.queryByText("嵌入/向量索引")).toBeNull();
     expect(screen.queryByLabelText("嵌入服务地址")).toBeNull();
     expect(screen.queryByLabelText("嵌入 API Key")).toBeNull();
+    expect(screen.queryByText("媒体能力")).toBeNull();
+    expect(screen.queryByLabelText("媒体服务地址")).toBeNull();
+    expect(screen.queryByLabelText("媒体 API Key")).toBeNull();
     // The personal-only provider key UI is also not rendered in an enterprise composition;
     // this personal-composition test only guarantees the embedding/local credential gate.
     expect(screen.getByText("调度/自动化")).toBeTruthy();

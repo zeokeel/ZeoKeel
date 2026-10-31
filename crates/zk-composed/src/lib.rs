@@ -136,6 +136,35 @@ pub fn configure_embedding_from_settings(settings: &zk_contract_config::Embeddin
     zk_cap_vector::configure_with_dir(model, settings.dir.trim()).map_err(|error| format!("vector store: {error:?}"))
 }
 
+pub fn configure_media_from_settings(settings: &zk_contract_config::MediaSettings) -> Result<(), String> {
+    let api_key = settings.api_key.trim();
+    if api_key.is_empty() {
+        return Ok(());
+    }
+    let mut errors: Vec<String> = Vec::new();
+    let config = zk_kit_media::MediaConfig::new(zk_kit_media::MediaKind::Image.default_provider(), settings.base_url.trim(), api_key, settings.image_model.trim());
+    if let Err(error) = zk_cap_image::configure_from_config(&config) {
+        errors.push(format!("image: {error:?}"));
+    }
+    let config = zk_kit_media::MediaConfig::new(zk_kit_media::MediaKind::Audio.default_provider(), settings.base_url.trim(), api_key, settings.audio_model.trim());
+    if let Err(error) = zk_cap_audio::configure_from_config(&config) {
+        errors.push(format!("audio: {error:?}"));
+    }
+    let config = zk_kit_media::MediaConfig::new(zk_kit_media::MediaKind::Transcription.default_provider(), settings.base_url.trim(), api_key, settings.transcription_model.trim());
+    if let Err(error) = zk_cap_transcription::configure_from_config(&config) {
+        errors.push(format!("transcription: {error:?}"));
+    }
+    let config = zk_kit_media::MediaConfig::new(zk_kit_media::MediaKind::Rerank.default_provider(), settings.base_url.trim(), api_key, settings.rerank_model.trim());
+    if let Err(error) = zk_cap_rerank::configure_from_config(&config) {
+        errors.push(format!("rerank: {error:?}"));
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
 
 }
 

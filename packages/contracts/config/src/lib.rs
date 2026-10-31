@@ -438,6 +438,77 @@ impl EmbeddingSettings {
     }
 }
 
+/// Personal-edition media capability settings (`cap-image`/`cap-audio`/
+/// `cap-transcription`/`cap-rerank`).
+///
+/// One OpenAI/Voyage-compatible endpoint and key drive all four kinds; each kind
+/// has its own optional model id (empty = the capability's default model). Like
+/// [`EmbeddingSettings`], this is personal-edition only (C7): enterprise AI must
+/// go through the gateway; the generated glue never configures local providers
+/// there.
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(default)]
+pub struct MediaSettings {
+    /// OpenAI-compatible API root (empty = each kind's provider default).
+    pub base_url: String,
+    /// Bearer key shared by the four media kinds (write-only: masked).
+    pub api_key: String,
+    /// Image-generation model id (empty = capability default).
+    pub image_model: String,
+    /// Speech-synthesis model id (empty = capability default).
+    pub audio_model: String,
+    /// Transcription model id (empty = capability default).
+    pub transcription_model: String,
+    /// Rerank model id (empty = capability default).
+    pub rerank_model: String,
+}
+
+impl std::fmt::Debug for MediaSettings {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug = formatter.debug_struct("MediaSettings");
+        debug
+            .field("base_url", &self.base_url)
+            .field(
+                "api_key",
+                &if self.api_key.is_empty() {
+                    ""
+                } else {
+                    "[redacted]"
+                },
+            )
+            .field("image_model", &self.image_model)
+            .field("audio_model", &self.audio_model)
+            .field("transcription_model", &self.transcription_model)
+            .field("rerank_model", &self.rerank_model)
+            .finish()
+    }
+}
+
+impl MediaSettings {
+    /// Validate the shared API scheme.
+    ///
+    /// # Errors
+    ///
+    /// [`ConfigError::Invalid`] for a non-http(s) non-empty `base_url`.
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        let base_url = self.base_url.trim();
+        if !base_url.is_empty()
+            && !(base_url.starts_with("http://") || base_url.starts_with("https://"))
+        {
+            return Err(ConfigError::Invalid(format!(
+                "media.base_url must start with http:// or https:// (got `{base_url}`)"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Whether a settings override carries an API key (blank = masked/no override).
+    #[must_use]
+    pub fn is_configured(&self) -> bool {
+        !self.api_key.trim().is_empty()
+    }
+}
+
 /// App settings persisted locally.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct AppSettings {
@@ -463,6 +534,9 @@ pub struct AppSettings {
     /// Personal-edition embedding/vector provider (backward compatible default).
     #[serde(default)]
     pub embedding: EmbeddingSettings,
+    /// Personal-edition media capabilities (backward compatible default).
+    #[serde(default)]
+    pub media: MediaSettings,
 }
 
 impl Default for AppSettings {
@@ -477,6 +551,7 @@ impl Default for AppSettings {
             agent: AgentSettings::default(),
             tools: ToolSettings::default(),
             embedding: EmbeddingSettings::default(),
+            media: MediaSettings::default(),
         }
     }
 }
@@ -490,7 +565,8 @@ impl AppSettings {
     pub fn validate(&self) -> Result<(), ConfigError> {
         self.agent.validate()?;
         self.tools.validate()?;
-        self.embedding.validate()
+        self.embedding.validate()?;
+        self.media.validate()
     }
 }
 
