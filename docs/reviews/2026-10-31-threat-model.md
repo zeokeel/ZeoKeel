@@ -15,7 +15,7 @@
   connector-mcp/任何产品代码）。
 - 独立性：round-1（CHANGES-REQUESTED）与 round-2（本复评）均由评审者独立读取脚本/证据/源码判定；实现者只提供修复与
   证据，未参与本记录结论；本复评未重跑 security-audit（不构建、不改证据），仅核对代码/日志/配置。
-- 关联 spec：`specs/changes/2026-10-31-release-1-0-readiness/`（A6/A7、B16）；`specs/changes/2026-10-30-hardening-release/`
+- 关联 spec：`specs/archive/2026-10-31-release-1-0-readiness/`（A6/A7、B16）；`specs/changes/2026-10-30-hardening-release/`
   （13 项原始需求，acceptance 仍 `blocked`）。
 - 评审日期：2026-10-31（round-1 13:33 CHANGES-REQUESTED；round-2 14:05 APPROVED）。
 
@@ -95,7 +95,7 @@ WORM 经 ADR-068 正式降级为 `unverified_external`（env_only，明确不冒
 
 ## 7. 关联 spec 与证据
 
-- `specs/changes/2026-10-31-release-1-0-readiness/`（A6/A7、B16/R9.6）；`specs/changes/2026-10-30-hardening-release/`。
+- `specs/archive/2026-10-31-release-1-0-readiness/`（A6/A7、B16/R9.6）；`specs/changes/2026-10-30-hardening-release/`。
 - 证据：`target/evidence/release-1.0-rc1/security2/`（+ `security2-strict/`、`logs/`）；`target/evidence/m6/master-key-rotate.json`。
 - 相关代码：`packages/server/gateway/src/lib.rs`、`packages/client/connector-mcp/`、`crates/zk-kit-server/src/master_key*`、
   `apps/desktop/src/serve.rs`、`crates/zk-kit-wasm/tests/`、`scripts/{security-audit,srv-auth-test,master-key-rotate}.sh`。

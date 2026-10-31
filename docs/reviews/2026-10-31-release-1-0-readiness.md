@@ -9,7 +9,7 @@
 - 评审者：release-reviewer（独立只读评审；仅可写 `docs/reviews/`；未实现本变更任何文件）。
 - 独立性：评审者未参与 proposal/spec/design/tasks 撰写，也未参与 A/B/C 阶段实现；事实核验与复评由评审者
   独立执行（§2/§6），命令与 exit code 均为本次评审采集。实现者另有其人（Lead/其他 teammate）。
-- 关联 spec：`specs/changes/2026-10-31-release-1-0-readiness/`（proposal/spec/design/tasks/acceptance，未归档）。
+- 关联 spec：`specs/archive/2026-10-31-release-1-0-readiness/`（proposal/spec/design/tasks/acceptance，未归档）。
 - 评审日期：2026-10-31；复评日期：2026-10-31（同日两轮）。
 - 结论：**APPROVED**（复评：P0=0 / P1=0；P2×9 为文档润色/施工期验证项，不阻塞 A 阶段施工与 rc.1 发布；
   P2 与实现证据由阶段 3 终评确认）。
@@ -110,7 +110,7 @@
 
 ## 8. 关联 spec 与背景记录
 
-- `specs/changes/2026-10-31-release-1-0-readiness/`（本评审对象，五件套，未归档）。
+- `specs/archive/2026-10-31-release-1-0-readiness/`（本评审对象，五件套，未归档）。
 - 基线评审：`docs/reviews/2026-10-31-round12-verification.md`（HEAD 门禁/目标部分 partial 的残余）。
 - M6 缺口来源：`docs/reviews/2026-10-30-m6-implementation.md`、`specs/changes/2026-10-30-hardening-release/`（13 项/acceptance blocked）。
 - 交付事实证据：`target/evidence/release-check/delivery/audit-notes.md`、`target/evidence/release-check/rust/04-doc.log`。
@@ -119,3 +119,37 @@
 
 结论：**APPROVED**（阶段 1 复评：P0=0 / P1=0；P2×9 为文档润色与施工期验证项，不阻塞 A 阶段施工与 rc.1 发布；
 阶段 3 终评将复核实现证据与 P2 收敛，必要时回退本结论）。
+
+## 10. 阶段 3 最终验收（2026-11-01）
+
+- 验收对象：annotated tag `v1.0.0-rc.1` → commit `33f59a139317bdac15bbf8ceda549258ede8ef17`（远端 tag object
+  `8a88c81f…`、tagger 2026-10-31T14:54:46Z；远端 `main` 同 commit；工作树 clean）。
+- 验收证据（2026-11-01 01:0x +08，评审者独立只读核验）：
+  - **CI run 41210867692**（main, `33f59a1`）= success，**9/9 jobs**（rust/web/integration/e2e/a11y/e2e-oem/
+    e2e-client-upgrade/docker/docs）；触发器已收敛为 push main + PR main（tag 仅 release workflow，不再三重复跑）。
+  - **Security run 41210867640** = success；strict artifact（`security-evidence`）exit 0、overall
+    `unverified_external`、**pass=12 / fail=0 / unverified=0 / unverified_external=2**（gate 7 WORM 部署控制 ADR-068；
+    gate 9 产物 SBOM release-only），gate 1 / gate 10（trivy fixable-only，68 unfixed 登记 KNOWN-LIMITATIONS §2）/ gate 14 = pass。
+  - **Release run 41212324783**（tag event, `33f59a1`）= success；installers linux/windows/macos 全 success
+    （macos-15），assemble dist success，GitHub Release success；`upgrade-drill` job failure 为环境项
+    （continue-on-error），已在 release body + KNOWN-LIMITATIONS §2 明确 UNVERIFIED 并指向 `upgrade-drill-evidence` artifact。
+  - **GitHub Release `v1.0.0-rc.1`**（prerelease，published 2026-10-31T15:39:00Z）：15 assets = AppImage/deb/dmg/nsis +
+    server/postgres/caddy 镜像 tar + CycloneDX SBOM + `SHA256SUMS` + BUILD-STATUS/VERSION/CHANNEL/CLIENT-RELEASE +
+    `KNOWN-LIMITATIONS.md` + 完整 dist archive（315,956,897 B，sha256 `ad4e7671…`）。
+  - B2 复核：Release 的 `KNOWN-LIMITATIONS.md` digest `0f93a3d4…` == 仓库 `sha256sum KNOWN-LIMITATIONS.md`
+    （`0f93a3d4…`）；§1 tag/Release/hosted runner = VERIFIED，§2 交付物 CI-verified、真机/公证/provider 等 UNVERIFIED。
+  - B5 复核：`SHA256SUMS` 25 条；release job "Verify the Release really contains the real artifacts" 下载并解包
+    archive 后执行 `sha256sum -c SHA256SUMS`，**25/25 全部 OK**（run log 14324–14368）；13 个 loose asset 的
+    GitHub API digest 与 SHA256SUMS 逐条一致（13/13）；12 条 `deploy/*` 在 archive 内。
+  - B3/B4/B6/B7 复核：release body 含 upgrade-drill UNVERIFIED / real provider / 500-user / personal scope /
+    `KNOWN-LIMITATIONS` 引用；`docs/37` 行 2/行 6 已更新；`acceptance.md` 已填命令/结果/回滚/风险/C17；
+    证据引用改为 CI strict artifact + `target/evidence/release-1.0-rc1/ci/final/security.json`，旧 `security2` 标非权威。
+  - 剩余 UNVERIFIED（honest，均不得声称已验证）：Docker upgrade/rollback drill 实跑、macOS 公证、Windows 真机、
+    真实 provider/媒体/embedding 在线调用、500 用户生产容量、镜像层内 SBOM、personal×official release run。
+- P2（不阻塞，建议 1.0.0 前修）：`KNOWN-LIMITATIONS.md:152-153` 仍写 "cargo deny/cargo machete 仅在 security.yml
+  （hosted runner 未实跑）"，与 §1 VERIFIED 矛盾（security run 已实跑）；该句为保守表述、非 false-green，
+  随 1.0.0 文档更新修正即可（修正会改变 rc.1 release asset 与仓库 digest 一致性，故不在 rc.1 重发）。
+- 关联 spec：`specs/archive/2026-10-31-release-1-0-readiness/`（已归档）；`specs/changes/2026-10-30-hardening-release/`
+  M6 acceptance 仍 `blocked`（Docker/证书/真机/CI 环境项）。
+- 最终验收结论：APPROVED
+

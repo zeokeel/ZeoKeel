@@ -37,7 +37,7 @@
 - [x] SSOT 文档已更新：`KNOWN-LIMITATIONS.md`（发布状态/交付物/残余）、`docs/37-release-1.0-checklist.md`、`docs/21` §10 gate 10 口径、`docs/18` 依赖审计策略、`docs/reviews/2026-10-31-release-1-0-readiness.md`。
 - [x] ADR/D 已记录：ADR-068（WORM 部署控制）、ADR-069（MCP deferral 历史）、ADR-070（agent-team orchestration）；安全/依赖审计策略写入 `deny.toml`、`.cargo/audit.toml`、`KNOWN-LIMITATIONS.md` §4。
 - [x] `docs/README.md` 已登记新主题：不适用（无新增主题文档；release 状态由 37/KNOWN-LIMITATIONS 承载）。
-- [x] 变更 spec 已归档到 `specs/archive/`（终评 APPROVED 后归档；本文件为归档前验收记录）。
+- [x] 变更 spec 已归档到 `specs/archive/2026-10-31-release-1-0-readiness/`（2026-10-31 终评 APPROVED 后归档）。
 
 ## 4. 回滚
 
