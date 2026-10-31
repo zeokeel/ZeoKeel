@@ -95,8 +95,20 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: bash scripts/m1-e2e.sh
+      - name: Agent rig e2e (fake upstream)
+        run: bash scripts/agent-e2e.sh
       - name: Schedule executor auto-run e2e
         run: bash e2e/serve-schedule.sh
+      - name: PostgreSQL for enterprise e2e
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql
+          sudo systemctl start postgresql
+          sudo -u postgres psql -c "SELECT version();"
+      - name: Enterprise login + admin e2e (real PG)
+        run: |
+          bash scripts/login-e2e.sh
+          bash scripts/admin-e2e.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
