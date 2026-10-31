@@ -66,6 +66,14 @@ pub trait SubagentRunner: Send + Sync {
     fn interrupt(&self, id: &str) -> Result<(), String> {
         Err(format!("unknown subagent: {id}"))
     }
+
+    /// Number of async child threads currently alive, when tracked.
+    ///
+    /// This is the concurrency-cap numerator (threads that have not exited yet,
+    /// including cancelled ones), not the count of `running` records.
+    fn live_count(&self) -> Option<usize> {
+        None
+    }
 }
 
 static RUNNER: OnceLock<Mutex<Option<Arc<dyn SubagentRunner>>>> = OnceLock::new();

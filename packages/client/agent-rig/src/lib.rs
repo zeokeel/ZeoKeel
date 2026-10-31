@@ -1264,6 +1264,10 @@ impl zk_kit_subagent::SubagentRunner for RigSubagentRunner {
             .and_then(|children| children.get(id).and_then(|child| child.result.clone()))
     }
 
+    fn live_count(&self) -> Option<usize> {
+        Some(self.live_threads())
+    }
+
     fn interrupt(&self, id: &str) -> Result<(), String> {
         let mut children = match self.children.lock() {
             Ok(guard) => guard,

@@ -24,6 +24,7 @@ zk-kit-events = { path = "../../../crates/zk-kit-events" }
 
 [dev-dependencies]
 zk-tool-subagent = { path = "../tool-subagent" }
+zk-tool-subagent-control = { path = "../tool-subagent-control" }
 rig-core = { workspace = true, features = ["test-utils"] }
 
 [lints]
