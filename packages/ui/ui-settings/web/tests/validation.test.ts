@@ -66,6 +66,8 @@ describe("settings validation", () => {
       mediaAudioModel: "tts-1",
       mediaTranscriptionModel: "whisper-1",
       mediaRerankModel: "rerank-1",
+      webSearchBaseUrl: "https://search.example/api",
+      webSearchTimeoutMs: "30000",
     };
     expect(validateSettings(form)).toEqual(EMPTY_SETTINGS_ERRORS);
     const settings = formToSettings(form, 1);
@@ -102,6 +104,12 @@ describe("settings validation", () => {
       transcription_model: "whisper-1",
       rerank_model: "rerank-1",
     });
+    expect(settings.web_search).toEqual({
+      base_url: "https://search.example/api",
+      timeout_ms: 30000,
+    });
+    expect(toForm(settings).webSearchBaseUrl).toBe("https://search.example/api");
+    expect(toForm(settings).webSearchTimeoutMs).toBe("30000");
     expect(toForm(settings).embeddingDims).toBe("1024");
     expect(toForm(settings).maxSteps).toBe("12");
     expect(toForm(settings).toolChoiceMode).toBe("specific");
@@ -150,12 +158,35 @@ describe("settings validation", () => {
     expect(validateSettings({ ...base, embeddingDims: "" }).embeddingDims).toBeNull();
   });
 
-  it("validates media base URL (empty or http(s))", () => {
+  it("validates the media base URL (empty or http(s))", () => {
     const base = toForm(defaultSettings());
     expect(validateSettings({ ...base, mediaBaseUrl: "https://media.example/v1" }).mediaBaseUrl).toBeNull();
     expect(validateSettings({ ...base, mediaBaseUrl: "" }).mediaBaseUrl).toBeNull();
     expect(validateSettings({ ...base, mediaBaseUrl: "not a url" }).mediaBaseUrl).toBe("settingsInvalidUrl");
     expect(validateSettings({ ...base, mediaBaseUrl: "ftp://media.example" }).mediaBaseUrl).toBe("settingsInvalidUrl");
+  });
+
+  it("serializes the web-search endpoint defaults (empty base + 15000 ms)", () => {
+    const settings = formToSettings(toForm(defaultSettings()), 1);
+    expect(settings.web_search).toEqual({ base_url: "", timeout_ms: 15000 });
+    expect(toForm(defaultSettings()).webSearchBaseUrl).toBe("");
+    expect(toForm(defaultSettings()).webSearchTimeoutMs).toBe("15000");
+  });
+
+  it("validates the web-search endpoint (https only, timeout 1000..120000)", () => {
+    const base = toForm(defaultSettings());
+    // The search tool only speaks https; empty means "env/default fallback".
+    expect(validateSettings({ ...base, webSearchBaseUrl: "" }).webSearchBaseUrl).toBeNull();
+    expect(validateSettings({ ...base, webSearchBaseUrl: "https://search.example/api" }).webSearchBaseUrl).toBeNull();
+    expect(validateSettings({ ...base, webSearchBaseUrl: "http://search.example" }).webSearchBaseUrl).toBe("settingsInvalidSecureUrl");
+    expect(validateSettings({ ...base, webSearchBaseUrl: "ftp://search.example" }).webSearchBaseUrl).toBe("settingsInvalidSecureUrl");
+    expect(validateSettings({ ...base, webSearchBaseUrl: "not a url" }).webSearchBaseUrl).toBe("settingsInvalidSecureUrl");
+    expect(validateSettings({ ...base, webSearchTimeoutMs: "999" }).webSearchTimeoutMs).toBe("settingsInvalidRange");
+    expect(validateSettings({ ...base, webSearchTimeoutMs: "120001" }).webSearchTimeoutMs).toBe("settingsInvalidRange");
+    expect(validateSettings({ ...base, webSearchTimeoutMs: "1000" }).webSearchTimeoutMs).toBeNull();
+    expect(validateSettings({ ...base, webSearchTimeoutMs: "120000" }).webSearchTimeoutMs).toBeNull();
+    expect(validateSettings({ ...base, webSearchTimeoutMs: "abc" }).webSearchTimeoutMs).toBe("settingsInvalidNumber");
+    expect(validateSettings({ ...base, webSearchTimeoutMs: "1500.5" }).webSearchTimeoutMs).toBe("settingsInvalidInteger");
   });
 
   it("keeps a saved server URL (docs/19 §3.3)", () => {

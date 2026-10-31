@@ -1,5 +1,5 @@
 //! Contract conformance: reply DTO round-trips and traits are object-safe.
-#![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)] // test-only
 
 use std::sync::Arc;
 use zk_contract_agent::{Agent, AgentError, AgentReply, AgentUsage, ToolCallRecord};
@@ -78,4 +78,28 @@ fn agent_registry_can_be_cleared_for_reset_to_default() {
     );
     zk_contract_agent::clear_default_agent_settings().unwrap();
     assert!(zk_contract_agent::default_agent_settings().is_none());
+}
+
+#[test]
+fn usage_event_round_trips_additively() {
+    use zk_contract_agent::{AgentEvent, AgentUsage};
+    let usage = AgentUsage {
+        input_tokens: 12,
+        output_tokens: 7,
+        total_tokens: 19,
+        cached_tokens: 2,
+        reasoning_tokens: 1,
+        cost_micros: None,
+    };
+    let event = AgentEvent::Usage { usage };
+    let wire = serde_json::to_value(&event).expect("serialize usage event");
+    assert_eq!(wire["type"], "usage");
+    assert_eq!(wire["usage"]["input_tokens"], 12);
+    assert_eq!(wire["usage"]["total_tokens"], 19);
+    let decoded: AgentEvent = serde_json::from_value(wire).expect("deserialize usage event");
+    assert_eq!(decoded, event);
+    // Additive: existing consumers that deserialize older variants keep working.
+    let legacy: AgentEvent = serde_json::from_value(serde_json::json!({"type": "turn_cancelled"}))
+        .expect("legacy event");
+    assert_eq!(legacy, AgentEvent::TurnCancelled);
 }

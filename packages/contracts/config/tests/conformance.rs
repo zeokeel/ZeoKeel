@@ -3,7 +3,7 @@
 
 use zk_contract_config::{
     AgentSettings, AppSettings, EmbeddingSettings, MediaSettings, ProviderKind, RuntimeSettings,
-    ScheduleSettings, ToolChoiceSetting, ToolSettings,
+    ScheduleSettings, ToolChoiceSetting, ToolSettings, WebSearchSettings,
 };
 
 #[test]
@@ -49,6 +49,9 @@ fn legacy_settings_without_agent_still_parse() {
     assert_eq!(settings.tools.tool_timeout_ms, 120_000);
     assert_eq!(settings.tools.approval_timeout_ms, 300_000);
     settings.tools.validate().unwrap();
+    assert_eq!(settings.web_search, WebSearchSettings::default());
+    assert_eq!(settings.web_search.timeout_ms, 15_000);
+    settings.web_search.validate().unwrap();
 }
 
 #[test]
@@ -129,10 +132,15 @@ fn runtime_settings_snapshot_excludes_provider_secrets() {
     settings.provider.base_url = "https://upstream.example".to_owned();
     settings.agent.completion.temperature = Some(0.3);
     settings.tools.tool_timeout_ms = 2_000;
+    settings.web_search = WebSearchSettings {
+        base_url: "https://search.example.invalid/".to_owned(),
+        timeout_ms: 20_000,
+    };
 
     let snapshot = RuntimeSettings {
         agent: Some(settings.agent.clone()),
         tools: Some(settings.tools),
+        web_search: Some(settings.web_search.clone()),
     };
     snapshot.validate().unwrap();
     zk_contract_config::set_runtime_settings(&snapshot).unwrap();
@@ -142,6 +150,9 @@ fn runtime_settings_snapshot_excludes_provider_secrets() {
         Some(0.3)
     );
     assert_eq!(published.tools.unwrap().tool_timeout_ms, 2_000);
+    let web_search = published.web_search.clone().unwrap();
+    assert_eq!(web_search.base_url, "https://search.example.invalid/");
+    assert_eq!(web_search.timeout_ms, 20_000);
 
     // The whole published snapshot must be non-secret: no provider config at
     // all, hence no plaintext api_key/base_url.
@@ -175,6 +186,7 @@ fn runtime_settings_sections_are_optional_and_legacy_snapshots_parse() {
             tool_timeout_ms: 2_000,
             ..ToolSettings::default()
         }),
+        web_search: None,
     };
     tools_only.validate().unwrap();
     let json = serde_json::to_string(&tools_only).unwrap();
@@ -188,6 +200,7 @@ fn runtime_settings_sections_are_optional_and_legacy_snapshots_parse() {
             ..zk_contract_config::AgentSettings::default()
         }),
         tools: None,
+        web_search: None,
     };
     agent_only.validate().unwrap();
     assert!(RuntimeSettings::default().validate().is_ok());
@@ -395,4 +408,85 @@ fn media_settings_defaults_validation_debug_and_legacy_parse() {
     )
     .unwrap();
     assert_eq!(legacy.media, MediaSettings::default());
+}
+
+#[test]
+fn web_search_settings_defaults_validation_and_legacy_parse() {
+    let defaults = WebSearchSettings::default();
+    assert_eq!(defaults.base_url, "");
+    assert_eq!(defaults.timeout_ms, 15_000);
+    assert_eq!(defaults.effective_timeout_ms(), 15_000);
+    defaults.validate().unwrap();
+
+    let configured = WebSearchSettings {
+        base_url: "https://search.example.invalid/api".to_owned(),
+        timeout_ms: 30_000,
+    };
+    configured.validate().unwrap();
+    assert_eq!(
+        configured,
+        serde_json::from_str::<WebSearchSettings>(&serde_json::to_string(&configured).unwrap())
+            .unwrap()
+    );
+
+    // The tool only speaks https; plain http/non-URL/base-less values are rejected.
+    for base_url in [
+        "http://search.example.invalid",
+        "ftp://search.example.invalid",
+        "search.example.invalid",
+    ] {
+        let invalid = WebSearchSettings {
+            base_url: base_url.to_owned(),
+            ..WebSearchSettings::default()
+        };
+        assert!(
+            invalid.validate().is_err(),
+            "scheme {base_url} must be rejected"
+        );
+    }
+
+    // Timeout is bounded (UI + Ajv schema + Rust validation agree).
+    for timeout_ms in [0, 999, 120_001] {
+        let invalid = WebSearchSettings {
+            timeout_ms,
+            ..WebSearchSettings::default()
+        };
+        assert!(
+            invalid.validate().is_err(),
+            "timeout {timeout_ms} must be rejected"
+        );
+    }
+    assert_eq!(
+        WebSearchSettings {
+            timeout_ms: 0,
+            ..WebSearchSettings::default()
+        }
+        .effective_timeout_ms(),
+        WebSearchSettings::MIN_TIMEOUT_MS
+    );
+    assert_eq!(
+        WebSearchSettings {
+            timeout_ms: u64::MAX,
+            ..WebSearchSettings::default()
+        }
+        .effective_timeout_ms(),
+        WebSearchSettings::MAX_TIMEOUT_MS
+    );
+
+    // AppSettings::validate delegates to the web-search section.
+    let invalid_app = AppSettings {
+        web_search: WebSearchSettings {
+            base_url: "http://search.example.invalid".to_owned(),
+            ..WebSearchSettings::default()
+        },
+        ..AppSettings::default()
+    };
+    assert!(invalid_app.validate().is_err());
+
+    // Legacy settings JSON without `web_search` keeps backwards compatibility.
+    let legacy: AppSettings = serde_json::from_str(
+        r#"{"schema":1,"provider":{"kind":"mock"},"theme":"auto","locale":"zh-CN","auto_approve_read_only":true}"#,
+    )
+    .unwrap();
+    assert_eq!(legacy.web_search, WebSearchSettings::default());
 }

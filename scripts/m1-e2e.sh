@@ -9,4 +9,4 @@ cargo run -q -p zk -- compose --edition personal --profile mock --channel offici
 # (agent-rig + usage), so skip it during the mock run and run it after restoring.
 ZEOKEEL_E2E_SKIP_SERVE=1 pnpm exec playwright test --grep-invert "serve carrier" "$@"
 bash scripts/restore-baseline.sh >/dev/null 2>&1
-pnpm exec playwright test e2e/m1-serve.spec.ts e2e/m1-serve-security.spec.ts "$@"
+pnpm exec playwright test e2e/m1-serve.spec.ts e2e/m1-serve-security.spec.ts e2e/m1-a11y.spec.ts "$@"

@@ -2,7 +2,7 @@
  * Settings form validation — pure, shared by the dialog and tests.
  * Errors are i18n keys (the dialog translates them via useUi().t).
  */
-import type { AgentSettings, AppSettings, Locale, ProviderKind, Theme, ToolChoiceSetting } from "@zeokeel/ui-kit";
+import type { AgentSettings, AppSettings, Locale, ProviderKind, Theme, ToolChoiceSetting, WebSearchSettings } from "@zeokeel/ui-kit";
 
 export type ToolChoiceMode = "auto" | "none" | "required" | "specific";
 export type ParallelMode = "default" | "true" | "false";
@@ -52,6 +52,9 @@ export interface SettingsForm {
   mediaAudioModel: string;
   mediaTranscriptionModel: string;
   mediaRerankModel: string;
+  // Web-search tool endpoint (empty base URL falls back to env/default).
+  webSearchBaseUrl: string;
+  webSearchTimeoutMs: string;
 }
 
 export type SettingsFieldError = string | null;
@@ -71,6 +74,8 @@ export interface SettingsErrors {
   embeddingBaseUrl: SettingsFieldError;
   embeddingDims: SettingsFieldError;
   mediaBaseUrl: SettingsFieldError;
+  webSearchBaseUrl: SettingsFieldError;
+  webSearchTimeoutMs: SettingsFieldError;
 }
 
 export const EMPTY_SETTINGS_ERRORS: SettingsErrors = {
@@ -88,12 +93,23 @@ export const EMPTY_SETTINGS_ERRORS: SettingsErrors = {
   embeddingBaseUrl: null,
   embeddingDims: null,
   mediaBaseUrl: null,
+  webSearchBaseUrl: null,
+  webSearchTimeoutMs: null,
 };
 
 function isHttpUrl(value: string): boolean {
   try {
     const url = new URL(value);
     return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** `tool-web-search` only speaks https; plain http is rejected before saving. */
+function isHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === "https:";
   } catch {
     return false;
   }
@@ -140,6 +156,15 @@ function stopOf(raw: string): string[] {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line !== "");
+}
+
+function webSearchOf(form: SettingsForm): WebSearchSettings {
+  return {
+    base_url: form.webSearchBaseUrl.trim(),
+    timeout_ms:
+      numberField(form.webSearchTimeoutMs, { min: 1000, max: 120000, integer: true }).value ??
+      15000,
+  };
 }
 
 export function toForm(settings: AppSettings): SettingsForm {
@@ -203,6 +228,8 @@ export function toForm(settings: AppSettings): SettingsForm {
     mediaAudioModel: settings.media.audio_model,
     mediaTranscriptionModel: settings.media.transcription_model,
     mediaRerankModel: settings.media.rerank_model,
+    webSearchBaseUrl: settings.web_search.base_url,
+    webSearchTimeoutMs: String(settings.web_search.timeout_ms),
   };
 }
 
@@ -222,6 +249,7 @@ export function validateSettings(form: SettingsForm): SettingsErrors {
   const embeddingDims = form.embeddingDims.trim() === ""
     ? { value: null, error: null }
     : numberField(form.embeddingDims, { min: 1, max: 65536, integer: true });
+  const searchTimeout = numberField(form.webSearchTimeoutMs, { min: 1000, max: 120000, integer: true });
   return {
     baseUrl:
       form.providerKind === "mock" || isHttpUrl(form.baseUrl.trim()) ? null : "settingsInvalidUrl",
@@ -244,6 +272,12 @@ export function validateSettings(form: SettingsForm): SettingsErrors {
       form.mediaBaseUrl.trim() === "" || isHttpUrl(form.mediaBaseUrl.trim())
         ? null
         : "settingsInvalidUrl",
+    webSearchBaseUrl:
+      form.webSearchBaseUrl.trim() === "" || isHttpsUrl(form.webSearchBaseUrl.trim())
+        ? null
+        : "settingsInvalidSecureUrl",
+    webSearchTimeoutMs:
+      searchTimeout.error ?? (searchTimeout.value === null ? "settingsInvalidInteger" : null),
   };
 }
 
@@ -310,5 +344,6 @@ export function formToSettings(form: SettingsForm, schema: number): AppSettings 
       transcription_model: form.mediaTranscriptionModel.trim(),
       rerank_model: form.mediaRerankModel.trim(),
     },
+    web_search: webSearchOf(form),
   };
 }

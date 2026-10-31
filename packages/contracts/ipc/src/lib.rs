@@ -122,6 +122,15 @@ pub mod commands {
     pub const OAUTH_TOKEN_LOAD: &str = "oauth.load";
     /// Clear connector OAuth tokens from the OS keychain.
     pub const OAUTH_TOKEN_CLEAR: &str = "oauth.clear";
+    /// Start the MCP connector OAuth 2.0 public-client + PKCE flow (docs/07 §6).
+    ///
+    /// Host-side: binds an ephemeral 127.0.0.1 loopback redirect (RFC 8252) and opens
+    /// the system browser; returns immediately (`started`) — poll [`OAUTH_STATUS`].
+    pub const OAUTH_AUTHORIZE: &str = "oauth.authorize";
+    /// Poll a started connector OAuth flow; never returns tokens (`idle|pending|authorized|failed`).
+    pub const OAUTH_STATUS: &str = "oauth.status";
+    /// Refresh a stored connector OAuth token in the background (poll [`OAUTH_STATUS`]).
+    pub const OAUTH_REFRESH: &str = "oauth.refresh";
     /// Remove an installed skill (all versions).
     pub const SKILLS_REMOVE: &str = "skills.remove";
     /// List installed skills (host-managed).

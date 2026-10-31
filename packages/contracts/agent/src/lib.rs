@@ -46,6 +46,29 @@ pub struct AgentUsage {
     pub cost_micros: Option<u64>,
 }
 
+/// Role of one replayed history message (B8 replay from the local session store).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryRole {
+    /// A previous user input.
+    User,
+    /// A previous assistant reply.
+    Assistant,
+}
+
+/// One text message replayed into the prompt before the current turn (B8).
+///
+/// The desktop session store (`SessionStore::messages_in`) is the replay authority;
+/// tool-call transcript rows are not replayed because rig history requires paired
+/// tool-call ids that the persisted text-only tool rows do not carry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryMessage {
+    /// Who produced the message.
+    pub role: HistoryRole,
+    /// Message text.
+    pub content: String,
+}
+
 /// Result of one agent turn.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct AgentReply {
@@ -109,6 +132,12 @@ pub enum AgentEvent {
         question_id: String,
         answers: serde_json::Value,
     },
+    /// Provider token usage for the turn, emitted once before the terminal event
+    /// (`TurnCompleted`/`TurnCancelled`) when the provider reported usage.
+    ///
+    /// Additive event (B7): consumers that ignore unknown variants keep working;
+    /// `TurnCompleted.reply.usage` remains populated for backward compatibility.
+    Usage { usage: AgentUsage },
     /// Turn finished successfully.
     TurnCompleted { reply: AgentReply },
     /// Turn was cancelled by the user.
@@ -240,6 +269,23 @@ pub trait Agent: Send + Sync {
         sink: Arc<dyn EventSink>,
     ) -> Result<AgentReply, AgentError> {
         self.run_stream_in(context, turn_id, input, sink.as_ref())
+    }
+
+    /// Run one turn with replayed conversation history (B8).
+    ///
+    /// Desktop passes `SessionStore::messages_in` here; the default implementation
+    /// ignores history so existing agent implementations keep working. When history is
+    /// supplied the implementation must not also attach a second memory source for the
+    /// same turn (SQLite replay is authoritative, docs/38 §5.4).
+    fn run_stream_in_shared_with_history(
+        &self,
+        context: &TurnContext,
+        turn_id: &str,
+        input: &str,
+        _history: &[HistoryMessage],
+        sink: Arc<dyn EventSink>,
+    ) -> Result<AgentReply, AgentError> {
+        self.run_stream_in_shared(context, turn_id, input, sink)
     }
 
     /// Request cancellation of the currently running turn (best effort).

@@ -58,3 +58,37 @@ fn workspace_changes_result_round_trips_and_warning_is_omitted_when_absent() {
     let legacy: WorkspaceChangesResult = serde_json::from_str(r#"{"items":[]}"#).unwrap();
     assert!(legacy.warning.is_none());
 }
+
+#[test]
+fn oauth_command_names_are_stable_and_unique() {
+    use zk_contract_ipc::commands;
+
+    // MCP client OAuth (docs/07 §6): authorize starts the loopback flow, status polls
+    // (never returns tokens), refresh rotates a stored token in the background.
+    assert_eq!(commands::OAUTH_AUTHORIZE, "oauth.authorize");
+    assert_eq!(commands::OAUTH_STATUS, "oauth.status");
+    assert_eq!(commands::OAUTH_REFRESH, "oauth.refresh");
+    // The keychain token commands stay compatible with the existing UI.
+    assert_eq!(commands::OAUTH_TOKEN_SAVE, "oauth.save");
+    assert_eq!(commands::OAUTH_TOKEN_LOAD, "oauth.load");
+    assert_eq!(commands::OAUTH_TOKEN_CLEAR, "oauth.clear");
+
+    let names = [
+        commands::CHAT_SEND,
+        commands::CHAT_CANCEL,
+        commands::SETTINGS_GET,
+        commands::SETTINGS_SET,
+        commands::OAUTH_TOKEN_SAVE,
+        commands::OAUTH_TOKEN_LOAD,
+        commands::OAUTH_TOKEN_CLEAR,
+        commands::OAUTH_AUTHORIZE,
+        commands::OAUTH_STATUS,
+        commands::OAUTH_REFRESH,
+        commands::SYSTEM_OPEN_URL,
+    ];
+    let mut sorted = names.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    assert_eq!(sorted.len(), names.len(), "command names must be unique");
+    assert!(names.iter().all(|name| !name.is_empty()));
+}

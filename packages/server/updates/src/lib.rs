@@ -49,11 +49,13 @@ pub const FORCED_ENV: &str = "ZEOKEEL_UPDATES_FORCED";
 
 /// Update + portal routes.
 ///
-/// `/` and `/portal` both serve the zero-script download portal (`docs/09` §5).
+/// `/` and `/portal` both serve the zero-script download portal (`docs/09` §5);
+/// `/portal/en` is the additive English variant (R9.4: portal ≥ zh+en).
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", get(portal))
         .route("/portal", get(portal))
+        .route("/portal/en", get(portal_en))
         .route("/api/updates/manifest", get(manifest))
         .route("/api/updates/client/{artifact}", get(download))
 }
@@ -518,9 +520,49 @@ fn channel_platforms(channel: &Value) -> Option<Vec<String>> {
         })
 }
 
+/// Portal language (zero-script: one route per language, R9.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PortalLang {
+    /// `GET /` and `GET /portal` (default; unchanged zh-CN page).
+    Zh,
+    /// `GET /portal/en` (additive English page).
+    En,
+}
+
+impl PortalLang {
+    /// `lang` attribute of the `<html>` element.
+    fn html_lang(self) -> &'static str {
+        match self {
+            Self::Zh => "zh-CN",
+            Self::En => "en",
+        }
+    }
+
+    /// `<a href>` of the language switch (the *other* language).
+    fn switch_href(self) -> &'static str {
+        match self {
+            Self::Zh => "/portal/en",
+            Self::En => "/portal",
+        }
+    }
+
+    /// Label of the language switch, in the *other* language's own words.
+    fn switch_label(self) -> &'static str {
+        match self {
+            Self::Zh => "English",
+            Self::En => "中文",
+        }
+    }
+}
+
 /// Render the zero-script portal from release assets (platform cards) with all
 /// interpolated values HTML-escaped (OEM channel data is untrusted input).
+#[cfg(test)]
 fn portal_html(release: &Value, channel: &Value) -> String {
+    portal_html_for(release, channel, PortalLang::Zh)
+}
+
+fn portal_html_for(release: &Value, channel: &Value, lang: PortalLang) -> String {
     let channel_id = release
         .get("channel_id")
         .and_then(Value::as_str)
@@ -542,6 +584,10 @@ fn portal_html(release: &Value, channel: &Value) -> String {
     let channel_label = html_escape(channel_id);
     let version_label = html_escape(version);
     let allowed = channel_platforms(channel);
+    let bytes_suffix = match lang {
+        PortalLang::Zh => "字节",
+        PortalLang::En => "bytes",
+    };
     let mut cards = String::new();
     if let Some(assets) = release.get("assets").and_then(Value::as_array) {
         for asset in assets {
@@ -559,15 +605,21 @@ fn portal_html(release: &Value, channel: &Value) -> String {
             let sha = asset.get("sha256").and_then(Value::as_str).unwrap_or("");
             let size = asset.get("size").and_then(Value::as_u64).unwrap_or(0);
             cards.push_str(&format!(
-                "<li class=\"card\"><a href=\"/api/updates/client/{}\">{} ({size} 字节)</a><br><small>sha256 <code>{}</code></small></li>",
+                "<li class=\"card\"><a href=\"/api/updates/client/{}\">{} ({size} {bytes_suffix})</a><br><small>sha256 <code>{}</code></small></li>",
                 html_escape(name),
                 platform.label,
                 html_escape(sha),
             ));
         }
     }
+    let empty = match lang {
+        PortalLang::Zh => "暂无可用安装包（CLIENT-RELEASE.json 未声明本渠道平台资产）。",
+        PortalLang::En => {
+            "No installers available yet (CLIENT-RELEASE.json declares no assets for this channel)."
+        }
+    };
     let assets_html = if cards.is_empty() {
-        "<p>暂无可用安装包（CLIENT-RELEASE.json 未声明本渠道平台资产）。</p>".to_owned()
+        format!("<p>{empty}</p>")
     } else {
         format!("<ul class=\"cards\">{cards}</ul>")
     };
@@ -576,16 +628,51 @@ fn portal_html(release: &Value, channel: &Value) -> String {
     } else {
         ""
     };
+    let title_suffix = match lang {
+        PortalLang::Zh => "下载",
+        PortalLang::En => "download",
+    };
+    let heading_suffix = match lang {
+        PortalLang::Zh => "客户端下载",
+        PortalLang::En => "client download",
+    };
+    let channel_prefix = match lang {
+        PortalLang::Zh => "渠道：",
+        PortalLang::En => "Channel: ",
+    };
+    let version_prefix = match lang {
+        PortalLang::Zh => " · 版本：",
+        PortalLang::En => " · Version: ",
+    };
+    let warning = match lang {
+        PortalLang::Zh => {
+            "Windows 安装包未签名，请核对 sha256。企业版客户端只从此服务端更新。"
+        }
+        PortalLang::En => {
+            "Windows installers are unsigned; verify the sha256. Enterprise clients update only from this server."
+        }
+    };
+    let switch_href = lang.switch_href();
+    let switch_label = lang.switch_label();
+    let alternate = match lang {
+        PortalLang::Zh => "<link rel=\"alternate\" hreflang=\"en\" href=\"/portal/en\">",
+        PortalLang::En => "<link rel=\"alternate\" hreflang=\"zh-CN\" href=\"/portal\">",
+    };
+    let html_lang = lang.html_lang();
     format!(
-        "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><title>{product} 下载</title><style>body{{font-family:system-ui;margin:40px;max-width:720px}}.cards{{list-style:none;padding:0}}.card{{border:1px solid #ddd;border-radius:8px;padding:12px;margin:8px 0}}a{{color:#0b5fff}}</style></head><body><h1>{product} 客户端下载</h1><p>渠道：{channel_label} · 版本：{version_label}</p>{assets_html}<p><small>Windows 安装包未签名，请核对 sha256。企业版客户端只从此服务端更新。</small></p>{footer}</body></html>"
+        "<!doctype html><html lang=\"{html_lang}\"><head><meta charset=\"utf-8\">{alternate}<title>{product} {title_suffix}</title><style>body{{font-family:system-ui;margin:40px;max-width:720px}}.cards{{list-style:none;padding:0}}.card{{border:1px solid #ddd;border-radius:8px;padding:12px;margin:8px 0}}a{{color:#0b5fff}}</style></head><body><h1>{product} {heading_suffix}</h1><p>{channel_prefix}{channel_label}{version_prefix}{version_label}</p>{assets_html}<p><small>{warning}</small></p><p><a href=\"{switch_href}\" hreflang=\"{}\">{switch_label}</a></p>{footer}</body></html>",
+        match lang {
+            PortalLang::Zh => "en",
+            PortalLang::En => "zh-CN",
+        },
     )
 }
 
-/// `GET /` and `GET /portal` — zero-script download portal (`docs/09` §5).
-async fn portal() -> Response {
+/// Shared portal response with the zero-script CSP (`docs/09` §5).
+fn portal_response(lang: PortalLang) -> Response {
     let release = release().unwrap_or_else(|_| json!({}));
     let channel = channel_config();
-    let html = portal_html(&release, &channel);
+    let html = portal_html_for(&release, &channel, lang);
     let mut response = html.into_response();
     response.headers_mut().insert(
         header::CONTENT_TYPE,
@@ -602,6 +689,20 @@ async fn portal() -> Response {
         HeaderValue::from_static("nosniff"),
     );
     response
+}
+
+/// `GET /` and `GET /portal` — zero-script download portal (`docs/09` §5).
+async fn portal() -> Response {
+    portal_response(PortalLang::Zh)
+}
+
+/// `GET /portal/en` — English variant of the zero-script download portal.
+///
+/// Additive route for R9.4 (portal ≥ zh+en); the zh pages above are unchanged so
+/// existing links/bookmarks keep working. Still zero-script: CSP `default-src
+/// 'none'` and the language switch is a plain `<a href>`.
+async fn portal_en() -> Response {
+    portal_response(PortalLang::En)
 }
 
 /// Read a release from an arbitrary dir (tests/tooling).
@@ -706,6 +807,55 @@ mod tests {
 
         let empty = portal_html(&json!({"assets": []}), &json!({}));
         assert!(empty.contains("暂无可用安装包"));
+    }
+
+    #[test]
+    fn portal_is_bilingual_and_zh_defaults_stay_unchanged() {
+        let release = json!({
+            "channel_id": "official",
+            "client_version": "0.1.0",
+            "assets": [
+                {"name": "ZeoKeel_0.1.0_linux_x64.AppImage", "sha256": "aa", "size": 18}
+            ]
+        });
+        let channel = json!({"product_name": "ZeoKeel"});
+
+        // zh default: same wording as before, plus an alternate/en switch link.
+        let zh = portal_html_for(&release, &channel, PortalLang::Zh);
+        assert!(zh.contains("lang=\"zh-CN\""));
+        assert!(zh.contains("客户端下载"));
+        assert!(zh.contains("渠道：official"));
+        assert!(zh.contains("字节"));
+        assert!(zh.contains("<link rel=\"alternate\" hreflang=\"en\" href=\"/portal/en\">"));
+        assert!(zh.contains("<a href=\"/portal/en\" hreflang=\"en\">English</a>"));
+
+        // en variant: English copy, same cards, switch back to zh, still no script.
+        let en = portal_html_for(&release, &channel, PortalLang::En);
+        assert!(en.contains("lang=\"en\""));
+        assert!(en.contains("client download"));
+        assert!(en.contains("Channel: official"));
+        assert!(en.contains("Version: 0.1.0"));
+        assert!(en.contains("bytes"));
+        assert!(en.contains("linux_x64.AppImage"));
+        assert!(en.contains("<a href=\"/portal\" hreflang=\"zh-CN\">中文</a>"));
+        assert!(en.contains("Enterprise clients update only from this server."));
+        assert!(!en.contains("客户端下载"));
+        assert!(!en.contains("<script"));
+
+        // Empty-state copy is localized too.
+        let en_empty = portal_html_for(&json!({"assets": []}), &json!({}), PortalLang::En);
+        assert!(en_empty.contains("No installers available yet"));
+        assert!(!en_empty.contains("暂无可用安装包"));
+
+        // OEM values stay escaped in both languages.
+        let hostile = json!({"product_name": "<script>alert(1)</script>"});
+        for html in [
+            portal_html_for(&json!({"assets": []}), &hostile, PortalLang::Zh),
+            portal_html_for(&json!({"assets": []}), &hostile, PortalLang::En),
+        ] {
+            assert!(!html.contains("<script>alert"), "{html}");
+            assert!(html.contains("&lt;script&gt;"));
+        }
     }
     #[tokio::test]
     async fn manifest_below_min_returns_nested_426_envelope() {

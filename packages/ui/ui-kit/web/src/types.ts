@@ -105,6 +105,14 @@ export interface ToolSettings {
   approval_timeout_ms: number;
 }
 
+/** Mirrors `zk_contract_config::WebSearchSettings` (keyless search endpoint). */
+export interface WebSearchSettings {
+  /** Endpoint base URL (https only); empty = env `ZEOKEEL_SEARCH_URL` > default. */
+  base_url: string;
+  /** Request timeout in milliseconds (1000..=120000, default 15000). */
+  timeout_ms: number;
+}
+
 /** Mirrors `zk_contract_config::AppSettings`. */
 export interface AppSettings {
   schema: number;
@@ -122,6 +130,8 @@ export interface AppSettings {
   embedding: EmbeddingSettings;
   /** Media capability settings (serde default for old stores). */
   media: MediaSettings;
+  /** Web-search endpoint settings (serde default for old stores). */
+  web_search: WebSearchSettings;
 }
 
 /** Mirrors `zk_contract_session::Workspace`. */
@@ -302,6 +312,10 @@ export function defaultToolSettings(): ToolSettings {
   return { tool_timeout_ms: 120000, approval_timeout_ms: 300000 };
 }
 
+export function defaultWebSearchSettings(): WebSearchSettings {
+  return { base_url: "", timeout_ms: 15000 };
+}
+
 export function defaultSettings(): AppSettings {
   return {
     schema: 1,
@@ -314,6 +328,7 @@ export function defaultSettings(): AppSettings {
     tools: defaultToolSettings(),
     embedding: defaultEmbeddingSettings(),
     media: defaultMediaSettings(),
+    web_search: defaultWebSearchSettings(),
   };
 }
 

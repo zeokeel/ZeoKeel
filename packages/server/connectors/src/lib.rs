@@ -317,7 +317,8 @@ async fn catalog(
                 COALESCE((SELECT can_enable FROM connector_grants g WHERE g.connector_id = c.id AND g.grantee = 'all'), false) AS all_can,
                 COALESCE((SELECT enabled FROM connector_prefs p WHERE p.connector_id = c.id AND p.user_id = $2), false) AS enabled,
                 o.client_id, o.scopes, o.redirect_uri,
-                c.config->>'authorize_url' AS authorize_url, c.config->>'token_url' AS token_url
+                c.config->>'authorize_url' AS authorize_url, c.config->>'token_url' AS token_url,
+                c.config AS config
          FROM connectors c LEFT JOIN connector_oauth o ON o.connector_id = c.id
          WHERE c.deleted_at IS NULL AND c.transport IS NOT NULL
            AND (EXISTS (SELECT 1 FROM connector_grants g WHERE g.connector_id = c.id AND g.grantee = 'all')
@@ -338,6 +339,7 @@ async fn catalog(
             "force_update": row.try_get::<bool, _>("force_update").unwrap_or(false),
             "min_client_version": row.try_get::<String, _>("min_client_version").unwrap_or_default(),
             "oauth": { "client_id": row.try_get::<Option<String>, _>("client_id").ok().flatten(), "scopes": row.try_get::<Option<Value>, _>("scopes").ok().flatten().unwrap_or(json!([])), "redirect_uri": row.try_get::<Option<String>, _>("redirect_uri").ok().flatten(), "authorize_url": row.try_get::<Option<String>, _>("authorize_url").ok().flatten(), "token_url": row.try_get::<Option<String>, _>("token_url").ok().flatten() },
+            "config": client_config(&row.try_get::<Value, _>("config").unwrap_or_else(|_| json!({}))),
         })
     }).collect();
     Ok(Json(json!({ "ok": true, "items": items })))
@@ -382,4 +384,86 @@ async fn toggle(
         .await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
     Ok(Json(json!({ "ok": true, "enabled": enabled })))
+}
+
+/// Whitelist the non-secret execution config delivered to clients (ADR-060).
+///
+/// Only execution-relevant keys reach the catalog; secret-looking env keys are
+/// dropped defensively even though `create` already rejects them.
+fn client_config(config: &Value) -> Value {
+    const ALLOWED: [&str; 5] = ["command", "args", "env", "url", "timeout_ms"];
+    let Some(map) = config.as_object() else {
+        return json!({});
+    };
+    let mut out = serde_json::Map::new();
+    for (key, value) in map {
+        let lowered = key.to_ascii_lowercase();
+        if !ALLOWED.contains(&lowered.as_str()) {
+            continue;
+        }
+        if lowered == "env" {
+            let mut env_out = serde_json::Map::new();
+            if let Some(env) = value.as_object() {
+                for (env_key, env_value) in env {
+                    let env_lowered = env_key.to_ascii_lowercase();
+                    let looks_secret = matches!(
+                        env_lowered.as_str(),
+                        "secret"
+                            | "token"
+                            | "password"
+                            | "api_key"
+                            | "apikey"
+                            | "authorization"
+                            | "client_secret"
+                    ) || env_lowered.contains("secret")
+                        || env_lowered.contains("token")
+                        || env_lowered.contains("password")
+                        || env_lowered.contains("api_key");
+                    if !looks_secret {
+                        env_out.insert(env_key.clone(), env_value.clone());
+                    }
+                }
+            }
+            out.insert("env".to_owned(), Value::Object(env_out));
+            continue;
+        }
+        out.insert(key.clone(), value.clone());
+    }
+    Value::Object(out)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)] // test-only
+
+    use serde_json::json;
+
+    #[test]
+    fn client_config_keeps_execution_fields_only() {
+        let config = json!({
+            "command": "python3",
+            "args": ["server.py"],
+            "env": {"PATH": "/usr/bin", "MCP_TOKEN": "x", "DB_PASSWORD": "y"},
+            "url": "http://127.0.0.1:9/mcp",
+            "timeout_ms": 1500,
+            "authorize_url": "http://127.0.0.1:9/authorize",
+            "token_url": "http://127.0.0.1:9/token",
+            "internal_note": "drop me"
+        });
+        let out = super::client_config(&config);
+        assert_eq!(out["command"], "python3");
+        assert_eq!(out["url"], "http://127.0.0.1:9/mcp");
+        assert_eq!(out["timeout_ms"], 1500);
+        assert_eq!(out["env"]["PATH"], "/usr/bin");
+        assert!(out["env"].get("MCP_TOKEN").is_none());
+        assert!(out["env"].get("DB_PASSWORD").is_none());
+        assert!(out.get("authorize_url").is_none());
+        assert!(out.get("internal_note").is_none());
+    }
+
+    #[test]
+    fn client_config_rejects_non_objects() {
+        assert_eq!(super::client_config(&json!("nope")), json!({}));
+        assert_eq!(super::client_config(&json!({})), json!({}));
+    }
 }

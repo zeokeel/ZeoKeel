@@ -13,6 +13,8 @@
 //! - `settle` keeps `usage`/ledger/hold in one transaction and is retry-idempotent.
 #![allow(clippy::too_many_lines)] // focused slice
 
+use std::net::IpAddr;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use axum::body::Body;
@@ -26,6 +28,7 @@ use serde_json::{json, Value};
 use sqlx::Row;
 use uuid::Uuid;
 
+use zk_kit_server::master_key::KeyRing;
 use zk_kit_server::AppState;
 use zk_kit_server::{
     audit_tx, current_user as current_user_public, error as auth_error, require_admin,
@@ -256,9 +259,191 @@ struct UpstreamTarget {
 }
 
 fn allowed_upstream_base(base: &str) -> bool {
-    base.starts_with("https://")
-        || base.starts_with("http://127.0.0.1")
-        || base.starts_with("http://localhost")
+    validate_upstream_base_with(base, allow_insecure_upstream())
+}
+
+/// `ZEOKEEL_ALLOW_INSECURE_UPSTREAM=1` permits plaintext `http://` to loopback hosts only,
+/// for local fake upstreams in tests/dev. Never enable this on a deployment.
+fn allow_insecure_upstream() -> bool {
+    std::env::var("ZEOKEEL_ALLOW_INSECURE_UPSTREAM").is_ok_and(|value| value == "1")
+}
+
+/// Strict upstream base URL validation (P0 SSRF, docs/21 §10 gate 3, docs/33).
+///
+/// Allowed: `https://<public host>` (any path). Rejected: non-https schemes (except
+/// loopback `http://` with the explicit dev flag), userinfo, empty host, loopback /
+/// private / link-local / multicast / unspecified / reserved IP literals (v4 and v6,
+/// including IPv4-mapped v6), `localhost`, `*.localhost`, `*.local`, `*.internal`,
+/// `metadata`/`metadata.google.internal`/`instance-data`, and obfuscated numeric hosts.
+/// Redirects are never followed ([`build_upstream_client`]).
+fn validate_upstream_base_with(base: &str, allow_insecure: bool) -> bool {
+    const METADATA_HOSTS: [&str; 3] = ["metadata", "metadata.google.internal", "instance-data"];
+    let Ok(url) = reqwest::Url::parse(base) else {
+        return false;
+    };
+    if !url.username().is_empty() || url.password().is_some() {
+        return false;
+    }
+    let Some(raw_host) = url.host_str() else {
+        return false;
+    };
+    let host = raw_host
+        .trim_end_matches('.')
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .to_ascii_lowercase();
+    if host.is_empty() {
+        return false;
+    }
+    let host_is_loopback = host == "localhost"
+        || host.ends_with(".localhost")
+        || host.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback());
+    let scheme_ok = match url.scheme() {
+        "https" => true,
+        "http" => allow_insecure && host_is_loopback,
+        _ => false,
+    };
+    if !scheme_ok {
+        return false;
+    }
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        // Plaintext loopback dev endpoints are the only IP literals ever accepted.
+        if allow_insecure && url.scheme() == "http" && ip.is_loopback() {
+            return true;
+        }
+        return !ip_is_disallowed(ip);
+    }
+    if host == "localhost" || host.ends_with(".localhost") {
+        return allow_insecure && url.scheme() == "http";
+    }
+    if METADATA_HOSTS.contains(&host.as_str())
+        || host.ends_with(".local")
+        || host.ends_with(".internal")
+    {
+        return false;
+    }
+    if host
+        .bytes()
+        .all(|byte| byte.is_ascii_digit() || byte == b'.')
+        || host.starts_with("0x")
+    {
+        return false;
+    }
+    true
+}
+
+fn ip_is_disallowed(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            let [first, second, third, _fourth] = v4.octets();
+            let shared_cgnat = first == 100 && (second & 0xc0) == 0x40;
+            let zero_network = first == 0;
+            let benchmarking = first == 198 && (second & 0xfe) == 18;
+            let reserved = (240..=255).contains(&first);
+            v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_broadcast()
+                || v4.is_multicast()
+                || v4.is_unspecified()
+                || v4.is_documentation()
+                || shared_cgnat
+                || zero_network
+                || benchmarking
+                || reserved
+                || (first == 192 && second == 0 && third == 0)
+        }
+        IpAddr::V6(v6) => {
+            let first = v6.segments().first().copied().unwrap_or(0);
+            let unique_local = (first & 0xfe00) == 0xfc00;
+            let link_local = (first & 0xffc0) == 0xfe80;
+            let multicast = (first & 0xff00) == 0xff00;
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || unique_local
+                || link_local
+                || multicast
+                || v6
+                    .to_ipv4_mapped()
+                    .is_some_and(|mapped| ip_is_disallowed(IpAddr::V4(mapped)))
+        }
+    }
+}
+
+/// Process-wide pooled upstream HTTP client (P0 SSRF: redirects never followed).
+///
+/// Building a `reqwest::Client` per upstream attempt is expensive (TLS config +
+/// connector setup) and was measured as the per-request gateway bottleneck; one
+/// pooled client is reused for all upstream calls. The per-provider timeout is
+/// applied per request in [`send_upstream`], so providers keep their own budgets.
+fn upstream_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(
+        || match build_upstream_client(DEFAULT_UPSTREAM_TIMEOUT_SECS) {
+            Ok(client) => client,
+            Err(_) => reqwest::Client::new(),
+        },
+    )
+}
+
+fn build_upstream_client(timeout_secs: u64) -> Result<reqwest::Client, AuthError> {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(timeout_secs))
+        // P0 SSRF: a permitted https upstream must not be able to 302/307 into an
+        // internal address; never follow redirects on gateway upstream calls.
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|_| auth_error(StatusCode::SERVICE_UNAVAILABLE, "UPSTREAM_UNAVAILABLE"))
+}
+
+fn master_key_ring() -> &'static KeyRing {
+    static RING: OnceLock<KeyRing> = OnceLock::new();
+    RING.get_or_init(|| match KeyRing::load_default() {
+        Ok(ring) => {
+            if ring.is_empty() {
+                eprintln!(
+                    "gateway: MASTER_KEY not configured; new provider secret writes fail closed"
+                );
+            }
+            ring
+        }
+        Err(error) => {
+            eprintln!(
+                "gateway: master.key load failed ({error}); provider secret writes fail closed"
+            );
+            KeyRing::empty()
+        }
+    })
+}
+
+fn encrypt_provider_key(plaintext: &str) -> Result<String, AuthError> {
+    master_key_ring().encrypt(plaintext).map_err(|error| {
+        eprintln!("gateway: encrypt provider key failed: {error}");
+        auth_error(StatusCode::INTERNAL_SERVER_ERROR, "MASTER_KEY_UNAVAILABLE")
+    })
+}
+
+fn decrypt_provider_key(provider_name: &str, stored: &str) -> Result<String, AuthError> {
+    match master_key_ring().decrypt(stored) {
+        Ok(secret) => {
+            if secret.legacy {
+                eprintln!(
+                    "gateway: provider {provider_name} uses legacy plaintext api_key_enc;                      rotate it via admin update to encrypt with master.key"
+                );
+            }
+            Ok(secret.value)
+        }
+        Err(error) => {
+            eprintln!(
+                "gateway: provider {provider_name} stored credential cannot be decrypted: {error}"
+            );
+            Err(auth_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "UPSTREAM_UNAVAILABLE",
+            ))
+        }
+    }
 }
 
 /// Resolve the ordered failover list for one model from `models`/`providers`.
@@ -285,16 +470,25 @@ async fn resolve_upstreams(
         let base_url: String = row
             .try_get("base_url")
             .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-        let api_key: String = row
+        let stored_key: String = row
             .try_get("api_key_enc")
             .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
-        if !allowed_upstream_base(&base_url) || api_key.is_empty() {
+        if !allowed_upstream_base(&base_url) || stored_key.is_empty() {
+            continue;
+        }
+        let provider_name: String = row
+            .try_get("name")
+            .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?;
+        // Fail closed per provider: ciphertext that cannot be decrypted (missing key,
+        // tampered, unknown version) is skipped instead of being forwarded upstream.
+        let Ok(api_key) = decrypt_provider_key(&provider_name, &stored_key) else {
+            continue;
+        };
+        if api_key.is_empty() {
             continue;
         }
         targets.push(UpstreamTarget {
-            name: row
-                .try_get("name")
-                .map_err(|_| auth_error(StatusCode::INTERNAL_SERVER_ERROR, "DB_ERROR"))?,
+            name: provider_name,
             base_url,
             api_key,
             timeout_secs: u64::try_from(row.try_get::<i32, _>("timeout_secs").unwrap_or(120))
@@ -346,10 +540,7 @@ async fn send_upstream(
 ) -> Result<reqwest::Response, AuthError> {
     let mut last_error = false;
     for target in targets {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(target.timeout_secs))
-            .build()
-            .map_err(|_| auth_error(StatusCode::SERVICE_UNAVAILABLE, "UPSTREAM_UNAVAILABLE"))?;
+        let client = upstream_client();
         let mut attempt: u32 = 0;
         loop {
             match client
@@ -357,6 +548,8 @@ async fn send_upstream(
                     "{}/responses",
                     target.base_url.trim_end_matches('/')
                 ))
+                // Per-provider timeout on the shared client (`docs/07` §4).
+                .timeout(Duration::from_secs(target.timeout_secs))
                 .bearer_auth(&target.api_key)
                 .json(body)
                 .send()
@@ -977,6 +1170,8 @@ async fn admin_provider_create(
     if request.api_key.trim().is_empty() {
         return Err(auth_error(StatusCode::BAD_REQUEST, "VALIDATION"));
     }
+    // Fail closed: never persist a new provider key in plaintext.
+    let encrypted_key = encrypt_provider_key(&request.api_key)?;
     let mut tx = state
         .pool
         .begin()
@@ -989,7 +1184,7 @@ async fn admin_provider_create(
     .bind(request.name.trim())
     .bind(&request.kind)
     .bind(&request.base_url)
-    .bind(&request.api_key)
+    .bind(&encrypted_key)
     .bind(request.enabled)
     .bind(request.priority)
     .bind(request.timeout_secs)
@@ -1068,6 +1263,10 @@ async fn admin_provider_update(
     {
         return Err(auth_error(StatusCode::BAD_REQUEST, "VALIDATION"));
     }
+    let encrypted_key = match request.api_key.as_deref() {
+        Some(key) => Some(encrypt_provider_key(key)?),
+        None => None,
+    };
     sqlx::query(
         "UPDATE providers SET name = $1, base_url = $2, api_key_enc = COALESCE($3, api_key_enc),
            enabled = COALESCE($4, enabled), priority = COALESCE($5, priority),
@@ -1075,7 +1274,7 @@ async fn admin_provider_update(
     )
     .bind(&name)
     .bind(&base_url)
-    .bind(request.api_key.as_deref())
+    .bind(encrypted_key.as_deref())
     .bind(request.enabled)
     .bind(request.priority)
     .bind(timeout_secs)
@@ -1431,5 +1630,171 @@ mod tests {
                 reasoning_tokens: 0,
             }
         );
+    }
+}
+
+#[cfg(test)]
+mod security_round2_tests {
+    //! P0 SSRF regression tests (docs/21 §10 gate 3, docs/33).
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects
+    )] // test-only
+    use super::build_upstream_client;
+    use std::io::{Read, Write};
+    use std::net::{TcpListener, TcpStream};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    fn validate(base: &str) -> bool {
+        super::validate_upstream_base_with(base, false)
+    }
+
+    #[test]
+    fn accepts_public_https_upstreams() {
+        for base in [
+            "https://api.openai.com",
+            "https://api.openai.com/v1",
+            "https://api.deepseek.com/v1/",
+            "https://example.com:8443/v1",
+        ] {
+            assert!(validate(base), "should accept {base}");
+        }
+    }
+
+    #[test]
+    fn rejects_non_https_schemes_and_userinfo() {
+        for base in [
+            "http://example.com/v1",
+            "ftp://example.com/v1",
+            "file:///etc/passwd",
+            "gopher://example.com/",
+            "not a url",
+            "",
+            "https://",
+            "https://user:pass@api.openai.com/v1",
+            "https://user@api.openai.com/v1",
+        ] {
+            assert!(!validate(base), "should reject {base}");
+        }
+    }
+
+    #[test]
+    fn rejects_ssrf_targets() {
+        for base in [
+            "http://169.254.169.254/latest/meta-data/",
+            "http://10.0.0.1/v1",
+            "http://127.0.0.1:8787/v1",
+            "https://127.0.0.1/v1",
+            "https://169.254.169.254/latest/meta-data/",
+            "https://10.0.0.1/v1",
+            "https://192.168.1.10/v1",
+            "https://172.16.0.1/v1",
+            "https://[::1]/v1",
+            "https://[fe80::1]/v1",
+            "https://[fd00::1]/v1",
+            "https://localhost/v1",
+            "https://api.localhost/v1",
+            "https://printer.local/v1",
+            "https://service.internal/v1",
+            "https://metadata.google.internal/computeMetadata/v1/",
+            "https://metadata/",
+            "https://instance-data/",
+            "https://2130706433/v1",
+            "https://0x7f000001/v1",
+            "https://0.0.0.0/v1",
+            "https://255.255.255.255/v1",
+            "https://100.64.0.1/v1",
+            "https://198.18.0.1/v1",
+        ] {
+            assert!(!validate(base), "should reject {base}");
+        }
+    }
+
+    #[test]
+    fn dev_flag_only_enables_loopback_plaintext() {
+        let loopback_http = "http://127.0.0.1:8998/v1";
+        assert!(!super::validate_upstream_base_with(loopback_http, false));
+        assert!(super::validate_upstream_base_with(loopback_http, true));
+        assert!(super::validate_upstream_base_with(
+            "http://127.0.0.1:8998/v1",
+            true
+        ));
+        assert!(super::validate_upstream_base_with(
+            "http://localhost:8998/v1",
+            true
+        ));
+        // The dev flag never widens anything beyond plaintext loopback.
+        assert!(!super::validate_upstream_base_with(
+            "http://10.0.0.1/v1",
+            true
+        ));
+        assert!(!super::validate_upstream_base_with(
+            "https://127.0.0.1/v1",
+            true
+        ));
+        assert!(!super::validate_upstream_base_with(
+            "https://169.254.169.254/",
+            true
+        ));
+    }
+
+    fn spawn_responder(
+        response: Vec<u8>,
+        counter: Option<Arc<AtomicUsize>>,
+    ) -> (u16, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind responder");
+        let port = listener.local_addr().expect("responder addr").port();
+        let handle = std::thread::spawn(move || {
+            if let Ok((mut stream, _peer)) = listener.accept() {
+                if let Some(counter) = counter {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                }
+                let mut buffer = [0_u8; 2048];
+                let _ = stream.read(&mut buffer);
+                let _ = stream.write_all(&response);
+                let _ = stream.flush();
+            }
+        });
+        (port, handle)
+    }
+
+    fn unblock(port: u16) {
+        let _ = TcpStream::connect(("127.0.0.1", port));
+    }
+
+    #[tokio::test]
+    async fn upstream_client_does_not_follow_redirects() {
+        let target_hits = Arc::new(AtomicUsize::new(0));
+        let target = spawn_responder(
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok".to_vec(),
+            Some(Arc::clone(&target_hits)),
+        );
+        let redirect_location = format!("http://127.0.0.1:{}/internal", target.0);
+        let redirect = spawn_responder(
+            format!(
+                "HTTP/1.1 302 Found\r\nLocation: {redirect_location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+            .into_bytes(),
+            None,
+        );
+        let client = build_upstream_client(5).expect("build upstream client");
+        let response = client
+            .get(format!("http://127.0.0.1:{}/v1/responses", redirect.0))
+            .send()
+            .await
+            .expect("send request");
+        assert_eq!(response.status(), reqwest::StatusCode::FOUND);
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(
+            target_hits.load(Ordering::SeqCst),
+            0,
+            "upstream client must not follow 302 into another address"
+        );
+        unblock(target.0);
+        let _ = redirect.1.join();
     }
 }

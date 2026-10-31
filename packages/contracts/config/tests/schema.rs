@@ -47,6 +47,10 @@ fn export_schema() {
         "media-settings.json",
         &schemars::schema_for!(zk_contract_config::MediaSettings),
     );
+    write(
+        "web-search-settings.json",
+        &schemars::schema_for!(zk_contract_config::WebSearchSettings),
+    );
 
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../..")
@@ -66,4 +70,12 @@ fn export_schema() {
     let scan = &value["properties"]["scan_seconds"];
     assert_eq!(scan["minimum"], 5.0, "{scan}");
     assert_eq!(scan["maximum"], 3_600.0, "{scan}");
+
+    // Web-search timeout bounds are published to the Ajv boundary too.
+    let path = dir.join("shared/contracts/schema/web-search-settings.json");
+    let text = std::fs::read_to_string(path).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let timeout = &value["properties"]["timeout_ms"];
+    assert_eq!(timeout["minimum"], 1_000.0, "{timeout}");
+    assert_eq!(timeout["maximum"], 120_000.0, "{timeout}");
 }

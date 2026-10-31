@@ -20,6 +20,10 @@ cleanup() {
   stop_server
   sudo -u postgres dropdb --if-exists --force "$DB" >/dev/null 2>&1 || true
   sudo -u postgres psql -Atq -c "DROP ROLE IF EXISTS $ROLE" >/dev/null 2>&1 || true
+  # A18: if this script composed enterprise, restore the committed personal baseline.
+  if [[ "${COMPOSITION:-}" == "composed-enterprise" ]]; then
+    bash scripts/restore-baseline.sh >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 sudo -u postgres psql -Atq -c "CREATE ROLE $ROLE LOGIN PASSWORD '$ROLE';"
@@ -30,6 +34,14 @@ start_server() {
   ./target/debug/zk-server >/tmp/zk-apps.log 2>&1 & SERVER_PID=$!
   for _ in $(seq 1 40); do curl -fsS "$BASE/healthz" >/dev/null 2>&1 && break; sleep 0.25; done
 }
+# A18 target trimming: the committed personal baseline generates a stub zk-server
+# (exit 2, zero srv deps). Compose enterprise unless the caller already did (CI builds
+# the enterprise binary before invoking this script).
+COMPOSITION="$(bash scripts/ensure-enterprise-composition.sh)" \
+  || { echo "apps-e2e: cannot compose the enterprise server (A18)" >&2; exit 2; }
+if [[ "$COMPOSITION" == "composed-enterprise" || ! -x target/debug/zk-server ]]; then
+  cargo build -q -p zk-server
+fi
 start_server
 curl -fsS "$BASE/readyz" >/dev/null
 ADMIN_JWT=$(curl -fsS -H "$CLIENT_HDR" -X POST "$BASE/api/client/v1/auth/login" -H 'content-type: application/json' -d '{"username":"admin","password":"admin-pass","device_id":"apps-e2e"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')

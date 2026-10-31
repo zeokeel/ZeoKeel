@@ -11,6 +11,7 @@ git checkout -- \
   Cargo.lock \
   crates/zk-composed/Cargo.toml crates/zk-composed/src/lib.rs \
   apps/desktop/Cargo.toml apps/server/Cargo.toml \
+  apps/server/src/main.rs \
   apps/desktop/src/generated apps/server/src/generated \
   apps/desktop/web/src/generated apps/admin/web/src/generated \
   apps/desktop/web/public/brand \

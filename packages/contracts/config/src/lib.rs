@@ -355,6 +355,69 @@ impl AgentSettings {
     }
 }
 
+/// Web-search tool endpoint settings (`tool.web_search`).
+///
+/// The search tool calls a keyless DuckDuckGo-compatible instant-answer
+/// endpoint, so this section carries **no credential**. It is a tool egress
+/// endpoint (not an AI provider), therefore C7 does not apply: both editions may
+/// point the tool at their own endpoint (C6 weak control). The runtime resolves
+/// **explicit settings > `ZEOKEEL_SEARCH_URL` > built-in default** and requires
+/// https. `schemars` bounds the timeout so the generated Ajv schema rejects
+/// out-of-range values before Rust validation runs (C10).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(default)]
+pub struct WebSearchSettings {
+    /// Endpoint base URL (https only); empty = fall back to the env/default.
+    pub base_url: String,
+    /// Request timeout in milliseconds (`1000..=120000`; default 15000).
+    #[schemars(range(min = 1000, max = 120000))]
+    pub timeout_ms: u64,
+}
+
+impl WebSearchSettings {
+    /// Smallest accepted search timeout.
+    pub const MIN_TIMEOUT_MS: u64 = 1_000;
+    /// Largest accepted search timeout.
+    pub const MAX_TIMEOUT_MS: u64 = 120_000;
+
+    /// Validate the endpoint scheme and timeout range.
+    ///
+    /// # Errors
+    ///
+    /// [`ConfigError::Invalid`] naming the offending field.
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        let base_url = self.base_url.trim();
+        if !base_url.is_empty() && !base_url.starts_with("https://") {
+            return Err(ConfigError::Invalid(format!(
+                "web_search.base_url must start with https:// (got `{base_url}`)"
+            )));
+        }
+        if !(Self::MIN_TIMEOUT_MS..=Self::MAX_TIMEOUT_MS).contains(&self.timeout_ms) {
+            return Err(ConfigError::Invalid(format!(
+                "web_search.timeout_ms must be within 1000..=120000 (got {})",
+                self.timeout_ms
+            )));
+        }
+        Ok(())
+    }
+
+    /// The timeout clamped to the accepted range (runtime defense).
+    #[must_use]
+    pub fn effective_timeout_ms(&self) -> u64 {
+        self.timeout_ms
+            .clamp(Self::MIN_TIMEOUT_MS, Self::MAX_TIMEOUT_MS)
+    }
+}
+
+impl Default for WebSearchSettings {
+    fn default() -> Self {
+        Self {
+            base_url: String::new(),
+            timeout_ms: 15_000,
+        }
+    }
+}
+
 /// Personal-edition embedding/vector provider settings (`cap-vector`).
 ///
 /// Custom settings are only valid for personal edition: enterprise AI must go
@@ -537,6 +600,9 @@ pub struct AppSettings {
     /// Personal-edition media capabilities (backward compatible default).
     #[serde(default)]
     pub media: MediaSettings,
+    /// Web-search tool endpoint settings (backward compatible default).
+    #[serde(default)]
+    pub web_search: WebSearchSettings,
 }
 
 impl Default for AppSettings {
@@ -552,6 +618,7 @@ impl Default for AppSettings {
             tools: ToolSettings::default(),
             embedding: EmbeddingSettings::default(),
             media: MediaSettings::default(),
+            web_search: WebSearchSettings::default(),
         }
     }
 }
@@ -566,7 +633,8 @@ impl AppSettings {
         self.agent.validate()?;
         self.tools.validate()?;
         self.embedding.validate()?;
-        self.media.validate()
+        self.media.validate()?;
+        self.web_search.validate()
     }
 }
 
@@ -610,20 +678,30 @@ pub struct RuntimeSettings {
     /// fallback for the tools section.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tools: Option<ToolSettings>,
+    /// Web-search tool endpoint, when explicitly saved.
+    ///
+    /// `None` means "not published": `tool-web-search` keeps its
+    /// `ZEOKEEL_SEARCH_URL` env fallback and the built-in DuckDuckGo default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web_search: Option<WebSearchSettings>,
 }
 
 impl RuntimeSettings {
-    /// Validate both published sections.
+    /// Validate the published sections.
     ///
     /// # Errors
     ///
-    /// [`ConfigError::Invalid`] when agent or tool settings are out of range.
+    /// [`ConfigError::Invalid`] when agent, tool or web-search settings are out
+    /// of range.
     pub fn validate(&self) -> Result<(), ConfigError> {
         if let Some(agent) = &self.agent {
             agent.validate()?;
         }
         if let Some(tools) = &self.tools {
             tools.validate()?;
+        }
+        if let Some(web_search) = &self.web_search {
+            web_search.validate()?;
         }
         Ok(())
     }
@@ -634,6 +712,7 @@ impl From<&AppSettings> for RuntimeSettings {
         Self {
             agent: Some(settings.agent.clone()),
             tools: Some(settings.tools),
+            web_search: Some(settings.web_search.clone()),
         }
     }
 }

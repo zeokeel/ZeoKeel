@@ -1,5 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import {
   BrandLogo,
   Button,
@@ -62,6 +62,10 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
   const [errors, setErrors] = useState<SettingsErrors>(EMPTY_SETTINGS_ERRORS);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // The dialog is opened from app state (no `Dialog.Trigger`), so Radix has no
+  // opener to restore focus to. Remember the element that had focus when the
+  // dialog opened and put it back on close (WCAG focus order / B12).
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   const update = <Key extends keyof SettingsForm>(key: Key, value: SettingsForm[Key]): void => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -122,6 +126,17 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
         <Dialog.Content
           className="fixed start-1/2 top-1/2 z-50 max-h-[86vh] w-[min(640px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl bg-popover p-6 shadow-[var(--zk-shadow-lift)]"
           aria-describedby="settings-description"
+          onOpenAutoFocus={() => {
+            restoreFocusRef.current =
+              document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          }}
+          onCloseAutoFocus={(event) => {
+            const target = restoreFocusRef.current;
+            if (target?.isConnected === true) {
+              event.preventDefault();
+              target.focus();
+            }
+          }}
         >
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-2.5">
@@ -218,8 +233,8 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
                       update("locale", localeOf(event.target.value));
                     }}
                   >
-                    <option value="zh-CN">中文（简体）</option>
-                    <option value="en-US">English (US)</option>
+                    <option value="zh-CN">{t("settingsLanguageZh")}</option>
+                    <option value="en-US">{t("settingsLanguageEn")}</option>
                   </select>
                 </label>
               </div>
@@ -386,6 +401,34 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
                 {numeric("settings-approval-timeout", t("settingsApprovalTimeout"), form.approvalTimeoutMs, (value) => { update("approvalTimeoutMs", value); }, errors.approvalTimeoutMs, { min: 1000, max: 1800000 })}
               </div>
               <p className="mt-2 text-[12px] text-muted-foreground">{t("settingsToolsHint")}</p>
+            </fieldset>
+            <fieldset className="rounded-document bg-muted p-4">
+              <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
+                {t("settingsSectionWebSearch")}
+              </legend>
+              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 sm:col-span-2" htmlFor="settings-web-search-base-url">
+                  <span className={labelClass}>{t("settingsWebSearchBaseUrl")}</span>
+                  <input
+                    id="settings-web-search-base-url"
+                    aria-label={t("settingsWebSearchBaseUrl")}
+                    className={inputClass}
+                    type="url"
+                    inputMode="url"
+                    value={form.webSearchBaseUrl}
+                    onChange={(event) => { update("webSearchBaseUrl", event.target.value); }}
+                    placeholder="https://api.duckduckgo.com/"
+                    aria-invalid={errors.webSearchBaseUrl !== null}
+                    aria-describedby="settings-web-search-base-url-hint"
+                  />
+                  {fieldError(errors.webSearchBaseUrl)}
+                  <span id="settings-web-search-base-url-hint" className="text-[12px] text-muted-foreground">
+                    {t("settingsWebSearchBaseUrlHint")}
+                  </span>
+                </label>
+                {numeric("settings-web-search-timeout", t("settingsWebSearchTimeout"), form.webSearchTimeoutMs, (value) => { update("webSearchTimeoutMs", value); }, errors.webSearchTimeoutMs, { min: 1000, max: 120000 })}
+              </div>
+              <p className="mt-2 text-[12px] text-muted-foreground">{t("settingsWebSearchHint")}</p>
             </fieldset>
             {showEmbedding ? (
             <fieldset className="rounded-document bg-muted p-4">
