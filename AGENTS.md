@@ -19,13 +19,16 @@
 
 ### 当前阶段（重要）
 
-仓库已从 Plan 阶段进入 **M0 骨架 + M1 个人版客户端**：
+仓库处于 **M0–M5 已实现 + M6 部分验证**，发布候选版本 **`1.0.0-rc.1`**（2026-10-31，本地验证）。
 
-- 已有：`Cargo.toml` 单 workspace、`zk` 组合器（validate/compose/plan/capability/find）、契约（package/kernel/tool/llm/agent/ipc/session/config/ui）、
-  client 包（tool-fs/llm-mock/agent-loop/store-session-sqlite/store-settings-json/llm-openai-compatible）、workspace 契约/v2 迁移、
-  `crates/zk-composed`（生成 glue）、Tauri 桌面 app + axum 服务端骨架、serve 载体、assistant-ui React 前端（UI 包化）、官方渠道 logo 构建期注入。
-- 尚未完成：provider 运行时按设置选择/系统密钥库（M1b）、审批/工具扩展、右栏/命令面板完整版、
-  M2 企业版服务端（**C3 服务端拆分完成**：`zk-kit-server` + auth/users/wallet/pricing/gateway/audit/settings/jobs 独立包，`zk-srv-http` 仅 health/ready/core migration（约 100 行）；各域自带 migrations，`apps/server` 为 composition root；管理台已拆 `admin-shell`/`admin-ui-kit`/`admin.page.*` 包，并由 `zk compose` 生成 `apps/admin/web/src/generated/registry.ts`；`ui-shell` 已承接 AppShell/FirstRun、`ui-commands` 已接入 ⌘K、`ui-inspector` 已接右栏/⌘B/workspace.files，desktop 薄壳只剩 transport/controller/reducer/i18n/theme/login gate（App 约 139 行）；开发原型移到 `research/ui-prototypes/`；P1 已有 srv.http/PostgreSQL 迁移、local 登录/EdDSA JWT/refresh/admin cookie+CSRF/users/roles、钱包账本/调账、价格/模型目录、网关准入/hold/SSE/结算、运维 jobs（hold 过期/pending/对账/月发放）；管理台 SPA（用户/钱包/价格/审计/用量）已可登录操作；`scripts/admin-e2e.sh` 真实 PG+Playwright 6 tests；deploy/ 已有 Dockerfile/compose/Caddy/portal/backup（本机无 Docker，未构建验证）；M3 内容平台已完成（spec R8 APPROVED、实现 R3 APPROVED、acceptance completed）；`zk-client-auth` 登录/refresh/me/logout + `@zeokeel/ui-login` 已接入 desktop：enterprise edition + 首配/登录门禁；`scripts/login-e2e.sh` 真实 server 通过；`zk-llm-gateway` 企业 provider 已接登录 token 注入（IPC `auth.configure`），enterprise 登录→网关聊天 e2e 通过；客户端按 expires_in 刷新并重注入 token；`complete_stream`/gateway SSE 真流式已接；登录后拉 bootstrap 默认模型注入；设置页展示企业模型目录；本地 provider 设置已拆 `ui-settings-provider` 包，enterprise 构建期 exclude）、M4 已完成（实现 R8 APPROVED），M5–M6 待做。
+- 已实现（本地验证）：`zk` 组合器 + 单 workspace + 契约/kit；个人版客户端（Tauri + React UI 包化、本地 agent loop、
+  工具、SQLite 会话/设置、本地 provider、GitHub Releases 更新）；企业版（server 域包 auth/users/wallet/pricing/gateway/
+  audit/settings/jobs + admin SPA + 登录/网关/1:1 更新）；内容平台（技能/连接器）；WASM 应用中心；OEM 渠道/品牌构建期注入；
+  组合生成物与 10 套本地 e2e（真实 PG/浏览器）全绿。
+- M6 部分：本地可执行项有证据；Docker/镜像、三平台安装包、macOS 公证、Windows 真机、真实 provider/媒体、
+  500 用户压测、hosted-runner CI 等为 **UNVERIFIED**；M6 acceptance 仍 `blocked`。
+- `1.0.0` 正式版需 rc 验收 + 远端 CI/release 实跑通过后由用户确认。
+- 残余限制唯一真源：`KNOWN-LIMITATIONS.md`；当前门禁见 §6；状态摘要见 `docs/12`。
 - 文档仍是规范真源；代码与文档冲突时先改文档/ADR 再改实现。
 
 ## 2. 最高约束（必须遵守）
@@ -82,7 +85,7 @@
 
 ## 4. Repository layout
 
-### 当前（M1 进行中）
+### 当前（1.0.0-rc.1）
 
 ```text
 ZeoKeel/
@@ -95,12 +98,12 @@ ZeoKeel/
 ├─ packages/client/     # tool-fs/llm-mock/agent-loop/store-*/llm-openai-compatible
 ├─ packages/ui/         # ui-kit/ui-sessions/ui-chat/ui-settings（web facet）
 ├─ apps/desktop/        # Tauri shell + serve 载体 + React web
-├─ apps/server/         # axum 骨架（M2 扩展）
+├─ apps/server/         # axum composition root（清单生成）
 ├─ tools/zk/ scripts/ shared/ target/（不入库）
 └─ research/ experiments/ configs/
 ```
 
-### 目标（scaffold 后）
+### 目标结构（包模型基线）
 
 ```text
 ZeoKeel/
@@ -144,7 +147,7 @@ export HTTPS_PROXY='socks5://<proxy>'; proxychains -q <cmd>
 gh auth status
 ```
 
-### 【scaffold 后】初始化
+### 初始化（当前）
 
 ```bash
 bash scripts/bootstrap.sh          # 系统库 + pnpm + cargo check + 生成
@@ -154,7 +157,51 @@ zk compose --edition personal --profile default --channel official   # 生成两
 
 ## 6. Build and test commands
 
-### 【当前可用】构建/测试
+### 6.1 当前门禁（本地可复现；CI 执行状态见 `.github/workflows/`）
+
+```bash
+# TypeScript / React（pnpm workspace）
+pnpm -r typecheck                 # tsc -b（最严格）
+pnpm -r lint                      # eslint --max-warnings 0
+pnpm -r test:unit                 # vitest
+pnpm -r build                     # vite build
+pnpm e2e                          # playwright（m1-e2e；别名 test:e2e）
+
+# Rust
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+cargo test --workspace export_schema && git diff --exit-code
+
+# 组合与生成物
+zk validate
+zk compose --edition personal --profile default --channel official --check
+# 非基线版不支持 --check；企业组合用 write compose + cargo check 验证
+zk capability --check
+zk docs --check
+zk db lock --check
+zk lint --duplicates
+zk sbom --edition personal --profile default --channel official --check
+bash scripts/schema-check.sh
+
+# 治理脚本
+python3 scripts/docs-check.py
+python3 scripts/spec-check.py
+python3 scripts/review-check.py
+python3 scripts/docs-command-check.py --self-test && python3 scripts/docs-command-check.py
+python3 scripts/agent-tool-matrix.py --check
+```
+
+### 6.2 CI-only / 本地未安装工具（不得当作本地已验证）
+
+- `cargo deny check`、`cargo machete`：仅 `.github/workflows/security.yml`（CI 执行；本机未安装）。
+- `cargo geiger --all-features`：需在 CI 实际调用（security.yml/docs/18 门禁真源）；本机未安装。
+- `cargo nextest run --workspace`、`cargo public-api diff`：本机/CI 均未安装/未执行 → **UNVERIFIED**（当前用 `cargo test` 替代）。
+- `zk api` / `zk lock` / `zk verify-lock` / `zk metadata snapshot`：未实现（backlog，`docs/24` §3），不在门禁内。
+- 安全/交付脚本：`bash scripts/security-audit.sh`（外部工具项 unverified）、`bash scripts/sbom.sh`；环境受限项见 `KNOWN-LIMITATIONS.md`。
+
+### 6.3 实验/POC（非产品门禁）
 
 ```bash
 # 构建期换包 POC：三种 profile 换同一角色
@@ -163,50 +210,13 @@ python3 resolve.py default     && cargo run -q -p zk   # plain fs
 python3 resolve.py hardened    && cargo run -q -p zk   # sandboxed fs
 python3 resolve.py vendor-acme && cargo run -q -p zk   # workspace 外实现
 
-# 文档 / 变更规格门禁
-python3 scripts/docs-check.py
-python3 scripts/spec-check.py
-python3 scripts/review-check.py
-bash scripts/new-change.sh <kebab-slug>   # 新建 change 五件套
-
 # WASM 应用 POC：host + Go/Rust guest + 帧 ABI + SQLite + fuel
 cd experiments/wasm-poc
 ./build.sh                      # 首次约 6–7 分钟（wasmtime），构建后自动跑 golden
 python3 golden/run.py           # 可选：已 build 后单独重跑，期望 {"ok": true, ...}
 ```
 
-### 【scaffold 后】构建/测试
-
-```bash
-# TypeScript
-pnpm -r typecheck                # tsc -b（最严格）
-pnpm -r lint                     # eslint --max-warnings 0
-pnpm -r test:unit                # vitest（含 typecheck）
-pnpm e2e                         # playwright（serve 载体；别名 test:e2e）
-pnpm -r build
-
-# Rust
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo nextest run --workspace
-RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
-cargo deny check
-cargo machete
-
-# 组合与生成物
-zk validate
-zk compose --edition personal --profile default --channel official --check
-# 非基线版不支持 --check；企业组合用 write compose + cargo check 验证
-# zk api --edition ... --check  # 未实现（backlog，见 docs/24 §3）
-zk capability --check
-zk docs --check
-python3 scripts/review-check.py
-zk db lock --check
-cargo test --workspace export_schema && git diff --exit-code
-bash scripts/schema-check.sh
-```
-
-**完成判据**：对应命令在 CI 绿 + 证据文件存在 + 可复现；模型自述不算。
+**完成判据**：对应命令在 CI 绿 + 证据文件存在 + 可复现；模型自述不算。当前版本/残余限制见 `KNOWN-LIMITATIONS.md`。
 
 ## 7. Code style
 
@@ -297,10 +307,18 @@ bash scripts/schema-check.sh
 
 ## 12. 当前 TODO / 已知未决
 
-- macOS 公证：**本地先测**，证书后配，CI 先就绪（ADR-037）。
-- S0：P2（WASM）原型完成但**证据未归档**（M0 前补跑 `build.sh` + `golden/run.py` 并存 `target/evidence/`）；P1 双 app 组合、P3 认证+JWT、P4 OEM submodule CI、P5 迁移不可变、P6 管理台包化待做（S0 阻塞 M0，见 `docs/12`）。
-- 实现细节待定：统一索引 `docs/15` §C（T1–T21），不阻塞 spec 编写与机制 spike；实现前在对应 milestone spec 冻结。
-- 复用/去重门禁：能力索引、路径/import 检查、克隆检测与 baseline，M0 落地（`25`、T20/T21）。
+- 发布：`1.0.0-rc.1` 已完成本地验证（`CHANGELOG.md`、`docs/37`）；待远端 CI（hosted runner）实跑、
+  tag `v1.0.0-rc.1` release 产出真实三平台包/镜像/SBOM/SHA256SUMS；`1.0.0` 正式版需 rc 验收 + 远端通过后由用户确认。
+- 环境阻塞项（**UNVERIFIED**）：Docker 镜像构建/导入、三平台安装包、macOS 公证（证书后，ADR-037）、
+  Windows 真机（不签名，ADR-033）、真实 provider/媒体/embedding 在线调用、500 用户压测、hosted-runner CI
+  —— 唯一真源 `KNOWN-LIMITATIONS.md` §2。
+- M6 残余：安全 13 项外部工具/威胁模型评审、PITR/WAL 备份、Docker 升级/回滚 drill、可复现构建覆盖、
+  性能预算部分项；M6 acceptance 仍 `blocked`（`specs/changes/2026-10-30-hardening-release/acceptance.md`）。
+- 功能残余（后续 spec）：agent/rig 接线（usage 独立事件、`messages_in` 回放、run-state/telemetry/effect、
+  ModelCatalog 上下文窗口/压缩）、工具 partial（terminal 多会话、pwsh-persistent、goal round driver、
+  ralph fresh-context、agent-team implemented）；口径见 `docs/38` §5.4。
+- personal 组合 `apps/server` 目标裁剪：由 A18 生成器任务实现；验收前不得声称已裁剪（R8.2）。
+- 实现细节待定：统一索引 `docs/15` §C（T1–T21），不阻塞 spec 编写；实现前在对应 milestone spec 冻结。
 - 已拍板（v3.2）：余额=企业配额、不做开票/收款、OEM 代码自研、Powered by OEM 默认隐藏、不做 DPA、暂不定义 RPO/RTO、安全内部评审（D60–D65）。
 - 已定清单：`docs/15-open-questions.md`（D1–D67）；决策理由：`docs/13-risks-and-adr.md`；`docs/17-v3.1-decisions.md` 是历史存档，不作依据。
 

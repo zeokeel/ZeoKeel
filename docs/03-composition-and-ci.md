@@ -367,36 +367,36 @@ $ python3 resolve.py hardened && cargo build --offline  # ok，但 Cargo.lock �
 
 ### 6.1 流水线
 
-```yaml
+```text
 stages: validate → compose → build → test → matrix → package
-
-> **实现状态（2026-10-31，适用于全文）**：`zk api`（routes≥manifest 生成 api-catalog/openapi/permissions）、
-> `zk lock`/`zk verify-lock`（组合锁）、`zk metadata snapshot` **尚未实现**，因此不在当前 CI 命令中；
-> 上面示例保留为 M0 之后的计划形态。当前可执行门禁见 `AGENTS.md` §6 与 `.github/workflows/ci.yml`。
-
-jobs:
-  manifests:        zk validate                       # 含契约唯一性（按 package id/source，fail closed）
-  drift:            zk compose --edition personal --profile default --channel official --check
-                    zk capability --check
-                    zk docs --check
-                    zk db lock --check
-                    cargo test --workspace export_schema && git diff --exit-code
-                    bash scripts/schema-check.sh
-  rust:             cargo nextest run --workspace --locked   # default 锁
-  frontend:         pnpm -r typecheck && pnpm -r test:unit && pnpm build
-  contracts:        cargo test -p zk-contract-testkit    # 每个实现的符合性套件
-  matrix-os:        strategy: matrix.os = [ubuntu, macos, windows]   # M0 起就跑 cargo check
-  matrix:           strategy: matrix.profile = [default, mock, minimal, hardened]
-                    strategy: matrix.channel = [official, beta, oem-demo]
-                    per profile/channel: compose → cargo build --offline
-                                 → verify-dist → Playwright(e2e) → 真应用冒烟
-  swap:             strategy: matrix.swap = 生成的换包列表（见 6.2）
-  external:         vendor/git 源 fixture 构建 + 负向测试（M0 只做 vendor 形态，见 6.5）
-  negatives:        缺角色 / 重复 singleton / 契约两个 package id / 生成物手改 均应失败
-  supply-chain:     cargo-deny + cargo-audit + pnpm audit + SBOM + 可复现构建校验
 ```
 
+**计划形态 → 当前实际执行（2026-10-31 真值）**
+
+| 阶段（目标形态） | 目标内容 | 当前实际执行 | 状态 |
+| --- | --- | --- | --- |
+| validate | `zk validate`（含契约唯一性，fail closed） | `.github/workflows/ci.yml:39`；`release.yml:52-152` 版本门 | CI |
+| drift | `zk compose --check` / `zk capability --check` / `zk docs --check` / `zk db lock --check` / `export_schema` + `git diff` / `schema-check.sh` | `.github/workflows/ci.yml:39-52` | CI |
+| rust | 计划 `cargo nextest --locked`；当前 `cargo fmt/clippy/test/doc` | `.github/workflows/ci.yml:36,53,57,58-61` | CI（nextest UNVERIFIED，见 `18` §7.2） |
+| frontend | `pnpm -r typecheck/lint/test:unit/build` | `.github/workflows/ci.yml:80-90` | CI |
+| contracts | 每实现 conformance 套件（`zk-contract-testkit`） | `cargo test --workspace`（`.github/workflows/ci.yml:57`）覆盖单包/conformance 测试；独立 contract job 未接线 | CI（部分） |
+| matrix-os | 三平台 `cargo check` | PR 仅 ubuntu；三平台真实构建只在 tag 发布时（`.github/workflows/release.yml:207-295`） | 部分 UNVERIFIED |
+| matrix profile/channel | compose → `cargo build --offline` → `verify-dist` → Playwright → 冒烟 | 基线 personal 与 enterprise 组合已跑（`ci.yml:39-46,62-65,88-90`）；`--offline`、多 profile/channel 矩阵未接线 | 部分 UNVERIFIED |
+| swap | 换包矩阵（§6.2） | `zk diff` 未实现（§4 backlog），无 swap-matrix job | UNVERIFIED |
+| external | vendor/git 源 fixture 构建 + 负向测试（§6.5） | 未接线 | UNVERIFIED |
+| negatives | 缺角色 / 重复 singleton / 契约双 id / 手改生成物均应失败 | `zk validate` / `zk compose --check` 等（`ci.yml:39-46`）；dist 负向测试 `release.yml:360`（`build-dist --self-test`） | CI（部分） |
+| supply-chain | `cargo deny/audit/machete/geiger` + `pnpm audit` + SBOM + 可复现构建 | `security.yml:34-52`；SBOM `ci.yml:287-289`、`release.yml:335`；可复现构建脚本未进 CI | CI（可复现构建 UNVERIFIED） |
+| a11y | axe 矩阵（client/admin/portal） | `ci.yml:199,201`（经 `scripts/login-e2e.sh` / `scripts/admin-e2e.sh`） | CI |
+| e2e | m1/agent/schedule/login/admin/apps/updates/oem/client-upgrade | `ci.yml:108,110,120,149,151,153,199,201,221,248` | CI |
+
+> 负向用例中"缺 required 角色 / 重复 singleton / 契约两个 package id / 生成物手改"由 `zk validate`、
+> `zk compose --check`、`zk capability --check` 在 PR 执行；其判定逻辑属于 `zk` 自身测试，不在本文件重复断言。
+
 ### 6.2 换包矩阵（swap matrix）——"实现类包都能被替换"的证明
+
+> **实现状态（2026-10-31）**：**UNVERIFIED**。`zk diff` 未实现（§4 backlog），CI 没有 swap-matrix job；
+> 当前替代验证只有基线/enterprise 组合的 `cargo check`（`.github/workflows/ci.yml:62-65`）与单包测试。
+> 本节的算法保留为目标形态，不构成"已执行门禁"。
 
 算法：
 
@@ -421,6 +421,9 @@ for role in index.roles where role.swap_required:      # zk.toml 声明；清单
 - 超预算等价于机制失败，要优化（缓存/并行/子集），而不是接受。
 
 ### 6.3 生成物 diff 的最小性（防隐性耦合）
+
+> **实现状态（2026-10-31）**：**UNVERIFIED**。没有生成物 diff 最小性断言的工具/CI 步骤；`zk diff` 未实现。
+> 当前只靠 `zk compose --check` 防手改生成物（`ci.yml:40`），不防"换 A 却意外换进 B"。
 
 对换包前后的生成物做 diff，断言**只有被替换的那几行变化**：
 

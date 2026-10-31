@@ -28,7 +28,9 @@
 | 7 首个员工用户 | 可选 | 至少 1 个，用于验收 | 用户名冲突 |
 | 8 连通性自检 | 是 | 网关 → 上游、门户、客户端清单、审计写入 | 任一项失败不完成 |
 
-验收脚本：`scripts/day0-check.sh`【scaffold 后】（登录→bootstrap→一次非流式/流式对话→扣费→审计可查）；结果写 `evidence/day0-*.log`。
+验收脚本（**Day-0 一次性向导脚本未实现，backlog/UNVERIFIED**）：当前用 `scripts/login-e2e.sh` + `scripts/srv-auth-test.sh`
+覆盖登录→bootstrap→网关对话→计费→审计链路（本地真实 PG），整链 Day-0 验收标 UNVERIFIED，见 `KNOWN-LIMITATIONS.md` §2；
+若后续实现脚本，结果写 `evidence/day0-*.log`。
 
 ## 2. 拓扑与资源
 

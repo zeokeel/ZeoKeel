@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "acme-brand"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-ui",
 ]
@@ -8292,7 +8292,7 @@ dependencies = [
 
 [[package]]
 name = "zk"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "anyhow",
  "serde",
@@ -8303,91 +8303,91 @@ dependencies = [
 
 [[package]]
 name = "zk-admin-admin-apps"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-admin-ui",
 ]
 
 [[package]]
 name = "zk-admin-admin-audit"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-admin-ui",
 ]
 
 [[package]]
 name = "zk-admin-admin-connectors"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-admin-ui",
 ]
 
 [[package]]
 name = "zk-admin-admin-jobs"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-admin-ui",
 ]
 
 [[package]]
 name = "zk-admin-admin-pricing"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-admin-ui",
 ]
 
 [[package]]
 name = "zk-admin-admin-settings"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-admin-ui",
 ]
 
 [[package]]
 name = "zk-admin-admin-skills"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-admin-ui",
 ]
 
 [[package]]
 name = "zk-admin-admin-usage"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-admin-ui",
 ]
 
 [[package]]
 name = "zk-admin-admin-users"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-admin-ui",
 ]
 
 [[package]]
 name = "zk-admin-admin-wallet"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-admin-ui",
 ]
 
 [[package]]
 name = "zk-admin-shell"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-admin-ui",
 ]
 
 [[package]]
 name = "zk-admin-ui-kit"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-admin-ui",
 ]
 
 [[package]]
 name = "zk-agent-loop"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-agent",
@@ -8397,7 +8397,7 @@ dependencies = [
 
 [[package]]
 name = "zk-agent-rig"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "futures",
  "rig-agent",
@@ -8421,7 +8421,7 @@ dependencies = [
 
 [[package]]
 name = "zk-bootstrap"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "thiserror 1.0.69",
@@ -8432,7 +8432,7 @@ dependencies = [
 
 [[package]]
 name = "zk-cap-audio"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "thiserror 1.0.69",
  "zk-kit-media",
@@ -8440,11 +8440,11 @@ dependencies = [
 
 [[package]]
 name = "zk-cap-hooks"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 
 [[package]]
 name = "zk-cap-image"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "thiserror 1.0.69",
  "zk-kit-media",
@@ -8452,7 +8452,7 @@ dependencies = [
 
 [[package]]
 name = "zk-cap-rerank"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "thiserror 1.0.69",
  "zk-kit-media",
@@ -8460,7 +8460,7 @@ dependencies = [
 
 [[package]]
 name = "zk-cap-transcription"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "thiserror 1.0.69",
  "zk-kit-media",
@@ -8468,7 +8468,7 @@ dependencies = [
 
 [[package]]
 name = "zk-cap-vector"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -8478,7 +8478,7 @@ dependencies = [
 
 [[package]]
 name = "zk-client-auth"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "reqwest 0.12.28",
@@ -8491,7 +8491,7 @@ dependencies = [
 
 [[package]]
 name = "zk-client-update-github"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "reqwest 0.12.28",
@@ -8503,7 +8503,7 @@ dependencies = [
 
 [[package]]
 name = "zk-composed"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "rig-core",
  "serde_json",
@@ -8588,7 +8588,7 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-admin-ui"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -8597,7 +8597,7 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-agent"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -8609,7 +8609,7 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-app"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -8618,7 +8618,7 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-auth"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -8627,7 +8627,7 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-auth-client"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -8636,7 +8636,7 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-config"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -8646,7 +8646,7 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-connector"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -8655,7 +8655,7 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-content"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -8664,7 +8664,7 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-gateway"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -8673,7 +8673,7 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-ipc"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -8685,11 +8685,11 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-kernel"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 
 [[package]]
 name = "zk-contract-llm"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde_json",
@@ -8698,7 +8698,7 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-package"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -8707,16 +8707,18 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-server"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
  "serde_json",
+ "zk-contract-connector",
+ "zk-contract-gateway",
 ]
 
 [[package]]
 name = "zk-contract-session"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -8727,7 +8729,7 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-skill"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -8736,7 +8738,7 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-tool"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -8746,7 +8748,7 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-ui"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -8756,7 +8758,7 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-update"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -8765,7 +8767,7 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-user"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -8774,7 +8776,7 @@ dependencies = [
 
 [[package]]
 name = "zk-contract-wallet"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -8783,7 +8785,7 @@ dependencies = [
 
 [[package]]
 name = "zk-desktop"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -8815,7 +8817,7 @@ dependencies = [
 
 [[package]]
 name = "zk-kit-approval"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -8823,21 +8825,21 @@ dependencies = [
 
 [[package]]
 name = "zk-kit-content"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "sha2 0.10.9",
 ]
 
 [[package]]
 name = "zk-kit-events"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-agent",
 ]
 
 [[package]]
 name = "zk-kit-extractor"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -8845,7 +8847,7 @@ dependencies = [
 
 [[package]]
 name = "zk-kit-jobs"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -8854,7 +8856,7 @@ dependencies = [
 
 [[package]]
 name = "zk-kit-media"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "futures",
  "rig-core",
@@ -8864,14 +8866,14 @@ dependencies = [
 
 [[package]]
 name = "zk-kit-questions"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "zk-kit-server"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "argon2",
  "axum",
@@ -8889,14 +8891,14 @@ dependencies = [
 
 [[package]]
 name = "zk-kit-session"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-session",
 ]
 
 [[package]]
 name = "zk-kit-subagent"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -8905,7 +8907,7 @@ dependencies = [
 
 [[package]]
 name = "zk-kit-tools"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "regex",
  "serde_json",
@@ -8914,7 +8916,7 @@ dependencies = [
 
 [[package]]
 name = "zk-kit-wasm"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "rusqlite",
  "serde",
@@ -8928,7 +8930,7 @@ dependencies = [
 
 [[package]]
 name = "zk-llm-gateway"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "futures",
@@ -8941,14 +8943,14 @@ dependencies = [
 
 [[package]]
 name = "zk-llm-mock"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-llm",
 ]
 
 [[package]]
 name = "zk-llm-openai-compatible"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -8958,7 +8960,7 @@ dependencies = [
 
 [[package]]
 name = "zk-llm-rig"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "rig-core",
  "zk-contract-llm",
@@ -8966,7 +8968,7 @@ dependencies = [
 
 [[package]]
 name = "zk-server"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "serde_json",
@@ -8995,7 +8997,7 @@ dependencies = [
 
 [[package]]
 name = "zk-srv-app-db"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "rusqlite",
  "serde",
@@ -9006,7 +9008,7 @@ dependencies = [
 
 [[package]]
 name = "zk-srv-app-runtime"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -9016,7 +9018,7 @@ dependencies = [
 
 [[package]]
 name = "zk-srv-apps"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -9037,7 +9039,7 @@ dependencies = [
 
 [[package]]
 name = "zk-srv-audit"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "chrono",
@@ -9052,7 +9054,7 @@ dependencies = [
 
 [[package]]
 name = "zk-srv-auth-local"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "chrono",
@@ -9067,7 +9069,7 @@ dependencies = [
 
 [[package]]
 name = "zk-srv-connectors"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "serde",
@@ -9080,7 +9082,7 @@ dependencies = [
 
 [[package]]
 name = "zk-srv-content"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "serde",
@@ -9095,7 +9097,7 @@ dependencies = [
 
 [[package]]
 name = "zk-srv-gateway"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "chrono",
@@ -9113,7 +9115,7 @@ dependencies = [
 
 [[package]]
 name = "zk-srv-http"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "argon2",
  "axum",
@@ -9137,7 +9139,7 @@ dependencies = [
 
 [[package]]
 name = "zk-srv-jobs"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "chrono",
@@ -9153,7 +9155,7 @@ dependencies = [
 
 [[package]]
 name = "zk-srv-pricing"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "chrono",
@@ -9168,7 +9170,7 @@ dependencies = [
 
 [[package]]
 name = "zk-srv-settings"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "chrono",
@@ -9183,7 +9185,7 @@ dependencies = [
 
 [[package]]
 name = "zk-srv-skills"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "serde",
@@ -9198,7 +9200,7 @@ dependencies = [
 
 [[package]]
 name = "zk-srv-updates"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -9216,7 +9218,7 @@ dependencies = [
 
 [[package]]
 name = "zk-srv-users"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "chrono",
@@ -9231,7 +9233,7 @@ dependencies = [
 
 [[package]]
 name = "zk-srv-wallet"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "axum",
  "chrono",
@@ -9246,7 +9248,7 @@ dependencies = [
 
 [[package]]
 name = "zk-store-session-sqlite"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "dirs 6.0.0",
  "rusqlite",
@@ -9258,7 +9260,7 @@ dependencies = [
 
 [[package]]
 name = "zk-store-settings-json"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "dirs 6.0.0",
  "serde_json",
@@ -9267,7 +9269,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-agent-team"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9275,7 +9277,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-ask-user"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-agent",
@@ -9286,7 +9288,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-bash"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9296,7 +9298,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-bash-persistent"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9305,7 +9307,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-cordis"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9313,7 +9315,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-extract"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9322,7 +9324,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-fs"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9331,7 +9333,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-fs-edit"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9340,7 +9342,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-fs-search"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9349,7 +9351,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-fs-write"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9358,7 +9360,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-glob"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9367,7 +9369,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-goal"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9376,7 +9378,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-grep"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9385,7 +9387,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-job-kill"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9394,7 +9396,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-job-list"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9403,7 +9405,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-job-output"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9412,7 +9414,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-present"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9421,7 +9423,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-pwsh"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9430,7 +9432,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-pwsh-persistent"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9438,7 +9440,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-ralph"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9447,7 +9449,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-read-document"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "lopdf",
  "serde_json",
@@ -9458,7 +9460,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-read-image"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "base64 0.22.1",
  "serde_json",
@@ -9468,7 +9470,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-schedule"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9477,7 +9479,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-session-query"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-session",
@@ -9488,7 +9490,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-skill"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9497,7 +9499,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-subagent"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9506,7 +9508,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-subagent-control"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9515,7 +9517,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-subagent-fork"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9524,7 +9526,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-terminal"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9533,7 +9535,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-todo"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9542,7 +9544,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-web-fetch"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "reqwest 0.12.28",
  "serde_json",
@@ -9552,7 +9554,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-web-search"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "reqwest 0.12.28",
  "serde_json",
@@ -9561,7 +9563,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-workflow"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9570,7 +9572,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-working-directory"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
@@ -9579,7 +9581,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-workspace-dependencies"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "toml 0.8.2",
@@ -9589,7 +9591,7 @@ dependencies = [
 
 [[package]]
 name = "zk-tool-worktree"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "toml 0.8.2",
@@ -9599,84 +9601,84 @@ dependencies = [
 
 [[package]]
 name = "zk-ui-apps"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-ui",
 ]
 
 [[package]]
 name = "zk-ui-chat"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-ui",
 ]
 
 [[package]]
 name = "zk-ui-commands"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-ui",
 ]
 
 [[package]]
 name = "zk-ui-connectors"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-ui",
 ]
 
 [[package]]
 name = "zk-ui-inspector"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-ui",
 ]
 
 [[package]]
 name = "zk-ui-kit"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-ui",
 ]
 
 [[package]]
 name = "zk-ui-login"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-ui",
 ]
 
 [[package]]
 name = "zk-ui-sessions"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-ui",
 ]
 
 [[package]]
 name = "zk-ui-settings"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-ui",
 ]
 
 [[package]]
 name = "zk-ui-settings-provider"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-ui",
 ]
 
 [[package]]
 name = "zk-ui-shell"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-ui",
 ]
 
 [[package]]
 name = "zk-ui-skills"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-ui",
 ]

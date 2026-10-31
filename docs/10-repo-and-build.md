@@ -122,7 +122,7 @@ profile 在 edition 解析结果之上做环境覆盖（`profiles/base.toml` →
 bash scripts/bootstrap.sh                 # 系统库 + pnpm + cargo check + 生成
 bash scripts/dev-desktop.sh               # Tauri dev + vite HMR + 变更自动 zk compose
 bash scripts/dev-server.sh                # 服务端 + 临时 PG（compose 或 testcontainers）
-bash scripts/dev-all.sh                   # 服务端 + 客户端联调（企业版登录/网关）
+# bash scripts/dev-all.sh                 # 未实现/backlog；企业版登录/网关联调改用 scripts/login-e2e.sh / admin-e2e.sh
 bash scripts/check.sh                     # validate + compose --check + clippy + typecheck
 bash scripts/test.sh [--edition E] [--profile P]
 ```

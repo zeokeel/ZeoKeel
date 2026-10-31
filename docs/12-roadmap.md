@@ -4,11 +4,12 @@
 > M0–M6 的退出条件是**可执行断言**，不是"感觉做完了"；S0 是 spike，退出物 = ADR 结论 + 可重跑命令 + 证据路径。
 > 范围：个人版 → 企业版核心 → 内容平台 → 应用中心 → OEM/交付 → 加固。
 
-> **状态（2026-10-31 最终审计）**：本文件是**历史计划与退出条件清单**，不是当前施工状态。
-> M0–M4 已完成（证据见 `specs/changes/2026-10-30-*/acceptance.md` 与 `docs/reviews/`）；
-> M5/M6 仅软件/本地可执行部分完成，Docker 镜像、多平台安装包、公证、真实私有 OEM 索引等
-> 明确标 **UNVERIFIED**；下文 M2/M5/M6 未勾选条目保留为历史计划，不得当作当前 false-green。
-> 当前可执行门禁与 backog 状态以 `AGENTS.md` §6、`docs/24` §3/§4、`docs/reviews/2026-10-31-round12-verification.md` 为准。
+> **状态（2026-10-31，目标版本 `1.0.0-rc.1`）**：本文件是**历史计划与退出条件清单**，不是当前施工状态。
+> M0–M5 已实现并在本地验证（证据 `specs/changes/2026-10-30-*/acceptance.md`、`docs/reviews/`、`target/evidence/release-check/`）；
+> M6 仅部分完成：本地可执行项（安全审计脚本、备份/故障注入、性能/可复现基线）有证据，Docker 镜像、多平台安装包、
+> 公证、真机、真实 provider、500 用户压测、hosted-runner CI 等标 **UNVERIFIED**，M6 acceptance 仍 `blocked`。
+> `1.0.0` 正式版需 rc 验收 + 远端 CI/release 实跑通过后由用户确认；残余项唯一真源 `KNOWN-LIMITATIONS.md`。
+> 当前可执行门禁以 `AGENTS.md` §6 为准；下文 M2/M5/M6 未勾选条目保留为历史计划，不得当作当前 false-green。
 
 ## 总览
 
