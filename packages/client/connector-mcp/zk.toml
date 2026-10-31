@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/connector-mcp"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "MCP client transport (stdio JSON-RPC + plain-HTTP POST) exposing connector tools to the local agent"
+
+[role]
+name = "tool.mcp"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-connector-mcp" }

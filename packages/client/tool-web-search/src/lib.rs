@@ -1,7 +1,60 @@
-//! Web search (DuckDuckGo instant answer).
+//! Web search (DuckDuckGo-compatible instant-answer endpoint).
+//!
+//! Endpoint resolution is **explicit settings > `ZEOKEEL_SEARCH_URL` > built-in
+//! default** (B11): the host publishes `AppSettings.web_search` through the
+//! config contract's non-secret [`zk_contract_config::RuntimeSettings`] snapshot;
+//! the env var stays the fallback for fresh installs / direct embedding. The
+//! section carries no credential (keyless endpoint) and is https-only.
 #![forbid(unsafe_code)]
 use std::time::Duration;
 use zk_contract_tool::{Tool, ToolError, ToolSpec, TurnContext};
+
+/// Built-in DuckDuckGo instant-answer endpoint.
+pub const DEFAULT_SEARCH_URL: &str = "https://api.duckduckgo.com/";
+/// Built-in request timeout (matches `WebSearchSettings::default`).
+pub const DEFAULT_TIMEOUT_MS: u64 = 15_000;
+
+/// The effective endpoint and timeout for one search call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchEndpoint {
+    /// Absolute https endpoint base URL.
+    pub base_url: String,
+    /// Request timeout in milliseconds.
+    pub timeout_ms: u64,
+}
+
+/// Resolve the endpoint: published settings > env > built-in default.
+///
+/// A blank `web_search.base_url` means "not overridden" (the UI's empty field),
+/// so the env/default fallback still applies. The timeout comes from the same
+/// section when published; there is no env fallback for it.
+#[must_use]
+pub fn resolve_endpoint() -> SearchEndpoint {
+    let published = zk_contract_config::runtime_settings()
+        .ok()
+        .flatten()
+        .and_then(|snapshot| snapshot.web_search);
+    let settings_base = published
+        .as_ref()
+        .map(|settings| settings.base_url.trim().to_owned())
+        .filter(|base| !base.is_empty());
+    let base_url = settings_base
+        .or_else(|| {
+            std::env::var("ZEOKEEL_SEARCH_URL")
+                .ok()
+                .map(|value| value.trim().to_owned())
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or_else(|| DEFAULT_SEARCH_URL.to_owned());
+    let timeout_ms = published.map_or(DEFAULT_TIMEOUT_MS, |settings| {
+        settings.effective_timeout_ms()
+    });
+    SearchEndpoint {
+        base_url,
+        timeout_ms,
+    }
+}
+
 pub struct WebSearchTool;
 #[must_use]
 pub fn tool() -> WebSearchTool {
@@ -33,9 +86,8 @@ impl Tool for WebSearchTool {
             .get("query")
             .and_then(serde_json::Value::as_str)
             .ok_or_else(|| ToolError::InvalidArgs("query".to_owned()))?;
-        let base = std::env::var("ZEOKEEL_SEARCH_URL")
-            .unwrap_or_else(|_| "https://api.duckduckgo.com/".to_owned());
-        let url = reqwest::Url::parse(&base)
+        let endpoint = resolve_endpoint();
+        let url = reqwest::Url::parse(&endpoint.base_url)
             .map_err(|error| ToolError::InvalidArgs(error.to_string()))?;
         if url.scheme() != "https" {
             return Err(ToolError::Denied(
@@ -43,7 +95,7 @@ impl Tool for WebSearchTool {
             ));
         }
         let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(15))
+            .timeout(Duration::from_millis(endpoint.timeout_ms))
             .build()
             .map_err(|error| ToolError::Io(error.to_string()))?;
         let response = client

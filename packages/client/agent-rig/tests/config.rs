@@ -234,6 +234,8 @@ fn desktop_ipc_apply_sequence_keeps_env_authoritative() {
         zk_contract_config::set_runtime_settings(&RuntimeSettings {
             agent: (settings.agent != AgentSettings::default()).then(|| settings.agent.clone()),
             tools: (settings.tools != ToolSettings::default()).then_some(settings.tools),
+            web_search: (settings.web_search != zk_contract_config::WebSearchSettings::default())
+                .then(|| settings.web_search.clone()),
         })
         .unwrap();
     }
@@ -277,4 +279,83 @@ fn desktop_ipc_apply_sequence_keeps_env_authoritative() {
     zk_contract_agent::clear_default_agent_settings().unwrap();
     std::env::remove_var("ZEOKEEL_AGENT_MAX_STEPS");
     std::env::remove_var("ZEOKEEL_AGENT_TEMPERATURE");
+}
+
+struct CollectSink(std::sync::Mutex<Vec<zk_contract_agent::AgentEvent>>);
+
+impl zk_contract_agent::EventSink for CollectSink {
+    fn emit(&self, event: zk_contract_agent::AgentEvent) {
+        self.0.lock().expect("sink lock").push(event);
+    }
+}
+
+#[test]
+fn usage_event_is_emitted_once_before_turn_completed() {
+    let model = MockCompletionModel::from_turns([MockTurn::text("done").with_usage(usage(7, 3))]);
+    let agent = RigAgent::new(model.into(), vec![Arc::new(ReadTool)])
+        .unwrap()
+        .with_streaming(false);
+    let sink = CollectSink(std::sync::Mutex::new(Vec::new()));
+    let reply = agent
+        .run_stream_in(&context(), "turn-1", "hi", &sink)
+        .expect("turn");
+    assert_eq!(reply.usage.expect("usage in reply").input_tokens, 7);
+    let events = sink.0.lock().expect("events");
+    let usage_events: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            zk_contract_agent::AgentEvent::Usage { usage } => Some(*usage),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(usage_events.len(), 1, "exactly one Usage event per turn");
+    assert_eq!(usage_events[0].input_tokens, 7);
+    assert_eq!(usage_events[0].output_tokens, 3);
+    assert_eq!(usage_events[0].total_tokens, 10);
+    let usage_index = events
+        .iter()
+        .position(|event| matches!(event, zk_contract_agent::AgentEvent::Usage { .. }))
+        .expect("usage position");
+    let completed_index = events
+        .iter()
+        .position(|event| matches!(event, zk_contract_agent::AgentEvent::TurnCompleted { .. }))
+        .expect("completed position");
+    assert!(
+        usage_index < completed_index,
+        "Usage precedes TurnCompleted"
+    );
+}
+
+#[test]
+fn replay_history_is_forwarded_to_the_rig_request() {
+    use zk_contract_agent::{HistoryMessage, HistoryRole};
+    let model = MockCompletionModel::from_turns([MockTurn::text("ok").with_usage(usage(1, 1))]);
+    let agent = RigAgent::new(model.clone().into(), vec![Arc::new(ReadTool)])
+        .unwrap()
+        .with_streaming(false);
+    let history = vec![
+        HistoryMessage {
+            role: HistoryRole::User,
+            content: "earlier question".to_owned(),
+        },
+        HistoryMessage {
+            role: HistoryRole::Assistant,
+            content: "earlier answer".to_owned(),
+        },
+    ];
+    let sink = CollectSink(std::sync::Mutex::new(Vec::new()));
+    agent
+        .run_stream_in_shared_with_history(&context(), "turn-h", "next", &history, Arc::new(sink))
+        .expect("turn with history");
+    let request = model.requests().first().cloned().expect("request");
+    let rendered = format!("{:?}", request.chat_history);
+    assert!(
+        rendered.contains("earlier question"),
+        "history user message sent: {rendered}"
+    );
+    assert!(
+        rendered.contains("earlier answer"),
+        "history assistant message sent: {rendered}"
+    );
+    assert!(rendered.contains("next"), "current prompt sent: {rendered}");
 }

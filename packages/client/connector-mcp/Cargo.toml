@@ -1,0 +1,14 @@
+[package]
+name = "zk-connector-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+reqwest = { workspace = true }
+serde_json = { workspace = true }
+zk-contract-connector = { path = "../../contracts/connector" }
+zk-contract-tool = { path = "../../contracts/tool" }
+
+[lints]
+workspace = true

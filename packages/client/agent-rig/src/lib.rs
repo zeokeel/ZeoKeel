@@ -6,7 +6,8 @@ mod hooks;
 
 pub use config::{
     default_agent_config, set_default_agent_config, AgentRuntimeConfig, CompletionConfig,
-    HooksConfig, MemoryConfig, PromptCache, ReasoningEffort, ToolChoiceConfig,
+    ContextConfig, EffectsConfig, HooksConfig, MemoryConfig, PromptCache, ReasoningEffort,
+    ToolChoiceConfig,
 };
 pub use hooks::{HookEvent, HookSink, UsageSnapshot};
 
@@ -19,7 +20,7 @@ use futures::StreamExt;
 use rig_agent::agent::MultiTurnStreamItem;
 use rig_agent::streaming::{Item, StreamEvent};
 use rig_agent::AgentBuilder;
-use rig_core::completion::message::{AssistantContent, ToolCall};
+use rig_core::completion::message::{AssistantContent, Message as RigMessage, ToolCall};
 use rig_core::completion::{CacheRetention, Effort, GenerationOptions};
 use rig_core::message::{ToolChoice, ToolName};
 use rig_core::operation::Completion;
@@ -27,10 +28,12 @@ use rig_core::tool::{DynamicTool, ToolExecutionError, ToolOutput};
 use rig_core::DynModel;
 use zk_contract_agent::{
     Agent, AgentError, AgentEvent, AgentReply, AgentUsage, ApprovalDecision, EventSink,
-    ToolCallRecord,
+    HistoryMessage, HistoryRole, ToolCallRecord,
 };
 use zk_contract_config::AgentSettings;
 use zk_contract_tool::{ApprovalGate, Tool, TurnContext};
+
+mod effect_log;
 
 /// Maximum model/tool steps per turn.
 pub const MAX_STEPS: usize = 50;
@@ -452,6 +455,7 @@ impl RigAgent {
         context: &TurnContext,
         turn_id: &str,
         input: &str,
+        history: &[HistoryMessage],
         sink: &Arc<dyn EventSink>,
     ) -> Result<AgentReply, AgentError> {
         let config = self.effective_config();
@@ -490,7 +494,7 @@ impl RigAgent {
             .map_err(|_| AgentError::Invalid("model lock poisoned".to_owned()))?;
         let builder = AgentBuilder::new(model)
             .name("zeokeel")
-            .preamble(preamble)
+            .preamble(preamble.clone())
             .context(format!(
                 "Workspace: {}\nConversation: {}",
                 context.workspace_root, context.conversation_id
@@ -498,30 +502,75 @@ impl RigAgent {
             .default_max_turns(max_steps)
             .dynamic_tools(tools);
         let mut builder = apply_completion_config(builder, &config.completion);
-        if let Some(dir) = config.memory_dir() {
-            std::fs::create_dir_all(&dir)
-                .map_err(|error| AgentError::Invalid(format!("memory dir: {error}")))?;
-            let store = rig_memory::DirStore::open(&dir)
-                .map_err(|error| AgentError::Invalid(format!("memory store: {error}")))?;
-            builder = builder
-                .memory(store)
-                .conversation(context.conversation_id.clone());
-        } else if config.memory.enabled {
-            hooks::emit_hook(
-                &hooks_config,
-                hook_sink.as_ref(),
-                &HookEvent::MemoryUnavailable {
-                    turn_id: turn_id.to_owned(),
-                    reason: "no memory directory configured (set agent.memory.dir or $ZEOKEEL_HOME/agent-memory)"
-                        .to_owned(),
-                },
+        if history.is_empty() {
+            if let Some(dir) = config.memory_dir() {
+                std::fs::create_dir_all(&dir)
+                    .map_err(|error| AgentError::Invalid(format!("memory dir: {error}")))?;
+                let store = rig_memory::DirStore::open(&dir)
+                    .map_err(|error| AgentError::Invalid(format!("memory store: {error}")))?;
+                builder = builder
+                    .memory(store)
+                    .conversation(context.conversation_id.clone());
+            } else if config.memory.enabled {
+                hooks::emit_hook(
+                    &hooks_config,
+                    hook_sink.as_ref(),
+                    &HookEvent::MemoryUnavailable {
+                        turn_id: turn_id.to_owned(),
+                        reason: "no memory directory configured (set agent.memory.dir or $ZEOKEEL_HOME/agent-memory)"
+                            .to_owned(),
+                    },
+                );
+            }
+        } else {
+            // B8: the desktop passes `SessionStore::messages_in` as the single replay
+            // authority; rig-memory is skipped for this turn (see the prompt runner
+            // history below) so the model does not receive duplicate context.
+        }
+        if let Some(path) = config.effect_log_path() {
+            match effect_log::JsonlEffectRecorder::open(&path) {
+                Ok(recorder) => {
+                    builder = builder.record_to(recorder);
+                }
+                Err(error) => {
+                    eprintln!("agent-rig: effect log disabled ({error})");
+                }
+            }
+        }
+        let mut chat_history: Vec<RigMessage> = history.iter().map(history_rig_message).collect();
+        // B10 subset: enforce a prompt budget and deterministically drop the oldest
+        // history first; if even the prompt alone does not fit, refuse honestly.
+        let budget = config.prompt_budget_tokens();
+        let base_tokens = estimate_prompt_tokens(&format!(
+            "{preamble}\n\nWorkspace: {}\nConversation: {}\n\n{input}",
+            context.workspace_root, context.conversation_id
+        ));
+        let mut history_tokens = rig_memory::estimate_tokens(&chat_history);
+        let mut dropped = 0_usize;
+        while base_tokens.saturating_add(history_tokens) > budget {
+            if chat_history.is_empty() {
+                return Err(AgentError::Invalid(format!(
+                    "CONTEXT_WINDOW_EXCEEDED: prompt needs {base_tokens} tokens, budget is {budget}"
+                )));
+            }
+            chat_history.remove(0);
+            dropped = dropped.saturating_add(1);
+            history_tokens = rig_memory::estimate_tokens(&chat_history);
+        }
+        if dropped > 0 {
+            eprintln!(
+                "agent-rig: trimmed {dropped} oldest history message(s) to fit context budget {budget}"
             );
         }
         let agent = builder.build();
         let (text, usage) = if self.streaming {
             self.runtime
                 .block_on(async {
-                    let mut stream = agent.prompt(input).stream();
+                    let mut runner = agent.prompt(input);
+                    if !chat_history.is_empty() {
+                        runner = runner.history(chat_history.clone());
+                    }
+                    let mut stream = runner.stream();
                     let mut final_text: Option<String> = None;
                     let mut final_usage: Option<UsageSnapshot> = None;
                     while let Some(item) = stream.next().await {
@@ -556,7 +605,11 @@ impl RigAgent {
             self.runtime
                 .block_on(async move {
                     let future = async move {
-                        agent.prompt(input).await.map(|response| {
+                        let mut runner = agent.prompt(input);
+                        if !chat_history.is_empty() {
+                            runner = runner.history(chat_history.clone());
+                        }
+                        runner.await.map(|response| {
                             (
                                 response.output(),
                                 Some(UsageSnapshot::from(response.usage())),
@@ -588,6 +641,23 @@ impl RigAgent {
             tool_calls: calls,
             usage: agent_usage(self.last_usage()),
         })
+    }
+}
+
+/// Heuristic token estimate for prompt text (4 bytes/token, matching rig's counter scale).
+fn estimate_prompt_tokens(text: &str) -> u64 {
+    u64::try_from(text.len())
+        .unwrap_or(u64::MAX)
+        .checked_div(4)
+        .unwrap_or(0)
+        .saturating_add(1)
+}
+
+/// Convert one replayed contract history message into a rig chat message (B8).
+fn history_rig_message(message: &HistoryMessage) -> RigMessage {
+    match message.role {
+        HistoryRole::User => RigMessage::user(message.content.clone()),
+        HistoryRole::Assistant => RigMessage::assistant(message.content.clone()),
     }
 }
 
@@ -775,6 +845,17 @@ impl Agent for RigAgent {
         input: &str,
         sink: Arc<dyn EventSink>,
     ) -> Result<AgentReply, AgentError> {
+        self.run_stream_in_shared_with_history(context, turn_id, input, &[], sink)
+    }
+
+    fn run_stream_in_shared_with_history(
+        &self,
+        context: &TurnContext,
+        turn_id: &str,
+        input: &str,
+        history: &[HistoryMessage],
+        sink: Arc<dyn EventSink>,
+    ) -> Result<AgentReply, AgentError> {
         let config = self.config();
         let hooks_config = config.hooks.clone();
         let hook_sink = self.hook_sink.clone();
@@ -791,10 +872,13 @@ impl Agent for RigAgent {
             },
         );
         zk_kit_events::set_sink(Arc::clone(&sink));
-        let result = self.run_rig(context, turn_id, input, &sink);
+        let result = self.run_rig(context, turn_id, input, history, &sink);
         zk_kit_events::clear();
         match result {
             Ok(reply) if self.cancelled.load(Ordering::SeqCst) => {
+                if let Some(usage) = reply.usage {
+                    sink.emit(AgentEvent::Usage { usage });
+                }
                 sink.emit(AgentEvent::TurnCancelled);
                 hooks::emit_hook(
                     &hooks_config,
@@ -809,6 +893,11 @@ impl Agent for RigAgent {
                 Ok(reply)
             }
             Ok(reply) => {
+                // B7: one additive Usage event before the terminal event; usage is
+                // also kept in `reply.usage` for existing consumers.
+                if let Some(usage) = reply.usage {
+                    sink.emit(AgentEvent::Usage { usage });
+                }
                 sink.emit(AgentEvent::TurnCompleted {
                     reply: reply.clone(),
                 });
@@ -1121,12 +1210,30 @@ impl RigSubagentRunner {
     }
 }
 
-impl zk_kit_subagent::SubagentRunner for RigSubagentRunner {
-    fn run(&self, prompt: &str, context: &TurnContext, depth: usize) -> Result<String, String> {
+/// Child conversation id for a synchronous subagent round.
+///
+/// Non-fresh rounds keep the stable `<conv>-sub-<depth>` id (shared context);
+/// `run_fresh` (B4) appends the round sequence so ralph rounds never share memory.
+fn child_conversation_id(parent: &str, depth: usize, fresh: bool, seq: u64) -> String {
+    if fresh {
+        format!("{parent}-sub-{depth}-fresh-{seq}")
+    } else {
+        format!("{parent}-sub-{depth}")
+    }
+}
+
+impl RigSubagentRunner {
+    fn run_child(
+        &self,
+        prompt: &str,
+        context: &TurnContext,
+        depth: usize,
+        fresh: bool,
+    ) -> Result<String, String> {
         let child_depth = Self::check_depth(depth)?;
-        let (id, _seq) = Self::next_id(prompt, context, child_depth);
-        // Keep the synchronous child conversation id stable (`<conv>-sub-<depth>`).
-        let child_conversation_id = format!("{}-sub-{child_depth}", context.conversation_id);
+        let (id, seq) = Self::next_id(prompt, context, child_depth);
+        let child_conversation_id =
+            child_conversation_id(&context.conversation_id, child_depth, fresh, seq);
         let model = self.model.clone();
         let tools = self.tools.clone();
         let mut child_context = context.clone();
@@ -1151,6 +1258,21 @@ impl zk_kit_subagent::SubagentRunner for RigSubagentRunner {
         let result = joined.map_err(|_| "subagent thread panicked".to_owned())?;
         zk_kit_subagent::finish(&id_for_finish, result.is_ok());
         result
+    }
+}
+
+impl zk_kit_subagent::SubagentRunner for RigSubagentRunner {
+    fn run(&self, prompt: &str, context: &TurnContext, depth: usize) -> Result<String, String> {
+        self.run_child(prompt, context, depth, false)
+    }
+
+    fn run_fresh(
+        &self,
+        prompt: &str,
+        context: &TurnContext,
+        depth: usize,
+    ) -> Result<String, String> {
+        self.run_child(prompt, context, depth, true)
     }
 
     fn start(&self, prompt: &str, context: &TurnContext, depth: usize) -> Result<String, String> {
@@ -1803,6 +1925,22 @@ mod tests {
     }
 
     #[test]
+    fn fresh_child_conversation_ids_are_distinct_per_round() {
+        let first = super::child_conversation_id("conv", 1, true, 1);
+        let second = super::child_conversation_id("conv", 1, true, 2);
+        assert_ne!(
+            first, second,
+            "fresh rounds must not share a child conversation"
+        );
+        assert_eq!(first, "conv-sub-1-fresh-1");
+        assert_eq!(
+            super::child_conversation_id("conv", 1, false, 9),
+            "conv-sub-1",
+            "non-fresh run keeps the stable shared child id"
+        );
+    }
+
+    #[test]
     fn completion_config_reaches_the_rig_request() {
         let model = MockCompletionModel::from_turns([MockTurn::text("done")]);
         let config = AgentRuntimeConfig {
@@ -1825,6 +1963,8 @@ mod tests {
                 enabled: false,
                 log: String::new(),
             },
+            effects: EffectsConfig::default(),
+            context: ContextConfig::default(),
             tools: zk_contract_config::ToolSettings::default(),
             max_steps: 4,
         };

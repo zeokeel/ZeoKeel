@@ -53,6 +53,7 @@ targets = ["desktop"]
 "tool.bash" = "zeokeel/tool-bash"
 "tool.todo" = "zeokeel/tool-todo"
 "tool.present" = "zeokeel/tool-present"
+"tool.mcp" = "zeokeel/connector-mcp"
 
 "ui.slot.settings-provider" = "zeokeel/ui-settings-provider"
 "client.update" = "zeokeel/client-update-github"

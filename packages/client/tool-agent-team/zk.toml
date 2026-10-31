@@ -3,7 +3,7 @@ id = "zeokeel/tool-agent-team"
 kind = "capability"
 version = "0.1.0"
 license = "MIT"
-summary = "Experimental agent team (disabled)"
+summary = "Coordinated agent team: bounded worker fan-out over the subagent runner (cap 8, depth 3)"
 
 [role]
 name = "tool.agent_team"

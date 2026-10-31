@@ -41,7 +41,7 @@ impl Tool for RalphTool {
         for round in 1..=rounds {
             let prompt = format!("Ralph round {round}/{rounds}. Objective:\n{objective}\nWork toward it. Report concrete progress and blockers.");
             let text = zk_kit_subagent::with_depth(depth.saturating_add(1), || {
-                runner.run(&prompt, context, depth)
+                runner.run_fresh(&prompt, context, depth)
             })
             .map_err(ToolError::Io)?;
             results.push(serde_json::json!({"round":round,"result":text}));

@@ -49,6 +49,7 @@
 "tool.bash" = "zeokeel/tool-bash"
 "tool.todo" = "zeokeel/tool-todo"
 "tool.present" = "zeokeel/tool-present"
+"tool.mcp" = "zeokeel/connector-mcp"
 
 "srv.updates" = "zeokeel/updates"
 "ui.slot.apps" = "zeokeel/ui-apps"

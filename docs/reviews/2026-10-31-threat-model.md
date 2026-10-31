@@ -1,109 +1,107 @@
-# 2026-10-31-threat-model · 独立评审（docs/33 + docs/21 §10 安全 13 项门禁）
+# 2026-10-31-threat-model · 独立评审（docs/33 + docs/21 §10 安全门禁；round-2 复评通过）
 
-- 评审对象：`HEAD d0a1c95` 的 `docs/33-threat-model.md`（SHA256 `db8836f8…`）、`docs/21-security-privacy.md` §10
-  （SHA256 `62d239f8…`）、`scripts/security-audit.sh`（SHA256 `51c233cb…`）、
-  `target/evidence/m6/security/security.json`（SHA256 `7918cdf2…`，generated_at `2026-10-31T05:32:17Z`，
-  head `d0a1c95`，version `1.0.0-rc.1`，summary `pass=7 / fail=0 / unverified=6`，overall `unverified`）、
-  `target/evidence/m6/security/logs/`（13 份日志）、`target/evidence/release-1.0-rc1/security/summary.md`
-  （SHA256 `540926dd…`）。
-- 评审者：release-reviewer（独立只读评审；仅可写 `docs/reviews/`；未实现 `security-audit.sh`/docs/21/docs/33/任何产品代码）。
-- 独立性：评审者未参与 A6（13 项门禁实现）或 A7 上游改动；本次逐项检查脚本实现、证据日志与相关源码
-  （gateway/serve/kit-wasm）后独立判定，结论不由实现者自述决定。
-- 关联 spec：`specs/changes/2026-10-31-release-1-0-readiness/`（A6 实现、A7 本记录）、
-  `specs/changes/2026-10-30-hardening-release/`（13 项原始需求，acceptance 仍 `blocked`）。
-- 评审日期：2026-10-31
-- 结论：**CHANGES-REQUESTED**（P0=1 / P1=6 / P2=5；修复后由本评审者复评，阶段 3 终评再更新）。
+- 威胁模型评审结论：APPROVED
+- 评审对象（round-2 复评快照，2026-10-31T14:05+08:00，内容变更即本记录失效）：`HEAD f0bb2b6`
+  （`feat(security,ci): executable 13+ gates, SSRF hardening, master.key, honest release pipeline`）的
+  `docs/33-threat-model.md`（SHA256 `f6777c76…`）、`docs/21-security-privacy.md` §10（`a3abac73…`）、
+  `scripts/security-audit.sh`（`a10a277d…`）、`docs/13-risks-and-adr.md`（`7930363e…`）、
+  `docs/06-server-runtime.md`（`dc9b048c…`）、`docs/07-server-domains.md` 工作树快照（`82b50c98…`，docs-version
+  正在同步 §6.1）、`KNOWN-LIMITATIONS.md` 工作树快照（`3ab0ec08…`）。
+  证据：`target/evidence/release-1.0-rc1/security2/security.json`（`ee88f225…`，generated `2026-10-31T05:53:32Z`，
+  head `6d89107`，overall `unverified`，non-strict exit 2，pass=9 / fail=0 / unverified=2 / unverified_external=3）、
+  `security2/security-audit.md`（`568a53db…`）、`security2-strict/security.json`（`15b87bce…`，strict exit 1，见 §5）、
+  `security2/logs/01..14`（14 份逐 gate 日志）、`target/evidence/m6/master-key-rotate.json`（`7c302392…`，6/6 checks）。
+- 评审者：release-reviewer（独立只读评审；仅可写 `docs/reviews/`；未实现 `security-audit.sh`/docs/21/docs/33/gateway/
+  connector-mcp/任何产品代码）。
+- 独立性：round-1（CHANGES-REQUESTED）与 round-2（本复评）均由评审者独立读取脚本/证据/源码判定；实现者只提供修复与
+  证据，未参与本记录结论；本复评未重跑 security-audit（不构建、不改证据），仅核对代码/日志/配置。
+- 关联 spec：`specs/changes/2026-10-31-release-1-0-readiness/`（A6/A7、B16）；`specs/changes/2026-10-30-hardening-release/`
+  （13 项原始需求，acceptance 仍 `blocked`）。
+- 评审日期：2026-10-31（round-1 13:33 CHANGES-REQUESTED；round-2 14:05 APPROVED）。
 
-## 1. 方法
+## 1. 结论摘要
 
-- 只读核对：`docs/21` §10 逐项命令/证据/状态 vs `scripts/security-audit.sh` 的 gate1–gate13 实现 vs
-  `security.json` 逐项 status/evidence/detail vs 13 份证据日志；对 marked-pass 项核对测试真实存在与断言失败行为。
-- 未重跑 `scripts/security-audit.sh`（遵守"不跑长构建/不改证据"约束：脚本需 PostgreSQL、构建 `zk-server`/`zk-desktop`、
-  会重写 `target/evidence/`；评审者不得改证据）。仅跑 1 条廉价命令验证 docs 命令有效性（§2 P1-5）。
-- 源码核对点：`packages/server/gateway/src/lib.rs`（SSRF 校验与 HTTP client）、`apps/desktop/src/serve.rs`（本地载体）、
-  `crates/zk-kit-wasm/tests/*`（WASM 限额/SQL/golden）、`scripts/srv-auth-test.sh`（gate2 断言来源）。
+round-1 的 1 个 P0（SSRF 假绿）与 6 个 P1 已全部真实修复（不是改文案/降级掩盖）：gate 3 现为严格 host/IP 校验 +
+`redirect(Policy::none())` + 单元矩阵 + 11 条 provider-CRUD 探针 + serve 探针；gate 1 改为精确 marker；gate 5 拆分，
+MCP transport（B16）落地并有可执行测试（id 14 pass）；master.key AEAD 密钥环 + 9 测试 + 轮换演练（gate 6 pass）；
+WORM 经 ADR-068 正式降级为 `unverified_external`（env_only，明确不冒充 pass）；gate 8 缺工具/网络仅 `unverified`
+（CI 可满足）；gate 9/10 产物 SBOM/镜像扫描为 release/CI 环境项 `unverified_external`。strict 语义已区分
+`unverified`（CI 可满足，必红）与 `unverified_external`（env-only，不红且从不记 pass）。剩余为 P2 文档同步项（§4）。
 
-## 2. 13 项门禁逐项判定（"可执行检查是否真实"）
+## 2. round-1 P0/P1 处置核验
 
-| # | SSOT 状态 | 评审判定 | 依据（命令/日志/源码） |
+| # | round-1 问题 | round-2 处置（复核证据） | 状态 |
 | --- | --- | --- | --- |
-| 1 | unverified | **检查过浅（P1-1）**：脚本仅 `compgen -G docs/reviews/*threat-model*` 判文件存在，不校验评审结论/评审者/P0；本记录写入后脚本会机械转 `pass`，即使结论是 CHANGES-REQUESTED。 | `scripts/security-audit.sh:92-108`；`docs/21:143` |
-| 2 | pass | **真实**：`srv-auth-test.sh` 以 `set -euo pipefail` 对真实 PG 断言，summary 行（`refresh-reuse-family`/`lockout`/`audit-chain`）只在断言通过后输出；gate 还要求这两个 marker。 | `scripts/srv-auth-test.sh:7,395,432-434`；`logs/02-auth-jwt-csrf-rbac.log` |
-| 3 | pass | **false-green（P0-1）**：实现是 scheme 校验（任意 `https://` + 明文 `http://127.0.0.1|localhost`），不是 host 白名单；网关 `reqwest::Client` 未设 redirect policy（默认跟随最多 10 次），可被初始 https 地址 302/307 到内网；探针只测初始 URL scheme，未测内网 host/redirect；`docs/21:145` 写"Host/Origin"但探针未发恶意 Host。 | `packages/server/gateway/src/lib.rs:258-262,349-353`；`scripts/security-audit.sh:128-210`；`logs/03-ssrf-rebinding.log`；`docs/33:26` |
-| 4 | pass | **基本真实，覆盖有缺口（P2-1）**：zip 穿越/路径逃逸/WASM fuel+memory+SQL DML 负向测试真实执行且失败即红；但"WASM 逃逸（无网络/文件/AI/他 app DB）"无负向测试（依赖 Linker 只注册 4 个 host fn 的结构性事实），golden 在 guest 缺席时静默 return（当前 guest 存在，8.37s 真实跑帧语义）。 | `crates/zk-kit-wasm/tests/{limits,sql,golden}.rs`；`logs/04-zip-wasm.log`（0 failed） |
-| 5 | pass | **范围 over-claim（P1-2）**：三个 cargo 测试真实（worktree injection/open_url 单参数/srv-http 输入校验）；但门禁标题含 "stdio 参数 / env 白名单"，客户端无 MCP 执行路径（`grep -rniE 'mcp' packages/client apps/desktop/src` 无命中；`Stdio` 仅用于 open_url 子进程），证据与脚本均未覆盖该子项；`docs/33:29` 的 stdio 缓解同样未经验证。 | `docs/21:147`；`scripts/security-audit.sh:226-240`；`logs/05-command-injection.log` |
-| 6 | unverified | **分类错误（P1-3）**：不是"缺外部工具/环境"，而是实现缺失（master.key 文件/加密/轮换未实现，`docs/07:111` 明确"未决"；JWT/更新签名轮换无演练）。按 `docs/21:133-139` 状态口径应为 `fail`，或先在 D/ADR 正式降级该门禁并写 KNOWN-LIMITATIONS。 | `scripts/security-audit.sh:241-256`；`logs/06-key-lifecycle.log`；`docs/21:148` |
-| 7 | unverified | **部分真实 + 分类错误（P1-3）**：hash 链与 audit fail-closed 由 gate2 真实日志验证；WORM 锚定未实现（`docs/20:57` 称可选/高级部署，与 `docs/21:149` 门禁要求的 WORM 冲突）→ 应显式决策（实现 / 降级门禁 / 标 fail），不能以 `unverified` 混合"已验证的 hash 链"与"未实现的 WORM"。 | `scripts/security-audit.sh:257-274`；`logs/07-audit-chain.log`；`docs/21:149`；`docs/20:57` |
-| 8 | unverified | **分类正确**：本机无 cargo-deny/audit、离线无 registry；CI `security.yml:34,36,50` 真实执行，属工具/网络缺失 → `unverified` 合规。 | `logs/08-dependency-audit.log`；`docs/21:150` |
-| 9 | unverified | **分类正确（部分验证）**：源码 CycloneDX SBOM 真实生成（131 components）；产物级 SBOM（镜像/dist/OEM）本地未构建 → `unverified`。 | `logs/09-sbom.log`；`security/sbom.json`；`docs/21:151` |
-| 10 | unverified | **分类正确**：无 docker/trivy/镜像 → 环境缺失 → `unverified`。 | `logs/10-image-scan.log`；`docs/21:152` |
-| 11 | pass | **真实但标题映射偏窄（P2-2）**：三个静态隐私检查真实（§8.1 口径/无未限定声明/迁移无 prompt-completion 列）；门禁标题同时含"审计/日志脱敏"，该部分实际由 gate 12 覆盖，建议标题/证据互引。 | `scripts/security-audit.sh:338-382`；`logs/11-privacy-wording.log` |
-| 12 | pass | **真实**：两个 redaction 测试真实执行；静态扫描 0 日志宏 secret 命中 / 0 secret literal / 0 手写 unsafe。注：`unwrap/expect` 328 命中为提示性（test-module 含），脚本明确以 clippy deny 为可执行门禁；日志宏扫描按"宏行含 secret 关键词"启发式，变量名间接泄漏不可检出。 | `scripts/security-audit.sh:383-416`；`logs/12-secret-leaks.log` |
-| 13 | pass | **真实但启发式（P2-3）**：静态检查 docs/00 §5 + docs/21 前言 + 禁止肯定式"限制员工/白名单/网络限制/企业审批"措辞；英文或改写措辞可能漏检，但作为文档门禁可接受。 | `scripts/security-audit.sh:417-455`；`logs/13-weak-control-statement.log` |
+| P0-1 | gate 3 SSRF 假绿：scheme-only 校验 + reqwest 默认跟随重定向 | `packages/server/gateway/src/lib.rs:279-380`：https-only、loopback 明文仅 `ZEOKEEL_ALLOW_INSECURE_UPSTREAM=1`、拒绝 userinfo/private/loopback/link-local/multicast/reserved/IPv4-mapped/localhost/.local/.internal/metadata/数字混淆 host；`:378-379` `redirect(Policy::none())`。测试 `rejects_ssrf_targets`/`dev_flag_only_enables_loopback_plaintext`/`upstream_client_does_not_follow_redirects`（5 tests，日志 5 passed）。gate 3 探针 11 条（metadata/private/loopback/https-loopback/localhost/metadata-ip/userinfo/metadata-host/.local/.internal reject + https-public accept）+ serve rebinding（401/无 ACAO/404）。docs/21:145、docs/33:26 已于修复对齐 | **fixed** |
+| P1-1 | gate 1 只看文件存在 → 假绿 | `security-audit.sh:98-120` 要求 `docs/reviews/2026-10-31-threat-model.md` 精确整行 `- 威胁模型评审结论：APPROVED`；本记录写入后 gate 1 才可 pass（见 §5）。gate1 当前证据 `01-threat-model.log` marker count=0（本轮修复前生成） | **fixed** |
+| P1-2 | gate 5 标题含 stdio/env 但未实现/未测 | gate 拆 5a（worktree/open_url/srv-http，pass）+ 5b `mcp-stdio-transport`（id 14）：`packages/client/connector-mcp` 四件套落地（stdio spawn 参数数组、`env_clear`+allow-list、http JSON/SSE、超时/畸形/非零退出、static-secret 拒绝、HTTPS 诚实不可用），`cargo test -p zk-connector-mcp` 3+7 tests passed；ADR-069 更新记录 B16 落地；docs/07 §6.1 + crate README 明示残余（HTTPS/TLS、OAuth PKCE 流程、企业 catalog→client 配置 passthrough 均 UNVERIFIED）；docs/21:152 gate 5b pass | **fixed**（KNOWN-LIMITATIONS 同步见 P2-1） |
+| P1-3 | gate 6/7 把实现缺口标 unverified | master.key：`crates/zk-kit-server::master_key` AES-256-GCM 版本化环（`vN:<b64 nonce\|\|ct>`，legacy 明文只读+告警，缺 key 新写 fail-closed），9 tests + `scripts/master-key-rotate.sh` 6/6；gate 6 pass。WORM：ADR-068（docs/13:620-625）正式降级为部署控制，gate 7 `unverified_external` + `env_only:true`；docs/06/07 已更新 master.key/SSRF 实现状态 | **fixed** |
+| P1-4 | `security.yml` strict 必红（无 PG/docker/trivy/产物） | `.github/workflows/security.yml`：PostgreSQL service + 系统库、`cargo fetch`、预构建 `zk-server`/`zk-desktop`、build server image、pinned trivy 0.76.1 产出 `ZEOKEEL_SECURITY_TRIVY_REPORT`、deny/audit/geiger/pnpm audit、`SKIP_BUILD=1`、`KNOWN_GAPS=""`（gate 5b 已关闭的允许清单清空）。strict 语义见 `security-audit.sh:657-666`：仅 `fail` 或 CI-satisfiable `unverified` 红；env-only 不红 | **fixed** |
+| P1-5 | docs/21 命令 `--lib` 无效（zk-desktop 无 lib target） | docs/21 §10 重写为 14 行（13 项 + 5b），命令统一为 `--bin zk-desktop`，并写明 strict/env 契约（`docs/21:131-170`）；脚本与 SSOT 一致 | **fixed** |
+| P1-6 | docs/33 未覆盖 1.0 攻击面/残余风险 | `docs/33-threat-model.md` 重写（77 行）：资产/信任边界/1.0 新增攻击面（8 类）/P0 风险→gate 映射/残余风险（WORM、MCP 残余、SSRF DNS-pinning 未做、旧明文 key、JWT/更新签名轮换、备份/PITR、镜像/包、prompt injection 边界）/非目标/评审状态 | **fixed** |
 
-## 3. P0（阻塞：门禁假绿/安全控制不成立）
+## 3. 14 项门禁复核判定（round-2 证据）
 
-### P0-1 · gate 3「SSRF」（标记 pass）是 false-green
+| id | 门禁 | round-2 状态 | 复核判定（可执行检查是否真实） |
+| --- | --- | --- | --- |
+| 1 | 威胁模型评审 + P0 缓解 | unverified（待本 marker 重跑） | **真实**：精确 marker 机制（不再文件存在即 pass）；本记录写入后需重跑证据转 pass |
+| 2 | 认证/JWT/CSRF/越权 | pass | 真实：`srv-auth-test.sh` 真实 PG + `set -euo pipefail` + 断言后 marker（`srv-auth-test.sh:432-434`） |
+| 3 | SSRF + rebinding | pass | 真实：5 个 gateway 单元测试（含 redirect no-follow）+ 11 provider-CRUD 探针 + serve 探针，日志逐条 pass |
+| 4 | zip/WASM 限额 | pass | 真实：desktop hostile_entries、kit traversal、kit-wasm limits/sql tests 执行；golden 缺 guest 时静默 pass 仍为 P2-5 |
+| 5a | 命令注入/管理台输入 | pass | 真实：worktree injection、open_url 单参、srv-http 输入校验 tests |
+| 5b | MCP transport（id 14） | pass | 真实：`zk-connector-mcp` 10 tests（stdio/http/SSE/超时/畸形/非零退出/secret 拒绝/HTTPS 诚实不可用） |
+| 6 | 密钥生命周期 | pass | 真实：9 个 master.key tests（roundtrip/tamper/legacy/missing/rotation/permission）+ 6/6 离线轮换演练 |
+| 7 | 审计链 + WORM | unverified_external | 分类正确：hash 链/fail-closed 由 gate 2 真实日志验证；WORM 为 ADR-068 明确部署控制（`env_only`，strict 不红且从不记 pass） |
+| 8 | 依赖审计 | unverified | 分类正确：本机缺 deny/audit/网络 = CI-satisfiable；CI `security.yml` 真跑 |
+| 9 | SBOM 每产物 | unverified_external | 分类正确：源码 SBOM 真实生成（132 components）；产物 SBOM 由 release pipeline 生成 |
+| 10 | 镜像扫描 | unverified_external | 分类正确：本地无 trivy report；CI 构建真实镜像 + pinned trivy + 报告解析（0 HIGH/CRITICAL=pass） |
+| 11 | 隐私口径 | pass | 真实：§8.1 口径 + 未限定声明 grep + 迁移列 grep；脱敏由 gate 12 负责（docs/21 已注明） |
+| 12 | 日志/错误/审计 payload 无 secret | pass | 真实：2 个 redaction tests + 日志宏/secret literal/unsafe 静态扫描（0/0/0） |
+| 13 | 弱管控声明 | pass | 真实：docs/00 §5 + docs/21 前言 + 禁止肯定式措辞扫描 |
 
-- 事实：实现 `allowed_upstream_base()` 只做前缀判断：`https://` 任意 host 放行，另放行明文 `http://127.0.0.1`、
-  `http://localhost`（`packages/server/gateway/src/lib.rs:258-262`）。网关请求 `reqwest::Client::builder()`
-  **未设置 redirect policy**（`:349-353`），reqwest 默认跟随最多 10 次重定向 → 一个被允许的 `https://` upstream
-  可 302/307 将请求导向内网（含 `http://169.254.169.254`、`http://localhost:<port>`、内网 https）。
-- 探针不足：`scripts/security-audit.sh:128-210` 只测初始 URL 的 scheme（http/ftp 拒绝、https 接受、api_key 不回显）
-  以及 serve 的 Origin/未认证 IPC/prototype；未测内网 host、redirect、也未测 Host 头（`docs/21:145` 明写 Host）。
-  证据 `logs/03-ssrf-rebinding.log` 与 `docs/33:26`（"上游 URL/模型服务端固定"）均与之不符。
-- 可利用性说明：provider 配置为超管专属（`admin_provider_create` 需 `require_admin`），所以需要"超管被攻陷/恶意 OEM
-  预置/上游被控并重定向"才会触发；但门禁声明为 SSRF 白名单并以 `pass` 记录，属安全 gate 假绿（P0 级风险）。
-- 修法（择一，二选合并）：
-  1. 代码：`allowed_upstream_base` 改为可配置 host/域名白名单 + 拒绝私网/loopback/元数据地址（本地 provider 需显式
-     配置开关），并给 `reqwest` 加 `.redirect(reqwest::redirect::Policy::none())`；
-  2. 探针：新增 `https://127.0.0.1:<port>`、`https://169.254.169.254/latest/meta-data/`、`https→http 内网 redirect`
-     三类负向用例，以及 `Host: evil.example` 用例（并确认 serve 的 cookie-token 授权即可，或补 Host 校验）。
-  修完后重跑 gate 3 证据，gate 3 方能标 `pass`。
-- 状态：open。
-
-## 4. P1（应修）
+## 4. 剩余 P2（不阻塞本次 APPROVED；phase 3 前应清理，否则终评回退）
 
 | # | 位置 | 问题 | 修法 | 状态 |
 | --- | --- | --- | --- | --- |
-| P1-1 | `scripts/security-audit.sh:92-108`、`docs/21:143` | gate 1 只看 `docs/reviews/*threat-model*` 文件存在，不解析"评审者/结论/P0 是否已缓解"；本记录（CHANGES-REQUESTED + P0）写入后脚本仍会转 `pass` → 门禁假绿机制。 | gate 1 改为解析评审记录：要求 `评审者` 非实现者、`结论` 行 APPROVED、且无 open P0（或链接 review-check 结论）；否则 `unverified/fail`。 | open |
-| P1-2 | `docs/21:147`、`scripts/security-audit.sh:226-240`、`docs/33:29` | gate 5 标题含 "stdio 参数 / env 白名单"，但客户端 MCP/stdio 执行未实现（无执行路径/无测试），pass 只覆盖 worktree/open_url/srv-http 输入校验。 | 拆分门禁：已实现部分保留 `command-injection-input` pass；stdio/env 子项标 `unverified` + KNOWN-LIMITATIONS（M3.1），并改 `docs/33:29` 措辞。 | open |
-| P1-3 | `scripts/security-audit.sh:241-274`、`docs/21:148-149` | gate 6（master.key 加密/轮换未实现）与 gate 7（WORM 未实现）被标 `unverified`，混同"缺工具/环境"；按 `docs/21` 状态口径应是 `fail`，或先经 D/ADR 正式降级门禁（并同步 docs/21/known limitations）。 | 二选一：实现/演练（master.key 加密 + 轮换 drill；WORM 落地或明确 WORM 由部署方承担）；或文档化降级（改 docs/21 门禁 + D/ADR 记录 + 发布说明）。 | open |
-| P1-4 | `.github/workflows/security.yml:52`、`docs/18:202` | CI 以 `ZEOKEEL_SECURITY_STRICT=1` 跑审计，但 workflow 未提供 PostgreSQL（gate2/3 不能 pass）、无 docker/trivy/镜像（gate10）、无 dist/产物 SBOM（gate9）、gate6/7 未实现 → unverified 在 strict 下转 fail → **该 job 每次必 exit 1**；而 docs/18:202 把它列为 CI 门禁，C2 要求 CI 全绿 → 发布路径被自身门禁永久阻塞。 | 拆 job：`security-required`（只对 `fail` 红，unverified 记录并上传证据）与 `security-strict`（宿主 runner + PG + docker/trivy + 产物构建，或仅在 release 矩阵跑）；同步 docs/18 状态列。 | open |
-| P1-5 | `docs/21:147,154` | SSOT 命令列对 gate 4/5/12 用 `cargo test -p zk-desktop --lib -- …`，但 `zk-desktop` 无 lib target（仅 `main.rs`），实测 `exit 101: no library targets found`；脚本实际用 `--bin zk-desktop`。SSOT 命令不可复现，按 docs/21 直接复跑会失败。 | 命令列改为与脚本一致（`--bin zk-desktop`），或由脚本生成 docs 表格（单一实现）；并补 `cargo test -p zk-desktop --bin zk-desktop -- --list` 断言。 | open |
-| P1-6 | `docs/33-threat-model.md`（全篇，44 行；`:22-33`） | 威胁模型未随 1.0 攻击面更新：R9 新增工具（terminal 多会话、pwsh-persistent、agent-team、hooks/JSONL 配置）无风险项；缺 prompt injection/工具审批绕过/会话文件权限/agent 输出外泄；缺 SSRF（P0-1）、master.key 明文、WORM 缺失、备份/PITR 等残余风险；测试列多为"单测/e2e"泛称，未映射 gate ID/命令。 | 补 1.0 攻击面（新工具/配置/agent 输出）、每条 P0 风险映射到 gate ID + 可执行测试命令；把已知残余（SSRF scheme-only 待修、master.key、WORM）写入残余风险并与 KNOWN-LIMITATIONS 对齐。 | open |
+| P2-1 | `KNOWN-LIMITATIONS.md:74-82`（工作树） | §4 仍保留旧句"gate 5b 为 rc.1 已知产品缺口（MCP stdio 未实现），审计记 fail，CI 用 `ZEOKEEL_SECURITY_KNOWN_GAPS=14` 降级"；与现状（gate 14 pass、`KNOWN_GAPS=""`、ADR-069 更新、docs/07 §6.1）三处矛盾。发布说明会引用本文件。 | 换成当前残余：HTTPS MCP transport 不支持（诚实报错）、OAuth 授权码/PKCE 流程 UNVERIFIED、企业 catalog→client 配置 passthrough 待做、静态 secret 延后 M3.1；删除 allowlist 旧描述。 | open（docs-version 进行中，须在提交/release notes 前完成） |
+| P2-2 | `docs/33:58` | §5 残余风险只写 MCP HTTPS + 静态 secret，未列 OAuth PKCE 流程与 enterprise catalog passthrough（docs/07 §6.1 已有）；docs/33 §5 自称"显式不隐藏"。 | 补两条残余并链接 docs/07 §6.1/ADR-069。 | open |
+| P2-3 | `target/evidence/release-1.0-rc1/security2/*` | 证据 JSON `head=6d89107`，当前 `HEAD=f0bb2b6`（证据生成早于最终提交 2 分钟）；且 gate 1 需在 marker 写入后重跑才能转 pass。 | 在最终提交后重跑 non-strict + strict，生成 security2（+strict）新 JSON；更新 docs/18 §7.2 / docs/21 gate 1 快照行的"当前记录"措辞。 | open |
+| P2-4 | `docs/18:220`、`docs/21:143` 快照行 | 本记录写入后，两处仍写"当前记录为 CHANGES-REQUESTED"/"unverified（评审者复评后写 marker）"，属于修复后的下一状态；docs 属于 docs-version 同步范围。 | 随 P2-3 证据重跑一起改状态为 APPROVED/pass（保留"以 JSON 为准"口径）。 | open |
+| P2-5 | `crates/zk-kit-wasm/tests/golden.rs:11-19`（round-1 遗留） | golden 在 guest wasm 缺失时静默 `return`（仍 pass），跨机/CI 未 build `experiments/wasm-poc` 时空跑通过。 | `#[ignore]` + 显式 skip 断言，或缺失即标 unverified/失败；证据 JSON 记录是否真实执行。 | open |
+| P2-6 | `docs/21:152` gate 5b 行 | 标题写"stdio/http/sse"，未在行内注明 HTTPS/TLS 不支持（docs/33 §5、docs/07 §6.1 已注明）。 | 行内补"HTTPS UNVERIFIED/不支持"，或链接 docs/07 §6.1。 | open |
+| P2-7 | `scripts/security-audit.sh` gate 12/13 启发式（round-1 遗留） | 日志宏 secret 扫描按关键词、措辞扫描按中文正则，存在漏检；作为辅助门禁可接受，但应标注局限。 | 证据 JSON detail/文档注明"启发式，关键路径以 redaction tests 为准"。 | open |
 
-## 5. P2（建议）
+## 5. 本记录对门禁状态的影响 + strict 预期
 
-| # | 位置 | 问题 | 修法 | 状态 |
-| --- | --- | --- | --- | --- |
-| P2-1 | `crates/zk-kit-wasm/tests/golden.rs:11-19` | golden 测试在 guest wasm 缺失时静默 `return`（测试仍 pass），CI/他机未 build `experiments/wasm-poc` 时会"空跑通过"；当前 guest 存在（`experiments/wasm-poc/guest-go/guest-go.wasm` 等）所以本次真实执行。 | 用 `#[ignore]` + 显式 skip 断言，或环境缺失时 `panic!`/标 unverified；在证据 JSON 记 golden 是否真实执行。 | open |
-| P2-2 | `docs/21:153` | gate 11 标题含"审计/日志脱敏"，其可执行检查只覆盖隐私口径/迁移列；脱敏实际由 gate 12 覆盖。 | 标题或证据列互引 gate 12；或把标题收窄为"隐私口径"。 | open |
-| P2-3 | `docs/21:137` | 状态口径句"非 strict：`pass=0`、`unverified=2`、`fail=1`"易被读成计数（实为 exit code 语义）；与当前 7/6/0 快照并列易误读。 | 改为"退出码：pass=0 / unverified=2 / fail=1（非 strict）；strict 下 unverified 视为 fail(1)"。 | open |
-| P2-4 | `scripts/security-audit.sh:383-416` | gate 12 日志宏扫描仅匹配"宏行含 secret 关键词"，间接泄漏（变量名不含关键词、结构体整体 Debug 打印）不检出；`unwrap/expect` 328 为提示项不参与失败判定（已注明 clippy 为门禁，可接受）。 | 文档标注静态扫描局限；关键路径以 redaction 测试为准。 | open |
-| P2-5 | `target/evidence/release-1.0-rc1/security/` | release 摘要目录只复制 `security.json`/`security-audit.md`/`summary.md`，未复制 13 份 logs（证据指针仍指向 `target/evidence/m6/security/logs/`）；跨目录取证需两处路径。 | 复制 logs 或写清指针解析规则（m6 为源、release 为摘要）。 | open |
+- **本评审只改变 gate 1**：本记录写入精确行 `- 威胁模型评审结论：APPROVED` 后，下一次 `security-audit.sh` 运行
+  gate 1 由 `unverified` → `pass`（这是 admin/CI 重跑证据的动作，不是评审者改证据）。
+- 其它 13 项状态不变；按 §2 复核，round-1 的"应降级/应拆分"已由修复落地：gate 3 pass（真）、gate 5 拆 5a/5b、
+  gate 6 pass、gate 7 `unverified_external`（ADR-068）、gate 8 `unverified`（CI-satisfiable）、gate 9/10 `unverified_external`。
+- strict 预期（CI，环境齐备）：gate 1 pass（marker）、gate 2/3/6 pass（PG+构建）、gate 8 pass（deny/audit/pnpm 网络）、
+  gate 7/9/10 env-only 不红 → **strict exit 0**，且假绿被排除（env-only 永不记 pass）。
+  本机 strict exit 1 仅因 gate 8 工具缺失（CI-satisfiable），属正确语义而非缺陷；证据 `security2-strict/security.json` 已如实记录。
+- 评审对象 hash 若因 docs-version 继续编辑（KNOWN-LIMITATIONS/docs/07）而变化，本记录按 `docs/reviews/README.md` 失效重评
+  （§4 P2-1/P2-2/P2-4 即要求这些同步完成）。
 
-## 6. 本记录对门禁状态的影响
+## 6. 复核方法（只读）
 
-- **gate 1**：按当前脚本实现（`security-audit.sh:92-108`）本文件存在后 gate 1 会从 `unverified` 机械转 `pass`。
-  **评审者不建议把它记为 pass**：本记录结论为 CHANGES-REQUESTED 且含 P0-1，`docs/21:143` 的语义是"威胁模型评审通过 +
-  P0 有缓解"，当前并不成立；这正是 P1-1 的假绿机制。修复 P0-1/P1 后，本评审者将更新本记录为 APPROVED，届时的 pass 才有效。
-- 其它 12 项：本次评审**未改状态**（未重跑脚本，不改证据）；按 §2 判定 gate 3 应由 pass 降为 unverified/fail，
-  gate 6/7 应由"unverified"改为 fail 或正式降级，gate 5 应拆分子项。重跑后 `security.json`/本记录对象 hash 会变化，
-  按 `docs/reviews/README.md` 重新评审。
+- 读：docs/33（77 行）、docs/21 §10（14 行）、docs/18 §7.1/§7.2、docs/13 ADR-068/069、docs/06 §5、docs/07 §6.1、
+  `scripts/security-audit.sh` gate1–gate14 + aggregate、`.github/workflows/security.yml`、14 份 security2 日志、
+  non-strict/strict security.json、master-key-rotate.json。
+- 读源码核对：`packages/server/gateway/src/lib.rs`（validator/ip_is_disallowed/redirect/tests）、
+  `packages/client/connector-mcp/`（lib+2 test files+README）、`crates/zk-kit-server/tests/master_key_ring.rs`、
+  `scripts/master-key-rotate.sh`、`scripts/srv-auth-test.sh`。
+- 未重跑 `security-audit.sh`（构建/证据写入非评审权限）；未修改任何产品代码/文档/脚本/证据。
 
-## 7. 复评记录
+## 7. 关联 spec 与证据
 
-- 复评日期：pending（P0-1 + P1 修复后复评；阶段 3 终评再更新）。
-- 复评结论：pending（需 P0=0 且 P1 有处置结论，才可 APPROVED）。
+- `specs/changes/2026-10-31-release-1-0-readiness/`（A6/A7、B16/R9.6）；`specs/changes/2026-10-30-hardening-release/`。
+- 证据：`target/evidence/release-1.0-rc1/security2/`（+ `security2-strict/`、`logs/`）；`target/evidence/m6/master-key-rotate.json`。
+- 相关代码：`packages/server/gateway/src/lib.rs`、`packages/client/connector-mcp/`、`crates/zk-kit-server/src/master_key*`、
+  `apps/desktop/src/serve.rs`、`crates/zk-kit-wasm/tests/`、`scripts/{security-audit,srv-auth-test,master-key-rotate}.sh`。
 
-## 8. 关联 spec 与证据
+## 8. 当前结论
 
-- `specs/changes/2026-10-31-release-1-0-readiness/`（A6/A7）；`specs/changes/2026-10-30-hardening-release/`（13 项原始需求，acceptance `blocked`）。
-- 证据：`target/evidence/m6/security/security.json` + `logs/*.log`；`target/evidence/release-1.0-rc1/security/summary.md`。
-- 相关源码：`packages/server/gateway/src/lib.rs`、`apps/desktop/src/serve.rs`、`crates/zk-kit-wasm/tests/`、`scripts/srv-auth-test.sh`。
-
-## 9. 当前结论
-
-结论：**CHANGES-REQUESTED**（P0=1：gate 3 SSRF 假绿；P1=6；P2=5。修复后复评，阶段 3 终评可转 APPROVED；
-在其之前 `docs/21` §10 不得宣称"安全门禁通过"，gate 1 不应以文件存在为由标 pass）。
+结论：**APPROVED**（round-2 复评：P0=0 / P1=0；round-1 的 SSRF/门禁拆分/master.key/WORM/strict-CI/命令真源/威胁模型 8 项修复
+均经代码+证据+日志独立核实为真实修复；剩余 P2×7 为文档同步与启发式局限，不阻塞安全门禁，但 P2-1/P2-2/P2-3/P2-4
+须在 phase 3 终评前完成，否则本评审将回退为 CHANGES-REQUESTED）。

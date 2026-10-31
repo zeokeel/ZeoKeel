@@ -22,6 +22,11 @@
 use serde::{Deserialize, Serialize};
 use zk_contract_config::{AgentSettings, ToolChoiceSetting, ToolSettings};
 
+/// Default model context window when no override is configured (docs/38 F4).
+pub const DEFAULT_CONTEXT_WINDOW_TOKENS: u64 = 128_000;
+/// Tokens reserved for the completion (output) inside the context window.
+pub const CONTEXT_OUTPUT_RESERVE_TOKENS: u64 = 4_096;
+
 /// Multi-turn memory via `rig-memory` conversation persistence.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -60,6 +65,24 @@ impl Default for HooksConfig {
             log: String::new(),
         }
     }
+}
+
+/// Optional JSONL effect log (B9 subset: rig effect records, not live checkpoint).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct EffectsConfig {
+    /// Whether rig effect records are appended to `path`.
+    pub enabled: bool,
+    /// Append-only JSONL file. Empty means disabled.
+    pub path: String,
+}
+
+/// Context-window budget (B10 subset: budget + deterministic truncation).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ContextConfig {
+    /// Prompt budget in tokens. `None` uses the built-in 128k default (docs/38 F4).
+    pub window_tokens: Option<u64>,
 }
 
 /// How a tool may be chosen for a completion request.
@@ -203,6 +226,10 @@ pub struct AgentRuntimeConfig {
     pub memory: MemoryConfig,
     /// Observable lifecycle hooks.
     pub hooks: HooksConfig,
+    /// Optional JSONL effect log (rig `Recorder`; B9 subset).
+    pub effects: EffectsConfig,
+    /// Context-window budget + deterministic truncation (B10 subset).
+    pub context: ContextConfig,
     /// Tool execution / approval-wait timeouts.
     pub tools: ToolSettings,
     /// Maximum model/tool steps per turn (1..=200).
@@ -215,6 +242,8 @@ impl Default for AgentRuntimeConfig {
             completion: CompletionConfig::default(),
             memory: MemoryConfig::default(),
             hooks: HooksConfig::default(),
+            effects: EffectsConfig::default(),
+            context: ContextConfig::default(),
             tools: ToolSettings::default(),
             max_steps: crate::MAX_STEPS,
         }
@@ -282,6 +311,18 @@ impl AgentRuntimeConfig {
         if let Ok(value) = std::env::var("ZEOKEEL_AGENT_HOOKS_LOG") {
             config.hooks.log = value;
         }
+        if let Ok(value) = std::env::var("ZEOKEEL_AGENT_EFFECT_LOG_ENABLED") {
+            config.effects.enabled = value != "0";
+        }
+        if let Ok(value) = std::env::var("ZEOKEEL_AGENT_EFFECT_LOG") {
+            config.effects.path = value;
+            config.effects.enabled = true;
+        }
+        if let Ok(value) = std::env::var("ZEOKEEL_AGENT_CONTEXT_WINDOW_TOKENS") {
+            if let Ok(tokens) = value.parse::<u64>() {
+                config.context.window_tokens = Some(tokens);
+            }
+        }
         if let Ok(value) = std::env::var("ZEOKEEL_TOOL_TIMEOUT_MS") {
             if let Ok(timeout) = value.parse::<u64>() {
                 config.tools.tool_timeout_ms = timeout;
@@ -315,6 +356,24 @@ impl AgentRuntimeConfig {
         std::env::var_os("ZEOKEEL_HOME")
             .filter(|home| !home.is_empty())
             .map(|home| std::path::PathBuf::from(home).join("agent-memory"))
+    }
+
+    /// Resolve the effect-log path, if effects logging is enabled and configured.
+    #[must_use]
+    pub fn effect_log_path(&self) -> Option<std::path::PathBuf> {
+        if !self.effects.enabled || self.effects.path.trim().is_empty() {
+            return None;
+        }
+        Some(std::path::PathBuf::from(self.effects.path.trim()))
+    }
+
+    /// Prompt budget in tokens: explicit override or the 128k default (docs/38 F4).
+    #[must_use]
+    pub fn prompt_budget_tokens(&self) -> u64 {
+        self.context
+            .window_tokens
+            .unwrap_or(DEFAULT_CONTEXT_WINDOW_TOKENS)
+            .saturating_sub(CONTEXT_OUTPUT_RESERVE_TOKENS)
     }
 
     /// Validate every section.
@@ -360,11 +419,17 @@ pub fn set_default_agent_config(config: AgentRuntimeConfig) -> Result<(), String
     config.validate()?;
     // Publish one non-secret snapshot containing both sections (agent + tools)
     // so a later publish can never overwrite the other section with defaults.
+    // `web_search` is the desktop's/tool's section: preserve whatever is
+    // already published instead of clearing it with this agent-only publish.
     let agent = config.to_contract();
     zk_contract_agent::set_default_agent_settings(&agent)?;
+    let web_search = zk_contract_config::runtime_settings()
+        .map_err(|error| error.to_string())?
+        .and_then(|snapshot| snapshot.web_search);
     zk_contract_config::set_runtime_settings(&zk_contract_config::RuntimeSettings {
         agent: Some(agent),
         tools: Some(config.tools),
+        web_search,
     })
     .map_err(|error| error.to_string())
 }
@@ -537,9 +602,10 @@ impl AgentRuntimeConfig {
                 enabled: settings.hooks.enabled,
                 log: settings.hooks.log.clone(),
             },
-            // The contract `AgentSettings` has no tool section (tools live on
-            // `AppSettings.tools` / the published `RuntimeSettings` snapshot),
-            // so seed the env/default fallback; per-turn publication overrides.
+            // The contract `AgentSettings` has no tool/effect-log section, so seed
+            // env/default fallbacks; explicit per-instance config overrides.
+            effects: AgentRuntimeConfig::from_env().effects,
+            context: AgentRuntimeConfig::from_env().context,
             tools: AgentRuntimeConfig::from_env().tools,
             max_steps: settings.max_steps,
         })
@@ -556,7 +622,11 @@ mod tests {
         agent: Option<zk_contract_config::AgentSettings>,
         tools: Option<zk_contract_config::ToolSettings>,
     ) -> zk_contract_config::RuntimeSettings {
-        zk_contract_config::RuntimeSettings { agent, tools }
+        zk_contract_config::RuntimeSettings {
+            agent,
+            tools,
+            web_search: None,
+        }
     }
 
     fn agent_settings(max_steps: usize, temperature: f64) -> zk_contract_config::AgentSettings {
