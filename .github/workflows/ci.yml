@@ -25,6 +25,7 @@ jobs:
           cargo run -q -p zk -- docs --check
           cargo run -q -p zk -- db lock --check
           python3 scripts/agent-tool-matrix.py --check
+          python3 scripts/docs-command-check.py
       - name: Generated schemas stable
         run: |
           cargo test --workspace export_schema
