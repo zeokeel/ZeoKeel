@@ -1904,6 +1904,9 @@ fn compose_cargo_toml(root: &Path, resolved: &Resolved) -> Result<String> {
         out.push_str("zk-kit-media = { path = \"../../crates/zk-kit-media\" }\n");
     }
     out.push_str("serde_json = { workspace = true }\nrig-core = { workspace = true }\n\n[lints]\nworkspace = true\n");
+    // CLI-only dep audit triage: rig-core is consumed by the embedding/media glue
+    // generated in this crate's lib.rs; cargo-machete cannot see that dependency edge.
+    out.push_str("\n[package.metadata.cargo-machete]\nignored = [\"rig-core\"]\n");
     Ok(out)
 }
 

@@ -17,3 +17,8 @@ zk-kit-server = { path = "../../../crates/zk-kit-server" }
 
 [lints]
 workspace = true
+
+# CLI-only dep audit triage: build-time seams / derive-only usage that
+# cargo-machete cannot see (reviewed for 1.0.0-rc.1).
+[package.metadata.cargo-machete]
+ignored = ["zk-contract-skill"]
