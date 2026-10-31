@@ -8416,6 +8416,7 @@ dependencies = [
  "zk-kit-extractor",
  "zk-kit-subagent",
  "zk-tool-subagent",
+ "zk-tool-subagent-control",
 ]
 
 [[package]]
