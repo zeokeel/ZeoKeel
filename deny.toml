@@ -44,6 +44,9 @@ ignore = [
   "RUSTSEC-2026-0404",
   "RUSTSEC-2026-0405",
   "RUSTSEC-2026-0406",
+  # rsa 0.9 (via sqlx-postgres SCRAM/auth dependency): RUSTSEC-2023-0071 Marvin
+  # timing sidechannel; no fixed release. zk-server uses scram-sha-256, not RSA auth.
+  "RUSTSEC-2023-0071",
   # keyring/zbus transitive unmaintained (no safe upgrade; local keychain only).
   "RUSTSEC-2026-0370",
   "RUSTSEC-2026-0372",
