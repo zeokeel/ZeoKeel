@@ -5,6 +5,15 @@
 > 发布候选（本地验证）。`1.0.0` 正式版需 rc 验收 + 远端 CI/release 实跑通过后由用户确认；
 > 全部残余项见根 [`KNOWN-LIMITATIONS.md`](KNOWN-LIMITATIONS.md)。
 
+### Windows 客户端修复（2026-10-31 hotfix）
+
+- **不再弹出 cmd 控制台窗口**：Windows release 构建启用 `windows_subsystem = "windows"`（GUI 子系统），
+  debug 构建保留控制台便于日志。
+- **不再出现纯白屏**：`index.html` 内置启动卡片与 10 秒启动看门狗（展示 User-Agent/地址与错误文本），
+  React 侧新增启动错误边界，脚本加载/渲染失败会显示可截图的错误面板而不是空白窗口。
+- **WebView2 兼容性**：桌面 Web 构建目标降为 `es2020`（`cssTarget: chrome105`），覆盖 Win10 上未及时更新的
+  WebView2 运行时；`typecheck`/`lint`/`build` 本地通过。
+
 ### 版本与许可
 
 - 产品版本统一为 `1.0.0-rc.1`：workspace `Cargo.toml`/`Cargo.lock`、根 `package.json`、

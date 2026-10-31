@@ -34,5 +34,9 @@ declare global {
     __TAURI__?: TauriGlobal;
     /** Tauri 2 runtime marker used to choose host commands vs browser fallbacks. */
     __TAURI_INTERNALS__?: unknown;
+    /** Set by main.tsx once React mounted (index.html boot watchdog reads it). */
+    __zkBooted?: boolean;
+    /** Renders a visible startup failure in the static boot fallback (index.html). */
+    zkBootFail?: (message: string) => void;
   }
 }

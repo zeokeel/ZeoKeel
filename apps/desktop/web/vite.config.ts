@@ -10,6 +10,11 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: false,
+    // Windows WebView2 runtimes lag the Linux/macOS webviews, especially on
+    // Win10 installs that have not updated WebView2; target an older baseline so
+    // a syntax gap cannot leave a blank window.
+    target: "es2020",
+    cssTarget: "chrome105",
   },
   test: {
     environment: "jsdom",

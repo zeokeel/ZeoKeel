@@ -6,9 +6,55 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="description" content="ZeoKeel — 本地优先的 AI 工作台" />
     <title>ZeoKeel</title>
+    <style>
+      html, body { margin: 0; background: #0b0b0c; color: #e8e8ea; font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
+      html[data-theme="light"] body, html[data-theme="light"] { background: #fafafa; color: #1a1a1e; }
+      #zk-boot { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+      #zk-boot-card { max-width: 560px; padding: 24px; text-align: center; }
+      #zk-boot-error { display: none; margin-top: 12px; padding: 12px; border: 1px solid #7a3b3b; border-radius: 10px;
+        background: #1b1213; color: #f3c9c9; text-align: left; white-space: pre-wrap; word-break: break-word; font: 12px/1.5 ui-monospace, monospace; }
+      #zk-boot-hint { color: #9a9aa2; font-size: 12px; margin-top: 8px; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="zk-boot">
+        <div id="zk-boot-card">
+          <strong>ZeoKeel 正在启动…</strong>
+          <div id="zk-boot-hint">首次启动或系统组件初始化可能需要几秒。</div>
+          <pre id="zk-boot-error"></pre>
+        </div>
+      </div>
+    </div>
+    <script>
+      // Boot guard: never leave a silent white screen. Surfaces module/render errors
+      // (Windows WebView2 included) and reports the platform for support.
+      (function () {
+        var errorBox = document.getElementById("zk-boot-error");
+        function fail(message) {
+          if (!errorBox) return;
+          errorBox.style.display = "block";
+          errorBox.textContent = String(message);
+        }
+        window.zkBootFail = fail;
+        window.addEventListener("error", function (event) {
+          fail("启动失败: " + (event.message || "脚本加载错误") + "\n位置: " + (event.filename || "") + ":" + (event.lineno || 0));
+        });
+        window.addEventListener("unhandledrejection", function (event) {
+          var reason = event.reason;
+          fail("启动失败: " + (reason && reason.message ? reason.message : String(reason)));
+        });
+        setTimeout(function () {
+          if (!window.__zkBooted) {
+            fail(
+              "界面未能在 10 秒内启动。\nUser-Agent: " + navigator.userAgent +
+              "\n地址: " + location.href +
+              "\n请截图此页面并以它反馈问题。"
+            );
+          }
+        }, 10000);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

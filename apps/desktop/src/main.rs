@@ -4,6 +4,11 @@
 //! the composed runtime. The same dispatch is reused by the serve carrier so
 //! Playwright can exercise real UI flows headlessly.
 #![forbid(unsafe_code)]
+// Windows release builds are GUI apps: without this the app opens a cmd window.
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
 
 mod approval;
 mod automation;
