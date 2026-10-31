@@ -259,11 +259,19 @@ jobs:
           meta = json.loads(pathlib.Path(f"brands/{channel}/channel.json").read_text())
           identity = meta["identity"]
           targets = json.loads(os.environ.get("TAURI_TARGETS", '["all"]'))
+          # The release icon step emits the full tauri icon set from the channel logo;
+          # reference it with absolute paths so config merging (base + override) resolves
+          # them regardless of where the override JSON lives.
+          icons = [
+              pathlib.Path("apps/desktop/icons", name).resolve().as_posix()
+              for name in ("32x32.png", "128x128.png", "128x128@2x.png", "icon.icns", "icon.ico")
+              if pathlib.Path("apps/desktop/icons", name).exists()
+          ]
           override = {
               "productName": identity["product_name"],
               "identifier": identity["app_id"],
               "version": version,
-              "bundle": {"active": True, "targets": targets},
+              "bundle": {"active": True, "targets": targets, "icon": icons},
           }
           pathlib.Path(out).write_text(json.dumps(override))
           PY

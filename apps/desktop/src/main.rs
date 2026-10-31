@@ -403,9 +403,18 @@ document.title='SELFTEST|'+JSON.stringify({appRequest,ipc,open,core});
             }
             Ok(())
         });
+    // `cargo test` builds this bin with `cfg(test)` in a checkout without frontend
+    // assets; `generate_context!` (which embeds `web/dist` and icons) is only required
+    // for the real binary, which CI/release build after `pnpm --dir apps/desktop/web build`.
+    #[cfg(not(test))]
     let result = builder
         .run(tauri::generate_context!())
         .map_err(|error| format!("failed to run window: {error}"));
+    #[cfg(test)]
+    let result: Result<(), String> = {
+        let _ = builder;
+        Ok(())
+    };
     // Desktop exit: dispose kernel effects (reverse order, exactly once).
     if let Err(error) = bootstrap.shutdown() {
         eprintln!("zk-desktop: bootstrap shutdown failed: {error}");
