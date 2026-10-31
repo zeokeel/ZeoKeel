@@ -120,6 +120,11 @@
   `cargo deny`/`cargo audit`/`pnpm audit`）在 CI 执行，本机无工具/网络时为 unverified。
 - 威胁模型独立评审 **APPROVED**（精确行 `- 威胁模型评审结论：APPROVED`，`docs/reviews/2026-10-31-threat-model.md:3`，2026-10-31 复评）；M6 acceptance 仍 `blocked`
   （仅剩 Docker/证书/真机/CI 等环境项 + M6 实现复评）：`specs/changes/2026-10-30-hardening-release/acceptance.md`。
+- **依赖审计策略（RC.1）**：`cargo-deny` 在 CI 执行；known vulnerability 一律 deny，未使用 API 的
+  advisory 以窄理由 ignore：zip 4.6 的 `extract()` 系列（本项目只用 `by_index`+`enclosed_name` 并拒绝
+  hostile entries）、zstd 0.13（仅 wasmtime 自产模块缓存；wasmtime 50 锁定 0.13）。`unmaintained`/`unsound`
+  对传递依赖降为 warn（wasmtime 50 / Tauri 2.7 / keyring 4 的依赖钉死，无安全升级路径）；post-RC 升级
+  wasmtime/tauri/keyring/zip 后应恢复为 deny。详见 `deny.toml` 注释。
 - 第三方许可证清单（`THIRD-PARTY.md`）未生成；license 审计本机 UNVERIFIED。
 - **2026-10-31 最终本机快照**（HEAD `6d89107` + A18 worktree）：非 strict exit 2、overall `unverified`、**pass=10 / fail=0 / unverified=1（gate 8 本机无 cargo-deny/audit/网络）/ unverified_external=3（gate 7/9/10）**；gate 1（威胁模型 APPROVED）与 gate 14（B16 MCP）pass。`ZEOKEEL_SECURITY_STRICT=1` 本机 exit 1 仅因 gate 8/trivy 的 CI 前置；CI `security.yml` 提供 PG/工具/镜像/trivy 后 strict 预期 exit 0（overall 仍不为 pass，env-only 7/9/10 保留）。
 - CI 安全门禁证据：`target/evidence/release-1.0-rc1/security2/{security.json,security-audit.md,logs/}`、`target/evidence/release-1.0-rc1/security2-strict/security.json`；
