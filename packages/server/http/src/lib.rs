@@ -27,13 +27,11 @@ pub const API_VERSION: &str = "v1";
 /// Whether `path` belongs to a version-gated surface.
 ///
 /// Business `/api/client/v1/*`, with login/refresh/bootstrap exempt so an old
-/// client can authenticate and discover the upgrade path; gateway `/v1/*` is
-/// also gated (enterprise native gateway sends the client identity header).
-/// Stable surfaces (`/api/meta/*`, `/api/channel`, `/api/updates/*`) are outside.
+/// client can authenticate and discover the upgrade path. Gateway `/v1/*` is
+/// **not** gated here: rig's native Responses client cannot attach custom
+/// headers, so the gateway relies on JWT auth plus release pinning instead
+/// (documented exception in docs/04 §2.7). Stable surfaces are outside.
 fn is_client_business_path(path: &str) -> bool {
-    if path == "/v1" || path.starts_with("/v1/") {
-        return true;
-    }
     if path != "/api/client/v1" && !path.starts_with("/api/client/v1/") {
         return false;
     }
@@ -55,7 +53,7 @@ pub async fn request_context(request: Request, next: Next) -> Response {
     response
 }
 
-/// Gate `/api/client/v1/*` and `/v1/*` on the `X-ZeoKeel-Client` semver.
+/// Gate `/api/client/v1/*` on the `X-ZeoKeel-Client` semver.
 ///
 /// Missing or malformed headers fail closed with 426. The request id comes from
 /// the outermost [`request_context`] task-local (no second generation); the
@@ -532,18 +530,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gateway_paths_are_version_gated_too() {
+    async fn gateway_paths_are_not_version_gated_by_http_middleware() {
+        // Upstream limitation: rig's Responses client has no custom-header hook,
+        // so /v1 stays authenticated-but-not-version-gated (docs/04 §2.7).
         for path in ["/v1/models", "/v1/responses"] {
-            let (status, _headers, body) =
-                call(gate_router(), path, Some("0.0.0;official;linux-x64;test")).await;
-            assert_eq!(status, StatusCode::UPGRADE_REQUIRED, "{path}");
-            assert_eq!(error_code(&body), "CLIENT_TOO_OLD", "{path}");
-            let (status, _headers, _body) =
-                call(gate_router(), path, Some("9.9.9;official;linux-x64;test")).await;
-            assert_eq!(status, StatusCode::OK, "{path}");
-            let (status, _headers, body) = call(gate_router(), path, None).await;
-            assert_eq!(status, StatusCode::UPGRADE_REQUIRED, "{path}");
-            assert_eq!(error_code(&body), "CLIENT_TOO_OLD", "{path}");
+            for header in [None, Some("0.0.0;official;linux-x64;test")] {
+                let (status, _headers, _body) = call(gate_router(), path, header).await;
+                assert_eq!(status, StatusCode::OK, "{path} {header:?}");
+            }
         }
     }
 

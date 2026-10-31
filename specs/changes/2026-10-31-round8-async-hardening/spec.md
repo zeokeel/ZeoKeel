@@ -11,7 +11,7 @@
 
 ## 2. request-id / gateway 426
 - 最外层中间件：读取 `X-Request-Id`（合法 ≤128）或生成 UUID，写入 task-local，响应头 echo；所有 handler 用 `current_request_id()`。
-- enterprise native gateway：llm-gateway 请求带 `X-ZeoKeel-Client`（从进程环境 `ZEOKEEL_CLIENT_HEADER` 注入，desktop boot 设置）；gateway `/v1/*` 加 426 gate（缺失头 fail-closed；登录/刷新/稳定面不受影响）。
+- enterprise native gateway：llm-gateway 的 GatewayLlm 请求带 `X-ZeoKeel-Client`（env `ZEOKEEL_CLIENT_HEADER`，desktop boot 设置）。**gateway `/v1/*` 的 426 门禁本轮不启用**：rig-core 原生 Responses 客户端不支持自定义头（上游限制），网关依赖 JWT+发布锁定；docs/04 记录例外，列入后续。
 - 审计：docs/21 明确 hash 链覆盖字段（prev/action/target/detail）；`request_id` 为运营字段，不参与 hash；如需纳入走 schema 版本化（本轮只文档化）。
 
 ## 3. matrix/writer
