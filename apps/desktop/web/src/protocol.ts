@@ -7,6 +7,7 @@
  */
 import {
   defaultAgentSettings,
+  defaultEmbeddingSettings,
   defaultSettings,
   defaultToolSettings,
   type AgentEvent,
@@ -15,6 +16,7 @@ import {
   type AppSettings,
   type CommandResult,
   type Conversation,
+  type EmbeddingSettings,
   type Locale,
   type Message,
   type Meta,
@@ -412,6 +414,21 @@ export function parseSettings(value: unknown): AppSettings {
     server_url: readString(value, "server_url") ?? base.server_url,
     agent: parseAgentSettings(value["agent"]),
     tools: parseToolSettings(value["tools"]),
+    embedding: parseEmbeddingSettings(value["embedding"]),
+  };
+}
+
+function parseEmbeddingSettings(value: unknown): EmbeddingSettings {
+  const base = defaultEmbeddingSettings();
+  if (!isRecord(value)) {
+    return base;
+  }
+  return {
+    base_url: readString(value, "base_url") ?? base.base_url,
+    api_key: readString(value, "api_key") ?? base.api_key,
+    model: readString(value, "model") ?? base.model,
+    dims: readNullableNumber(value["dims"]),
+    dir: readString(value, "dir") ?? base.dir,
   };
 }
 

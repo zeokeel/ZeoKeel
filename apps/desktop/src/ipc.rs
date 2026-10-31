@@ -254,6 +254,13 @@ pub(crate) fn apply_persisted_settings(
         .load()
         .map_err(|error| format!("settings load: {error}"))?;
     let file_exists = settings_file_exists();
+    if zk_composed::EDITION == "personal" {
+        // Boot order: env-based capability configuration already ran in
+        // `boot_desktop`; explicit saved settings override it here.
+        if let Err(error) = apply_embedding_settings(&settings) {
+            eprintln!("zk-desktop: embedding settings not applied: {error}");
+        }
+    }
     // A settings file (even one carrying the default schedule) is explicit:
     // it overrides env. Only a fresh install (no file) uses the env fallback.
     apply_persisted_schedule(&settings, file_exists)?;
@@ -407,14 +414,14 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 Ok(settings) => settings,
                 Err(error) => return CommandResponse::err(format!("invalid settings: {error}")),
             };
-            if settings.provider.api_key.trim().is_empty() {
-                // The UI never receives the stored key (masked by settings.get).
-                // An empty field means "keep the existing secret".
-                if let Ok(existing) = state.runtime.settings().load() {
-                    settings.provider.api_key = existing.provider.api_key;
-                }
-            }
+            // The UI never receives stored secrets (masked by settings.get); an
+            // empty field means "keep the existing secret" (provider + embedding).
+            let existing = state.runtime.settings().load().ok();
+            keep_existing_secrets(&mut settings, existing.as_ref());
             if let Err(error) = validate_settings(&settings) {
+                return CommandResponse::err(error);
+            }
+            if let Err(error) = apply_embedding_settings(&settings) {
                 return CommandResponse::err(error);
             }
             // Apply agent + tool settings first: validation/runtime failures
@@ -1085,7 +1092,36 @@ fn masked_settings(settings: &AppSettings) -> Value {
     if let Some(provider) = value.get_mut("provider").and_then(Value::as_object_mut) {
         provider.insert("api_key".to_owned(), Value::String(String::new()));
     }
+    if let Some(embedding) = value.get_mut("embedding").and_then(Value::as_object_mut) {
+        embedding.insert("api_key".to_owned(), Value::String(String::new()));
+    }
     value
+}
+
+/// Apply the personal-edition embedding provider settings (C7: enterprise never
+/// configures a local embedding provider; the generated glue is a no-op there).
+pub(crate) fn apply_embedding_settings(settings: &AppSettings) -> Result<(), String> {
+    settings
+        .embedding
+        .validate()
+        .map_err(|error| format!("embedding settings: {error}"))?;
+    if zk_composed::EDITION == "personal" {
+        zk_composed::configure_embedding_from_settings(&settings.embedding);
+    }
+    Ok(())
+}
+
+/// Keep stored write-only secrets when the UI sends a masked (empty) value.
+fn keep_existing_secrets(settings: &mut AppSettings, existing: Option<&AppSettings>) {
+    let Some(existing) = existing else {
+        return;
+    };
+    if settings.provider.api_key.trim().is_empty() {
+        settings.provider.api_key = existing.provider.api_key.clone();
+    }
+    if settings.embedding.api_key.trim().is_empty() {
+        settings.embedding.api_key = existing.embedding.api_key.clone();
+    }
 }
 
 fn session_err(error: zk_contract_session::SessionError) -> CommandResponse {
@@ -1106,6 +1142,9 @@ fn validate_settings(settings: &AppSettings) -> Result<(), String> {
         return Err(error.to_string());
     }
     if let Err(error) = settings.agent.schedule.validate() {
+        return Err(error.to_string());
+    }
+    if let Err(error) = settings.embedding.validate() {
         return Err(error.to_string());
     }
     if settings.provider.kind != ProviderKind::Mock {
@@ -1480,6 +1519,47 @@ mod tests {
         let without = super::assistant_message("c1", "answer".to_owned(), None, "cancelled");
         assert!(without.usage.is_none());
         assert_eq!(without.status, "cancelled");
+    }
+
+    #[test]
+    fn embedding_settings_apply_mask_and_validation() {
+        let settings = zk_contract_config::AppSettings {
+            embedding: zk_contract_config::EmbeddingSettings {
+                base_url: "https://api.example.invalid/v1".to_owned(),
+                api_key: "sk-embed-secret".to_owned(),
+                model: "text-embedding-3-small".to_owned(),
+                dims: Some(8),
+                dir: String::new(),
+            },
+            ..zk_contract_config::AppSettings::default()
+        };
+        super::apply_embedding_settings(&settings).unwrap();
+
+        // `settings.get` must mask the write-only embedding key (like provider).
+        let masked = super::masked_settings(&settings);
+        assert_eq!(masked["provider"]["api_key"], "");
+        assert_eq!(masked["embedding"]["api_key"], "");
+        assert_eq!(masked["embedding"]["model"], "text-embedding-3-small");
+
+        // A masked (empty) incoming key keeps the stored secret on save.
+        let mut incoming = settings.clone();
+        incoming.embedding.api_key = String::new();
+        super::keep_existing_secrets(&mut incoming, Some(&settings));
+        assert_eq!(incoming.embedding.api_key, "sk-embed-secret");
+        assert_eq!(
+            super::masked_settings(&incoming)["embedding"]["api_key"],
+            ""
+        );
+
+        // Invalid dims/scheme are rejected before persisting/applying.
+        let mut invalid = settings.clone();
+        invalid.embedding.dims = Some(0);
+        assert!(super::apply_embedding_settings(&invalid).is_err());
+        assert!(super::validate_settings(&invalid).is_err());
+        invalid.embedding.dims = Some(8);
+        invalid.embedding.base_url = "ftp://example.invalid".to_owned();
+        assert!(super::apply_embedding_settings(&invalid).is_err());
+        assert!(super::validate_settings(&invalid).is_err());
     }
 
     #[test]

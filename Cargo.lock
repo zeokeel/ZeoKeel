@@ -8536,6 +8536,7 @@ dependencies = [
  "zk-contract-update",
  "zk-contract-user",
  "zk-contract-wallet",
+ "zk-kit-media",
  "zk-llm-rig",
  "zk-store-session-sqlite",
  "zk-store-settings-json",

@@ -300,6 +300,14 @@ const zhCN = {
   settingsScheduleEnabled: "启用定时调度",
   settingsScanSeconds: "扫描间隔（秒，5-3600）",
   settingsScheduleHint: "启用后按间隔扫描自动化任务；保存后立即生效。",
+  settingsSectionEmbedding: "嵌入/向量索引",
+  settingsEmbeddingBaseUrl: "嵌入服务地址",
+  settingsEmbeddingApiKey: "嵌入 API Key",
+  settingsEmbeddingApiKeyHint: "留空表示保留已保存的 Key；Key 不会回显。",
+  settingsEmbeddingModel: "嵌入模型",
+  settingsEmbeddingDims: "向量维度（1-65536，可选）",
+  settingsEmbeddingDir: "向量索引目录",
+  settingsEmbeddingHint: "留空则使用环境变量回退；保存后应用。",
 } as const;
 
 export type MessageKey = keyof typeof zhCN;
@@ -600,6 +608,14 @@ const enUS: Record<MessageKey, string> = {
   settingsScheduleEnabled: "Enable scheduled runs",
   settingsScanSeconds: "Scan interval (seconds, 5-3600)",
   settingsScheduleHint: "Scans automation tasks at this interval after saving; applies immediately.",
+  settingsSectionEmbedding: "Embeddings / vector index",
+  settingsEmbeddingBaseUrl: "Embedding base URL",
+  settingsEmbeddingApiKey: "Embedding API key",
+  settingsEmbeddingApiKeyHint: "Leave empty to keep the saved key; keys are never shown.",
+  settingsEmbeddingModel: "Embedding model",
+  settingsEmbeddingDims: "Dimensions (1-65536, optional)",
+  settingsEmbeddingDir: "Vector index directory",
+  settingsEmbeddingHint: "Empty fields fall back to environment settings; applies on save.",
 };
 
 const dictionaries: Record<Locale, Record<string, string>> = {
