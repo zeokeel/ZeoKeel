@@ -62,7 +62,7 @@
 | `zk capability --check` | 能力索引与公共 API 不一致；kit/契约公共项未登记 |
 | 复用/去重 | kit 外新增 utils/helpers；业务包 import 其它业务实现；新增克隆超 baseline |
 | 迁移不可变 | 历史迁移文件哈希变化 |
-| 权限矩阵 | 有端点没声明权限点，或管理台页面权限不在集合内 |
+| 权限矩阵 | **UNVERIFIED/backlog**：`zk api` 路由/权限 catalog 未实现（`docs/24` §4、`docs/04`「唯一真源（计划/未实现）」），当前没有自动「端点 ↔ 权限点」比对门禁；替代证据是 `scripts/srv-auth-test.sh` 的手工全端点权限矩阵；catalog 落地后本行必须转为自动门禁 |
 | 品牌残留 | `hide` 渠道出现官方品牌字符串/资源；`show` 渠道出现非固定 Powered by 文案 |
 | 保留期 | 审计 <180 天或用量 <12 个月（配置项低于下限） |
 | 未签名/未公证 | Windows 不签名（已定）；macOS 证书配置前不公证（发布 job 标记，不阻塞内部构建） |

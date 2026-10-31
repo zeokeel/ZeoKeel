@@ -528,9 +528,15 @@ gate12() {
     'cargo test --offline -q -p zk-desktop --bin zk-desktop -- published_runtime_snapshot_never_contains_provider_secrets' \
     'cargo test --offline -q -p zk-desktop --bin zk-desktop -- hook_events_are_redacted_before_logging'
   local rc=$?
-  grep -rEn --include='*.rs' '(println!|eprintln!|tracing::(debug|info|warn|error)!|log::(debug|info|warn|error)!)' packages crates apps tools 2>/dev/null \
-    | grep -Ei 'password|secret|api_key|apikey|access_token|refresh_token|csrf' > "$OUT/.log-secret-hits" 2>/dev/null || true
-  grep -rEn --include='*.rs' 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{20,}' packages crates apps tools 2>/dev/null > "$OUT/.secret-literals" || true
+  # Rust log macros plus TS/TSX/JS console/logger calls must not interpolate secrets.
+  {
+    grep -rEn --include='*.rs' '(println!|eprintln!|tracing::(debug|info|warn|error)!|log::(debug|info|warn|error)!)' packages crates apps tools 2>/dev/null || true
+    grep -rEn --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=build --exclude-dir=target \
+      --include='*.ts' --include='*.tsx' --include='*.js' --include='*.mjs' \
+      '(console\.(log|error|warn|info|debug)|logger\.(debug|info|warn|error))' apps packages tools 2>/dev/null || true
+  } | grep -Ei 'password|secret|api_key|apikey|access_token|refresh_token|csrf' > "$OUT/.log-secret-hits" 2>/dev/null || true
+  # Secret literals are scanned in code AND configuration (private keys, AWS keys, OpenAI tokens).
+  grep -rEn --include='*.rs' --include='*.ts' --include='*.tsx' --include='*.js' --include='*.json' --include='*.toml' --include='*.yml' --include='*.yaml' 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{20,}'     packages crates apps tools deploy .github 2>/dev/null > "$OUT/.secret-literals" || true
   grep -rEn --include='*.rs' 'unsafe\s*\{' packages crates apps tools 2>/dev/null > "$OUT/.unsafe-braces" || true
   grep -rEn --include='*.rs' '\.(unwrap|expect)\(' packages crates apps tools 2>/dev/null | grep -v '/tests/' > "$OUT/.unwrap-expect" || true
   local hits secrets unsafe_hits unwrap_hits
@@ -549,9 +555,9 @@ gate12() {
     head -10 "$OUT/.unwrap-expect"
   } >> "$log" 2>&1
   if [[ "$rc" -ne 0 || "$hits" -ne 0 || "$secrets" -ne 0 || "$unsafe_hits" -ne 0 ]]; then
-    record 12 "secrets-in-logs-errors" high security "cargo test -p zk-desktop --bin zk-desktop security/redaction tests + static secret/unsafe/log scans" fail "$log" "redaction tests exit=$rc; log hits=$hits; secret literals=$secrets; unsafe blocks=$unsafe_hits"
+    record 12 "secrets-in-logs-errors" high security "cargo test -p zk-desktop --bin zk-desktop security/redaction tests + static secret/unsafe/log scans (Rust + TS/TSX/JS + config)" fail "$log" "redaction tests exit=$rc; log hits=$hits; secret literals=$secrets; unsafe blocks=$unsafe_hits"
   else
-    record 12 "secrets-in-logs-errors" high security "cargo test -p zk-desktop --bin zk-desktop security/redaction tests + static secret/unsafe/log scans" pass "$log" "runtime snapshot never contains provider secrets; hook events redacted before logging; 0 log-macro secret interpolations, 0 secret literals, 0 hand-written unsafe blocks (unwrap/expect outside tests denied by clippy)"
+    record 12 "secrets-in-logs-errors" high security "cargo test -p zk-desktop --bin zk-desktop security/redaction tests + static secret/unsafe/log scans (Rust + TS/TSX/JS + config)" pass "$log" "runtime snapshot never contains provider secrets; hook events redacted before logging; 0 secret interpolations in Rust log macros or TS console/logger calls, 0 secret literals in code/config, 0 hand-written unsafe blocks (unwrap/expect outside tests denied by clippy)"
   fi
 }
 

@@ -13,10 +13,10 @@
 #   7. record durations (RPO/RTO not committed: D64) in JSON.
 #
 # Honest UNVERIFIED items (not fake-passed; exit 2 when the local drill passed):
-#   - master.key file restore: server has no master.key/encryption implementation yet
-#     (upstream key stored plaintext `api_key_enc`, docs/07 "未决"); MASTER_KEY is only
-#     fingerprinted. If a real master.key file appears in the data dir it IS backed up and
-#     restored, and the check flips to pass.
+#   - master.key file restore: the versioned AEAD key ring IS implemented
+#     (crates/zk-kit-server/src/master_key.rs + scripts/master-key-rotate.sh); this drill
+#     backs up/restores a master.key file if present, but an offline restore drill from a
+#     real backup has NOT been executed (UNVERIFIED).
 #   - WAL archiving / PITR: `archive_mode` is off in this single-node postgres; no WAL replay.
 #   - backup encryption (age/KMS) + offsite: ops step, not local.
 #
