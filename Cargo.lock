@@ -8515,6 +8515,7 @@ dependencies = [
  "zk-cap-transcription",
  "zk-cap-vector",
  "zk-client-update-github",
+ "zk-connector-mcp",
  "zk-contract-admin-ui",
  "zk-contract-agent",
  "zk-contract-app",
@@ -8584,6 +8585,16 @@ dependencies = [
  "zk-ui-settings",
  "zk-ui-settings-provider",
  "zk-ui-shell",
+]
+
+[[package]]
+name = "zk-connector-mcp"
+version = "1.0.0-rc.1"
+dependencies = [
+ "reqwest 0.12.28",
+ "serde_json",
+ "zk-contract-connector",
+ "zk-contract-tool",
 ]
 
 [[package]]
@@ -8796,6 +8807,7 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tauri",
  "tauri-build",
  "tokio",
@@ -8804,8 +8816,10 @@ dependencies = [
  "zip",
  "zk-bootstrap",
  "zk-composed",
+ "zk-connector-mcp",
  "zk-contract-agent",
  "zk-contract-config",
+ "zk-contract-connector",
  "zk-contract-ipc",
  "zk-contract-session",
  "zk-contract-tool",
@@ -8881,6 +8895,7 @@ dependencies = [
  "chrono",
  "ed25519-dalek",
  "rand_core 0.6.4",
+ "ring",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -8969,31 +8984,6 @@ dependencies = [
 [[package]]
 name = "zk-server"
 version = "1.0.0-rc.1"
-dependencies = [
- "axum",
- "serde_json",
- "tokio",
- "tower-http",
- "zk-bootstrap",
- "zk-composed",
- "zk-kit-server",
- "zk-srv-app-db",
- "zk-srv-app-runtime",
- "zk-srv-apps",
- "zk-srv-audit",
- "zk-srv-auth-local",
- "zk-srv-connectors",
- "zk-srv-content",
- "zk-srv-gateway",
- "zk-srv-http",
- "zk-srv-jobs",
- "zk-srv-pricing",
- "zk-srv-settings",
- "zk-srv-skills",
- "zk-srv-updates",
- "zk-srv-users",
- "zk-srv-wallet",
-]
 
 [[package]]
 name = "zk-srv-app-db"
@@ -9273,6 +9263,7 @@ version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
+ "zk-kit-subagent",
 ]
 
 [[package]]
@@ -9373,6 +9364,7 @@ version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
+ "zk-kit-subagent",
  "zk-kit-tools",
 ]
 
@@ -9436,6 +9428,7 @@ version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
+ "zk-kit-tools",
 ]
 
 [[package]]
@@ -9558,6 +9551,7 @@ version = "1.0.0-rc.1"
 dependencies = [
  "reqwest 0.12.28",
  "serde_json",
+ "zk-contract-config",
  "zk-contract-tool",
 ]
 

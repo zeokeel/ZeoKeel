@@ -25,6 +25,10 @@
   工具、SQLite 会话/设置、本地 provider、GitHub Releases 更新）；企业版（server 域包 auth/users/wallet/pricing/gateway/
   audit/settings/jobs + admin SPA + 登录/网关/1:1 更新）；内容平台（技能/连接器）；WASM 应用中心；OEM 渠道/品牌构建期注入；
   组合生成物与 10 套本地 e2e（真实 PG/浏览器）全绿。
+- Phase B 功能缺口收敛（B1–B16，2026-10-31）：工具多会话/`pwsh-persistent`/goal round driver/ralph fresh-context/
+  agent-team、rig usage 事件/messages_in 回放/effect JSONL 子集/上下文窗口预算、hooks/memory/web-search 设置、
+  MCP 客户端 transport + 企业 catalog passthrough + OAuth 2.0 公共客户端 PKCE loopback、a11y 矩阵、i18n 审计与
+  门户 zh/en 均已实现并有本地证据（`target/evidence/release-1.0-rc1/phase-b/`）；残余见 `KNOWN-LIMITATIONS.md` §3。
 - M6 部分：本地可执行项有证据；Docker/镜像、三平台安装包、macOS 公证、Windows 真机、真实 provider/媒体、
   500 用户压测、hosted-runner CI 等为 **UNVERIFIED**；M6 acceptance 仍 `blocked`。
 - `1.0.0` 正式版需 rc 验收 + 远端 CI/release 实跑通过后由用户确认。
@@ -314,9 +318,10 @@ python3 golden/run.py           # 可选：已 build 后单独重跑，期望 {"
   —— 唯一真源 `KNOWN-LIMITATIONS.md` §2。
 - M6 残余：安全 13 项外部工具/威胁模型评审、PITR/WAL 备份、Docker 升级/回滚 drill、可复现构建覆盖、
   性能预算部分项；M6 acceptance 仍 `blocked`（`specs/changes/2026-10-30-hardening-release/acceptance.md`）。
-- 功能残余（后续 spec）：agent/rig 接线（usage 独立事件、`messages_in` 回放、run-state/telemetry/effect、
-  ModelCatalog 上下文窗口/压缩）、工具 partial（terminal 多会话、pwsh-persistent、goal round driver、
-  ralph fresh-context、agent-team implemented）；口径见 `docs/38` §5.4。
+- 功能残余（B15 后最终口径）：rig live run checkpoint/resume 不可达（`AgentRun` 为 `pub(crate)`）、
+  rig-memory summarizer 全量压缩未接（需 summarizer 策略）、真实 IdP/OAuth 元数据 discovery（`.well-known`）与
+  remote connector lifecycle、真实 provider/媒体/embedding 在线调用、物理 Tauri WebView/三平台矩阵、产品 500 用户
+  容量对真实部署——口径见 `docs/38` §5.4 与 `KNOWN-LIMITATIONS.md` §3。
 - personal 组合 `apps/server` 目标裁剪：由 A18 生成器任务实现；验收前不得声称已裁剪（R8.2）。
 - 实现细节待定：统一索引 `docs/15` §C（T1–T21），不阻塞 spec 编写；实现前在对应 milestone spec 冻结。
 - 已拍板（v3.2）：余额=企业配额、不做开票/收款、OEM 代码自研、Powered by OEM 默认隐藏、不做 DPA、暂不定义 RPO/RTO、安全内部评审（D60–D65）。

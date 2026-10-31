@@ -32,6 +32,33 @@
   工作区级覆盖与限制见 `KNOWN-LIMITATIONS.md` §5。
 - 入口文档真源：`README.md`、`AGENTS.md` §1/§6/§12、`docs/12`、`docs/20`（失效脚本引用修正）、`docs/37`、`docs/README` 已对齐 HEAD。
 
+### Phase B（功能缺口收敛，2026-10-31）
+
+> 用户 D2 = 修复全部可行功能缺口；所有条目均有本地可执行证据（`target/evidence/release-1.0-rc1/phase-b/*`），
+> 诚实残余见下方与 `KNOWN-LIMITATIONS.md` §3。
+
+- **工具（B1–B5）**：`terminal` 每会话多会话（open/status/send/close/list，cap 8）；`pwsh-persistent` 真实长驻
+  pwsh 会话（缺 pwsh/非 Windows → `TOOL_UNSUPPORTED_PLATFORM`）；`goal` 有界 round driver（set/status/run/cancel，
+  rounds 持久化、默认 10/clamp 1..100、重启安全）；`ralph` 每轮 `run_fresh` 独立 child context；
+  `agent-team` 实现（coordinator + 有界 async worker 扇出，cap 8/depth 3，ADR-070）。矩阵无 partial/unsupported 行。
+- **rig 接线（B7–B10）**：`AgentEvent::Usage` 独立事件；桌面以 `SessionStore::messages_in` 为历史权威回放
+  （残余：tool-call 历史不回放）；可选 JSONL effect log（rig Recorder 子集、脱敏；残余：live run checkpoint 不可达、
+  telemetry 仅 tracing）；上下文窗口预算 + 确定性最旧优先截断（残余：summarizer 全量压缩未接）。`pdf`/`epub`
+  loaders 仍未启用（ADR-067），`read_document` 为独立实现。
+- **配置（B11）**：agent hooks/memory + web-search 端点/超时进入 `AppSettings` 与设置页（优先级 settings > env >
+  默认；`AppSettings.web_search` 新段、无凭据、https-only、`RuntimeSettings.web_search` 发布；`tool-web-search`
+  每次调用解析）；企业版 C7 不适用于工具出口。
+- **MCP 客户端（B16）**：新增 `zeokeel/connector-mcp`（stdio/HTTP(S) JSON-RPC、会话复用、catalog passthrough、
+  `mcp_call`/`mcp_list_tools`）；企业 catalog 下发非敏感 `config` 并在 desktop `auth.configure` 同步、logout 清理；
+  OAuth 2.0 公共客户端 + PKCE（RFC 8252 127.0.0.1 loopback + 系统浏览器，token 仅 keychain 本地；`set_oauth_token`
+  注入 `Authorization: Bearer`，无 token → `MCP_OAUTH_REQUIRED`）。残余：真实 IdP 联调、`.well-known` discovery、
+  remote connector lifecycle 未做。
+- **可访问性/i18n（B12/B13）**：client/admin/portal axe 矩阵 0 serious/critical（`e2e/m1-a11y.spec.ts` 新增，
+  `m6-a11y.spec.ts` 扩展；设置弹窗焦点回位修复）；zh/en 审计 + `scripts/i18n-check.sh` 门禁；portal zh+en
+  （runtime 追加 `/portal/en`、静态 `deploy/portal/index.html` 双语）。
+- **真实环境 harness（B14）**：`scripts/real-provider-smoke.sh`（真实 provider/媒体/embedding；缺 key 显式 UNVERIFIED
+  exit 2）、`scripts/load-smoke.sh`（本机并发 smoke，目标 500；产品容量对真实部署 UNVERIFIED）。
+
 ### UNVERIFIED（环境/交付阻塞，不得视为已验证）
 
 - Docker 镜像构建/导入/`compose up`、镜像内 SBOM、交付 tar；`deploy/` 仅有源文件。
@@ -41,11 +68,14 @@
 - GitHub-hosted-runner CI 与 release workflow 实跑；`v1.0.0-rc.1` tag/GitHub Release 尚未创建。
 - M6 acceptance 仍 `blocked`（`specs/changes/2026-10-30-hardening-release/acceptance.md`）；威胁模型独立评审判定见 `docs/reviews/`。
 
-### 已知限制（摘要）
+### 已知限制（摘要，B15 后最终口径）
 
-- agent/rig 残余（`AgentEvent` usage 非独立事件、`SessionStore::messages_in` 回放缺、rig run-state/telemetry/effect 与
-  ModelCatalog 上下文窗口/压缩未接）、工具 partial（terminal/pwsh-persistent/goal/ralph/agent-team）、
-  personal 组合 `apps/server` 目标裁剪待 A18 验收后生效、SBOM 覆盖边界：详见 `KNOWN-LIMITATIONS.md`。
+- 功能残余：rig live run checkpoint/resume 不可达（rig `AgentRun`/`build_run` 为 `pub(crate)`）、rig-memory summarizer
+  全量压缩未接（需 summarizer 策略）、`pdf`/`epub` loader 未启用（ADR-067）、真实 IdP/OAuth 元数据 discovery 与
+  remote connector lifecycle 未做、真实 provider/媒体/embedding 在线调用与产品 500 用户容量对真实部署 UNVERIFIED、
+  物理 Tauri WebView/三平台主题矩阵未跑。
+- 组合/交付：personal 组合 `apps/server` 目标裁剪待 A18 验收后生效；SBOM 覆盖边界、Docker/三平台安装包/macOS 公证/
+  Windows 真机/hosted-runner CI 见上节 UNVERIFIED。详见 `KNOWN-LIMITATIONS.md`。
 
 ## 0.1.0 (2026-10-30)
 

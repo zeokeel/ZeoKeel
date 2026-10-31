@@ -68,6 +68,11 @@ jobs:
           cargo install cargo-audit --version 0.22.2 --locked
           cargo install cargo-machete --version 0.9.2 --locked
           cargo install cargo-geiger --version 0.14.0 --locked
+      # A18 target trimming: the committed personal baseline generates a stub
+      # apps/server (exit 2, zero srv deps). The audit's PG/SSRF/rebinding gates need the
+      # real enterprise server, so compose before fetching/building (lockfile first).
+      - name: "Compose enterprise (A18): personal baseline generates a stub server"
+        run: cargo run -q -p zk -- compose --edition enterprise --profile default --channel official
       # The audit script runs `cargo test --offline` for gates 4/5/12; fetch once with
       # network first so a cold GitHub runner still has the registry cache those need.
       - name: Fetch locked dependencies (needed by the audit's --offline tests)

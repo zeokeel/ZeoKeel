@@ -102,8 +102,23 @@ jobs:
           sudo apt-get install -y postgresql
           sudo systemctl start postgresql
           sudo -u postgres psql -c "SELECT version();"
-      - name: Build server
+      # A18 target trimming: the committed baseline is personal (targets = desktop) and
+      # generates a stub apps/server (exit 2, zero srv deps). Server jobs must compose
+      # enterprise first; the job is ephemeral so the personal baseline is not restored.
+      - name: "Enterprise composition (A18): personal baseline generates a stub server"
+        run: cargo run -q -p zk -- compose --edition enterprise --profile default --channel official
+      - name: Build server (enterprise composition)
         run: cargo build -p zk-server
+      - name: Assert zk-server is the enterprise build, not the A18 stub
+        run: |
+          set -euo pipefail
+          cargo tree -p zk-server --edges normal | grep -q 'zk-srv-http'
+          if strings target/debug/zk-server \
+              | grep -qF 'server target is not part of the personal composition'; then
+            echo "::error::stub zk-server binary: enterprise composition missing (A18)" >&2
+            exit 1
+          fi
+          echo "zk-server is the enterprise build (srv deps present, A18 stub marker absent)"
       - name: Server integration (real PG, auth/billing/audit)
         run: bash scripts/srv-auth-test.sh
       - name: "Updates e2e (real PG): manifest/channel-reject/version-reject/artifact/portal"
