@@ -556,7 +556,10 @@ jobs:
                   if re.match(rf"^#+\s*\[?{re.escape(version)}\]?", line):
                       start = index
                       continue
-                  if start is not None and re.match(r"^#+\s", line):
+                  # Stop at the next level-2 heading (another release), not at the
+                  # first `###` subsection: otherwise the notes truncate before
+                  # hotfix/feature subsections.
+                  if start is not None and re.match(r"^##\s", line):
                       return "\n".join(lines[start:index]).strip()
               return "\n".join(lines[start:]).strip() if start is not None else ""
 

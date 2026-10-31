@@ -153,3 +153,33 @@
   M6 acceptance 仍 `blocked`（Docker/证书/真机/CI 环境项）。
 - 最终验收结论：APPROVED
 
+## 11. Post-approval hotfix 复核（2026-11-01）
+
+- 复核对象：hotfix commit/tag `v1.0.0-rc.1` → `5c0f29d4e918a22113ce6c3c77ed9f4e4f3c5cd6`（remote annotated tag object
+  `a4f32aa86a0e1a6b96bbdeb269c3757dcb4088b1`，tagger 2026-10-31T16:55:47Z；remote `main` 同 commit；工作树 clean）。
+  Delta vs 已批准 `33f59a1`：`8a61838`（Windows GUI subsystem、启动失败可见化、WebView2 构建目标）+ `5c0f29d`
+  （boot fallback 样式作用域化），6 文件 / +116 行（CHANGELOG、main.rs、index.html、main.tsx、types.ts、vite.config.ts）。
+- 代码 delta 核验：`apps/desktop/src/main.rs:7-11` `#![cfg_attr(all(not(debug_assertions), target_os = "windows"),
+  windows_subsystem = "windows")]`；`apps/desktop/web/index.html` `#zk-boot` 作用域启动卡片 + 10s watchdog
+  （`10000`，展示 UA/地址/错误文本）；`apps/desktop/web/src/main.tsx:29` `StartupErrorBoundary`
+  （`getDerivedStateFromError`/`componentDidCatch`，失败显示可截图错误面板）；`apps/desktop/web/vite.config.ts:16-17`
+  `target: "es2020"`、`cssTarget: "chrome105"`。
+- 远端证据（只读复核）：CI `41219684321` = success（9/9 jobs；e2e log 14 passed、a11y 15 passed）；
+  security `41219684298` = success（strict artifact exit 0、pass=12 / fail=0 / unverified=0 / unverified_external=2）；
+  release `41222029806` = success（linux/windows/macos installers、dist、GitHub Release 全 success；
+  `upgrade-drill` 仍为环境项 failure + continue-on-error，body 标 UNVERIFIED）。
+- Release 刷新核验：`v1.0.0-rc.1` prerelease（published 2026-10-31T17:30:50Z，15 assets）；Windows
+  `ZeoKeel_1.0.0-rc.1_x64-setup.exe` sha256 `feaf270f…`（8,768,902 B）；dist archive `1689d57c…`（315,956,339 B）；
+  `KNOWN-LIMITATIONS.md` digest `0f93a3d4…` == 仓库 `sha256sum KNOWN-LIMITATIONS.md`（B2 一致性保持）；
+  release body Pipeline run = `41222029806`；SHA256SUMS 25 条在 release job 解包 archive 后 `sha256sum -c` 全部 OK；
+  13 个 loose asset 的 GitHub API digest 与 SHA256SUMS 13/13 一致。
+- CHANGELOG：`1.0.0-rc.1` 段含 `### Windows 客户端修复（2026-10-31 hotfix）`（cmd 控制台/白屏/WebView2 target）；
+  `docs/37` Windows 未签名声明不变；Windows 真机安装/升级仍 UNVERIFIED（真源 `KNOWN-LIMITATIONS.md` §2 与
+  release body；`docs/37` 未单列真机行）。
+- 结论：hotfix delta **APPROVED**；本记录既有 APPROVED 继续有效，artifact approval 现指 `5c0f29d4…`（tag `v1.0.0-rc.1`）。
+- P2 非阻塞 follow-up：(1) release body 的 Changelog 被 `.github/workflows/release.yml:551-561` 的
+  `changelog_section()` 在首个 `###` 处截断，当前 body 只显示版本标题+引言、**未展示 hotfix 子节**；建议修 generator
+  或 `gh release edit` 补 notes（不影响已发布二进制与校验和）；(2) `docs/37` 无独立 Windows 真机行，真机 UNVERIFIED
+  以 `KNOWN-LIMITATIONS.md` §2 为准（Lead 描述中 "docs/37 Windows 真机项" 与文件实际内容略有偏差）。
+
+
