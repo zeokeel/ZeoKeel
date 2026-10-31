@@ -23,7 +23,7 @@ test.describe("forced upgrade gate (real 426 server)", () => {
     const gate = page.getByTestId("upgrade-gate");
     await expect(gate).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("heading", { name: "需要更新客户端" })).toBeVisible();
-    await expect(gate).toContainText("0.1.0");
+    await expect(gate).toContainText("1.0.0-rc.1");
     await expect(gate).toContainText("9.9.9");
     const portal = page.getByRole("link", { name: "打开下载页" });
     await expect(portal).toBeVisible();

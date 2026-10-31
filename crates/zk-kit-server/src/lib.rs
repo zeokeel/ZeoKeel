@@ -385,14 +385,17 @@ pub fn min_client_version() -> String {
         .unwrap_or_else(|| DEFAULT_MIN_CLIENT_VERSION.to_owned())
 }
 
-/// Parse a plain `major.minor.patch` version (pre-release suffix ignored).
+/// Parse a plain `major.minor.patch` version (pre-release/build suffix ignored).
 #[must_use]
 pub fn parse_semver(value: &str) -> Option<(u32, u32, u32)> {
     let trimmed = value.trim();
-    let mut parts = trimmed.split('.');
+    // Strip a SemVer pre-release/build suffix before splitting: `1.0.0-rc.1`
+    // must compare as `1.0.0` (its dots are part of the suffix, not the core).
+    let core = trimmed.split(['-', '+']).next()?.trim();
+    let mut parts = core.split('.');
     let major = parts.next()?.parse::<u32>().ok()?;
     let minor = parts.next()?.parse::<u32>().ok()?;
-    let patch = parts.next()?.split('-').next()?.parse::<u32>().ok()?;
+    let patch = parts.next()?.parse::<u32>().ok()?;
     if parts.next().is_some() {
         return None;
     }
@@ -932,7 +935,21 @@ pub async fn ensure_bootstrap_admin(
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)] // test-only
 mod tests {
-    use super::canonical_json;
+    use super::{canonical_json, parse_semver};
+
+    #[test]
+    fn parse_semver_ignores_prerelease_and_build_suffixes() {
+        assert_eq!(parse_semver("1.0.0-rc.1"), Some((1, 0, 0)));
+        assert_eq!(parse_semver("1.0.0-rc.1+build.7"), Some((1, 0, 0)));
+        assert_eq!(parse_semver("0.1.0"), Some((0, 1, 0)));
+        assert_eq!(parse_semver("1.2.3-beta.4"), Some((1, 2, 3)));
+        assert_eq!(parse_semver("1.2"), None);
+        assert_eq!(parse_semver("1.2.3.4"), None);
+        assert!(
+            parse_semver("1.0.0-rc.1").unwrap_or((0, 0, 0))
+                > parse_semver("0.1.0").unwrap_or((0, 0, 0))
+        );
+    }
 
     #[test]
     fn canonical_json_sorts_nested_object_keys() {

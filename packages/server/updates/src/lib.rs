@@ -126,9 +126,10 @@ fn forced_for(release: &Value, client_below_min: bool) -> bool {
 /// the comparison false (unknown ordering is not "too old").
 fn version_lt(client: &str, floor: &str) -> bool {
     let parse = |value: &str| -> Option<Vec<u64>> {
-        value
-            .trim()
-            .split('.')
+        // Ignore SemVer pre-release/build suffixes (`1.0.0-rc.1` -> `1.0.0`):
+        // their dots must not be treated as core version separators.
+        let core = value.trim().split(['-', '+']).next()?.trim();
+        core.split('.')
             .map(str::parse::<u64>)
             .collect::<Result<Vec<_>, _>>()
             .ok()
@@ -730,6 +731,10 @@ mod tests {
         assert!(!version_lt("0.2.0", "0.1.0"));
         assert!(!version_lt("not-a-version", "0.1.0"));
         assert!(!version_lt("1", "1.0.0"));
+        // SemVer pre-release suffixes must not be parsed as core separators.
+        assert!(!version_lt("1.0.0-rc.1", "0.1.0"));
+        assert!(version_lt("0.9.0-rc.1", "0.10.0"));
+        assert!(!version_lt("1.0.0-rc.1", "1.0.0-rc.2"));
     }
 
     #[test]

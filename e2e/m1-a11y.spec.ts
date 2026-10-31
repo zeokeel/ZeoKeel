@@ -144,7 +144,7 @@ test.describe("B12 client a11y matrix (real serve carrier)", () => {
   });
 });
 
-test.describe("B12 client reduced motion", () => {
+test.describe("B12 client reduced motion (real serve carrier)", () => {
   test.use({ reducedMotion: "reduce" });
 
   test("prefers-reduced-motion disables transitions/animations", async ({ page }) => {
