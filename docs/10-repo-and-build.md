@@ -89,7 +89,7 @@ profile 在 edition 解析结果之上做环境覆盖（`profiles/base.toml` →
 
 - Rust glue 在 `crates/zk-composed/`；UI registry 在 `apps/desktop/web/src/generated/`；服务端 glue 在
   `apps/server/src/generated/`；管理台在 `apps/admin/web/src/generated/`。
-- 契约产物在 `shared/contracts/`（`zk api` 与 `zk compose` 分工见 `24` §3）；Schema 由 schemars（`export_schema`）导出，TS 由 `scripts/schema-ts.py` 从 schema 生成。
+- 契约产物在 `shared/contracts/`（计划 `zk api` 与 `zk compose` 分工见 `24` §3；`zk api` 未实现）；Schema 由 schemars（`export_schema`）导出，TS 由 `scripts/schema-ts.py` 从 schema 生成。
 - 文档索引在 `docs/generated/`，writer 是 `zk docs`。
 
 规则：**基线 `personal × default × official` 的产物入库**；其它组合在 CI 内生成不提交；头部
@@ -114,7 +114,7 @@ profile 在 edition 解析结果之上做环境覆盖（`profiles/base.toml` →
 | `pnpm-lock.yaml` | UI 依赖并集 | 入库；default `--frozen-lockfile` |
 | `migrations.lock` | 迁移内容哈希 | 入库；启动校验 |
 
-变体/OEM 渠道在 CI 内 `--offline` 重解析 + `zk verify-lock`（ADR-015），产物不提交。
+变体/OEM 渠道在 CI 内 `--offline` 重解析 + 组合锁校验（`zk verify-lock`，**未实现/backlog**），产物不提交。
 
 ## 7. 开发循环（scaffold 后）
 

@@ -315,7 +315,7 @@ SIGTERM
 ## 8. `cargo metadata` 策略
 
 - 凡声称"契约单实例/包身份"的命令（validate/compose/api/sbom）必须有 metadata；失败=非零，禁止降级。
-- 离线构建使用 `metadata.snapshot.json`（入库）并校验工作区哈希；`--no-verify` 仅本地，CI 禁用。
+- 离线构建使用 `metadata.snapshot.json`（入库）并校验工作区哈希；`--no-verify` 仅本地，CI 禁用。**实现状态：未实现（backlog），当前 CI 不做该快照校验。**
 - `cargo metadata` 只做交叉校验；包索引以 manifest 为准；两者不一致 = 红。
 
 ## 9. 验收

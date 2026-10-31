@@ -56,7 +56,7 @@ pub trait ServerPackage {
 
 规则：
 
-1. **路由静态真源**：`[[routes]]` 在 manifest 声明，`zk api` 生成 catalog/permissions；运行期 `Register()` 只做一致性校验（多/少/冲突→拒启）。规范见 `24` §4、ADR-047；包不得自行 `Router::new()` 挂载。
+1. **路由静态真源（计划/未实现）**：`[[routes]]` 在 manifest 声明，`zk api` 生成 catalog/permissions；运行期 `Register()` 只做一致性校验（多/少/冲突→拒启）。规范见 `24` §4、ADR-047；当前以各包 `routes()` 为真源，`zk api` 未实现。
 2. **权限点同处申报**：权限常量是枚举（超管/审计员/员工），路由注册时一并声明，CI 生成"全量端点权限矩阵"。
 3. **包之间只经契约交互**：服务（`ctx.get`）或事件；不得直接依赖别的服务端包的仓储类型。
 4. **迁移归属包**：每个包自己的表由自己迁移；跨包只经契约。表名带包前缀（`auth_*`、`wallet_*`）。

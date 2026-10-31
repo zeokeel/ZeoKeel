@@ -179,9 +179,9 @@ base = "default"
 | `zk validate` | 清单/契约/角色/基数/依赖图校验；契约 crate 去重 | PR 必跑 |
 | `zk compose --edition E --profile X --channel C` | 生成所有粘合产物（§5） | 构建前置 |
 | `zk compose ... --check` | 不写文件，断言生成物无漂移 | PR 必跑（防手改生成物） |
-| `zk verify-lock` | 断言 CI 内重解析结果与 `zk.lock` 一致 | 变体构建 |
+| `zk verify-lock`（**未实现，backlog**） | 断言 CI 内重解析结果与 `zk.lock` 一致 | 变体构建 |
 | `zk db lock` / `zk db lock --check` | 分配/更新迁移哈希（只允许新增）/ 只校验不写 | 迁移变更 / PR 漂移 |
-| `zk api` / `zk api --check` | 生成 api-catalog/openapi/权限矩阵 / 只校验 | 契约变更 |
+| `zk api` / `zk api --check`（**未实现，backlog**） | 生成 api-catalog/openapi/权限矩阵 / 只校验 | 契约变更 |
 | `zk docs` / `zk docs --check` | 生成 `docs/generated/*.md` / 只校验 | PR 漂移 |
 | `zk capability` / `zk capability --check` | 生成/校验能力索引（`25` §3） | PR 漂移 |
 | `zk find <关键词>` / `zk find --used-by <id>` | 搜能力索引（写代码前必查） | 开发/评审 |
@@ -198,7 +198,7 @@ base = "default"
 | `zk explain <role>` | 该角色所有候选实现、契约、被谁 require | 替换时查 |
 | `zk diff --from <E:P:C> --to <E:P:C>` | 两个组合的差异（包集合、生成物 diff 摘要） | 矩阵报告 |
 | `zk why <package>` | 哪个角色/依赖把它拉进来 | 依赖排查 |
-| `zk lock --edition E --profile X --channel C` | 更新 `zk.lock`（解析版本/源/哈希） | 发布 |
+| `zk lock`（**未实现，backlog**；当前 `zk.lock` 由 `zk db lock` 维护迁移锁） | 更新 `zk.lock`（解析版本/源/哈希） | 发布 |
 | `zk sbom --edition E --profile X --channel C` | 输出 SBOM（cargo + npm 汇总） | 发布合规 |
 | `zk doctor` | 环境/工具链/网络/锁文件自检 | 新人与 CI |
 
@@ -213,7 +213,7 @@ base = "default"
   （name+version+source 三元组），且等于根 [patch] 指定的那一份；
   拿不到 cargo metadata 直接报错，不降级（降级会漏掉同名副本，见 research/review-plan.md §6）
 6 生成：crates/zk-composed + apps/desktop/web/src/generated + apps/server/src/generated
-        + apps/admin/web/src/generated + shared/contracts/*（zk api/zk compose 按 24 §3 分工）
+        + apps/admin/web/src/generated + shared/contracts/*（计划：zk api/zk compose 按 24 §3 分工；zk api 未实现）
         + shared/contracts/schema/*.json（schemars export_schema）+ shared/contracts/ts/contracts.ts（schema-ts.py）+ deploy 生成段 + docs/generated（zk compose/zk capability/zk docs）
 7 写/校验 zk.lock（含 edition/profile/oem 三层输入哈希）
 ```
@@ -297,7 +297,7 @@ pub fn packages() -> Vec<Box<dyn ServerPackage>> {
 pub fn migrations() -> &'static [Migration] { /* 按包顺序汇总；哈希在 migrations.lock 校验 */ }
 ```
 
-- 路由由 manifest `[[routes]]` 静态声明，`zk api` 生成 catalog/权限矩阵；运行期 `Register()` 只校验一致性（`24` §4）。
+- 路由真源（**计划/未实现**）：manifest `[[routes]]` 静态声明，`zk api` 生成 catalog/权限矩阵；运行期 `Register()` 只校验一致性（`24` §4）。当前路由以各包 `routes()` 代码为真源。
 - 后台作业由生成器汇总，启动时注册到调度器。
 - 服务端 glue 同样只有被选中的包；`edition=personal` 时这个文件根本不会生成。
 
@@ -323,7 +323,7 @@ export const registry: Record<string, ComponentType> = { ...c0, ...c1 };
 - `roles.json`：角色 → 包 → 契约 → 基数。
 - `packages.json`：包清单（版本、kind、facet、稳定级别）。
 
-writer 分工（唯一清单见 `24` §3）：`api-catalog/http-routes/openapi/permissions/errors` 由 `zk api`；
+writer 分工（唯一清单见 `24` §3）：`api-catalog/http-routes/openapi/permissions/errors` 计划由 `zk api`（**未实现**）；
 `ipc-commands/ui-contributions/ui-slots/roles/packages/i18n-catalog` 与 `i18n.gen.ts` 由 `zk compose`。
 
 ### 5.4 TS 类型
@@ -349,7 +349,7 @@ $ python3 resolve.py hardened && cargo build --offline  # ok，但 Cargo.lock �
 | --- | --- |
 | 生成物入库 | **只有基线 `personal × default × official`**；头部 `@edition/@profile/@channel`（`24` §1.2/§3），CI 断言提交的是该基线 |
 | Cargo.lock | 入库的是 **default** 的解析结果；`default` job 用 `--locked` |
-| 其他组合的构建 | CI 里 `zk compose --edition E --profile X --channel C` → `cargo build --offline`（锁文件在 CI 工作区重写，不提交）→ `zk verify-lock --edition E --profile X --channel C` 断言解析出的包集合/版本与 `zk.lock` 一致 |
+| 其他组合的构建 | CI 里 `zk compose --edition E --profile X --channel C` → `cargo build --offline`（锁文件在 CI 工作区重写，不提交）→ 组合锁校验（`zk verify-lock`，**未实现/backlog**） |
 | 离线来源 | `zk vendor` 生成**全 profile 并集**的 vendor 目录 + `[source] replace-with`，保证 `--offline` 可解析 |
 | `pnpm-lock.yaml` | `apps/desktop/web/package.json` 的依赖生成成**候选包并集**（不是仅当前 profile），锁文件因此稳定；profile 只改变 registry 的 import |
 | UI 生成物位置 | `apps/desktop/web/src/generated/`（**不是**独立 pnpm workspace 成员，避免 importer 列表随 profile 变化） |
@@ -370,7 +370,7 @@ $ python3 resolve.py hardened && cargo build --offline  # ok，但 Cargo.lock �
 ```yaml
 stages: validate → compose → build → test → matrix → package
 
-> **实现状态（2026-10-31）**：`zk api`（routes≥manifest 生成 api-catalog/openapi/permissions）、
+> **实现状态（2026-10-31，适用于全文）**：`zk api`（routes≥manifest 生成 api-catalog/openapi/permissions）、
 > `zk lock`/`zk verify-lock`（组合锁）、`zk metadata snapshot` **尚未实现**，因此不在当前 CI 命令中；
 > 上面示例保留为 M0 之后的计划形态。当前可执行门禁见 `AGENTS.md` §6 与 `.github/workflows/ci.yml`。
 

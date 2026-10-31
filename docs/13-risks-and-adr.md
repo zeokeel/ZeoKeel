@@ -144,7 +144,7 @@ CI `zk compose --check` + `git diff --exit-code`。
 对所有 profile `--locked`（切换后 `exit 101`）；`--offline` 可构建但会重写锁文件。
 **决策**：`zk.lock` 是跨 profile 的组合锁（角色→包/版本/源/哈希，入库）；`Cargo.lock`/`pnpm-lock.yaml`
 是 **default 的解析结果**（入库，default job `--locked`）；其他 profile 在 CI 内 `--offline` 重解析 +
-`zk verify-lock` 断言与 `zk.lock` 一致，产物不提交。pnpm 依赖使用"候选包并集"保持锁文件稳定。
+组合锁校验（`zk verify-lock`，**未实现/backlog**）断言与 `zk.lock` 一致，产物不提交。pnpm 依赖使用"候选包并集"保持锁文件稳定。
 **后果**：矩阵 job 的锁文件是临时产物；可复现性由 `zk.lock` 保证而非 Cargo.lock。
 **被否方案**：每 profile 一个临时 workspace——`workspace = true` 继承失效、冷构建成本 × profile 数。
 
@@ -423,7 +423,7 @@ indexing_slicing/arithmetic_side_effects/as_conversions=deny`）；所有外部�
 
 ### ADR-047 · 路由与 IPC 命令采用静态真源 `accepted`
 
-**决策**：`[[routes]]`/`[[commands]]` 在 manifest 静态声明，`zk api` 不编译即可生成 catalog/permissions；
+**决策（实现状态：未实现/backlog）**：`[[routes]]`/`[[commands]]` 在 manifest 静态声明，`zk api` 不编译即可生成 catalog/permissions；
 运行期 `Register()` 只做一致性校验，多/少/冲突/顺序不符 → 拒启。详见 `24` §4。
 
 ### ADR-048 · 钱包：账本只增 + hold 预授权 + 幂等 `accepted`

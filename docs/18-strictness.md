@@ -186,7 +186,7 @@ cargo public-api diff      # 契约包
 
 # 生成物
 zk compose --edition personal --profile default --channel official --check
-zk api --edition personal --profile default --channel official --check
+# zk api --edition ... --check  # 未实现（backlog）
 zk docs --check
 zk db lock --check
 cargo test --workspace export_schema && git diff --exit-code

@@ -168,7 +168,7 @@
 | 规则 | 内容 |
 | --- | --- |
 | 默认拒绝 | 未在路由表声明的权限 = 不可访问；未授权资源一律 **404**（与不存在同形），RBAC 拒绝才 403 |
-| 唯一真源 | manifest `[[routes]]` 静态申报方法/路径/api_version/鉴权/权限点/body 上限/幂等/审计/限流/step-up；`zk api` 生成 catalog；运行期 `Register()` 只做一致性校验（见 `24` §4）。该口径来自参考实现"路由唯一真源 + 权限点同处申报"的教训（[harness-server.md](../research/harness-server.md) §11） |
+| 唯一真源（**计划/未实现**） | manifest `[[routes]]` 静态申报方法/路径/api_version/鉴权/权限点/body 上限/幂等/审计/限流/step-up；`zk api` 生成 catalog；运行期 `Register()` 只做一致性校验（见 `24` §4）。当前路由以各包 `routes()` 代码为真源，`zk api` 未实现。该口径来自参考实现"路由唯一真源 + 权限点同处申报"的教训（[harness-server.md](../research/harness-server.md) §11） |
 | 生成物 | 该表生成 `http-routes.json` + `permissions.json` + Rust 权限常量 + TS 权限联合类型；客户端 UI 用 `/auth/me` 的权限点做**展示层**门控（不是安全边界） |
 | 门禁 | 路由缺权限点/鉴权模式/body 上限/幂等与审计策略/限流类 ⇒ 启动失败；未在生成物中的路由 ⇒ CI 失败；管理写操作无审计标记 ⇒ CI 失败；全量扫描测试枚举 public 端点并断言白名单 |
 | 角色 | `super_admin` / `auditor`（只读）/ `employee`；**无部门/用户组**；内容可见性：**全员 / 指定用户** |
@@ -193,7 +193,7 @@
 
 ## 7. 错误模型
 
-统一信封；每个请求只生成/接受一次 `X-Request-Id`（最外层中间件），业务/稳定面/gateway 的关联与审计记录复用同一 id，响应头回显。**`X-Request-Id` 仅用于关联/审计，不是业务幂等键或计费键**：gateway 的 `wallet_holds`/`usage_pending`/`usage` 结算 id 由服务端每次准入生成 UUID，客户端重复或复用同一 `X-Request-Id` 不会合并/丢弃两次计费；需要重试幂等时使用显式服务端 admission/idempotency key。统一信封：`error{code, message, retryable, request_id, details?, retry_after_ms?}`（426 强制升级使用嵌套 `error{code,message,retryable,request_id,current,minimum,portal_url}` 并回显 `X-Request-Id`；其余 handler 逐步迁移，客户端兼容 flat/nested）。message 不含上游细节、密钥、内部路径；HTTP `request_id` 全链路关联（gateway settlement id 独立）；同一 code 的 HTTP 状态唯一、不允许一处 400 一处 422，客户端按 code 分支而不是只看状态码。
+统一信封；每个请求只生成/接受一次 `X-Request-Id`（最外层中间件），业务/稳定面/gateway 的关联与审计记录复用同一 id，响应头回显。**`X-Request-Id` 仅用于关联/审计，不是业务幂等键或计费键**：gateway 的 `wallet_holds`/`usage_pending`/`usage` 结算 id 由服务端每次准入生成 UUID，客户端重复或复用同一 `X-Request-Id` 不会合并/丢弃两次计费；需要重试幂等时使用显式服务端 admission/idempotency key。统一信封：`error{code, message, retryable, request_id, details?, retry_after_ms?}`（426 强制升级使用嵌套 `error{code,message,retryable,request_id,current,minimum,portal_url}` 并回显 `X-Request-Id`；其余 handler 逐步迁移，客户端兼容 flat/nested）。message 不含上游细节、密钥、内部路径；HTTP `request_id` 全链路关联（gateway settlement id 独立）；`X-Request-Id` 客户端值仅接受 `[A-Za-z0-9._-]{1,128}`，非法/超长由服务端生成 UUID；同一 code 的 HTTP 状态唯一、不允许一处 400 一处 422，客户端按 code 分支而不是只看状态码。
 
 | HTTP | 代表错误码 | 可重试 | 客户端动作 |
 | --- | --- | --- | --- |
@@ -245,7 +245,7 @@
 | 产物 | 生成者 | 消费者 | 门禁 |
 | --- | --- | --- | --- |
 | `shared/contracts/ts/contracts.ts`（interfaces + `SCHEMAS`） | `cargo test export_schema` + `scripts/schema-ts.py` | 客户端 UI 与 server-connector（Ajv） | `git diff --exit-code` + `scripts/schema-check.sh`；枚举 tagging 与 serde 一致 |
-| `http-routes.json`、`permissions.json` | `zk api` 从 `[[routes]]` 生成 | 客户端权限门控、文档、全量扫描测试 | `--check`；路由/权限/幂等/审计/限流/body 上限缺一即失败 |
+| `http-routes.json`、`permissions.json` | `zk api` 从 `[[routes]]` 生成（**未实现，backlog**） | 客户端权限门控、文档、全量扫描测试 | `--check`；路由/权限/幂等/审计/限流/body 上限缺一即失败 |
 | `openapi.json` | 路由表 + schemars | 内部联调/可选对外 | 生成与入库默认开启、`--check`（已定）；是否对外发布待定（15 §C；§11 04-Q5） |
 | `events.json` + topic 注册表 | `zk-contract-events` | 双端 | 未注册 topic/type ⇒ CI 失败；缺 schema_version ⇒ 失败 |
 | `shared/contracts/schema/*.json` | schemars（`export_schema`） | 工具/配置校验、前端 Ajv 与 TS 生成 | `git diff --exit-code` |
