@@ -1830,6 +1830,15 @@ fn compose_cargo_toml(root: &Path, resolved: &Resolved) -> Result<String> {
     for (name, path) in &deps {
         out.push_str(&format!("{name} = {{ path = \"{path}\" }}\n"));
     }
+    // The personal embedding glue builds the rig model via the shared media kit.
+    if resolved.edition == "personal"
+        && resolved
+            .packages
+            .iter()
+            .any(|pkg| pkg.crate_name == "zk-cap-vector")
+    {
+        out.push_str("zk-kit-media = { path = \"../../crates/zk-kit-media\" }\n");
+    }
     out.push_str("serde_json = { workspace = true }\nrig-core = { workspace = true }\n\n[lints]\nworkspace = true\n");
     Ok(out)
 }
@@ -1988,6 +1997,33 @@ fn compose_lib(root: &Path, resolved: &Resolved) -> Result<String> {
                 "    if let Err(error) = {crate_name}::configure_from_env() {{\n        eprintln!(\"zk: capability configure failed ({crate_name}): {{error:?}}\");\n    }}\n"
             ));
         }
+        out.push_str("}\n\n");
+    }
+    // Embedding/vector provider from AppSettings (personal edition only; C7).
+    let has_vector_store = resolved
+        .packages
+        .iter()
+        .any(|pkg| pkg.crate_name == "zk-cap-vector");
+    if resolved.edition != "personal" || !has_vector_store {
+        out.push_str(
+            "pub fn configure_embedding_from_settings(_settings: &zk_contract_config::EmbeddingSettings) {}\n\n",
+        );
+    } else {
+        out.push_str("pub fn configure_embedding_from_settings(settings: &zk_contract_config::EmbeddingSettings) {\n");
+        out.push_str("    let api_key = settings.api_key.trim();\n");
+        out.push_str("    if api_key.is_empty() {\n        return;\n    }\n");
+        out.push_str(
+            "    let dims = settings.dims.and_then(|value| usize::try_from(value).ok());\n",
+        );
+        out.push_str("    let config = zk_kit_media::EmbeddingConfig::new(settings.base_url.trim(), api_key, settings.model.trim(), dims);\n");
+        out.push_str("    match zk_kit_media::embedding_model_from_config(&config) {\n");
+        out.push_str("        Ok(model) => {\n");
+        out.push_str("            if let Err(error) = zk_cap_vector::configure_with_dir(model, settings.dir.trim()) {\n");
+        out.push_str("                eprintln!(\"zk: embedding configure failed (zk_cap_vector): {error:?}\");\n");
+        out.push_str("            }\n");
+        out.push_str("        }\n");
+        out.push_str("        Err(error) => eprintln!(\"zk: embedding configure failed (zk_kit_media): {error:?}\"),\n");
+        out.push_str("    }\n");
         out.push_str("}\n\n");
     }
     out.push_str("\n}\n\npub use inner::*;\n");
