@@ -95,6 +95,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: bash scripts/m1-e2e.sh
+      - name: Schedule executor auto-run e2e
+        run: bash e2e/serve-schedule.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
