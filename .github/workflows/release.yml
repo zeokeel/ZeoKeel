@@ -388,11 +388,18 @@ jobs:
           name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
           path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}
           if-no-files-found: error
+          # dist includes deploy/.env.example (a dotfile); without this the artifact
+          # drops it while SHA256SUMS still lists it and verification fails.
+          include-hidden-files: true
 
   upgrade-drill:
     name: real upgrade drill (backup/upgrade/rollback/restore)
     needs: [version-check, dist]
     if: ${{ needs.version-check.outputs.edition == 'enterprise' }}
+    # Environment-dependent drill: evidence (pass/fail/UNVERIFIED) is uploaded and listed
+    # in the release body; a hosted-runner limitation must not silently block the release,
+    # but the job result itself stays visible in the Actions run.
+    continue-on-error: true
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -405,6 +412,7 @@ jobs:
         with:
           name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
           path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}
+          include-hidden-files: true
       - name: Docker available?
         run: docker version
       - name: Upgrade drill (real compose project; exits 2 when it cannot be executed)
@@ -438,6 +446,7 @@ jobs:
         with:
           name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
           path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}
+          include-hidden-files: true
       - name: Notarize + staple the dmg (must really pass; no `|| true`)
         env:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
@@ -494,6 +503,7 @@ jobs:
         with:
           name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
           path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}
+          include-hidden-files: true
       - name: Verify downloaded dist locally (SHA256SUMS + manifest)
         run: |
           set -euo pipefail
