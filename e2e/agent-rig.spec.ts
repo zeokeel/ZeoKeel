@@ -129,7 +129,7 @@ test.describe("personal rig agent (real serve + fake upstream)", () => {
     await expect(dialog).toBeVisible();
     await dialog.getByLabel("Provider 类型").selectOption("open_ai_compatible");
     await dialog.getByLabel("Base URL").fill(upstream2 ?? "");
-    await dialog.getByLabel("模型").fill("test-model");
+    await dialog.getByLabel("模型", { exact: true }).fill("test-model");
     await dialog.getByRole("button", { name: /保存|Save/ }).click();
     await expect(dialog).toBeHidden({ timeout: 20_000 });
     await newConversation(page);
