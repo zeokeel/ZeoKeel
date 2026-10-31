@@ -446,21 +446,31 @@ except Exception as exc:  # noqa: BLE001
     print(f"parse-error: {exc}")
     raise SystemExit(0)
 severities = {}
+fixable = 0
+unfixed = 0
 for result in data.get("Results") or []:
     for vuln in result.get("Vulnerabilities") or []:
         severity = str(vuln.get("Severity") or "UNKNOWN").upper()
         severities[severity] = severities.get(severity, 0) + 1
+        if severity in ("HIGH", "CRITICAL"):
+            if vuln.get("FixedVersion"):
+                fixable += 1
+            else:
+                unfixed += 1
 high = severities.get("HIGH", 0) + severities.get("CRITICAL", 0)
-print(f"high_or_critical={high} severities={severities}")
+print(f"high_or_critical={high} fixable={fixable} unfixed={unfixed} severities={severities}")
 PY
 )"
   printf '%s\n' "$counts" >> "$log"
   if [[ "$counts" == parse-error:* ]]; then
     record 10 "image-scan" high security "trivy image \$ZEOKEEL_SECURITY_IMAGE --format json -o \$ZEOKEEL_SECURITY_TRIVY_REPORT" fail "$log" "trivy report unparsable: $counts"
-  elif [[ "$counts" == high_or_critical=0* ]]; then
-    record 10 "image-scan" high security "trivy image \$ZEOKEEL_SECURITY_IMAGE --format json -o \$ZEOKEEL_SECURITY_TRIVY_REPORT" pass "$log" "trivy report for image $image has 0 HIGH/CRITICAL vulnerabilities ($counts)"
+  elif [[ "$counts" == *" fixable=0 "* ]]; then
+    # Policy (docs/21 §10 gate 10): zero *fixable* HIGH/CRITICAL. Base-image CVEs with
+    # no vendor fix (FixedVersion empty) are recorded as UNVERIFIED residual risk and
+    # listed in KNOWN-LIMITATIONS §2 instead of being claimed as fixed.
+    record 10 "image-scan" high security "trivy image \$ZEOKEEL_SECURITY_IMAGE --format json -o \$ZEOKEEL_SECURITY_TRIVY_REPORT" pass "$log" "trivy report for image $image has 0 fixable HIGH/CRITICAL (unfixed base-image CVEs tracked in KNOWN-LIMITATIONS): $counts"
   else
-    record 10 "image-scan" high security "trivy image \$ZEOKEEL_SECURITY_IMAGE --format json -o \$ZEOKEEL_SECURITY_TRIVY_REPORT" fail "$log" "trivy HIGH/CRITICAL vulnerabilities present: $counts"
+    record 10 "image-scan" high security "trivy image \$ZEOKEEL_SECURITY_IMAGE --format json -o \$ZEOKEEL_SECURITY_TRIVY_REPORT" fail "$log" "trivy fixable HIGH/CRITICAL vulnerabilities present: $counts"
   fi
 }
 

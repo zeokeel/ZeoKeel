@@ -156,3 +156,8 @@
 1. 本 `1.0.0-rc.1` 通过全量本地门禁与 rc 验收（含 A18 目标裁剪、A6 安全门禁、A8 M6 证据）。
 2. 远端 CI（hosted runner）全绿；tag `v1.0.0-rc.1` 触发 release 产出真实三平台包/镜像/SBOM/SHA256SUMS。
 3. 上述通过后由用户确认版本号从 `1.0.0-rc.1` 转为 `1.0.0`。
+
+- **容器镜像基础 CVE（RC.1，UNVERIFIED 残余）**：`debian:bookworm-slim` 运行时镜像在 2026-10-31 trivy 库快照下
+  有 68 项 HIGH/CRITICAL（含 1 CRITICAL）**无上游修复**（`FixedVersion` 为空，dpkg 包如 `bsdutils`/`curl`/`gzip` 等）；
+  可修复项为 0。gate 10 按"无 *可修复* HIGH/CRITICAL"判定，残余项在此登记，供客户按自身补丁策略评估；
+  后续跟进 debian 安全更新或改用更小运行时（distroless/scratch）时重扫。
