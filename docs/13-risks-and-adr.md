@@ -616,3 +616,18 @@ S0 验证尚未完成（见 `12`），这不是“未决架构问题”，而是
 **决策**：媒体与 embedding 的 rig 适配实现（MediaConfig/EmbeddingConfig/错误/模型 builders/block_on）统一放 `crates/zk-kit-media`（kit，`@capability kit.media`）；`cap-*` 只依赖 kit，不再依赖 `zk-llm-rig` 或直接依赖 rig-core。rig 适配点由 ADR-066 的三处扩展为三处 + kit-media（kit 非包，仍满足 C4/C17 单一实现）；`zk-llm-rig` 不再含媒体代码。宿主接线：`zk compose` 仅对 `edition=personal` 生成 `configure_capabilities_from_env()` 的实际调用（enterprise 生成 no-op），桌面仅在 personal 调用——这是构建期 C7 闸门。`rig-core` feature 只启用 `audio,image`；`pdf`（未缓存依赖）与 `epub`（GPL-3.0）不启用，PDF/EPUB 解析仍由 `tool-read-document` 自有实现。
 **理由**：保持契约/kit 分层与单一实现；企业版不因编译进媒体包而获得本地 provider 路径；避免 GPL 传染与离线构建失败。
 **后果**：媒体能力为个人版可配置能力，企业版保持 `available()==false` 并给出原因；真实媒体供应商可经个人版设置页 `AppSettings.media`（settings > env；共享 base_url/api_key + 各能力 model；密钥只写/masking；企业版隐藏/拒绝/C7）或 env `ZEOKEEL_{IMAGE,AUDIO,TRANSCRIPTION,RERANK}_*` 配置；本轮以 fake/local model 验证，真实 provider UNVERIFIED。详见 `docs/38` §5。
+
+### ADR-068 · WORM 外部锚定降级为部署控制（审计哈希链保持代码内验证）`accepted`
+
+**背景**：安全评审（`docs/reviews/2026-10-31-threat-model.md` P1-4）指出 `docs/21` §10 gate 7 同时要求「审计哈希链验证」与「WORM 锚定」，但 rc.1 代码只实现哈希链（`crates/zk-kit-server/src/lib.rs` `audit_tx`：同一事务内 `prev_hash + hash`），外部 WORM/对象锁从未实现；`docs/20` §3 已把 WORM/对象存储标为可选部署项。把未实现项按环境缺失记为 `unverified` 会与「已验证的哈希链」混同，不符合 `docs/21` 状态口径。
+**决策**：① rc.1 的代码门禁只承诺「审计哈希链 + 审计写失败 fail-closed」，由真实 PG 集成测试（`scripts/srv-auth-test.sh` audit-chain / fail-closed 断言）证明；② 外部 WORM / 对象锁 / 离线只读锚定是**部署控制**，由部署方按其存储能力实现，不在 rc.1 代码范围；③ `security-audit.sh` gate 7 记为 `unverified_external`（`env_only`，不阻塞 strict CI），证据同时引用 gate 2 的 hash-chain/fail-closed 日志；④ 发布说明与 `KNOWN-LIMITATIONS` 必须显式列出该残余风险。
+**理由**：诚实区分「代码已验证」与「部署控制」；避免门禁假绿，也避免把不可由本机/CI 代码证明的部署项当成交付阻塞项重复计为 fail。
+**后果**：WORM 能力若未来落地（本地 anchor 文件或对象锁），新增实现 + 演练后把 gate 7 改为 `pass` 并更新本节；在此之前不得对外宣称「WORM 已验证」。见 `docs/21` §10 gate 7、`docs/33` §5。
+
+### ADR-069 · MCP 客户端 transport 在 1.0.0-rc.1 未实现，延后到 Phase B B16 `accepted`
+
+**背景**：安全评审（P1-2）发现 gate 5 标题含「stdio 参数 / env 白名单」，但客户端无 MCP 执行路径：`packages/client`/`apps/desktop/src` 无 MCP 客户端 transport 代码；服务端 connectors 只做元数据分发（ADR-060：M3 连接器仅无静态 secret 配置，MCP 实际执行延后 M3.1）。原 gate 5 把「命令注入/输入校验」的 pass 扩展到未实现子项，属 over-claim。
+**决策**：① gate 5 拆为 5a `command-injection-input`（worktree/open_url/srv-http 真实测试）与 5b `mcp-stdio-transport`；② 5b 在 rc.1 记 **`fail`**（实现缺口，非环境缺失），不得标 pass；③ MCP 客户端 transport（stdio/http/sse、env 白名单、命令不拼接 shell、审批）由 Phase B task **B16** 实现并附安全测试，届时 5b 转 pass；④ rc.1 发布说明/known limitations 明示「MCP 连接器仅分发元数据，客户端执行未实现」。
+**理由**：门禁必须与攻击面一致；把未实现能力当 pass 会误导发布评审（评审 P1-2）。记为 fail 而不是 unverified，是因为该缺口可由代码实现消除，不是宿主环境限制。
+**后果**：`security-audit.sh` overall 在 B16 落地前保持 `fail`（strict exit 1）；`docs/33` 残余风险与 `KNOWN-LIMITATIONS` 引用本 ADR；B16 完成后新增测试证据并把 5b 改为 pass。
+**更新（2026-10-31，同日）**：Phase B **B16 已落地** `packages/client/connector-mcp`（stdio 子进程 + http/sse JSON-RPC，参数数组不拼 shell，静态 secret/env 校验，超时/畸形/非零退出测试）；同一 rc.1 内 gate 5b 转 `pass`（`cargo test -p zk-connector-mcp`）。本 ADR 保留"延后到 B16"的历史决策记录，不再代表当前实现缺口；`KNOWN-LIMITATIONS` 的 MCP 条目应改为"HTTPS MCP transport 明确不支持 + 静态 secret 延后 M3.1"。

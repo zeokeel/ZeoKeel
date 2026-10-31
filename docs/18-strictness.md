@@ -151,7 +151,7 @@ as_conversions = "deny"
 | 示例数据 round-trip | Rust 序列化 → TS 反序列化 → 再序列化，字节一致 | ✅ |
 | 枚举穷举 | TS `switch-exhaustiveness-check`；Rust `match` 穷举 | ✅ |
 | 未知字段兼容 | 前端 schema 允许 unknown；未知枚举降级 Unknown | ✅ |
-| 契约 API 破坏 | `cargo public-api diff` / `cargo-semver-checks` | ✅ |
+| 契约 API 破坏 | `cargo public-api diff` / `cargo-semver-checks` | UNVERIFIED（本机/CI 均未安装，见 §7.2） |
 
 ## 6. 测试增强（针对"技术性 bug"）
 
@@ -166,32 +166,66 @@ as_conversions = "deny"
 
 ## 7. CI 门禁（全部 0 容忍）
 
-```bash
-# TS
-pnpm -r typecheck          # tsc -b
-pnpm -r lint               # eslint --max-warnings 0
-pnpm -r test:unit          # vitest（含 typecheck）
-pnpm -r build              # vite build + bundle 预算
-pnpm e2e                   # playwright（m1-e2e；别名 test:e2e）
+> **门禁真源**：本节是"当前门禁"的唯一清单。`AGENTS.md` §6 与 `docs/03` §6 只能引用本节，不得新增未在
+> `.github/workflows/{ci,security,release}.yml` 实跑的条目。状态三态：**CI**（每次 push/PR 在 GitHub Actions
+> 实跑）、**本地**（开发者机器可跑，工具缺失时按 UNVERIFIED）、**UNVERIFIED**（无执行位置，必须写明原因与
+> 替代验证）。新增/删除 workflow step 必须同 PR 更新本表（spec R2，禁止 false-green）。
+> 行号会随文件变动，review 时以 step 名称为准。
 
-# Rust
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo nextest run --workspace   # 本地/CI 未安装（UNVERIFIED）
-RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
-cargo deny check           # license/advisory/ban/source
-cargo geiger --all-features # 依赖树 unsafe 统计（报告变化；新增高危需说明）
-cargo machete              # 未使用依赖
-cargo public-api diff      # 契约包（本地/CI 未安装，UNVERIFIED）
+### 7.1 实际执行的门禁（逐条对应文件:行）
 
-# 生成物
-zk compose --edition personal --profile default --channel official --check
-# zk api --edition ... --check  # 未实现（backlog）
-zk docs --check
-zk db lock --check
-cargo test --workspace export_schema && git diff --exit-code
-bash scripts/schema-check.sh
-```
+| 类别 | 门禁命令 | 实际执行位置 | 状态 |
+| --- | --- | --- | --- |
+| TS 类型 | `pnpm -r typecheck` | `.github/workflows/ci.yml:80`（web job） | CI |
+| TS lint | `pnpm -r lint` | `.github/workflows/ci.yml:82` | CI |
+| TS 单测 | `pnpm -r test:unit` | `.github/workflows/ci.yml:84` | CI |
+| TS 构建 | `pnpm -r build` | `.github/workflows/ci.yml:86`（personal 基线）与 `:90`（enterprise 组合后） | CI |
+| 浏览器 e2e | `pnpm e2e`（= `bash scripts/m1-e2e.sh`） | `.github/workflows/ci.yml:149` | CI |
+| agent e2e | `bash scripts/agent-e2e.sh` | `.github/workflows/ci.yml:151` | CI |
+| schedule e2e | `bash e2e/serve-schedule.sh` | `.github/workflows/ci.yml:153` | CI |
+| 服务端集成 | `bash scripts/srv-auth-test.sh`（真 PG） | `.github/workflows/ci.yml:108` | CI |
+| updates e2e | `bash scripts/updates-e2e.sh`（真 PG） | `.github/workflows/ci.yml:110` | CI |
+| apps e2e | `bash scripts/apps-e2e.sh`（真 PG + wasip1 guest） | `.github/workflows/ci.yml:120` | CI |
+| client-upgrade e2e | `bash scripts/client-upgrade-e2e.sh`（真 PG + serve 载体） | `.github/workflows/ci.yml:248` | CI |
+| OEM e2e | `bash scripts/oem-e2e.sh` | `.github/workflows/ci.yml:221` | CI |
+| a11y 矩阵 | axe（serious/critical = 0）：`scripts/login-e2e.sh:132,134`（m2-login / m3-client-content / m4-client-apps）与 `scripts/admin-e2e.sh:51`（m5-portal / m6-a11y） | `.github/workflows/ci.yml:199,201`（a11y job） | CI |
+| Rust 格式 | `cargo fmt --all -- --check` | `.github/workflows/ci.yml:36` | CI |
+| Rust clippy | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | `.github/workflows/ci.yml:53` | CI |
+| Rust 测试 | `cargo test --workspace` | `.github/workflows/ci.yml:57` | CI |
+| rustdoc | `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps` | `.github/workflows/ci.yml:58-61` | CI（A1 修完 rustdoc 后转绿，之前如实红） |
+| 生成物漂移 | `cargo test --workspace export_schema && git diff --exit-code && bash scripts/schema-check.sh` | `.github/workflows/ci.yml:49-52` | CI |
+| 组合/索引门禁 | `zk validate` / `zk compose --check` / `zk capability --check` / `zk lint --duplicates` / `zk docs --check` / `zk db lock --check` | `.github/workflows/ci.yml:39-46` | CI |
+| 文档门禁 | `python3 scripts/{docs,spec,review}-check.py`、`bash scripts/schema-check.sh` | `.github/workflows/ci.yml:263-266`（docs job） | CI |
+| 安全审计前置 | PostgreSQL + `cargo fetch --locked` + `cargo build -p zk-server -p zk-desktop`（gates 2/3/7/12 的运行前置） | `.github/workflows/security.yml:58-78` | CI |
+| 供应链（Rust） | `cargo deny check` / `cargo audit` / `cargo machete` | `.github/workflows/security.yml:79,81,83` | CI |
+| unsafe 统计 | `cargo geiger --all-features`（输出存证据） | `.github/workflows/security.yml:87` | CI |
+| 供应链（npm） | `pnpm audit --prod` | `.github/workflows/security.yml:95` | CI |
+| 镜像扫描（安全 gate 10） | pinned trivy 0.76.1 扫描真实 server image，JSON 经 `ZEOKEEL_SECURITY_TRIVY_REPORT` 交给审计 | `.github/workflows/security.yml:100-143` | CI |
+| 严格安全审计（13 项，5b 拆分单列） | `ZEOKEEL_SECURITY_STRICT=1 bash scripts/security-audit.sh`（前置齐备；`unverified_external`+`env_only` 不使 strict 失败；允许清单 `ZEOKEEL_SECURITY_KNOWN_GAPS` 为空） | `.github/workflows/security.yml:145-210`；审计语义见 `docs/21` §10、`scripts/security-audit.sh` | CI（可 exit 0；证据 JSON 如实记录 overall/unverified） |
+| 安全 gate 5b「`mcp-stdio-transport`」（审计 JSON id=14）**已关闭** | B16 落地后 MCP 客户端传输实现（`cargo test -p zk-connector-mcp`），审计 gate 14 = `pass`；CI 允许清单已清空（`ZEOKEEL_SECURITY_KNOWN_GAPS=""`），如回归即 strict 红 | `scripts/security-audit.sh` gate14；本地最终证据 `target/evidence/release-1.0-rc1/security2/security.json`（HEAD `6d89107`） | 本地已通过；hosted runner 仍 UNVERIFIED |
+| 版本/tag | tag `v<version>` == Cargo workspace == `package.json` == `tauri.conf.json` | `.github/workflows/release.yml:52-152`（version-check job，含 `:144` 的通过断言） | CI（tag 触发） |
+| dist 真实性 | `bash scripts/build-dist.sh`（占位/fixture exit 1、缺真实输入 exit 2、`--self-test`） | `.github/workflows/release.yml:360-372`；`scripts/build-dist.sh:46-119`（自测）、`:213-360`（输入判定） | CI（release） |
+| dist 验证 | `zk channel verify --dist <dist>` + `sha256sum -c SHA256SUMS` | `.github/workflows/release.yml:373-382`；`scripts/build-dist.sh:509` | CI（release） |
+| GitHub Release | `gh release create`/`edit`/`upload` + 资产断言 | `.github/workflows/release.yml:567-615` | CI（release，tag 触发） |
+
+### 7.2 UNVERIFIED（不得描述为"当前门禁"）
+
+| 命令/门禁 | 原因 | 替代验证 / 出处 |
+| --- | --- | --- |
+| `cargo nextest run --workspace` | 本机与 CI 均未安装 nextest | `.github/workflows/ci.yml:57` 用 `cargo test --workspace`（同一 spec 集） |
+| `cargo public-api diff` / `cargo-semver-checks` | 未安装且无 CI job；契约破坏检查未接线 | 契约 conformance 测试 + `cargo test --workspace`；§5 已改标 UNVERIFIED |
+| `cargo geiger`（本地） | 本机未安装 | CI：`.github/workflows/security.yml:87`，报告作为 artifact 上传 |
+| `cargo deny` / `cargo audit` / `cargo machete`（本地） | 本机未安装 | CI：`.github/workflows/security.yml:79,81,83` |
+| `pnpm audit --prod`（本地） | 需要网络与 npm registry | CI：`.github/workflows/security.yml:95` |
+| 安全门禁 env-only 项（gate 7 WORM 日锚定、gate 9 产物级 SBOM；gate 10 无 trivy report 时） | 无法由 CI 满足：WORM 外部锚定是部署方控制（`docs/20` §3；ADR-068 `accepted`，降级为部署控制）；产物 SBOM 只由 release dist 生成；CI 有 trivy report 时 gate 10 走 `pass/fail` | `scripts/security-audit.sh` 以 `record_env` 输出 `unverified_external` + `env_only: true`，strict 不失败且**从不记为 pass**（overall 不为 `pass`）；SSOT `docs/21` §10、`KNOWN-LIMITATIONS.md` §4；CI 证据 `target/evidence/release-1.0-rc1/security/security.json`（+ `security2/`） |
+| 安全 gate 1 威胁模型评审 | 只有评审记录含精确行 `- 威胁模型评审结论：APPROVED` 且无 open P0 才算 pass；当前记录为 CHANGES-REQUESTED | 复评 APPROVED 前 strict 如实红（CI 仍执行其余 gate）；记录 `docs/reviews/2026-10-31-threat-model.md`，规则见 `scripts/security-audit.sh` gate1 |
+| `cargo test --locked` / 变体锁矩阵 | `zk verify-lock` 未实现（`docs/03` §4 backlog） | UNVERIFIED；组合锁不在当前门禁 |
+| 换包矩阵（swap matrix） | `zk diff` 未实现（`docs/03` §6.2） | UNVERIFIED；`docs/03` §6.2 已标注 |
+| 生成物 diff 最小性 | 工具未实现（`docs/03` §6.3） | UNVERIFIED；`docs/03` §6.3 已标注 |
+| bundle 预算 | 只有 `pnpm -r build` 成功；预算断言未实现 | `.github/workflows/ci.yml:86,90` 只断言 build 成功 |
+| `zk api --check` | 未实现（`docs/24` §3 backlog） | 无；backlog |
+| PR 三平台 `cargo check` 矩阵 | PR 只在 ubuntu 跑；macOS/Windows 仅在 tag 发布时构建 | `.github/workflows/release.yml:207-295`（installers matrix） |
+| macOS 公证 / Windows 签名 | 证书后配（ADR-037，`release.yml:416-465` 的 gated job 默认跳过）；Windows 按决策不签名（ADR-033） | release body 显式 UNVERIFIED；无 `|| true` 吞失败 |
 
 ## 8. 例外政策
 

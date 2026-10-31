@@ -55,3 +55,13 @@ bash scripts/restore.sh ./backups/<stamp>   # 需先注入 MASTER_KEY 到 .env
 - 管理台 SPA 由镜像 `ZEOKEEL_ADMIN_DIST` 提供，尚未 `include_dir!` 内嵌。
 - 备份为冷备份（pg_dump + /data tar），PITR/对象存储后置。
 - 镜像 digest 尚未钉死（`docs/09` §4 要求交付时用 `tag@digest`）。
+
+## 8. 更新面夹具 `deploy/updates/`（测试专用，不是交付物）
+- `deploy/updates/` 是**提交进仓库的更新面夹具**：`clients/ZeoKeel_0.1.0_linux_x64.AppImage` 是 18 字节占位，
+  `CLIENT-RELEASE.json` 故意登记该占位的 SHA-256。`scripts/updates-e2e.sh` 用它验证 manifest/渠道拒绝/版本拒绝/门户；
+  `scripts/upgrade-drill.sh` 在无服务端时把它作为本地 fallback manifest。
+- **不得把它当交付物**：`scripts/build-dist.sh` 对位于 `deploy/`（以及 `oem/`、`*/fixtures/`）的输入一律判为
+  **INVALID（exit 1）**，只有真实输入才写 `CLIENT-RELEASE.json`/`SHA256SUMS`；`--self-test` 固定覆盖
+  “`--artifacts deploy/updates/clients` 必须 exit 1” 的负向用例。发布 dist 由 `.github/workflows/release.yml`
+  用三平台真实安装包 + `docker save` + `zk sbom` + `KNOWN-LIMITATIONS.md` 组装。
+- 夹具版本固定 `0.1.0`，与发布版本解耦；不要把真实发布产物拷进该目录。详见 `deploy/updates/FIXTURE.md`。

@@ -1,17 +1,30 @@
 name: release
-# Release pipeline (M5/M6). Honest by construction:
-#   * composes the SELECTED edition x channel before any build (never the committed
+
+# Release pipeline for the 1.0.0-rc.1 release train (and later versions). Honest by
+# construction:
+#   * only runs for an existing tag `v<version>`; the tag must equal the Cargo
+#     workspace version, the root package.json version and apps/desktop/tauri.conf.json
+#     version, and must point at the checked-out commit;
+#   * composes the SELECTED edition x channel before every build (never the committed
 #     personal baseline, docs/24 §1.2);
-#   * builds real installers on each OS and real images (enterprise), then assembles the
-#     dist tree with scripts/build-dist.sh, which refuses placeholders and exits 2 if any
-#     required real input is missing;
-#   * runs the real upgrade drill (backup -> upgrade -> rollback -> restore) against a
-#     throwaway compose project; the drill exits non-zero when it cannot be executed.
-# Windows installers stay unsigned (ADR-033); macOS notarize stays certificate-gated
-# (ADR-037). Docker/notarize/agent items are UNVERIFIED until this workflow runs once.
+#   * builds real installers on each OS, real `docker save` archives (enterprise), a real
+#     `zk sbom`, KNOWN-LIMITATIONS and SHA256SUMS, then assembles the dist tree with
+#     scripts/build-dist.sh, which refuses placeholders (exit 1) and missing real inputs
+#     (exit 2);
+#   * creates/updates the GitHub Release with exactly those real artifacts and lists every
+#     remaining UNVERIFIED environment item in the release body (no false-green).
+# Windows installers stay unsigned (ADR-033). macOS notarize stays certificate-gated
+# (ADR-037): disabled unless repo variable MACOS_NOTARIZE_ENABLED=true, and when enabled
+# the job must really pass (there is no `|| true` hiding a failure).
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
+      tag:
+        description: "Existing git tag v<version> (must equal workspace/tauri/package versions)"
+        required: true
+        type: string
       edition:
         description: "personal | enterprise"
         required: true
@@ -24,27 +37,132 @@ on:
         default: official
         type: choice
         options: [official, oem-demo]
-      version:
-        description: "semver (must match git tag v<version>)"
-        required: true
-        default: "0.1.0"
-        type: string
-
-env:
-  EDITION: ${{ inputs.edition }}
-  CHANNEL: ${{ inputs.channel }}
-  VERSION: ${{ inputs.version }}
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
+  version-check:
+    name: tag == version gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+      edition: ${{ steps.resolve.outputs.edition }}
+      channel: ${{ steps.resolve.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+      - name: Resolve tag/version/edition/channel
+        id: resolve
+        env:
+          EVENT: ${{ github.event_name }}
+          DISPATCH_TAG: ${{ inputs.tag }}
+          DISPATCH_EDITION: ${{ inputs.edition }}
+          DISPATCH_CHANNEL: ${{ inputs.channel }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            TAG="$DISPATCH_TAG"; EDITION="$DISPATCH_EDITION"; CHANNEL="$DISPATCH_CHANNEL"
+          else
+            TAG="$REF_NAME"; EDITION="enterprise"; CHANNEL="official"
+          fi
+          case "$TAG" in
+            v*) ;;
+            *) echo "::error::release tag must look like v<version>, got '$TAG'"; exit 1 ;;
+          esac
+          VERSION="${TAG#v}"
+          case "$CHANNEL" in
+            official|oem-*) ;;
+            *) echo "::error::unknown channel '$CHANNEL'"; exit 1 ;;
+          esac
+          case "$EDITION" in
+            personal|enterprise) ;;
+            *) echo "::error::unknown edition '$EDITION'"; exit 1 ;;
+          esac
+          # The tag must exist locally (dispatches check out the tag by name) and must
+          # point at the very commit the release is built from.
+          git rev-parse --verify "refs/tags/$TAG^{commit}" >/dev/null
+          TAG_COMMIT="$(git rev-parse "refs/tags/$TAG^{commit}")"
+          HEAD_COMMIT="$(git rev-parse HEAD)"
+          if [ "$TAG_COMMIT" != "$HEAD_COMMIT" ]; then
+            echo "::error::$TAG points at $TAG_COMMIT but checkout is $HEAD_COMMIT (release must build the tagged commit)"
+            exit 1
+          fi
+          # tag v<version> == Cargo workspace version == root package.json version
+          # == tauri.conf.json version. Any mismatch fails before a single artifact is built.
+          python3 - "$TAG" "$VERSION" <<'PY'
+          import json
+          import pathlib
+          import re
+          import sys
+          import tomllib
+
+          tag, version = sys.argv[1:3]
+          problems: list[str] = []
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?", version):
+              problems.append(f"tag {tag!r}: {version!r} is not semver (x.y.z or x.y.z-pre)")
+          if tag != f"v{version}":
+              problems.append(f"tag {tag!r} != v{version!r}")
+
+          cargo = tomllib.loads(pathlib.Path("Cargo.toml").read_text())
+          cargo_version = cargo.get("workspace", {}).get("package", {}).get("version")
+          if cargo_version != version:
+              problems.append(f"Cargo.toml [workspace.package].version={cargo_version!r} != tag version {version!r}")
+
+          package = json.loads(pathlib.Path("package.json").read_text())
+          if package.get("version") != version:
+              problems.append(f"package.json version={package.get('version')!r} != tag version {version!r}")
+
+          tauri = json.loads(pathlib.Path("apps/desktop/tauri.conf.json").read_text())
+          if tauri.get("version") != version:
+              problems.append(f"apps/desktop/tauri.conf.json version={tauri.get('version')!r} != tag version {version!r}")
+
+          for extra in sorted(pathlib.Path("apps").glob("*/web/package.json")):
+              try:
+                  data = json.loads(extra.read_text())
+              except (OSError, json.JSONDecodeError) as error:
+                  problems.append(f"{extra}: unreadable ({error})")
+                  continue
+              if data.get("version") != version:
+                  print(f"::warning::{extra} version {data.get('version')!r} != {version!r} (not the canonical tauri/package version)")
+          if problems:
+              for problem in problems:
+                  print(f"::error::{problem}")
+              sys.exit(1)
+          print(f"version gate ok: tag={tag} version={version}")
+          PY
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "edition=$EDITION"
+            echo "channel=$CHANNEL"
+          } >> "$GITHUB_OUTPUT"
+
   compose-and-validate:
     name: compose + validate edition x channel
+    needs: version-check
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EDITION: ${{ needs.version-check.outputs.edition }}
+      CHANNEL: ${{ needs.version-check.outputs.channel }}
+      VERSION: ${{ needs.version-check.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: pnpm/action-setup@v4
         with: { version: "12.16.1" }
       - uses: actions/setup-node@v4
@@ -88,8 +206,13 @@ jobs:
 
   installers:
     name: installers (${{ matrix.name }})
-    needs: compose-and-validate
+    needs: [version-check, compose-and-validate]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    env:
+      EDITION: ${{ needs.version-check.outputs.edition }}
+      CHANNEL: ${{ needs.version-check.outputs.channel }}
+      VERSION: ${{ needs.version-check.outputs.version }}
     strategy:
       fail-fast: false
       matrix:
@@ -100,6 +223,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: pnpm/action-setup@v4
         with: { version: "12.16.1" }
       - uses: actions/setup-node@v4
@@ -126,6 +250,8 @@ jobs:
         run: pnpm dlx @tauri-apps/cli@2 icon apps/desktop/icons/icon.png --output apps/desktop/icons
       - name: Channel-aware tauri config override
         shell: bash
+        env:
+          TAURI_TARGETS: ${{ matrix.targets }}
         run: |
           python - "$CHANNEL" "$VERSION" "$RUNNER_TEMP/tauri-release.json" >/dev/null <<'PY'
           import json, os, pathlib, sys
@@ -141,8 +267,6 @@ jobs:
           }
           pathlib.Path(out).write_text(json.dumps(override))
           PY
-        env:
-          TAURI_TARGETS: ${{ matrix.targets }}
       - name: tauri build (Windows unsigned; macOS notarize is gated separately)
         shell: bash
         run: |
@@ -151,6 +275,10 @@ jobs:
           pnpm dlx @tauri-apps/cli@2 build \
             --config apps/desktop/tauri.conf.json \
             --config "$RUNNER_TEMP/tauri-release.json"
+      - name: Record Windows unsigned (ADR-033)
+        if: matrix.name == 'windows'
+        shell: bash
+        run: echo "Windows installers are intentionally unsigned (ADR-033); release notes record this as VERIFIED-UNSIGNED, not as a signing failure."
       - name: Collect real installers
         shell: bash
         run: |
@@ -167,11 +295,17 @@ jobs:
 
   dist:
     name: assemble dist (no placeholders)
-    needs: installers
+    needs: [version-check, installers]
     runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      EDITION: ${{ needs.version-check.outputs.edition }}
+      CHANNEL: ${{ needs.version-check.outputs.channel }}
+      VERSION: ${{ needs.version-check.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: pnpm/action-setup@v4
         with: { version: "12.16.1" }
       - uses: actions/setup-node@v4
@@ -190,17 +324,19 @@ jobs:
       - name: Compose selected edition x channel
         run: cargo run -q -p zk -- compose --edition "$EDITION" --profile default --channel "$CHANNEL"
       - name: Build admin SPA (enterprise only)
-        if: inputs.edition == 'enterprise'
+        if: ${{ needs.version-check.outputs.edition == 'enterprise' }}
         run: |
           pnpm install --frozen-lockfile
           pnpm --dir apps/admin/web build
       - name: Build server (enterprise only)
-        if: inputs.edition == 'enterprise'
+        if: ${{ needs.version-check.outputs.edition == 'enterprise' }}
         run: cargo build --release -p zk-server
-      - name: SBOM (real, CycloneDX)
-        run: bash scripts/sbom.sh dist/sbom.json
+      - name: SBOM (real, CycloneDX via zk sbom)
+        run: |
+          mkdir -p dist
+          cargo run -q -p zk -- sbom --edition "$EDITION" --profile default --channel "$CHANNEL" --output dist/sbom.json
       - name: Build and export images (enterprise only)
-        if: inputs.edition == 'enterprise'
+        if: ${{ needs.version-check.outputs.edition == 'enterprise' }}
         run: |
           set -euo pipefail
           docker build -f deploy/docker/Dockerfile.server \
@@ -215,36 +351,52 @@ jobs:
           docker save postgres:18-alpine | gzip > dist/images/postgres-18-alpine.tar.gz
           docker save caddy:2.8-alpine | gzip > dist/images/caddy-2-alpine.tar.gz
           ls -la dist/images
-      - name: Assemble dist (fails on placeholders)
+      - name: Required real inputs (KNOWN-LIMITATIONS.md from A13)
+        run: |
+          set -euo pipefail
+          test -s KNOWN-LIMITATIONS.md
+          test -s CHANGELOG.md
+      - name: Negative test — build-dist refuses fixtures/placeholders
+        run: bash scripts/build-dist.sh --self-test
+      - name: Assemble dist (fails on placeholders/missing inputs)
         run: |
           set -euo pipefail
           mkdir -p "dist/$VERSION"
           args=(--channel "$CHANNEL" --version "$VERSION" --edition "$EDITION"
                 --artifacts artifacts --sbom dist/sbom.json
+                --known-limitations KNOWN-LIMITATIONS.md
                 --out "dist/$VERSION/$CHANNEL")
           if [ "$EDITION" = "enterprise" ]; then
             args+=(--images dist/images)
           fi
           bash scripts/build-dist.sh "${args[@]}"
-      - name: Upload dist
-        uses: actions/upload-artifact@v4
+      - name: Verify dist (zk channel verify)
+        run: |
+          set -euo pipefail
+          cargo run -q -p zk -- channel verify --channel "$CHANNEL" --dist "dist/$VERSION/$CHANNEL"
+          (cd "dist/$VERSION/$CHANNEL" && sha256sum -c SHA256SUMS)
+      - uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ inputs.channel }}-${{ inputs.version }}
-          path: dist/${{ inputs.version }}/${{ inputs.channel }}
+          name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
+          path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}
           if-no-files-found: error
 
   upgrade-drill:
     name: real upgrade drill (backup/upgrade/rollback/restore)
-    needs: dist
-    if: ${{ inputs.edition == 'enterprise' }}
+    needs: [version-check, dist]
+    if: ${{ needs.version-check.outputs.edition == 'enterprise' }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      EDITION: ${{ needs.version-check.outputs.edition }}
+      CHANNEL: ${{ needs.version-check.outputs.channel }}
+      VERSION: ${{ needs.version-check.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/download-artifact@v4
         with:
-          name: dist-${{ inputs.channel }}-${{ inputs.version }}
-          path: dist/${{ inputs.version }}/${{ inputs.channel }}
+          name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
+          path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}
       - name: Docker available?
         run: docker version
       - name: Upgrade drill (real compose project; exits 2 when it cannot be executed)
@@ -259,16 +411,26 @@ jobs:
         with:
           name: upgrade-drill-evidence
           path: target/evidence/m6/upgrade-drill*.json
+          if-no-files-found: ignore
 
   notarize:
-    name: macOS notarize (certificate-gated)
+    name: macOS notarize (certificate-gated; ADR-037)
+    needs: [version-check, dist]
     # Gate with a repository variable (job-level `if` cannot read `secrets`); the
     # certificate/password themselves are only referenced inside the gated step.
-    if: ${{ vars.MACOS_NOTARIZE_ENABLED == 'true' }}
+    if: ${{ vars.MACOS_NOTARIZE_ENABLED == 'true' && needs.version-check.outputs.edition == 'enterprise' }}
     runs-on: macos-14
+    timeout-minutes: 60
+    env:
+      CHANNEL: ${{ needs.version-check.outputs.channel }}
+      VERSION: ${{ needs.version-check.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - name: Notarize prebuilt dmg (requires MACOS_CERT_P12 / MACOS_NOTARY_* secrets)
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
+          path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}
+      - name: Notarize + staple the dmg (must really pass; no `|| true`)
         env:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
           MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
@@ -277,14 +439,178 @@ jobs:
           MACOS_NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
         run: |
           set -euo pipefail
-          if [ -z "${MACOS_CERT_P12:-}" ] || [ -z "${MACOS_NOTARY_APPLE_ID:-}" ]; then
-            echo "::error::MACOS_NOTARIZE_ENABLED=true but certificate/notary secrets are missing (ADR-037)" >&2
+          if [ -z "${MACOS_CERT_P12:-}" ] || [ -z "${MACOS_NOTARY_APPLE_ID:-}" ] || [ -z "${MACOS_NOTARY_PASSWORD:-}" ]; then
+            echo "::error::MACOS_NOTARIZE_ENABLED=true but certificate/notary secrets are missing (ADR-037)"
+            exit 1
+          fi
+          DMG=$(find "dist/$VERSION/$CHANNEL/clients" -maxdepth 1 -name '*.dmg' -print -quit)
+          if [ -z "$DMG" ]; then
+            echo "::error::no dmg in dist/$VERSION/$CHANNEL/clients"
             exit 1
           fi
           echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
           security create-keychain -p "$RUNNER_TEMP" build.keychain
-          security import "$RUNNER_TEMP/cert.p12" -k build.keychain -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
-          xcrun notarytool submit "dist/$VERSION/$CHANNEL/clients/"*.dmg \
+          security import "$RUNNER_TEMP/cert.p12" -k build.keychain \
+            -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$RUNNER_TEMP" build.keychain
+          xcrun notarytool submit "$DMG" \
             --apple-id "$MACOS_NOTARY_APPLE_ID" --team-id "$MACOS_NOTARY_TEAM_ID" \
-            --password "$MACOS_NOTARY_PASSWORD" --wait || true
-          echo "notarize: submitted (staple step is UNVERIFIED until a signed dmg is produced)"
+            --password "$MACOS_NOTARY_PASSWORD" --wait
+          xcrun stapler staple "$DMG"
+          echo "notarized + stapled: $DMG"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clients-macos-notarized
+          path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}/clients
+          if-no-files-found: error
+
+  release:
+    name: GitHub Release (real dist + UNVERIFIED notes)
+    needs: [version-check, dist]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.version-check.outputs.tag }}
+      VERSION: ${{ needs.version-check.outputs.version }}
+      EDITION: ${{ needs.version-check.outputs.edition }}
+      CHANNEL: ${{ needs.version-check.outputs.channel }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SERVER_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      NOTARIZE_ENABLED: ${{ vars.MACOS_NOTARIZE_ENABLED }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
+          path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}
+      - name: Verify downloaded dist locally (SHA256SUMS + manifest)
+        run: |
+          set -euo pipefail
+          DIST="dist/$VERSION/$CHANNEL"
+          test -f "$DIST/CLIENT-RELEASE.json"
+          test -f "$DIST/CHANNEL.json"
+          test -f "$DIST/SHA256SUMS"
+          test -f "$DIST/KNOWN-LIMITATIONS.md"
+          test -d "$DIST/SBOM"
+          python3 - "$DIST" <<'PY'
+          import json, pathlib, sys
+          dist = pathlib.Path(sys.argv[1])
+          release = json.loads((dist / "CLIENT-RELEASE.json").read_text())
+          assets = release.get("assets") or []
+          if not assets:
+              raise SystemExit("CLIENT-RELEASE assets empty (not a deliverable)")
+          for asset in assets:
+              path = dist / "clients" / asset["name"]
+              if not path.is_file():
+                  raise SystemExit(f"missing client asset {path}")
+          status = json.loads((dist / "BUILD-STATUS.json").read_text())
+          if status.get("status") != "verified-local":
+              raise SystemExit(f"BUILD-STATUS status {status.get('status')!r} is not verified-local")
+          print(f"dist ok: {len(assets)} client asset(s), channel={release.get('channel_id')}")
+          PY
+          (cd "$DIST" && sha256sum -c SHA256SUMS)
+      - name: Generate release body (verified facts + UNVERIFIED list)
+        run: |
+          set -euo pipefail
+          DIST="dist/$VERSION/$CHANNEL"
+          python3 - "$DIST" "$TAG" "$VERSION" "$EDITION" "$CHANNEL" "$SERVER_URL" "$NOTARIZE_ENABLED" "$RUNNER_TEMP/release-body.md" <<'PY'
+          import json
+          import pathlib
+          import re
+          import sys
+
+          dist, tag, version, edition, channel, run_url, notarize, out = sys.argv[1:9]
+
+          def changelog_section(version: str) -> str:
+              text = pathlib.Path("CHANGELOG.md").read_text()
+              lines = text.splitlines()
+              start = None
+              for index, line in enumerate(lines):
+                  if re.match(rf"^#+\s*\[?{re.escape(version)}\]?", line):
+                      start = index
+                      continue
+                  if start is not None and re.match(r"^#+\s", line):
+                      return "\n".join(lines[start:index]).strip()
+              return "\n".join(lines[start:]).strip() if start is not None else ""
+
+          build = json.loads((pathlib.Path(dist) / "BUILD-STATUS.json").read_text())
+          body = [
+              f"# {tag}",
+              "",
+              "## Verified in this run",
+              "",
+              f"- Edition/channel: `{edition}` x `{channel}`",
+              f"- This run builds exactly one edition x channel; the personal-edition release (GitHub-Releases-only, C13) requires a separate workflow_dispatch run with `edition=personal`.",
+              f"- Real client installers, `SHA256SUMS`, CycloneDX SBOM, `CLIENT-RELEASE.json`, `CHANNEL.json`, `KNOWN-LIMITATIONS.md`.",
+              "- `scripts/build-dist.sh` rejected placeholder/fixture inputs (`--self-test`) and `zk channel verify` passed before upload.",
+              f"- Pipeline run: {run_url}",
+          ]
+          changelog = changelog_section(version)
+          if changelog:
+              body += ["", "## Changelog", "", changelog]
+          else:
+              body += ["", "## Changelog", "", f"_No CHANGELOG.md section for {version}; treat as UNVERIFIED._"]
+          body += ["", "## UNVERIFIED / known limitations", ""]
+          body += [f"- {item}" for item in build.get("unverified", [])]
+          body += [
+              "- Windows installers are unsigned by decision (ADR-033); this is VERIFIED-UNSIGNED, not a build/signing failure.",
+              "- macOS notarization/staple: "
+              + ("job `notarize` is enabled for this run; release dist was assembled before stapling and is NOT itself notarized — use the `clients-macos-notarized` artifact." if notarize == "true" else "not executed (MACOS_NOTARIZE_ENABLED != true) — UNVERIFIED, certificate-gated (ADR-037)."),
+              "- Docker images are built from source in CI but not image-scanned (no trivy in this pipeline) — UNVERIFIED.",
+              "- GitHub-hosted runner execution is itself the environment proof for this workflow run; other environments remain UNVERIFIED.",
+          ]
+          pathlib.Path(out).write_text("\n".join(body) + "\n")
+          print(f"release body: {out}")
+          PY
+      - name: Create or update the GitHub Release
+        run: |
+          set -euo pipefail
+          DIST="dist/$VERSION/$CHANNEL"
+          mapfile -t ASSETS < <(find "$DIST/clients" -type f; printf '%s\n' "$DIST/SHA256SUMS" "$DIST/CLIENT-RELEASE.json" "$DIST/CHANNEL.json" "$DIST/BUILD-STATUS.json" "$DIST/KNOWN-LIMITATIONS.md" "$DIST/VERSION" "$DIST/SBOM/cyclonedx.json")
+          if [ -d "$DIST/images" ]; then
+            while IFS= read -r image; do ASSETS+=("$image"); done < <(find "$DIST/images" -type f)
+          fi
+          PRERELEASE=""
+          case "$VERSION" in *-*) PRERELEASE="--prerelease" ;; esac
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file "$RUNNER_TEMP/release-body.md"
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
+          else
+            gh release create "$TAG" "${ASSETS[@]}" \
+              --title "$TAG" --notes-file "$RUNNER_TEMP/release-body.md" $PRERELEASE
+          fi
+      - name: Verify the Release really contains the real artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p target/evidence/release-1.0-rc1
+          gh release view "$TAG" --json tagName,isPrerelease,assets,url > target/evidence/release-1.0-rc1/release.json
+          python3 - target/evidence/release-1.0-rc1/release.json "$VERSION" "$EDITION" <<'PY'
+          import json
+          import sys
+          payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          version, edition = sys.argv[2], sys.argv[3]
+          names = {asset["name"] for asset in payload.get("assets", [])}
+          required = {"SHA256SUMS", "CLIENT-RELEASE.json", "CHANNEL.json", "BUILD-STATUS.json", "KNOWN-LIMITATIONS.md", "cyclonedx.json"}
+          missing = sorted(required - names)
+          clients = sorted(name for name in names if name.endswith((".AppImage", ".deb", ".rpm", ".dmg", ".exe", ".msi")))
+          problems = []
+          if missing:
+              problems.append(f"missing release assets: {missing}")
+          if not clients:
+              problems.append("no client installer asset in the GitHub Release")
+          if edition == "enterprise" and not any(name.endswith(".tar.gz") for name in names):
+              problems.append("no docker image archive in the GitHub Release")
+          if problems:
+              print("\n".join(problems))
+              sys.exit(1)
+          print(f"release verified: {payload.get('url')} ({len(names)} assets, {len(clients)} installers)")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-evidence
+          path: target/evidence/release-1.0-rc1
+          if-no-files-found: ignore

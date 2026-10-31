@@ -81,7 +81,7 @@ pub trait ServerPackage {
 | `/v1/*` | 同上 | AI 网关 | 先鉴权再准入（余额/限流/模型定价） |
 | `/api/admin/*` + `/admin/*` | Cookie session + CSRF | 管理台 | 超管（读写）/审计员（只读）；TOTP MFA 可选（D53） |
 
-- JWT 签名密钥由服务端生成并存 `master.key` 派生的密钥；支持轮换（kid）。
+- JWT 签名密钥由服务端生成/配置（轮换 `kid` 为部署规划项；**不由 `master.key` 派生**，与上游 key 加密分离）。
 - 员工禁用/降权 → `token_epoch++`，每请求校验（写操作强制查库），**立即失效**，不等 access 过期（见 07 §1）。
 - 管理台与员工 API 的路由物理分离，避免"员工令牌调管理接口"。
 
@@ -90,7 +90,11 @@ pub trait ServerPackage {
 - `.env` 只放 6 个必填键（与 `09` §5 一致）：`DOMAIN`、`TLS_MODE`、`ADMIN_PASSWORD`、`PG_PASSWORD`、`SERVER_IMAGE`、`MASTER_KEY`；反代场景可选覆盖 `ZEOKEEL_PUBLIC_BASE_URL`（第 7 个，非必填）。
 - 其余运行期配置进 `system_settings` 表，管理台可改；每项标注 `hot`（立即生效）或 `restart`（提示重启）。
 - 配置读取经 `zk-contract-config` 的 `ConfigService`；包不得直接读环境变量（除 bootstrap 注入的少数）。
-- 敏感配置（上游 key、MCP secret）加密存储，密钥来自 `master.key`；接口只返回掩码。
+- 上游 provider key **已实现** AES-256-GCM 版本化加密存储（`crates/zk-kit-server::master_key`）：
+  密文格式 `vN:<base64(nonce||ct)>`；密钥来源 `ZEOKEEL_MASTER_KEY`（32 字节 hex/base64，版本 `ZEOKEEL_MASTER_KEY_VERSION`，默认 1）
+  或 `<ZEOKEEL_MASTER_KEY_DIR>/master.key[.vN]`（0600，拒绝组/全局可读；`master.key` = v1）。新写用最高版本、解密按前缀选版本；
+  旧明文字段可读但告警，下次写入即加密；无密钥时新写 fail-closed（`MASTER_KEY_UNAVAILABLE`）。接口只返回掩码。
+  MCP 静态 secret 加密/受控交付延后 M3.1（ADR-060）。轮换流程见 `21` §3 + `scripts/master-key-rotate.sh`。
 
 ## 6. 后台调度器
 

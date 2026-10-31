@@ -4,6 +4,10 @@
 # Covers auth/session lifecycle, fail-closed audit, gateway billing (real OpenAI
 # Responses SSE shape, server-side request ids, streaming overdraft), usage_pending
 # wiring, single-instance advisory lock, migration checksum refusal and SIGTERM.
+#
+# Security round-2 fixtures (docs/21 §10): the fake upstream is loopback plaintext HTTP,
+# so ZEOKEEL_ALLOW_INSECURE_UPSTREAM=1 is required; provider keys are encrypted at rest,
+# so an ephemeral test master key is passed (never a real secret).
 set -euo pipefail
 DB="zk_auth_test_$$"
 ROLE="zk_auth_role_$$"
@@ -35,6 +39,8 @@ curl() {
 }
 start_server() {
   local port="$1" log="$2"
+  ZEOKEEL_ALLOW_INSECURE_UPSTREAM=1 \
+  ZEOKEEL_MASTER_KEY="${ZEOKEEL_TEST_MASTER_KEY:-000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f}" \
   ZEOKEEL_DATABASE_URL="postgres://$ROLE:$ROLE@127.0.0.1:5432/$DB" \
   ZEOKEEL_SERVER_ADDR="127.0.0.1:$port" \
   ZEOKEEL_BOOTSTRAP_ADMIN_PASSWORD="admin-pass" \
@@ -117,6 +123,8 @@ wait_ready "$BASE"
 
 # ---------- single-instance advisory lock: a second process must refuse to start ----------
 set +e
+ZEOKEEL_ALLOW_INSECURE_UPSTREAM=1 \
+ZEOKEEL_MASTER_KEY="${ZEOKEEL_TEST_MASTER_KEY:-000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f}" \
 ZEOKEEL_DATABASE_URL="postgres://$ROLE:$ROLE@127.0.0.1:5432/$DB" \
 ZEOKEEL_SERVER_ADDR="127.0.0.1:$((PORT + 1))" \
   timeout 15 ./target/debug/zk-server >/tmp/zk-auth-dupe.log 2>&1
@@ -414,6 +422,8 @@ grep -q "shutdown complete" "$LOG"
 GOOD_CHECKSUM=$(q "SELECT checksum FROM schema_migrations WHERE id = '0001_core'")
 q "UPDATE schema_migrations SET checksum = 'deadbeef' WHERE id = '0001_core'"
 set +e
+ZEOKEEL_ALLOW_INSECURE_UPSTREAM=1 \
+ZEOKEEL_MASTER_KEY="${ZEOKEEL_TEST_MASTER_KEY:-000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f}" \
 ZEOKEEL_DATABASE_URL="postgres://$ROLE:$ROLE@127.0.0.1:5432/$DB" \
 ZEOKEEL_SERVER_ADDR="127.0.0.1:$((PORT + 2))" \
   timeout 20 ./target/debug/zk-server >/tmp/zk-auth-migration.log 2>&1

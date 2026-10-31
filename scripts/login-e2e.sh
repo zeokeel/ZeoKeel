@@ -76,6 +76,10 @@ pnpm --dir apps/desktop/web build >/dev/null
 pnpm --dir apps/admin/web build >/dev/null
 sudo -u postgres psql -Atq -c "CREATE ROLE $ROLE LOGIN PASSWORD '$ROLE';"
 sudo -u postgres createdb -O "$ROLE" "$DB"
+# Security round-2 fixtures (docs/21 §10): loopback plaintext fake upstream needs the
+# explicit dev flag; provider keys are encrypted at rest with an ephemeral test key.
+ZEOKEEL_ALLOW_INSECURE_UPSTREAM=1 \
+ZEOKEEL_MASTER_KEY="${ZEOKEEL_TEST_MASTER_KEY:-000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f}" \
 ZEOKEEL_DATABASE_URL="postgres://$ROLE:$ROLE@127.0.0.1:5432/$DB" \
 ZEOKEEL_SERVER_ADDR="127.0.0.1:$SERVER_PORT" \
 ZEOKEEL_BOOTSTRAP_ADMIN_PASSWORD="admin-pass" \

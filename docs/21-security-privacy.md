@@ -128,16 +128,48 @@
 - 泄露通知：按部署方内部流程处理，不承诺商业 SLA。
 - 供应链事件：撤销清单签名/下架产物/强制更新；保留证据。
 
-## 10. 安全门禁（M6 前必须）
+## 10. 安全门禁（SSOT；13 项 + 拆分 5b）
 
-- [ ] 威胁模型评审通过；P0 风险有缓解与测试。
-- [ ] 认证绕过/JWT 吊销/CSRF/SSRF/zip 穿越/WASM 逃逸/命令注入/rebinding 用例全绿。
-- [ ] 密钥生命周期演练（master.key 恢复、JWT 轮换、更新签名轮换）。
-- [ ] 审计哈希链 + WORM 锚定验证；钱审计矩阵无缺项。
-- [ ] 依赖审计（cargo-deny/pnpm audit）、SBOM、镜像扫描无高危。
-- [ ] 隐私口径评审；材料不得声称"服务端不读取会话"除非网关不落库已验证。
+> **唯一正文**：本节即安全门禁清单真源；`specs/changes/2026-10-30-hardening-release/spec.md` §1 与 `docs/37` 只链接本表，不重复枚举。
+> **可执行实现**：`bash scripts/security-audit.sh` → `target/evidence/release-1.0-rc1/security2/security.json`
+> （逐项 `id / rule / severity / owner / command / status / evidence / detail / env_only`；每项日志在同目录 `logs/`）。
+> **状态口径（docs/11 §5）**：
+> - `pass` 执行通过；`fail` 执行失败或真实实现缺口（strict 必红）；
+> - `unverified` = CI 可满足但本轮未满足（缺 PG/二进制/工具），strict 视为 fail（exit 1）；
+> - `unverified_external`（`env_only: true`）= CI 不可满足的部署/发布项（WORM、产物级 SBOM、无 trivy 报告等），strict 不因其红，但整体状态永不为 `pass`。
+> **退出码**：非 strict：全 pass=0 / 有 unverified*=2 / 有 fail=1；strict（`ZEOKEEL_SECURITY_STRICT=1`）：有 fail 或 CI 可满足的 unverified=1，仅 env-only 未验证=0。
+> **CI 环境契约**（`security.yml` 由 ci-release 提供）：PostgreSQL、`cargo fetch --locked` 后 `ZEOKEEL_SECURITY_SKIP_BUILD=1`、真实镜像 + 固定 trivy 报告
+> `ZEOKEEL_SECURITY_TRIVY_REPORT` + `ZEOKEEL_SECURITY_IMAGE`、`pnpm audit --prod` 可联网；其余 env 见 JSON `env_contract`。
+> 下表状态是 2026-10-31 round-2 证据快照，真实状态以 `security.json` 为准。
 
-> M3 连接器仅支持无静态 secret 配置（ADR-060）；OAuth public client + PKCE 令牌只在客户端本地。MCP 静态 secret 加密/受控交付延后 M3.1。
+| # | 门禁 | 可执行命令 | 证据 | 本机 round-2 |
+| --- | --- | --- | --- | --- |
+| 1 | 威胁模型评审 + P0 缓解 | `docs/reviews/2026-10-31-threat-model.md` 必须含**精确整行** `- 威胁模型评审结论：APPROVED`（文件存在不算 pass） | `logs/01-threat-model.log` | unverified（评审者复评后写 marker） |
+| 2 | 认证绕过 / JWT 吊销 / refresh reuse / CSRF / 越权矩阵 | `bash scripts/srv-auth-test.sh`（脚本内注入 loopback dev flag + 临时测试 master key） | `logs/02-auth-jwt-csrf-rbac.log` | pass（真实 PG） |
+| 3 | SSRF（上游 `base_url` 严格校验 + 重定向）+ 本地 `serve` rebinding | `cargo test -p zk-srv-gateway --lib -- security_round2_tests` + 脚本内置 provider CRUD 探针 + `zk-desktop --serve` Host/Origin/未认证 IPC 探针 | `logs/03-ssrf-rebinding.log` | pass（修复 P0-1） |
+| 4 | zip 穿越/炸弹/链接（客户端）+ WASM 逃逸/资源限额 | `cargo test -p zk-desktop --bin zk-desktop -- hostile_entries`; `cargo test -p zk-kit-tools --test kit rejects_traversal_and_absolute`; `cargo test -p zk-kit-wasm` | `logs/04-zip-wasm.log` | pass |
+| 5a | 命令注入 / 管理台输入校验 | `cargo test -p zk-tool-worktree --test tool rejects_injection_and_escape`; `cargo test -p zk-desktop --bin zk-desktop -- open_url`; `cargo test -p zk-srv-http` | `logs/05-command-injection.log` | pass（拆分自原 gate 5） |
+| 5b | MCP 客户端 transport（stdio/http/sse、env 白名单、不拼 shell） | `cargo test -p zk-connector-mcp`（B16 实现；含 stdio/http/sse 正向 + 超时/畸形/非零退出/静态 secret 拒绝测试） | `logs/14-mcp-stdio-transport.log` | pass（B16 已落地；ADR-069 为历史决策） |
+| 6 | 密钥生命周期：master.key 加密/恢复/轮换 | `cargo test -p zk-kit-server --test master_key_ring`；`bash scripts/master-key-rotate.sh`（离线 v1→v2 轮换演练） | `logs/06-key-lifecycle.log`、`target/evidence/m6/master-key-rotate.json` | pass |
+| 7 | 审计哈希链 + 钱审计矩阵；WORM 外部锚定 | `bash scripts/srv-auth-test.sh`（audit-chain / fail-closed）+ `grep prev_hash crates/zk-kit-server/src/lib.rs` | `logs/07-audit-chain.log`；ADR-068 | unverified_external（WORM=部署控制，ADR-068） |
+| 8 | 依赖审计 `cargo deny check` / `cargo audit` / `pnpm audit --prod` | 脚本真实检测并执行上述三个命令；缺工具/无网络=unverified，有漏洞/配置错=fail | `logs/08-dependency-audit.log`；CI `security.yml` | unverified（本机未安装） |
+| 9 | SBOM：每个产物（镜像/客户端 dist/OEM）CycloneDX | `bash scripts/sbom.sh <out>`（源码 SBOM，真实执行）；产物级 SBOM 由 release pipeline 生成 | `logs/09-sbom.log`；`target/evidence/release-1.0-rc1/security2/sbom.json` | unverified_external（产物 SBOM 仅发布流水线） |
+| 10 | 镜像扫描无 HIGH/CRITICAL | CI: `trivy image --format json -o $ZEOKEEL_SECURITY_TRIVY_REPORT $ZEOKEEL_SECURITY_IMAGE`，脚本解析报告；本地无报告=env-only | `logs/10-image-scan.log` | unverified_external（本机无 docker/trivy/镜像） |
+| 11 | 隐私口径：不得称“服务端不读取会话”除非已验证；审计/日志脱敏 | 脚本内置 `python3` 静态检查（§8.1 口径 / claim grep / migrations grep；脱敏由 gate 12 负责） | `logs/11-privacy-wording.log` | pass |
+| 12 | 日志/错误响应/审计 payload/崩溃 dump 无 token/key/secret/password | `cargo test -p zk-desktop --bin zk-desktop -- published_runtime_snapshot_never_contains_provider_secrets`; `cargo test -p zk-desktop --bin zk-desktop -- hook_events_are_redacted_before_logging` + 日志宏/secret literal/unsafe 静态扫描 | `logs/12-secret-leaks.log` | pass |
+| 13 | 弱管控声明写入 `docs/00`/`docs/21`；销售材料不得宣称限制员工 | 脚本内置 `python3` 静态检查（docs/00 §5 / docs/21 前言 / 产品文档肯定式措辞） | `logs/13-weak-control-statement.log` | pass |
+
+**gate 3 SSRF 规则（P0-1，2026-10-31 修复）**：上游 `base_url` 仅允许 `https://<public host>`；`http://` 仅在显式 `ZEOKEEL_ALLOW_INSECURE_UPSTREAM=1` 时允许 loopback（本地 fake upstream/测试专用，部署禁用）；拒绝 userinfo、空 host、loopback/private/link-local/multicast/unspecified/保留段 IP（v4/v6 含 IPv4-mapped）、`localhost`/`*.localhost`/`*.local`/`*.internal`/`metadata`/`metadata.google.internal`/`instance-data`、数字混淆 host；网关 `reqwest` 统一 `redirect(Policy::none())`，不跟随 302/307。测试：`zk-srv-gateway` 单测矩阵 + `security-audit` provider CRUD 探针。
+
+**master.key（gate 6）**：`crates/zk-kit-server::master_key` 实现 AES-256-GCM 版本化密钥环，密文格式 `vN:<base64(nonce||ct)>`；密钥来源 `<ZEOKEEL_MASTER_KEY_DIR>/master.key.vN`（`master.key` = v1，0600，拒绝组/全局可读）或 env `ZEOKEEL_MASTER_KEY`（32B hex/base64，版本 `ZEOKEEL_MASTER_KEY_VERSION` 默认 1）。新写入用最高版本；解密按前缀选版本；旧明文字段（无 `vN:` 前缀）**可读但告警**，下次写入即加密。无密钥时**新写入 fail-closed**（`MASTER_KEY_UNAVAILABLE`），已有明文仍可读以兼容旧 e2e/DB。JWT 签名密钥/更新签名密钥轮换仍是离线/HSM 部署控制（无本地演练）。
+
+执行要求：
+
+- 任何 `fail`、或整体 `unverified`/`unverified_external`，不得对外写“安全门禁通过”；发布说明必须列 UNVERIFIED（`docs/11` §5）。
+- 外部工具项只有在 CI（`security.yml`）真跑并转 `pass` 后才可宣称通过；不得以“安装但从不调用”充当门禁。
+- 新增/变更门禁只能改本节 + `scripts/security-audit.sh`（单一实现），并同步 `docs/reviews/` 的威胁模型复核。
+
+> M3 连接器仅支持无静态 secret 配置（ADR-060）；OAuth public client + PKCE 令牌只在客户端本地。MCP 客户端 transport（stdio/http/sse）已由 Phase B B16 实现并有可执行测试（ADR-069 记录"延后到 B16"的历史决策，现已落地）。
 
 ## 7.1 审计完整性链与 request_id
 
