@@ -15,8 +15,12 @@ targets = [
 # as warnings (wasmtime 50 / Tauri 2.7 / keyring 4 pin sets offer no safe upgrade).
 # Ignored vulnerability advisories below affect APIs this codebase does not use;
 # each has a narrow, documented rationale and a post-RC upgrade path.
-unmaintained = "warn"
-unsound = "warn"
+# Pinned cargo-deny 0.20.2 has no "warn" severity for these categories
+# (accepted values: all/workspace/transitive/none), so they are disabled here and
+# tracked in KNOWN-LIMITATIONS §4; vulnerabilities remain denied (ignore list has
+# narrow, documented exceptions). Re-enable after upgrading cargo-deny post-RC.
+unmaintained = "none"
+unsound = "none"
 ignore = [
   # zip 4.6: affected APIs are ZipArchive::extract / ZipStreamReader::extract.
   # zk-* never calls extract(); it iterates by_index + enclosed_name and rejects
