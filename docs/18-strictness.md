@@ -172,17 +172,17 @@ pnpm -r typecheck          # tsc -b
 pnpm -r lint               # eslint --max-warnings 0
 pnpm -r test:unit          # vitest（含 typecheck）
 pnpm -r build              # vite build + bundle 预算
-pnpm test:e2e              # playwright
+pnpm e2e                   # playwright（m1-e2e；别名 test:e2e）
 
 # Rust
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo nextest run --workspace
+cargo nextest run --workspace   # 本地/CI 未安装（UNVERIFIED）
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 cargo deny check           # license/advisory/ban/source
 cargo geiger --all-features # 依赖树 unsafe 统计（报告变化；新增高危需说明）
 cargo machete              # 未使用依赖
-cargo public-api diff      # 契约包
+cargo public-api diff      # 契约包（本地/CI 未安装，UNVERIFIED）
 
 # 生成物
 zk compose --edition personal --profile default --channel official --check

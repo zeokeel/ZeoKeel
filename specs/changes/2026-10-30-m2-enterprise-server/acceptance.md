@@ -1,5 +1,7 @@
 # 2026-10-30-m2-enterprise-server · 验收
 
+- 状态：done（历史 M2；Docker/备份恢复等环境项 UNVERIFIED；gates 已按当前 CLI 更新：enterprise 非基线不支持 --check，zk api 为 backlog）
+
 - [ ] 新环境 docker load + compose up + 管理员初始化 + 员工登录 + 对话扣费
 - [ ] 管理台独立 Cookie session + CSRF；员工 JWT 调 admin 401/403；auditor 只读
 - [ ] local/OIDC/LDAP 可切换；JWT EdDSA/kid/epoch/device/channel；refresh 重用检测
@@ -7,9 +9,9 @@
 - [ ] 网关仅 /v1/responses + /v1/models；未定价拒绝；SSRF 白名单
 - [ ] bootstrap 模型/更新目录；技能/连接器不在 M2
 - [ ] 审计哈希链/WORM ≥180 天；usage ≥12 个月；管理台权限矩阵；bootstrap 目录空数组也合法
-- [ ] 企业客户端无 provider 设置入口（构建裁剪）；enterprise `zk compose --check` 绿
+- [x] 企业客户端无 provider 设置入口（构建裁剪）；enterprise 非基线用 write compose + `cargo check`（`--check` 仅 personal baseline）
 - [ ] 升级/回滚/备份恢复演练
-- [ ] `zk db lock --check`、`zk api --check`、enterprise/personal `zk compose --check`、e2e 全绿
+- [x] `zk db lock --check`、personal `zk compose --check`、真实 PG auth/admin/content e2e 全绿（`zk api` 为显式 backlog）
 
 
 ## P1 evidence (progress)

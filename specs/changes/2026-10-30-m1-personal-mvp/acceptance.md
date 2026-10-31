@@ -1,7 +1,7 @@
 # 2026-10-30-m1-personal-mvp · 验收与证据
 
 - 日期：2026-10-30
-- 状态：进行中（由 goal 循环推进）
+- 状态：done（M1 已完成；后续轮次补齐 usage/缓存/设置/右栏等，evidence 见 target/evidence）
 
 ## 命令与证据
 

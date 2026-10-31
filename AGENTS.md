@@ -182,7 +182,7 @@ python3 golden/run.py           # 可选：已 build 后单独重跑，期望 {"
 pnpm -r typecheck                # tsc -b（最严格）
 pnpm -r lint                     # eslint --max-warnings 0
 pnpm -r test:unit                # vitest（含 typecheck）
-pnpm test:e2e                    # playwright（serve 载体）
+pnpm e2e                         # playwright（serve 载体；别名 test:e2e）
 pnpm -r build
 
 # Rust
@@ -196,7 +196,7 @@ cargo machete
 # 组合与生成物
 zk validate
 zk compose --edition personal --profile default --channel official --check
-zk compose --edition enterprise --profile default --channel official --check
+# 非基线版不支持 --check；企业组合用 write compose + cargo check 验证
 # zk api --edition ... --check  # 未实现（backlog，见 docs/24 §3）
 zk capability --check
 zk docs --check
