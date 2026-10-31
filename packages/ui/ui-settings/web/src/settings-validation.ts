@@ -34,6 +34,8 @@ export interface SettingsForm {
   memoryDir: string;
   hooksEnabled: boolean;
   hooksLog: string;
+  scheduleEnabled: boolean;
+  scanSeconds: string;
   // Tool/approval timeouts (ms, strings for empty/invalid UI states).
   toolTimeoutMs: string;
   approvalTimeoutMs: string;
@@ -50,6 +52,7 @@ export interface SettingsErrors {
   topP: SettingsFieldError;
   seed: SettingsFieldError;
   toolChoiceTools: SettingsFieldError;
+  scanSeconds: SettingsFieldError;
   toolTimeoutMs: SettingsFieldError;
   approvalTimeoutMs: SettingsFieldError;
 }
@@ -63,6 +66,7 @@ export const EMPTY_SETTINGS_ERRORS: SettingsErrors = {
   topP: null,
   seed: null,
   toolChoiceTools: null,
+  scanSeconds: null,
   toolTimeoutMs: null,
   approvalTimeoutMs: null,
 };
@@ -165,6 +169,8 @@ export function toForm(settings: AppSettings): SettingsForm {
     memoryDir: agent.memory.dir,
     hooksEnabled: agent.hooks.enabled,
     hooksLog: agent.hooks.log,
+    scheduleEnabled: agent.schedule.enabled,
+    scanSeconds: String(agent.schedule.scan_seconds),
     toolTimeoutMs: String(settings.tools.tool_timeout_ms),
     approvalTimeoutMs: String(settings.tools.approval_timeout_ms),
   };
@@ -182,6 +188,7 @@ export function validateSettings(form: SettingsForm): SettingsErrors {
       : null;
   const toolTimeout = numberField(form.toolTimeoutMs, { min: 1000, max: 600000, integer: true });
   const approvalTimeout = numberField(form.approvalTimeoutMs, { min: 1000, max: 1800000, integer: true });
+  const scan = numberField(form.scanSeconds, { min: 5, max: 3600, integer: true });
   return {
     baseUrl:
       form.providerKind === "mock" || isHttpUrl(form.baseUrl.trim()) ? null : "settingsInvalidUrl",
@@ -192,6 +199,7 @@ export function validateSettings(form: SettingsForm): SettingsErrors {
     topP: topP.error,
     seed: seed.error,
     toolChoiceTools,
+    scanSeconds: scan.error ?? (scan.value === null ? "settingsInvalidInteger" : null),
     toolTimeoutMs: toolTimeout.error ?? (toolTimeout.value === null ? "settingsInvalidInteger" : null),
     approvalTimeoutMs: approvalTimeout.error ?? (approvalTimeout.value === null ? "settingsInvalidInteger" : null),
   };
@@ -218,6 +226,10 @@ function agentOf(form: SettingsForm): AgentSettings {
     },
     memory: { enabled: form.memoryEnabled, dir: form.memoryDir.trim() },
     hooks: { enabled: form.hooksEnabled, log: form.hooksLog.trim() },
+    schedule: {
+      enabled: form.scheduleEnabled,
+      scan_seconds: numberField(form.scanSeconds, { min: 5, max: 3600, integer: true }).value ?? 10,
+    },
   };
 }
 

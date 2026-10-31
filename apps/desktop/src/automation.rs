@@ -1,9 +1,12 @@
 //! Workspace schedule executor.
 //!
 //! Auto-run is **off by default**: a scheduled prompt starts an agent turn with no
-//! human in the loop, so the executor only starts when `ZEOKEEL_ENABLE_SCHEDULE_AUTORUN`
-//! is explicitly `1`/`true`/`yes`, and it only runs entries created by the
-//! `schedule` tool (`"origin": "tool-schedule"`) whose shape is valid and bounded.
+//! human in the loop. `AppSettings.agent.schedule { enabled, scan_seconds }`
+//! controls it (explicitly saved settings > `ZEOKEEL_ENABLE_SCHEDULE_AUTORUN`
+//! env fallback > default disabled/10s); the executor thread always starts but
+//! idles while disabled and picks up settings changes without a restart. It only
+//! runs entries created by the `schedule` tool (`"origin": "tool-schedule"`)
+//! whose shape is valid and bounded.
 //!
 //! `interval_seconds` drives repetition; `cron` is validated by the tool at creation
 //! time and is still advisory here (the executor does not interpret cron fields).
@@ -11,22 +14,95 @@
 //! workspace-writable content: treat it as untrusted and keep the opt-in gate.
 #![forbid(unsafe_code)]
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
+use zk_contract_config::ScheduleSettings;
 use zk_contract_ipc::CommandResponse;
 
 use crate::ipc::{dispatch, AppState};
 
-const ENABLE_ENV: &str = "ZEOKEEL_ENABLE_SCHEDULE_AUTORUN";
+pub(crate) const ENABLE_ENV: &str = "ZEOKEEL_ENABLE_SCHEDULE_AUTORUN";
+/// Default scan period when neither settings nor env override it.
+pub(crate) const DEFAULT_SCAN_SECONDS: u64 = 10;
 const ORIGIN: &str = "tool-schedule";
 /// Upper bound for a persisted prompt (matches the agent's practical turn input).
 const MAX_PROMPT_BYTES: usize = 32 * 1024;
-/// Period between full schedule scans (unchanged from the original executor).
-const TICK_INTERVAL: Duration = Duration::from_secs(10);
-/// Stop-flag poll granularity; bounds how long shutdown waits for the worker.
+/// Stop-flag/config poll granularity; bounds how long shutdown waits and how
+/// quickly hot updates apply.
 const STOP_POLL: Duration = Duration::from_millis(100);
+
+/// Effective schedule executor configuration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ScheduleRuntimeConfig {
+    /// Whether due schedules are executed.
+    pub enabled: bool,
+    /// Scan period in seconds (validated/clamped to 5..=3600).
+    pub scan_seconds: u64,
+}
+
+impl ScheduleRuntimeConfig {
+    fn period(self) -> Duration {
+        Duration::from_secs(self.scan_seconds)
+    }
+}
+
+static SCHEDULE_OVERRIDE: OnceLock<RwLock<Option<ScheduleRuntimeConfig>>> = OnceLock::new();
+
+fn override_slot() -> &'static RwLock<Option<ScheduleRuntimeConfig>> {
+    SCHEDULE_OVERRIDE.get_or_init(|| RwLock::new(None))
+}
+
+/// Apply explicitly saved settings (`AppSettings.agent.schedule`).
+///
+/// A default-valued schedule clears the override so the env fallback applies
+/// again (same should-publish semantics as agent/tools settings).
+///
+/// # Errors
+///
+/// [`ScheduleSettings::validate`] rejects out-of-range scan periods.
+pub fn apply_settings(schedule: &ScheduleSettings) -> Result<(), String> {
+    schedule.validate().map_err(|error| error.to_string())?;
+    let next = (*schedule != ScheduleSettings::default()).then_some(ScheduleRuntimeConfig {
+        enabled: schedule.enabled,
+        scan_seconds: schedule.effective_scan_seconds(),
+    });
+    let mut slot = override_slot()
+        .write()
+        .map_err(|_| "schedule config lock poisoned".to_owned())?;
+    *slot = next;
+    Ok(())
+}
+
+/// Clear the settings override (boot without a saved settings file / tests).
+pub fn clear_settings_override() {
+    if let Ok(mut slot) = override_slot().write() {
+        *slot = None;
+    }
+}
+
+fn env_fallback() -> ScheduleRuntimeConfig {
+    ScheduleRuntimeConfig {
+        enabled: std::env::var(ENABLE_ENV).is_ok_and(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes"
+            )
+        }),
+        scan_seconds: DEFAULT_SCAN_SECONDS,
+    }
+}
+
+/// Precedence: explicitly saved settings > env fallback > default disabled/10s.
+#[must_use]
+pub fn effective_config() -> ScheduleRuntimeConfig {
+    override_slot()
+        .read()
+        .ok()
+        .and_then(|slot| *slot)
+        .unwrap_or_else(env_fallback)
+}
 
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -41,15 +117,6 @@ fn data(response: CommandResponse) -> Option<Value> {
     } else {
         None
     }
-}
-
-fn autorun_enabled() -> bool {
-    std::env::var(ENABLE_ENV).is_ok_and(|value| {
-        matches!(
-            value.trim().to_ascii_lowercase().as_str(),
-            "1" | "true" | "yes"
-        )
-    })
 }
 
 /// Validate one persisted entry; returns `(prompt, interval_seconds)` when runnable.
@@ -101,19 +168,13 @@ pub struct ScheduleExecutor {
 }
 
 impl ScheduleExecutor {
-    fn idle() -> Self {
-        Self {
-            stop: Arc::new(AtomicBool::new(false)),
-            join: None,
-        }
-    }
-
-    fn spawn_with<F>(stop: Arc<AtomicBool>, poll: Duration, period: Duration, tick: F) -> Self
+    fn spawn_with<C, F>(stop: Arc<AtomicBool>, poll: Duration, config: C, tick: F) -> Self
     where
+        C: Fn() -> (bool, Duration) + Send + 'static,
         F: FnMut() + Send + 'static,
     {
         let worker_stop = Arc::clone(&stop);
-        let join = std::thread::spawn(move || run_loop(&worker_stop, poll, period, tick));
+        let join = std::thread::spawn(move || run_loop(&worker_stop, poll, config, tick));
         Self {
             stop,
             join: Some(join),
@@ -135,14 +196,21 @@ impl Drop for ScheduleExecutor {
     }
 }
 
-/// Run `tick` every `period`, checking `stop` every `poll` iteration.
-fn run_loop<F>(stop: &AtomicBool, poll: Duration, period: Duration, mut tick: F)
+/// Run `tick` every configured period, re-reading `config` on every `poll` so
+/// enable/disable and scan-period changes apply without restarting the thread.
+fn run_loop<C, F>(stop: &AtomicBool, poll: Duration, config: C, mut tick: F)
 where
+    C: Fn() -> (bool, Duration),
     F: FnMut(),
 {
     let mut elapsed = Duration::ZERO;
     while !stop.load(Ordering::SeqCst) {
         std::thread::sleep(poll);
+        let (enabled, period) = config();
+        if !enabled {
+            elapsed = Duration::ZERO;
+            continue;
+        }
         elapsed = elapsed.saturating_add(poll);
         if elapsed < period {
             continue;
@@ -155,17 +223,30 @@ where
     }
 }
 
-/// Start the background scheduler (no-op unless auto-run is explicitly enabled).
+/// Start the background scheduler.
+///
+/// The thread always starts but idles while auto-run is disabled; settings hot
+/// updates enable/disable it and change the scan period without a restart
+/// (precedence: saved settings > `ZEOKEEL_ENABLE_SCHEDULE_AUTORUN` > default).
 ///
 /// The returned executor must be held by the kernel task; when the task is
 /// aborted/disposed its `Drop` stops and joins the std thread.
 pub fn start(state: Arc<AppState>) -> ScheduleExecutor {
-    if !autorun_enabled() {
-        eprintln!("zk-desktop: schedule auto-run disabled (set {ENABLE_ENV}=1 to enable)");
-        return ScheduleExecutor::idle();
-    }
+    let config = effective_config();
+    eprintln!(
+        "zk-desktop: schedule executor started (auto-run {}, scan {}s; {ENABLE_ENV} is the fallback)",
+        config.enabled, config.scan_seconds
+    );
     let stop = Arc::new(AtomicBool::new(false));
-    ScheduleExecutor::spawn_with(stop, STOP_POLL, TICK_INTERVAL, move || tick(&state))
+    ScheduleExecutor::spawn_with(
+        stop,
+        STOP_POLL,
+        || {
+            let config = effective_config();
+            (config.enabled, config.period())
+        },
+        move || tick(&state),
+    )
 }
 
 /// One scan of all workspaces: run due, tool-created schedules.
@@ -238,13 +319,20 @@ fn tick(state: &Arc<AppState>) {
 }
 
 #[cfg(test)]
+pub(crate) static ENV_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
-    use super::{valid_entry, ScheduleExecutor, STOP_POLL, TICK_INTERVAL};
+    use super::{
+        apply_settings, clear_settings_override, effective_config, valid_entry, ScheduleExecutor,
+        DEFAULT_SCAN_SECONDS, ENABLE_ENV, STOP_POLL,
+    };
     use serde_json::json;
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
     use std::sync::Arc;
     use std::time::{Duration, Instant};
+    use zk_contract_config::ScheduleSettings;
 
     #[test]
     fn accepts_tool_created_entry() {
@@ -284,7 +372,7 @@ mod tests {
         let mut executor = ScheduleExecutor::spawn_with(
             Arc::clone(&stop),
             Duration::from_millis(5),
-            Duration::from_millis(10),
+            || (true, Duration::from_millis(10)),
             move || {
                 worker_counter.fetch_add(1, Ordering::SeqCst);
             },
@@ -313,7 +401,7 @@ mod tests {
             let _executor = ScheduleExecutor::spawn_with(
                 Arc::clone(&stop),
                 Duration::from_millis(5),
-                Duration::from_millis(10),
+                || (true, Duration::from_millis(10)),
                 move || {
                     worker_counter.fetch_add(1, Ordering::SeqCst);
                 },
@@ -328,6 +416,105 @@ mod tests {
             "worker kept ticking after drop"
         );
         // Keep the constants referenced so the poll/period contract is explicit.
-        assert!(STOP_POLL < TICK_INTERVAL);
+        assert!(STOP_POLL < Duration::from_secs(DEFAULT_SCAN_SECONDS));
+    }
+    #[test]
+    fn schedule_config_precedence_settings_env_default() {
+        let _env_guard = super::ENV_TEST_LOCK.lock().unwrap();
+        std::env::set_var(ENABLE_ENV, "1");
+        clear_settings_override();
+        // No saved settings -> env fallback (enabled, default 10s).
+        let config = effective_config();
+        assert!(config.enabled);
+        assert_eq!(config.scan_seconds, DEFAULT_SCAN_SECONDS);
+
+        // Explicitly saved non-default settings win over env.
+        apply_settings(&ScheduleSettings {
+            enabled: true,
+            scan_seconds: 30,
+        })
+        .unwrap();
+        let config = effective_config();
+        assert!(config.enabled);
+        assert_eq!(config.scan_seconds, 30);
+
+        // A default-valued save clears the override -> env fallback again.
+        apply_settings(&ScheduleSettings::default()).unwrap();
+        let config = effective_config();
+        assert!(config.enabled);
+        assert_eq!(config.scan_seconds, DEFAULT_SCAN_SECONDS);
+
+        // No settings, no env -> disabled/default.
+        std::env::remove_var(ENABLE_ENV);
+        clear_settings_override();
+        let config = effective_config();
+        assert!(!config.enabled);
+        assert_eq!(config.scan_seconds, DEFAULT_SCAN_SECONDS);
+
+        // Invalid settings are rejected before touching the override.
+        assert!(apply_settings(&ScheduleSettings {
+            enabled: true,
+            scan_seconds: 4,
+        })
+        .is_err());
+        assert!(!effective_config().enabled);
+        clear_settings_override();
+    }
+
+    #[test]
+    fn executor_idles_when_disabled_and_hot_updates_period() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let enabled = Arc::new(AtomicBool::new(false));
+        let period_ms = Arc::new(AtomicU64::new(10));
+        let counter = Arc::new(AtomicUsize::new(0));
+        let config_enabled = Arc::clone(&enabled);
+        let config_period = Arc::clone(&period_ms);
+        let worker_counter = Arc::clone(&counter);
+        let mut executor = ScheduleExecutor::spawn_with(
+            Arc::clone(&stop),
+            Duration::from_millis(5),
+            move || {
+                (
+                    config_enabled.load(Ordering::SeqCst),
+                    Duration::from_millis(config_period.load(Ordering::SeqCst)),
+                )
+            },
+            move || {
+                worker_counter.fetch_add(1, Ordering::SeqCst);
+            },
+        );
+        // Disabled: idle, no ticks.
+        std::thread::sleep(Duration::from_millis(60));
+        assert_eq!(counter.load(Ordering::SeqCst), 0, "disabled must idle");
+
+        // Hot enable -> ticks on the configured 10ms period.
+        enabled.store(true, Ordering::SeqCst);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while counter.load(Ordering::SeqCst) < 2 {
+            assert!(Instant::now() < deadline, "enabled executor did not tick");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        // Hot period increase: no tick within a short window (< new 200ms period).
+        period_ms.store(200, Ordering::SeqCst);
+        let before = counter.load(Ordering::SeqCst);
+        std::thread::sleep(Duration::from_millis(80));
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            before,
+            "scan_seconds update must be honoured without restart"
+        );
+
+        // Hot disable: further ticks stop.
+        enabled.store(false, Ordering::SeqCst);
+        std::thread::sleep(Duration::from_millis(30));
+        let disabled_at = counter.load(Ordering::SeqCst);
+        std::thread::sleep(Duration::from_millis(80));
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            disabled_at,
+            "disabled executor must stop ticking"
+        );
+        executor.stop();
     }
 }

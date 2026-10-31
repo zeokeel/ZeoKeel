@@ -56,11 +56,17 @@ export interface HookSettings {
 }
 
 /** Normalized `zk_contract_config::AgentSettings`. */
+export interface ScheduleSettings {
+  enabled: boolean;
+  scan_seconds: number;
+}
+
 export interface AgentSettings {
   max_steps: number;
   completion: CompletionSettings;
   memory: MemorySettings;
   hooks: HookSettings;
+  schedule: ScheduleSettings;
 }
 
 /** Mirrors `zk_contract_agent::AgentUsage`. */
@@ -250,6 +256,7 @@ export function defaultAgentSettings(): AgentSettings {
     },
     memory: { enabled: true, dir: "" },
     hooks: { enabled: true, log: "" },
+    schedule: { enabled: false, scan_seconds: 10 },
   };
 }
 

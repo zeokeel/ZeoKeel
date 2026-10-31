@@ -192,6 +192,58 @@ impl Default for ToolSettings {
     }
 }
 
+/// Workspace schedule auto-run settings (`docs/19`/`docs/38`).
+///
+/// Auto-run starts scheduled prompts with no human in the loop, so it is
+/// **disabled by default**; the desktop executor always starts but idles while
+/// disabled. `scan_seconds` is the poll period for due schedules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(default)]
+pub struct ScheduleSettings {
+    /// Whether the desktop executes due `.zeokeel/schedules.json` entries.
+    pub enabled: bool,
+    /// Schedule scan period in seconds (`5..=3600`; default 10).
+    pub scan_seconds: u64,
+}
+
+impl ScheduleSettings {
+    /// Smallest accepted scan period.
+    pub const MIN_SCAN_SECONDS: u64 = 5;
+    /// Largest accepted scan period.
+    pub const MAX_SCAN_SECONDS: u64 = 3_600;
+
+    /// Validate the scan period.
+    ///
+    /// # Errors
+    ///
+    /// [`ConfigError::Invalid`] when `scan_seconds` is out of range.
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if !(Self::MIN_SCAN_SECONDS..=Self::MAX_SCAN_SECONDS).contains(&self.scan_seconds) {
+            return Err(ConfigError::Invalid(format!(
+                "agent.schedule.scan_seconds must be within 5..=3600 (got {})",
+                self.scan_seconds
+            )));
+        }
+        Ok(())
+    }
+
+    /// The scan period clamped to the accepted range (runtime defense).
+    #[must_use]
+    pub fn effective_scan_seconds(&self) -> u64 {
+        self.scan_seconds
+            .clamp(Self::MIN_SCAN_SECONDS, Self::MAX_SCAN_SECONDS)
+    }
+}
+
+impl Default for ScheduleSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            scan_seconds: 10,
+        }
+    }
+}
+
 /// Runtime-configurable local agent settings.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
@@ -204,6 +256,8 @@ pub struct AgentSettings {
     pub memory: MemorySettings,
     /// Observable lifecycle hooks.
     pub hooks: HookSettings,
+    /// Workspace schedule auto-run (disabled by default).
+    pub schedule: ScheduleSettings,
 }
 
 impl Default for AgentSettings {
@@ -213,6 +267,7 @@ impl Default for AgentSettings {
             completion: CompletionSettings::default(),
             memory: MemorySettings::default(),
             hooks: HookSettings::default(),
+            schedule: ScheduleSettings::default(),
         }
     }
 }

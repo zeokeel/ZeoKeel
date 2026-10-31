@@ -176,11 +176,27 @@ describe("protocol boundary rejects invalid data after schema validation", () =>
     })).toBe(true);
   });
 
+  it("validates schedule settings via the regenerated app_settings schema", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const current = defaultSettings();
+    expect(validateAppSettings({ ...current, agent: { ...current.agent, schedule: { enabled: true, scan_seconds: 30 } } })).toBe(true);
+    expect(validateAppSettings({ ...current, agent: { ...current.agent, schedule: { enabled: false, scan_seconds: 10 } } })).toBe(true);
+    expect(validateAppSettings({ ...current, agent: { ...current.agent, schedule: { enabled: "yes", scan_seconds: 10 } } })).toBe(false);
+    expect(validateAppSettings({ ...current, agent: { ...current.agent, schedule: { enabled: true, scan_seconds: "30" } } })).toBe(false);
+  });
+
   it("validates tools timeouts via the generated app_settings schema", () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     expect(validateAppSettings({ ...defaultSettings(), tools: { tool_timeout_ms: 60000, approval_timeout_ms: 450000 } })).toBe(true);
     expect(validateAppSettings({ ...defaultSettings(), tools: { tool_timeout_ms: "60000", approval_timeout_ms: 450000 } })).toBe(false);
     expect(validateAppSettings({ ...defaultSettings(), tools: { tool_timeout_ms: -1, approval_timeout_ms: 450000 } })).toBe(false);
+  });
+
+  it("parses schedule settings with serde defaults for old settings", () => {
+    const current = defaultSettings();
+    expect(parseSettings({ ...current, agent: { ...current.agent, schedule: undefined } }).agent.schedule).toEqual({ enabled: false, scan_seconds: 10 });
+    expect(parseSettings({ ...current, agent: { ...current.agent, schedule: { enabled: true, scan_seconds: 30 } } }).agent.schedule).toEqual({ enabled: true, scan_seconds: 30 });
+    expect(parseSettings({ ...current, agent: { ...current.agent, schedule: { enabled: true } } }).agent.schedule).toEqual({ enabled: true, scan_seconds: 10 });
   });
 
   it("parses tools timeouts with serde defaults for old settings", () => {

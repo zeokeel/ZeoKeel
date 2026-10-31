@@ -2,7 +2,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
 
 use zk_contract_config::{
-    AgentSettings, AppSettings, ProviderKind, RuntimeSettings, ToolChoiceSetting, ToolSettings,
+    AgentSettings, AppSettings, ProviderKind, RuntimeSettings, ScheduleSettings, ToolChoiceSetting,
+    ToolSettings,
 };
 
 #[test]
@@ -35,6 +36,10 @@ fn legacy_settings_without_agent_still_parse() {
     assert!(settings.agent.memory.enabled);
     assert!(settings.agent.hooks.enabled);
     assert_eq!(settings.tools, ToolSettings::default());
+    assert_eq!(settings.agent.schedule, ScheduleSettings::default());
+    assert!(!settings.agent.schedule.enabled);
+    assert_eq!(settings.agent.schedule.scan_seconds, 10);
+    settings.agent.schedule.validate().unwrap();
     assert_eq!(settings.tools.tool_timeout_ms, 120_000);
     assert_eq!(settings.tools.approval_timeout_ms, 300_000);
     settings.tools.validate().unwrap();
@@ -199,4 +204,47 @@ fn runtime_settings_sections_are_optional_and_legacy_snapshots_parse() {
         ..RuntimeSettings::default()
     };
     assert!(bad.validate().is_err());
+}
+
+#[test]
+fn schedule_settings_validate_and_clamp() {
+    let defaults = ScheduleSettings::default();
+    assert!(!defaults.enabled);
+    assert_eq!(defaults.scan_seconds, 10);
+    assert_eq!(defaults.effective_scan_seconds(), 10);
+    defaults.validate().unwrap();
+
+    let mut bad = defaults;
+    bad.scan_seconds = 4;
+    assert!(bad.validate().is_err());
+    assert_eq!(
+        bad.effective_scan_seconds(),
+        ScheduleSettings::MIN_SCAN_SECONDS
+    );
+    let mut bad = defaults;
+    bad.scan_seconds = 3_601;
+    assert!(bad.validate().is_err());
+    assert_eq!(
+        bad.effective_scan_seconds(),
+        ScheduleSettings::MAX_SCAN_SECONDS
+    );
+    for seconds in [5, 10, 3_600] {
+        let settings = ScheduleSettings {
+            enabled: true,
+            scan_seconds: seconds,
+        };
+        settings.validate().unwrap();
+        assert_eq!(
+            settings,
+            serde_json::from_str::<ScheduleSettings>(&serde_json::to_string(&settings).unwrap())
+                .unwrap()
+        );
+    }
+
+    // Legacy agent settings without `schedule` parse with defaults.
+    let legacy: AgentSettings = serde_json::from_str(
+        r#"{"max_steps":50,"completion":{},"memory":{"enabled":true,"dir":""},"hooks":{"enabled":true,"log":""}}"#,
+    )
+    .unwrap();
+    assert_eq!(legacy.schedule, ScheduleSettings::default());
 }

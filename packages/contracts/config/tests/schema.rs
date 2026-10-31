@@ -35,4 +35,8 @@ fn export_schema() {
         "runtime-settings.json",
         &schemars::schema_for!(zk_contract_config::RuntimeSettings),
     );
+    write(
+        "schedule-settings.json",
+        &schemars::schema_for!(zk_contract_config::ScheduleSettings),
+    );
 }

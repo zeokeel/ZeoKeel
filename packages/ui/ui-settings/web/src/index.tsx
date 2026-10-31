@@ -355,6 +355,24 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
             </fieldset>
             <fieldset className="rounded-document bg-muted p-4">
               <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
+                {t("settingsSectionSchedule")}
+              </legend>
+              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                <label className="flex items-center gap-3 rounded-control bg-background px-3 py-2" htmlFor="settings-schedule-enabled">
+                  <input
+                    id="settings-schedule-enabled"
+                    type="checkbox"
+                    checked={form.scheduleEnabled}
+                    onChange={(event) => { update("scheduleEnabled", event.target.checked); }}
+                  />
+                  <span className="text-[13px] text-foreground">{t("settingsScheduleEnabled")}</span>
+                </label>
+                {numeric("settings-scan-seconds", t("settingsScanSeconds"), form.scanSeconds, (value) => { update("scanSeconds", value); }, errors.scanSeconds, { min: 5, max: 3600 })}
+              </div>
+              <p className="mt-2 text-[12px] text-muted-foreground">{t("settingsScheduleHint")}</p>
+            </fieldset>
+            <fieldset className="rounded-document bg-muted p-4">
+              <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
                 {t("settingsSectionTools")}
               </legend>
               <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">

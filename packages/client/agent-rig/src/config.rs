@@ -471,6 +471,9 @@ impl AgentRuntimeConfig {
                 enabled: self.hooks.enabled,
                 log: self.hooks.log.clone(),
             },
+            // Schedule auto-run is desktop-owned (AppSettings.agent.schedule);
+            // the agent runtime only carries it through unchanged snapshots.
+            schedule: zk_contract_config::ScheduleSettings::default(),
         }
     }
 

@@ -296,6 +296,10 @@ const zhCN = {
   inspectorChangesItem: "{path}，新增 {add}，删除 {del}",
   upgradeRequestId: "请求 ID",
   upgradeOpenFailed: "无法打开下载页，请手动复制链接访问。",
+  settingsSectionSchedule: "调度/自动化",
+  settingsScheduleEnabled: "启用定时调度",
+  settingsScanSeconds: "扫描间隔（秒，5-3600）",
+  settingsScheduleHint: "启用后按间隔扫描自动化任务；保存后立即生效。",
 } as const;
 
 export type MessageKey = keyof typeof zhCN;
@@ -592,6 +596,10 @@ const enUS: Record<MessageKey, string> = {
   inspectorChangesItem: "{path}, added {add}, deleted {del}",
   upgradeRequestId: "Request ID",
   upgradeOpenFailed: "Could not open the download page; copy the link and open it manually.",
+  settingsSectionSchedule: "Scheduling / automation",
+  settingsScheduleEnabled: "Enable scheduled runs",
+  settingsScanSeconds: "Scan interval (seconds, 5-3600)",
+  settingsScheduleHint: "Scans automation tasks at this interval after saving; applies immediately.",
 };
 
 const dictionaries: Record<Locale, Record<string, string>> = {

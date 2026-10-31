@@ -35,6 +35,10 @@
         "hooks": {
           "enabled": true,
           "log": ""
+        },
+        "schedule": {
+          "enabled": false,
+          "scan_seconds": 10
         }
       },
       "allOf": [
@@ -141,6 +145,18 @@
           "allOf": [
             {
               "$ref": "#/definitions/MemorySettings"
+            }
+          ]
+        },
+        "schedule": {
+          "description": "Workspace schedule auto-run (disabled by default).",
+          "default": {
+            "enabled": false,
+            "scan_seconds": 10
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/ScheduleSettings"
             }
           ]
         }
@@ -322,6 +338,24 @@
           ]
         }
       ]
+    },
+    "ScheduleSettings": {
+      "description": "Workspace schedule auto-run settings (`docs/19`/`docs/38`).\n\nAuto-run starts scheduled prompts with no human in the loop, so it is **disabled by default**; the desktop executor always starts but idles while disabled. `scan_seconds` is the poll period for due schedules.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Whether the desktop executes due `.zeokeel/schedules.json` entries.",
+          "default": false,
+          "type": "boolean"
+        },
+        "scan_seconds": {
+          "description": "Schedule scan period in seconds (`5..=3600`; default 10).",
+          "default": 10,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
     },
     "ToolChoiceSetting": {
       "description": "How the model may choose tools for a turn.",

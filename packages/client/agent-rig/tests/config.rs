@@ -81,6 +81,7 @@ fn contract_settings_apply_to_the_next_rig_request() {
             enabled: false,
             log: String::new(),
         },
+        schedule: zk_contract_config::ScheduleSettings::default(),
     };
     agent.configure_agent(&settings).unwrap();
     assert_eq!(agent.config().max_steps, 9);

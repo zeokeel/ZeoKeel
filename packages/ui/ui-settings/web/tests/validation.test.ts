@@ -51,6 +51,8 @@ describe("settings validation", () => {
       memoryDir: "/tmp/zk-memory",
       hooksEnabled: false,
       hooksLog: "/tmp/zk-hooks.jsonl",
+      scheduleEnabled: true,
+      scanSeconds: "30",
       toolTimeoutMs: "60000",
       approvalTimeoutMs: "450000",
     };
@@ -71,6 +73,7 @@ describe("settings validation", () => {
       },
       memory: { enabled: false, dir: "/tmp/zk-memory" },
       hooks: { enabled: false, log: "/tmp/zk-hooks.jsonl" },
+      schedule: { enabled: true, scan_seconds: 30 },
     });
     expect(settings.tools).toEqual({ tool_timeout_ms: 60000, approval_timeout_ms: 450000 });
     expect(toForm(settings).maxSteps).toBe("12");
@@ -87,7 +90,19 @@ describe("settings validation", () => {
     expect(settings.agent.completion.tool_choice).toEqual({ mode: "auto" });
     expect(settings.agent.completion.stop).toEqual([]);
     expect(settings.agent.max_steps).toBe(50);
+    expect(settings.agent.schedule).toEqual({ enabled: false, scan_seconds: 10 });
+    expect(toForm(defaultSettings()).scanSeconds).toBe("10");
+    expect(toForm(defaultSettings()).scheduleEnabled).toBe(false);
     expect(settings.tools).toEqual({ tool_timeout_ms: 120000, approval_timeout_ms: 300000 });
+  });
+
+  it("validates the schedule scan interval range (5..3600)", () => {
+    const base = toForm(defaultSettings());
+    expect(validateSettings({ ...base, scanSeconds: "4" }).scanSeconds).toBe("settingsInvalidRange");
+    expect(validateSettings({ ...base, scanSeconds: "3601" }).scanSeconds).toBe("settingsInvalidRange");
+    expect(validateSettings({ ...base, scanSeconds: "5" }).scanSeconds).toBeNull();
+    expect(validateSettings({ ...base, scanSeconds: "3600" }).scanSeconds).toBeNull();
+    expect(validateSettings({ ...base, scanSeconds: "1.5" }).scanSeconds).toBe("settingsInvalidInteger");
   });
 
   it("keeps a saved server URL (docs/19 §3.3)", () => {

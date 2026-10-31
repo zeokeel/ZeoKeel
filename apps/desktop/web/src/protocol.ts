@@ -349,6 +349,7 @@ function parseAgentSettings(value: unknown): AgentSettings {
   const completion = isRecord(value["completion"]) ? value["completion"] : {};
   const memory = isRecord(value["memory"]) ? value["memory"] : {};
   const hooks = isRecord(value["hooks"]) ? value["hooks"] : {};
+  const schedule = isRecord(value["schedule"]) ? value["schedule"] : {};
   const stop = (readArray(completion, "stop") ?? []).flatMap((item) =>
     typeof item === "string" ? [item] : [],
   );
@@ -372,6 +373,10 @@ function parseAgentSettings(value: unknown): AgentSettings {
     hooks: {
       enabled: readBoolean(hooks, "enabled") ?? base.hooks.enabled,
       log: readString(hooks, "log") ?? base.hooks.log,
+    },
+    schedule: {
+      enabled: readBoolean(schedule, "enabled") ?? base.schedule.enabled,
+      scan_seconds: readNumber(schedule, "scan_seconds") ?? base.schedule.scan_seconds,
     },
   };
 }

@@ -22,6 +22,10 @@ describe("settings integration", () => {
     await userEvent.clear(temperature);
     await userEvent.type(temperature, "0.7");
     await userEvent.click(screen.getByLabelText("启用会话记忆"));
+    await userEvent.click(screen.getByLabelText("启用定时调度"));
+    const scan = screen.getByLabelText("扫描间隔（秒，5-3600）");
+    await userEvent.clear(scan);
+    await userEvent.type(scan, "30");
     const toolTimeout = screen.getByLabelText("工具超时（ms，1000-600000）");
     await userEvent.clear(toolTimeout);
     await userEvent.type(toolTimeout, "60000");
@@ -42,6 +46,7 @@ describe("settings integration", () => {
     expect(sentSettings.agent.completion.temperature).toBe(0.7);
     expect(sentSettings.agent.memory.enabled).toBe(false);
     expect(sentSettings.tools).toEqual({ tool_timeout_ms: 60000, approval_timeout_ms: 450000 });
+    expect(sentSettings.agent.schedule).toEqual({ enabled: true, scan_seconds: 30 });
 
     expect(document.documentElement.lang).toBe("en-US");
     expect(document.documentElement.dataset["theme"]).toBe("dark");

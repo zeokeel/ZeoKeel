@@ -19,7 +19,7 @@ rows = [
  ("web search","tool.web_search","zeokeel/tool-web-search","implemented","DuckDuckGo/HTTPS provider env"),
  ("skill","tool.skill","zeokeel/tool-skill","implemented","read-only"),
  ("goal","tool.goal","zeokeel/tool-goal","partial","no round driver"),
- ("schedule","tool.schedule","zeokeel/tool-schedule","implemented","desktop scheduler executes due intervals"),
+ ("schedule","tool.schedule","zeokeel/tool-schedule","implemented","desktop scheduler executes due intervals; AppSettings.agent.schedule {enabled,scan_seconds} (env fallback)"),
  ("session-query","tool.session_query","zeokeel/tool-session-query","implemented","search/read"),
  ("subagent","tool.subagent","zeokeel/tool-subagent","implemented","sync run + async subagent_start (background, id)"),
  ("subagent_fork","tool.subagent_fork","zeokeel/tool-subagent-fork","implemented","forks current conversation context"),
@@ -36,7 +36,7 @@ rows = [
  ("transcription","media.transcription","zeokeel/cap-transcription","implemented","rig transcription model; configure ZEOKEEL_TRANSCRIPTION_*"),
  ("rerank","media.rerank","zeokeel/cap-rerank","implemented","rig rerank (voyageai); configure ZEOKEEL_RERANK_*"),
  ("rig hooks","agent.hooks","zeokeel/cap-hooks","implemented","HookEvent lifecycle; configure ZEOKEEL_AGENT_HOOKS_ENABLED"),
- ("call-timeout","-","agent-rig","implemented (exemption)","ZEOKEEL_TOOL_TIMEOUT_MS; agent-level policy, no separate package per C3 exemption"),
+ ("call-timeout","-","agent-rig","implemented (exemption)","AppSettings.tools.tool_timeout_ms (ZEOKEEL_TOOL_TIMEOUT_MS fallback); agent-level policy, no separate package per C3 exemption"),
  ("tool-cordis","tool.cordis","zeokeel/tool-cordis","disabled","C2 forbids runtime plugin loading"),
  ("agent-team","tool.agent_team","zeokeel/tool-agent-team","experimental","explicit unsupported error"),
 ]
