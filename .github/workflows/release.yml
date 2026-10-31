@@ -161,14 +161,12 @@ jobs:
       VERSION: ${{ needs.version-check.outputs.version }}
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2.9.3
-      - uses: pnpm/action-setup@v6
-        with: { version: "12.16.1" }
-      - uses: actions/setup-node@v7
-        with: { node-version: "22" }
-      - uses: actions/setup-python@v7
-        with: { python-version: "3.12" }
+      - uses: ./.github/actions/setup
+        with:
+          rust: "true"
+          pnpm: "true"
+          node: "true"
+          python: "true"
       - name: Compose selected edition x channel
         run: |
           cargo run -q -p zk -- validate
@@ -218,18 +216,18 @@ jobs:
       matrix:
         include:
           - { name: linux, os: ubuntu-24.04, targets: '["appimage","deb"]' }
-          - { name: macos, os: macos-14, targets: '["dmg"]' }
-          - { name: windows, os: windows-2022, targets: '["nsis"]' }
+          - { name: macos, os: macos-15, targets: '["dmg"]' }
+          - { name: windows, os: windows-latest, targets: '["nsis"]' }
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2.9.3
-      - uses: pnpm/action-setup@v6
-        with: { version: "12.16.1" }
-      - uses: actions/setup-node@v7
-        with: { node-version: "22", cache: "pnpm" }
-      - uses: actions/setup-python@v7
-        with: { python-version: "3.12" }
+      - uses: ./.github/actions/setup
+        with:
+          system-deps: "true"
+          rust: "true"
+          pnpm: "true"
+          node: "true"
+          node-cache: pnpm
+          python: "true"
       - name: Linux system deps (Tauri)
         if: matrix.name == 'linux'
         run: |
@@ -312,14 +310,13 @@ jobs:
       VERSION: ${{ needs.version-check.outputs.version }}
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2.9.3
-      - uses: pnpm/action-setup@v6
-        with: { version: "12.16.1" }
-      - uses: actions/setup-node@v7
-        with: { node-version: "22", cache: "pnpm" }
-      - uses: actions/setup-python@v7
-        with: { python-version: "3.12" }
+      - uses: ./.github/actions/setup
+        with:
+          rust: "true"
+          pnpm: "true"
+          node: "true"
+          node-cache: pnpm
+          python: "true"
       - uses: actions/download-artifact@v8
         with:
           pattern: clients-*
@@ -408,6 +405,9 @@ jobs:
       VERSION: ${{ needs.version-check.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          python: "true"
       - uses: actions/download-artifact@v8
         with:
           name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
@@ -435,13 +435,16 @@ jobs:
     # Gate with a repository variable (job-level `if` cannot read `secrets`); the
     # certificate/password themselves are only referenced inside the gated step.
     if: ${{ vars.MACOS_NOTARIZE_ENABLED == 'true' && needs.version-check.outputs.edition == 'enterprise' }}
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 60
     env:
       CHANNEL: ${{ needs.version-check.outputs.channel }}
       VERSION: ${{ needs.version-check.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          python: "true"
       - uses: actions/download-artifact@v8
         with:
           name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
@@ -499,6 +502,9 @@ jobs:
       NOTARIZE_ENABLED: ${{ vars.MACOS_NOTARIZE_ENABLED }}
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          python: "true"
       - uses: actions/download-artifact@v8
         with:
           name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
@@ -579,6 +585,11 @@ jobs:
               + ("job `notarize` is enabled for this run; release dist was assembled before stapling and is NOT itself notarized — use the `clients-macos-notarized` artifact." if notarize == "true" else "not executed (MACOS_NOTARIZE_ENABLED != true) — UNVERIFIED, certificate-gated (ADR-037)."),
               "- Docker images are built from source in CI; image CVEs are enforced by the security workflow gate 10 (fixable-only policy; unfixed base-image CVEs are listed in KNOWN-LIMITATIONS.md §2).",
               "- GitHub-hosted runner execution is itself the environment proof for this workflow run; other environments remain UNVERIFIED.",
+              "- Docker upgrade/rollback/restore drill: environment-dependent `upgrade-drill` job; read its outcome and `upgrade-drill-evidence` artifact from this run — never assumed pass.",
+              "- Real provider/media/embedding live calls: UNVERIFIED (no provider credentials in CI); see KNOWN-LIMITATIONS.md §2.",
+              "- 500-user production capacity: local smoke only; production capacity UNVERIFIED (KNOWN-LIMITATIONS.md §2).",
+              "- personal-edition (GitHub-Releases-only) installers are not produced by this run; dispatch the workflow with edition=personal (C13).",
+              "- Full residual inventory: KNOWN-LIMITATIONS.md §2/§3/§4 (also attached as a release asset).",
           ]
           pathlib.Path(out).write_text("\n".join(body) + "\n")
           print(f"release body: {out}")

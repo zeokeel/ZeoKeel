@@ -23,7 +23,11 @@ name: security
 # The real a11y gate lives in ci.yml `a11y` (it executes the axe specs via the enterprise
 # e2e scripts); the previous echo-only a11y job is deleted so no job can claim a gate it
 # does not execute (R2, no false-green).
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
@@ -50,8 +54,12 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2.9.3
+      - uses: ./.github/actions/setup
+        with:
+          rust: "true"
+          pnpm: "true"
+          node: "true"
+          node-cache: pnpm
       # gates 2/3/7 (srv-auth-test, SSRF probe, audit-chain markers) need a real PG; the
       # repository scripts use local peer auth via `sudo -u postgres`. Tauri system libs
       # are needed to build/run zk-desktop for the rebinding probe (gate 3).
@@ -81,10 +89,6 @@ jobs:
         run: cargo fetch
       # zk-desktop's Tauri `generate_context!` embeds `web/dist`; the audit binaries must
       # be built after the web assets exist (clean runner checkouts have no dist).
-      - uses: pnpm/action-setup@v6
-        with: { version: "12.16.1" }
-      - uses: actions/setup-node@v7
-        with: { node-version: "22" }
       - name: Build desktop web dist (Tauri frontendDist prerequisite)
         run: |
           pnpm install --frozen-lockfile
@@ -109,10 +113,6 @@ jobs:
         run: |
           mkdir -p target/evidence/security
           cargo geiger --all-features | tee target/evidence/security/cargo-geiger.txt
-      - uses: pnpm/action-setup@v6
-        with: { version: "12.16.1" }
-      - uses: actions/setup-node@v7
-        with: { node-version: "22", cache: "pnpm" }
       - name: pnpm audit (production dependencies)
         run: pnpm install --frozen-lockfile && pnpm audit --prod
       # gate 10 prerequisite: a real server image plus a pinned trivy scan. BuildKit's

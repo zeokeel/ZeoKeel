@@ -1,0 +1,79 @@
+name: setup
+description: >-
+  Shared toolchain setup for ZeoKeel workflows. One place for system packages,
+  Rust, pnpm/Node, Python and Go so every job uses the same pinned action versions.
+
+inputs:
+  system-deps:
+    description: "Install Tauri/WebKit system packages + xvfb"
+    default: "false"
+  rust:
+    description: "Install stable Rust + rust-cache"
+    default: "false"
+  rust-components:
+    description: "Extra rustup components (e.g. 'rustfmt, clippy'); empty = none"
+    default: ""
+  pnpm:
+    description: "Install pnpm"
+    default: "false"
+  node:
+    description: "Install Node 22"
+    default: "false"
+  node-cache:
+    description: "setup-node cache mode ('pnpm' for pnpm workspaces); empty = no cache"
+    default: ""
+  python:
+    description: "Install Python 3.12"
+    default: "false"
+  go:
+    description: "Install Go from experiments/wasm-poc/guest-go/go.mod"
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: System deps (Tauri + icon renderer)
+      if: inputs.system-deps == 'true' && runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
+          libjavascriptcoregtk-4.1-dev librsvg2-bin xvfb
+    - name: Rust toolchain (with components)
+      if: inputs.rust == 'true' && inputs.rust-components != ''
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: ${{ inputs.rust-components }}
+    - name: Rust toolchain
+      if: inputs.rust == 'true' && inputs.rust-components == ''
+      uses: dtolnay/rust-toolchain@stable
+    - name: Rust cache
+      if: inputs.rust == 'true'
+      uses: Swatinem/rust-cache@v2.9.3
+    - name: pnpm
+      if: inputs.pnpm == 'true'
+      uses: pnpm/action-setup@v6
+      with:
+        version: "12.16.1"
+    - name: Node (pnpm cache)
+      if: inputs.node == 'true' && inputs.node-cache != ''
+      uses: actions/setup-node@v7
+      with:
+        node-version: "22"
+        cache: ${{ inputs.node-cache }}
+    - name: Node
+      if: inputs.node == 'true' && inputs.node-cache == ''
+      uses: actions/setup-node@v7
+      with:
+        node-version: "22"
+    - name: Python
+      if: inputs.python == 'true'
+      uses: actions/setup-python@v7
+      with:
+        python-version: "3.12"
+    - name: Go
+      if: inputs.go == 'true'
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: experiments/wasm-poc/guest-go/go.mod
+        cache: false

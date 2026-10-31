@@ -1,11 +1,17 @@
 name: ci
 
-# Gate truth (R2, no false-green): every command declared as a "current gate" in
-# docs/18-strictness.md §7 / AGENTS.md §6 is executed by ci.yml, security.yml or
-# release.yml — or it is removed from the claimed list and recorded as UNVERIFIED
-# in docs/18 §7 with file:line. Adding/removing a step here requires updating that
-# table in the same PR.
-on: [push, pull_request]
+# Gate truth (no false-green): every command claimed as a current gate in
+# docs/18-strictness.md / AGENTS.md §6 runs in ci.yml, security.yml or release.yml.
+#
+# Triggers are intentionally narrow to avoid burning runners on duplicate runs:
+#   - push to main only (feature branches are validated by their PR)
+#   - pull requests targeting main
+#   - tag pushes are handled by release.yml alone (no triplicate ci/security runs)
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
@@ -23,21 +29,16 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-      - name: System deps (Tauri + icon renderer)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev librsvg2-bin xvfb
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup
         with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2.9.3
-      # zk-desktop's Tauri `generate_context!` embeds `web/dist`; cargo fmt/clippy/test
-      # compile it, so the web build must exist before any Rust gate (CI checkout has no dist).
-      - uses: pnpm/action-setup@v6
-        with: { version: "12.16.1" }
-      - uses: actions/setup-node@v7
-        with: { node-version: "22", cache: "pnpm" }
+          system-deps: "true"
+          rust: "true"
+          rust-components: rustfmt, clippy
+          pnpm: "true"
+          node: "true"
+          node-cache: pnpm
+      # zk-desktop's tauri::generate_context! embeds web/dist; fmt/clippy/test
+      # compile the bin, so the web bundle must exist before the Rust gates.
       - name: Build desktop web dist (Tauri frontendDist prerequisite)
         run: |
           pnpm install --frozen-lockfile
@@ -61,8 +62,8 @@ jobs:
           bash scripts/schema-check.sh
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-      # cargo nextest is not installed in CI or locally; `cargo test --workspace` is the
-      # executed runner and docs/18 §7 records nextest as UNVERIFIED (no false claim).
+      # cargo nextest is not installed locally/CI; `cargo test` is the executed runner
+      # and docs/18 records nextest as UNVERIFIED (no false claim).
       - name: Test (cargo test)
         run: cargo test --workspace
       - name: Rustdoc (deny warnings)
@@ -79,12 +80,12 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2.9.3
-      - uses: pnpm/action-setup@v6
-        with: { version: "12.16.1" }
-      - uses: actions/setup-node@v7
-        with: { node-version: "22", cache: "pnpm" }
+      - uses: ./.github/actions/setup
+        with:
+          rust: "true"
+          pnpm: "true"
+          node: "true"
+          node-cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Typecheck (all web packages, tsc -b)
         run: pnpm -r typecheck
@@ -104,8 +105,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2.9.3
+      - uses: ./.github/actions/setup
+        with:
+          rust: "true"
+          go: "true"
       - name: Local PostgreSQL
         run: |
           sudo apt-get update
@@ -113,8 +116,7 @@ jobs:
           sudo systemctl start postgresql
           sudo -u postgres psql -c "SELECT version();"
       # A18 target trimming: the committed baseline is personal (targets = desktop) and
-      # generates a stub apps/server (exit 2, zero srv deps). Server jobs must compose
-      # enterprise first; the job is ephemeral so the personal baseline is not restored.
+      # generates a stub apps/server; server jobs compose enterprise first.
       - name: "Enterprise composition (A18): personal baseline generates a stub server"
         run: cargo run -q -p zk -- compose --edition enterprise --profile default --channel official
       - name: Build server (enterprise composition)
@@ -133,10 +135,6 @@ jobs:
         run: bash scripts/srv-auth-test.sh
       - name: "Updates e2e (real PG): manifest/channel-reject/version-reject/artifact/portal"
         run: bash scripts/updates-e2e.sh
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: experiments/wasm-poc/guest-go/go.mod
-          cache: false
       - name: Build wasm guest (wasip1, required by apps e2e)
         run: |
           (cd experiments/wasm-poc/guest-go && \
@@ -157,17 +155,13 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-      - name: System deps (Tauri + icon renderer)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev librsvg2-bin xvfb
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2.9.3
-      - uses: pnpm/action-setup@v6
-        with: { version: "12.16.1" }
-      - uses: actions/setup-node@v7
-        with: { node-version: "22", cache: "pnpm" }
+      - uses: ./.github/actions/setup
+        with:
+          system-deps: "true"
+          rust: "true"
+          pnpm: "true"
+          node: "true"
+          node-cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - name: Client e2e (M0/M1, serve carrier, axe in m1-mock/m1-workspace-ui)
@@ -184,26 +178,21 @@ jobs:
           if-no-files-found: ignore
 
   a11y:
-    # Real axe matrix. The specs are executed by the enterprise e2e scripts:
-    #   scripts/login-e2e.sh  -> e2e/m2-login.spec.ts, e2e/m3-client-content.spec.ts,
-    #                            e2e/m4-client-apps.spec.ts (AxeBuilder, serious/critical=0)
-    #   scripts/admin-e2e.sh  -> e2e/m6-a11y.spec.ts, e2e/m5-portal.spec.ts (AxeBuilder)
-    # No `echo`-only placeholders are allowed to claim this gate (R2).
+    # Real axe matrix executed by the enterprise e2e scripts:
+    #   scripts/login-e2e.sh -> m2-login/m3-client-content/m4-client-apps (AxeBuilder)
+    #   scripts/admin-e2e.sh -> m6-a11y/m5-portal (AxeBuilder)
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
-      - name: System deps (Tauri + serve carrier)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev librsvg2-bin xvfb
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2.9.3
-      - uses: pnpm/action-setup@v6
-        with: { version: "12.16.1" }
-      - uses: actions/setup-node@v7
-        with: { node-version: "22", cache: "pnpm" }
+      - uses: ./.github/actions/setup
+        with:
+          system-deps: "true"
+          rust: "true"
+          pnpm: "true"
+          node: "true"
+          node-cache: pnpm
+          go: "true"
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - name: Local PostgreSQL
@@ -212,10 +201,6 @@ jobs:
           sudo apt-get install -y postgresql
           sudo systemctl start postgresql
           sudo -u postgres psql -c "SELECT version();"
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: experiments/wasm-poc/guest-go/go.mod
-          cache: false
       - name: Build wasm guest (login e2e seeds an approved app)
         run: |
           (cd experiments/wasm-poc/guest-go && \
@@ -240,8 +225,9 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2.9.3
+      - uses: ./.github/actions/setup
+        with:
+          rust: "true"
       - name: OEM/delivery e2e (channel schema, index/pin, compose matrix, dist verify)
         run: bash scripts/oem-e2e.sh
 
@@ -250,17 +236,13 @@ jobs:
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
-      - name: System deps (Tauri + serve carrier)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev librsvg2-bin xvfb
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2.9.3
-      - uses: pnpm/action-setup@v6
-        with: { version: "12.16.1" }
-      - uses: actions/setup-node@v7
-        with: { node-version: "22", cache: "pnpm" }
+      - uses: ./.github/actions/setup
+        with:
+          system-deps: "true"
+          rust: "true"
+          pnpm: "true"
+          node: "true"
+          node-cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - name: Local PostgreSQL
@@ -283,8 +265,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with: { python-version: "3.12" }
+      - uses: ./.github/actions/setup
+        with:
+          python: "true"
       - run: python3 scripts/docs-check.py
       - run: python3 scripts/spec-check.py
       - run: python3 scripts/review-check.py
@@ -295,8 +278,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2.9.3
+      - uses: ./.github/actions/setup
+        with:
+          rust: "true"
       - name: Validate compose
         env:
           DOMAIN: zeokeel.example.com

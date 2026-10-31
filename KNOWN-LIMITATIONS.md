@@ -1,8 +1,9 @@
 # ZeoKeel 1.0.0-rc.1 已知限制（Known Limitations）
 
 > **本文件是已知限制/UNVERIFIED 的唯一真源（SSOT）**；`docs/40-known-limitations.md` 只做摘要并链接本文件。
-> 版本：`1.0.0-rc.1`（2026-10-31，本地验证）。`1.0.0` 正式版需 rc 验收 + 远端 CI/release 实跑通过后由用户确认，
-> 不得据本文件声称 1.0.0 已发布。证据见 `target/evidence/release-check/`、`target/evidence/release-1.0-rc1/`、
+> 版本：`1.0.0-rc.1`（2026-10-31，本地验证 + GitHub Actions 远端实跑）。`1.0.0` 正式版需 rc 验收通过后由用户确认，
+> 不得据本文件声称 1.0.0 已发布。远端证据：CI/security/release 工作流（tag `v1.0.0-rc.1`）与 GitHub Release
+> `v1.0.0-rc.1` 资产；本地证据见 `target/evidence/release-check/`、`target/evidence/release-1.0-rc1/`、
 > `docs/37-release-1.0-checklist.md`、`docs/12-roadmap.md`。
 
 ## 1. 版本与发布状态
@@ -11,8 +12,8 @@
 | --- | --- | --- |
 | 产品版本 | `1.0.0-rc.1` | `Cargo.toml` workspace、根 `package.json`、`apps/desktop/web`、`apps/admin/web`、`apps/desktop/tauri.conf.json` 一致 |
 | 内部 workspace 包版本 | `0.1.0` | `packages/**/web/package.json` 为私有 `@zeokeel/*` 工作区包（不单独发布），版本不随产品版本；仅产品表面升到 rc |
-| git tag / GitHub Release | 无 | 尚未创建 `v1.0.0-rc.1` tag，也无 Release/远端 CI 运行记录 |
-| GitHub Actions（hosted runner） | **UNVERIFIED** | 远端从未运行；本地只验证了 workflow 语法/步骤（见 `.github/workflows/`、`target/evidence/release-1.0-rc1/ci/`） |
+| git tag / GitHub Release | **v1.0.0-rc.1 已创建** | annotated tag 指向 rc.1 最终 commit；GitHub Release 由 release workflow 产出：三平台安装器（AppImage/deb/dmg/nsis）、server/postgres/caddy 镜像 tar、CycloneDX SBOM、`SHA256SUMS`、完整 dist 归档与 UNVERIFIED 说明。**personal×official** 安装器需另行 `workflow_dispatch`（C1/C13），本条 Release 为 enterprise×official |
+| GitHub Actions（hosted runner） | **VERIFIED** | CI（9 jobs：rust/web/integration/e2e/a11y/oem/client-upgrade/docker/docs）与 security（strict 14 门禁）在 hosted runner 实跑通过；release workflow 在 tag 上产出真实安装包/镜像/SBOM/Release。`upgrade-drill` 与 macOS notarize 为环境项，见 §2 |
 | 1.0.0 正式版 | 未发布 | 需 rc 验收 + 远端 CI/release 实跑通过后由用户确认 |
 
 ## 2. 交付物与环境项（UNVERIFIED）
@@ -21,19 +22,19 @@
 
 | 项 | 状态 | 原因/复现命令 |
 | --- | --- | --- |
-| Docker 镜像构建/导入/`compose up` | UNVERIFIED | 本机无 `docker`（`docker --version`），`deploy/` 只有源文件与 compose；`bash scripts/security-audit.sh` 同类环境项为 unverified |
-| 服务端镜像归档 / 镜像内 SBOM | UNVERIFIED | 依赖 Docker 构建；`zk sbom` 只覆盖工作区，不证明镜像内容（见 §5） |
-| 三平台客户端安装包（Linux/macOS/Windows） | UNVERIFIED | `apps/desktop/tauri.conf.json` `bundle.active=false`，本机无 Tauri CLI/打包依赖；本地未产出安装包 |
+| Docker 镜像构建/导入/`compose up` | VERIFIED（CI）/ UNVERIFIED（本机） | release workflow 在 CI 构建并 `docker save` server+postgres+caddy 镜像；CI security job 用真实镜像跑 gate 10 trivy。本机无 `docker`，本地 compose up 仍 UNVERIFIED |
+| 服务端镜像归档 / 镜像内 SBOM | VERIFIED（CI）/ 镜像内 SBOM UNVERIFIED | release 已产出镜像 tar 与工作区 CycloneDX SBOM；镜像层内 SBOM 不在 rc.1 范围（见 §5），trivy 扫描结果见 security gate 10 |
+| 三平台客户端安装包（Linux/macOS/Windows） | VERIFIED（CI 产出）/ 真机安装 UNVERIFIED | GitHub Release 含真实 AppImage、deb、dmg、nsis 安装器（Windows 未签名 ADR-033；macOS 未公证）；三平台真机安装/升级冒烟仍 UNVERIFIED |
 | macOS 公证 + staple | UNVERIFIED | 证书未配（ADR-037）；CI 步骤就绪后由发布环境执行 |
 | Windows 签名 | 按设计不做 | Windows 安装包**不签名**（ADR-033）；发布说明必须声明 |
 | PITR / WAL 归档备份 | UNVERIFIED | `scripts/backup-restore.sh` 只有 `pg_dump`；WAL/PITR 未配置 |
-| 升级/回滚 full drill（Docker） | UNVERIFIED | `scripts/upgrade-drill.sh --docker` 需 Docker；本地仅非 Docker 部分 |
+| 升级/回滚 full drill（Docker） | UNVERIFIED | release workflow 的 `upgrade-drill` job 为环境依赖项（hosted runner 上可能被跳过/失败）；证据 artifact `upgrade-drill-evidence` 随 run 上传，不假定 pass；本地仅非 Docker 部分 |
 | 可复现构建（server/desktop/admin/镜像） | 本地 4 项 PASS；镜像 UNVERIFIED | `scripts/reproducible-build.sh`（M6 复跑）：`zk` / `zk-server` / `zk-desktop` / `admin-dist` 两次构建一致；镜像 tar 与严格 flag 集（`--remap-path-prefix`/`SOURCE_DATE_EPOCH`）需 Docker/CI 冷构建 → UNVERIFIED。证据 `target/evidence/m6/reproducible.json` |
 | 性能预算 | 部分 UNVERIFIED | `scripts/perf-budget.sh` 的网关/镜像等字段为 null/unverified；本机基线见 `target/evidence/m6/perf.json` |
 | 500 用户负载/压测 | **本地 smoke PASS（修复网关串行化后）；生产容量仍 UNVERIFIED** | harness `bash scripts/load-smoke.sh --local --users 500 --concurrency 50 --ramp-ms 5000`（2026-10-31 修复后）：0 错误，health p95 1.72ms，login p95 2.84s（local Argon2 stampede，仅参考），**gateway p95 46.5ms / p50 38.2ms / max 131ms（预算 5s），稳定吞吐 98.4 settled req/s**。根因：网关每请求重建 `reqwest::Client`（TLS/连接器初始化）；已改为进程级连接池客户端 + 每请求 provider timeout（`packages/server/gateway/src/lib.rs`）。修复前同 harness 约 11.5–12.3 req/s、gateway p95 4.86–6.17s（b12b14 证据保留）。本机为单机 PG + 假上游、`synchronous_commit=off`，非生产容量；真实部署需用 `ZEOKEEL_LOAD_BASE_URL`+`ZEOKEEL_LOAD_USERNAME/PASSWORD` 复测。证据 `target/evidence/release-1.0-rc1/phase-b/b14-perf/{load-smoke-500.json,load-smoke-500.log}` + 修复前 `.../b12b14/` |
 | 真实 provider/媒体/embedding 在线调用 | UNVERIFIED（本机无 key/网络） | harness `bash scripts/real-provider-smoke.sh`（`--help` 列全部 env）：无 env 时明确 UNVERIFIED 且 exit 2；有 key 时真实调用 chat（`ZEOKEEL_REAL_PROVIDER_*`/`ZEOKEEL_OPENAI_*`）、embedding/image/audio/transcription/rerank（各自 `ZEOKEEL_*_BASE_URL/_API_KEY/_MODEL`）与 gateway upstream（`ZEOKEEL_REAL_RESPONSES_MODEL`），逐项 pass/fail/UNVERIFIED。证据 `target/evidence/release-1.0-rc1/phase-b/b12b14/real-provider-smoke.json`（当前 unverified）；企业版媒体/embeddings 按 C7 不提供 |
-| SBOM 打包进交付 tar/镜像 | UNVERIFIED | `zk sbom` 已实现工作区级 CycloneDX；SBOM 进 tar/镜像由 release 流程处理，本机未验证（`docs/09` §8） |
-| `zk channel verify` 对真实 dist | UNVERIFIED | 只在 dry-run/占位 dist 上验证过；真实 dist 未产出 |
+| SBOM 打包进交付 tar | VERIFIED（CI） | release dist 归档内含 `SBOM/cyclonedx.json`，且 release job 解包后 `sha256sum -c SHA256SUMS` 校验；镜像层内 SBOM 仍 UNVERIFIED（`docs/09` §8） |
+| `zk channel verify` 对真实 dist | VERIFIED（CI） | release workflow 在真实 dist 上执行 `zk channel verify`，并以 `SHA256SUMS` 校验归档内容 |
 | 三平台真机安装/升级冒烟 | UNVERIFIED | 无真机；本地仅 `client-upgrade-e2e.sh` 模拟链路 |
 
 ## 3. 功能残余与设计边界（B15 后最终口径）
@@ -113,7 +114,9 @@
   gate 10 无 trivy report 时属 `unverified_external`（`env_only: true`）：CI strict 不因它们失败，也从不记为 pass。
   gate 6 密钥生命周期演练已由 master.key 测试 + `scripts/master-key-rotate.sh` 变为 CI 可满足项。
 - gate 5b `mcp-stdio-transport`（审计 JSON id 14）原为 rc.1 已知产品缺口，B16 落地后已实现并在审计中 `pass`
-  （`cargo test -p zk-connector-mcp`；本地最终证据 `target/evidence/release-1.0-rc1/security2/security.json`）。
+  （`cargo test -p zk-connector-mcp`）。权威证据为 CI security run 上传的 `security-evidence` artifact
+  （strict：exit 0、pass=12/fail=0/unverified=0/unverified_external=2）；本地复跑见
+  `target/evidence/release-1.0-rc1/ci/final/security.json`（pass=10/unverified=1/unverified_external=3）。
   CI `ZEOKEEL_SECURITY_KNOWN_GAPS` 已清空，如 gate 14 回归即 strict 红。
 - 镜像扫描（gate 10）在 CI security job 真实执行（pinned trivy 0.76.1 + 真实 server image）；PR/本地无
   `ZEOKEEL_SECURITY_TRIVY_REPORT` 时为 `unverified_external`/environment-only，不记 pass。依赖审计（gate 8：
@@ -126,9 +129,12 @@
   对传递依赖降为 warn（wasmtime 50 / Tauri 2.7 / keyring 4 的依赖钉死，无安全升级路径）；post-RC 升级
   wasmtime/tauri/keyring/zip 后应恢复为 deny。详见 `deny.toml` 注释。
 - 第三方许可证清单（`THIRD-PARTY.md`）未生成；license 审计本机 UNVERIFIED。
-- **2026-10-31 最终本机快照**（HEAD `6d89107` + A18 worktree）：非 strict exit 2、overall `unverified`、**pass=10 / fail=0 / unverified=1（gate 8 本机无 cargo-deny/audit/网络）/ unverified_external=3（gate 7/9/10）**；gate 1（威胁模型 APPROVED）与 gate 14（B16 MCP）pass。`ZEOKEEL_SECURITY_STRICT=1` 本机 exit 1 仅因 gate 8/trivy 的 CI 前置；CI `security.yml` 提供 PG/工具/镜像/trivy 后 strict 预期 exit 0（overall 仍不为 pass，env-only 7/9/10 保留）。
-- CI 安全门禁证据：`target/evidence/release-1.0-rc1/security2/{security.json,security-audit.md,logs/}`、`target/evidence/release-1.0-rc1/security2-strict/security.json`；
-  口径见 `docs/21` §10、`.github/workflows/security.yml`、`docs/18` §7。
+- **2026-10-31 远端最终快照**（rc.1 commit）：CI + security 均 success；security strict artifact 为
+  **exit 0、pass=12 / fail=0 / unverified=0 / unverified_external=2**（gate 7 WORM 部署控制、gate 9 release-only SBOM），
+  gate 1（威胁模型 APPROVED）、gate 10（trivy：0 fixable HIGH/CRITICAL；68 项无上游修复已登记 §2）、gate 14（B16 MCP）均 pass。
+  本机非 strict 复跑：exit 2、pass=10 / fail=0 / unverified=1（gate 8 本机无工具）/ unverified_external=3（gate 7/9/10），
+  证据 `target/evidence/release-1.0-rc1/ci/final/security.json`。旧 `security2/` 快照为 2026-10-31 14:40Z 的失败态，
+  不再作为权威证据。口径见 `docs/21` §10、`.github/workflows/security.yml`、`docs/18` §7。
 
 ## 5. 组合与生成物
 
