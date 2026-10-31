@@ -218,11 +218,27 @@ pub(crate) fn publish_runtime_settings(
 
 /// Apply `AppSettings.agent.schedule` to the live schedule executor.
 ///
-/// Explicit saved settings win over the env fallback; a default-valued schedule
-/// clears the override so `ZEOKEEL_ENABLE_SCHEDULE_AUTORUN` applies again.
+/// Explicitly saved settings always win — **including the default**
+/// `{enabled:false, scan_seconds:10}` — so a user save can disable auto-run even
+/// with `ZEOKEEL_ENABLE_SCHEDULE_AUTORUN=1`. The env fallback only applies when
+/// no settings file exists (fresh install).
 pub(crate) fn apply_schedule_settings(settings: &AppSettings) -> Result<(), String> {
     crate::automation::apply_settings(&settings.agent.schedule)
         .map_err(|error| format!("agent settings: {error}"))
+}
+
+/// Boot rule: a settings file means its schedule (even default-valued) is
+/// explicit and pins the override; only a fresh install falls back to env.
+pub(crate) fn apply_persisted_schedule(
+    settings: &AppSettings,
+    file_exists: bool,
+) -> Result<(), String> {
+    if file_exists {
+        apply_schedule_settings(settings)
+    } else {
+        crate::automation::clear_settings_override();
+        Ok(())
+    }
 }
 
 /// Boot path: load persisted settings and publish the agent section only when
@@ -238,12 +254,9 @@ pub(crate) fn apply_persisted_settings(
         .load()
         .map_err(|error| format!("settings load: {error}"))?;
     let file_exists = settings_file_exists();
-    if file_exists {
-        apply_schedule_settings(&settings)?;
-    } else {
-        // No saved settings: keep the env fallback authoritative.
-        crate::automation::clear_settings_override();
-    }
+    // A settings file (even one carrying the default schedule) is explicit:
+    // it overrides env. Only a fresh install (no file) uses the env fallback.
+    apply_persisted_schedule(&settings, file_exists)?;
     if should_publish_agent_settings(&settings, file_exists) {
         apply_agent_settings(&settings)?;
     }
@@ -1474,13 +1487,24 @@ mod tests {
         let _env_guard = crate::automation::ENV_TEST_LOCK.lock().unwrap();
         std::env::set_var(crate::automation::ENABLE_ENV, "1");
         crate::automation::clear_settings_override();
-        // Default schedule + env -> env fallback applies.
-        super::apply_schedule_settings(&zk_contract_config::AppSettings::default()).unwrap();
+        // Boot with NO settings file: env fallback applies.
+        super::apply_persisted_schedule(&zk_contract_config::AppSettings::default(), false)
+            .unwrap();
         let config = crate::automation::effective_config();
-        assert!(config.enabled, "env fallback enables schedule auto-run");
+        assert!(config.enabled, "fresh install uses the env fallback");
         assert_eq!(config.scan_seconds, crate::automation::DEFAULT_SCAN_SECONDS);
 
-        // Explicitly saved schedule wins over env and sets the scan period.
+        // Boot with a settings file whose schedule is the default: explicit
+        // save wins, so auto-run is disabled even though env=1 (round-9 P1-1).
+        super::apply_persisted_schedule(&zk_contract_config::AppSettings::default(), true).unwrap();
+        let config = crate::automation::effective_config();
+        assert!(
+            !config.enabled,
+            "explicit default schedule disables env auto-run"
+        );
+        assert_eq!(config.scan_seconds, crate::automation::DEFAULT_SCAN_SECONDS);
+
+        // settings.set with explicitly saved enabled/30 wins.
         let mut custom = zk_contract_config::AppSettings::default();
         custom.agent.schedule = zk_contract_config::ScheduleSettings {
             enabled: true,
@@ -1491,19 +1515,27 @@ mod tests {
         assert!(config.enabled);
         assert_eq!(config.scan_seconds, 30);
 
+        // settings.set with explicitly saved disabled/45 is honoured (env still 1).
+        let mut disabled = zk_contract_config::AppSettings::default();
+        disabled.agent.schedule = zk_contract_config::ScheduleSettings {
+            enabled: false,
+            scan_seconds: 45,
+        };
+        super::apply_schedule_settings(&disabled).unwrap();
+        let config = crate::automation::effective_config();
+        assert!(!config.enabled);
+        assert_eq!(config.scan_seconds, 45);
+
         // Out-of-range values are rejected before persisting.
         let mut invalid = custom.clone();
         invalid.agent.schedule.scan_seconds = 4;
         assert!(super::apply_schedule_settings(&invalid).is_err());
         assert!(super::validate_settings(&invalid).is_err());
 
-        // Reset-to-default clears the override -> env fallback again.
-        super::apply_schedule_settings(&zk_contract_config::AppSettings::default()).unwrap();
-        assert!(crate::automation::effective_config().enabled);
-
-        // No env + defaults -> disabled.
+        // Fresh install (no file) + no env -> disabled/default.
         std::env::remove_var(crate::automation::ENABLE_ENV);
-        super::apply_schedule_settings(&zk_contract_config::AppSettings::default()).unwrap();
+        super::apply_persisted_schedule(&zk_contract_config::AppSettings::default(), false)
+            .unwrap();
         let config = crate::automation::effective_config();
         assert!(!config.enabled);
         assert_eq!(config.scan_seconds, crate::automation::DEFAULT_SCAN_SECONDS);

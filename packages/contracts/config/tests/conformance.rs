@@ -241,6 +241,15 @@ fn schedule_settings_validate_and_clamp() {
         );
     }
 
+    // AgentSettings::validate delegates to schedule validation.
+    let mut invalid_agent = AgentSettings::default();
+    invalid_agent.schedule.scan_seconds = 4;
+    assert!(invalid_agent.validate().is_err());
+    invalid_agent.schedule.scan_seconds = 3_601;
+    assert!(invalid_agent.validate().is_err());
+    invalid_agent.schedule.scan_seconds = 3_600;
+    invalid_agent.validate().unwrap();
+
     // Legacy agent settings without `schedule` parse with defaults.
     let legacy: AgentSettings = serde_json::from_str(
         r#"{"max_steps":50,"completion":{},"memory":{"enabled":true,"dir":""},"hooks":{"enabled":true,"log":""}}"#,

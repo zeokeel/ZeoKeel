@@ -74,7 +74,7 @@ impl Tool for ScheduleTool {
     fn spec(&self) -> ToolSpec {
         ToolSpec {
             name: "schedule".to_owned(),
-            description: "Create/list/update/delete workspace schedule definitions. Auto-run is opt-in (ZEOKEEL_ENABLE_SCHEDULE_AUTORUN=1) and repeats by interval_seconds; cron is validated but advisory.".to_owned(),
+            description: "Create/list/update/delete workspace schedule definitions. Auto-run is controlled by AppSettings.agent.schedule {enabled, scan_seconds} (settings UI; ZEOKEEL_ENABLE_SCHEDULE_AUTORUN only fallback when no settings file) and repeats by interval_seconds; cron is validated but advisory.".to_owned(),
             parameters: serde_json::json!({"type":"object","properties":{"action":{"type":"string","enum":["create","list","update","delete"]},"id":{"type":"string"},"cron":{"type":"string"},"prompt":{"type":"string"},"enabled":{"type":"boolean"},"interval_seconds":{"type":"integer"}},"required":["action"],"additionalProperties":false}),
             mutating: true,
             requires_approval: false,

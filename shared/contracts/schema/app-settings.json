@@ -353,7 +353,8 @@
           "default": 10,
           "type": "integer",
           "format": "uint64",
-          "minimum": 0.0
+          "maximum": 3600.0,
+          "minimum": 5.0
         }
       }
     },

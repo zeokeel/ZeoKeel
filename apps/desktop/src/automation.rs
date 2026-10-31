@@ -56,26 +56,30 @@ fn override_slot() -> &'static RwLock<Option<ScheduleRuntimeConfig>> {
 
 /// Apply explicitly saved settings (`AppSettings.agent.schedule`).
 ///
-/// A default-valued schedule clears the override so the env fallback applies
-/// again (same should-publish semantics as agent/tools settings).
+/// Calling this always pins the override — **including a default-valued
+/// schedule** (`{enabled:false, scan_seconds:10}`): an explicit save must be
+/// able to disable auto-run even when `ZEOKEEL_ENABLE_SCHEDULE_AUTORUN=1` is
+/// set. The env fallback only applies on a fresh install with no settings file
+/// (see [`clear_settings_override`]).
 ///
 /// # Errors
 ///
 /// [`ScheduleSettings::validate`] rejects out-of-range scan periods.
 pub fn apply_settings(schedule: &ScheduleSettings) -> Result<(), String> {
     schedule.validate().map_err(|error| error.to_string())?;
-    let next = (*schedule != ScheduleSettings::default()).then_some(ScheduleRuntimeConfig {
+    let next = ScheduleRuntimeConfig {
         enabled: schedule.enabled,
         scan_seconds: schedule.effective_scan_seconds(),
-    });
+    };
     let mut slot = override_slot()
         .write()
         .map_err(|_| "schedule config lock poisoned".to_owned())?;
-    *slot = next;
+    *slot = Some(next);
     Ok(())
 }
 
-/// Clear the settings override (boot without a saved settings file / tests).
+/// Clear the settings override: only a fresh install (no settings file) falls
+/// back to `ZEOKEEL_ENABLE_SCHEDULE_AUTORUN`; tests use this to reset state.
 pub fn clear_settings_override() {
     if let Ok(mut slot) = override_slot().write() {
         *slot = None;
@@ -428,7 +432,17 @@ mod tests {
         assert!(config.enabled);
         assert_eq!(config.scan_seconds, DEFAULT_SCAN_SECONDS);
 
-        // Explicitly saved non-default settings win over env.
+        // Explicitly saved DEFAULT schedule pins disabled: an explicit save must
+        // be able to disable auto-run despite env=1 (round-9 P1-1).
+        apply_settings(&ScheduleSettings::default()).unwrap();
+        let config = effective_config();
+        assert!(
+            !config.enabled,
+            "explicit disabled schedule beats env fallback"
+        );
+        assert_eq!(config.scan_seconds, DEFAULT_SCAN_SECONDS);
+
+        // Explicitly saved enabled/30 wins too.
         apply_settings(&ScheduleSettings {
             enabled: true,
             scan_seconds: 30,
@@ -438,13 +452,17 @@ mod tests {
         assert!(config.enabled);
         assert_eq!(config.scan_seconds, 30);
 
-        // A default-valued save clears the override -> env fallback again.
-        apply_settings(&ScheduleSettings::default()).unwrap();
+        // Explicitly saved disabled/45 is honoured.
+        apply_settings(&ScheduleSettings {
+            enabled: false,
+            scan_seconds: 45,
+        })
+        .unwrap();
         let config = effective_config();
-        assert!(config.enabled);
-        assert_eq!(config.scan_seconds, DEFAULT_SCAN_SECONDS);
+        assert!(!config.enabled);
+        assert_eq!(config.scan_seconds, 45);
 
-        // No settings, no env -> disabled/default.
+        // Fresh install (no settings file) + no env -> disabled/default.
         std::env::remove_var(ENABLE_ENV);
         clear_settings_override();
         let config = effective_config();

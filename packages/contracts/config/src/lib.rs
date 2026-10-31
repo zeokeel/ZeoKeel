@@ -203,6 +203,7 @@ pub struct ScheduleSettings {
     /// Whether the desktop executes due `.zeokeel/schedules.json` entries.
     pub enabled: bool,
     /// Schedule scan period in seconds (`5..=3600`; default 10).
+    #[schemars(range(min = 5, max = 3600))]
     pub scan_seconds: u64,
 }
 
@@ -349,6 +350,7 @@ impl AgentSettings {
                 "agent.hooks.log must be empty or a real path".to_owned(),
             ));
         }
+        self.schedule.validate()?;
         Ok(())
     }
 }
