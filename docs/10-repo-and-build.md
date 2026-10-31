@@ -132,7 +132,7 @@ Rust 改动无热替换（重编译+重启）；前端 vite HMR；改 `zk.toml`/
 ## 8. 离线与跨平台
 
 - `.gitattributes`：`* text=auto eol=lf`（Windows checkout 不影响 `--check` 字节比对）。
-- 离线构建：`zk vendor` 生成全 profile 并集 vendor；`pnpm fetch` 缓存；Tauri bundler（NSIS/WiX）、
+- 离线构建：`zk vendor`（未实现，backlog）生成全 profile 并集 vendor；`pnpm fetch` 缓存；Tauri bundler（NSIS/WiX）、
   linuxdeploy、Playwright 浏览器、webkit2gtk 等系统依赖**预烤 CI 镜像**。
 - CI 从 M0 起三平台 `cargo check`；M1 起三平台安装包冒烟；M5 起 **macOS 公证**（Windows 不签名，ADR-033）。
 - 交叉编译：Windows/Linux 用对应 runner 原生构建，macOS 用 macOS runner；不在 Linux 交叉编 mac。

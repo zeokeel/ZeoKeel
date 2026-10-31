@@ -187,20 +187,20 @@ base = "default"
 | `zk find <关键词>` / `zk find --used-by <id>` | 搜能力索引（写代码前必查） | 开发/评审 |
 | `zk lint` | 包静态检查（依赖白名单/IO/线程/全局状态/公共 API/非法 utils 目录/import 越界） | PR |
 | `zk lint --duplicates` | 克隆代码检测（Rust token 级；TS 用 jscpd） | PR |
-| `zk init [--edition E]` | 初始化/补全 workspace 骨架（一次性） | scaffold / 新人 |
-| `zk vendor [--all-profiles]` | 生成全 profile 并集 vendor + source replace | 离线构建 |
-| `zk db reset` | 开发期重置本地库（生产禁用） | 本地 |
+| `zk init [--edition E]`（**未实现，backlog**） | 初始化/补全 workspace 骨架（一次性） | scaffold / 新人 |
+| `zk vendor [--all-profiles]`（**未实现，backlog**） | 生成全 profile 并集 vendor + source replace | 离线构建 |
+| `zk db reset`（**未实现，backlog**） | 开发期重置本地库（生产禁用） | 本地 |
 | `zk channel validate --index <dir> --all` / `zk channel verify --channel C --dist` | 渠道形状/素材/白标校验 | OEM CI |
-| `zk brand <check\|diff> --channel C` | 品牌资产/残留检查 | OEM CI |
-| `zk version check` | tag / 清单 / 产物 VERSION 一致性 | 发布 |
-| `zk oem add <customer>` | 在索引仓登记客户并挂 submodule（需私有仓权限） | OEM 接入 |
+| `zk brand <check\|diff> --channel C`（**未实现，backlog**） | 品牌资产/残留检查 | OEM CI |
+| `zk version check`（**未实现，backlog**） | tag / 清单 / 产物 VERSION 一致性 | 发布 |
+| `zk oem add <customer>`（**未实现，backlog**） | 在索引仓登记客户并挂 submodule（需私有仓权限） | OEM 接入 |
 | `zk plan --edition E --profile X --channel C` | 输出将编译的包、角色、预计产物 | 评审/诊断 |
-| `zk explain <role>` | 该角色所有候选实现、契约、被谁 require | 替换时查 |
-| `zk diff --from <E:P:C> --to <E:P:C>` | 两个组合的差异（包集合、生成物 diff 摘要） | 矩阵报告 |
-| `zk why <package>` | 哪个角色/依赖把它拉进来 | 依赖排查 |
+| `zk explain <role>`（**未实现，backlog**） | 该角色所有候选实现、契约、被谁 require | 替换时查 |
+| `zk diff --from <E:P:C> --to <E:P:C>`（**未实现，backlog**） | 两个组合的差异（包集合、生成物 diff 摘要） | 矩阵报告 |
+| `zk why <package>`（**未实现，backlog**） | 哪个角色/依赖把它拉进来 | 依赖排查 |
 | `zk lock`（**未实现，backlog**；当前 `zk.lock` 由 `zk db lock` 维护迁移锁） | 更新 `zk.lock`（解析版本/源/哈希） | 发布 |
 | `zk sbom --edition E --profile X --channel C` | 输出 SBOM（cargo + npm 汇总） | 发布合规 |
-| `zk doctor` | 环境/工具链/网络/锁文件自检 | 新人与 CI |
+| `zk doctor`（**未实现，backlog**） | 环境/工具链/网络/锁文件自检 | 新人与 CI |
 
 解析算法（`compose`）：
 
@@ -273,7 +273,7 @@ pub async fn register_all(reg: &mut dyn Registrar) -> Result<StartupReport, Star
   → 记录 degraded，依赖它的角色在运行期显示为不可用（`inject` 门控会让依赖方不激活）。
 - 产品二进制只链接被选中的包（`cargo build -p zk-desktop`）；`cargo test --workspace` 仍编译所有包，
   这正是 T1/T2 分级存在的原因。
-- `PACKAGES` 是运行期自省的唯一权威（诊断面板、`zk explain`、崩溃报告）；**包 id 由宿主维护**，
+- `PACKAGES` 是运行期自省的唯一权威（诊断面板、`zk explain`（未实现，backlog）、崩溃报告）；**包 id 由宿主维护**，
   cordis 的 `PluginKey`（Named/TypeId）不能当包身份（TypeId 跨构建不稳定）。
 - 外部包的依赖形态由 `zk.lock` 决定：vendor/path → `{ path }`；git → `{ git, rev }`；
   registry → `{ version = "=x.y.z" }`。生成器只写解析结果。
@@ -350,7 +350,7 @@ $ python3 resolve.py hardened && cargo build --offline  # ok，但 Cargo.lock �
 | 生成物入库 | **只有基线 `personal × default × official`**；头部 `@edition/@profile/@channel`（`24` §1.2/§3），CI 断言提交的是该基线 |
 | Cargo.lock | 入库的是 **default** 的解析结果；`default` job 用 `--locked` |
 | 其他组合的构建 | CI 里 `zk compose --edition E --profile X --channel C` → `cargo build --offline`（锁文件在 CI 工作区重写，不提交）→ 组合锁校验（`zk verify-lock`，**未实现/backlog**） |
-| 离线来源 | `zk vendor` 生成**全 profile 并集**的 vendor 目录 + `[source] replace-with`，保证 `--offline` 可解析 |
+| 离线来源 | `zk vendor`（未实现，backlog）生成**全 profile 并集**的 vendor 目录 + `[source] replace-with`，保证 `--offline` 可解析 |
 | `pnpm-lock.yaml` | `apps/desktop/web/package.json` 的依赖生成成**候选包并集**（不是仅当前 profile），锁文件因此稳定；profile 只改变 registry 的 import |
 | UI 生成物位置 | `apps/desktop/web/src/generated/`（**不是**独立 pnpm workspace 成员，避免 importer 列表随 profile 变化） |
 
@@ -411,9 +411,9 @@ for role in index.roles where role.swap_required:      # zk.toml 声明；清单
 成本控制（先例实测：一次客户端构建 ≈10 分钟，32 个缺席变体 ≈5 小时——这是"CI 可替换"落不了地的
 真实原因，必须先解决再谈矩阵）：
 
-测试分层 T0–T5、成本与 PR 子集策略见 [`11` §1](11-testing-and-evidence.md#1-分层)；本节只保留组合结论：T0 不编译也能证明组合正确（秒级），PR 只跑受影响子集（`zk diff`）。
+测试分层 T0–T5、成本与 PR 子集策略见 [`11` §1](11-testing-and-evidence.md#1-分层)；本节只保留组合结论：T0 不编译也能证明组合正确（秒级），PR 只跑受影响子集（`zk diff`，未实现，backlog）。
 
-- PR 只跑受影响子集：改了包 P → 跑"P 参与的每个角色"的换包用例（`zk diff` 可算）。
+- PR 只跑受影响子集：改了包 P → 跑"P 参与的每个角色"的换包用例（`zk diff`，未实现，backlog 可算）。
 - 变体构建用**增量编译**：先构建 default，再仅重编 `zk-composed` + 受影响包（T3 的时间主要花在重链接）。
 - M0 第一个 sprint 必须实测一次 T0–T3 基线，数字进看板；预算不是愿望，是门禁。
 - 每个 profile 的冒烟集固定：启动自检（所有 required 服务就位）+ 一轮 mock LLM 对话

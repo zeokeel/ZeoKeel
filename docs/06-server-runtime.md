@@ -69,7 +69,7 @@ pub trait ServerPackage {
 - 迁移文件随包发布，**全局版本号由 `zk db lock` 分配**（不再每包 `0001`）；目录规则见 `24` §5。
 - 迁移不可变 + 全局版本/顺序/复合键规则见 [`24` §5](24-composition-and-runtime-spec.md#5-迁移命名与执行)；本节只保留包内目录与启动校验入口。
 - 数据库结构变更只由生成器重新生成 `docs/generated/schema.md`：唯一 writer 是 `zk docs`（数据来自 `zk db lock`，见 `24` §3）；`zk db lock` 只写/校验 `migrations.lock`，`zk db lock --check` 只校验不写。
-- 开发期允许 `zk db reset`；生产只允许迁移。
+- 开发期允许 `zk db reset`（未实现，backlog）；生产只允许迁移。
 - 分区：`usage` 按月、`audit_log` 按月；账本永久保留。
 - 连接池：单进程 `sqlx::PgPool`；禁止"持事务再要连接"的嵌套获取（参考实现死锁事故）。
 

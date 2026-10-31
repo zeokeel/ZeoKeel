@@ -47,7 +47,7 @@
 
 **我们的 OEM 索引仓（独立私有仓，demo 为 `zeokeel/demo-oem-index`）只装数据**（不装证书、不装脚本、不装产物），每个客户 = 一个 git submodule = 一个渠道包；
 `zeokeel/channels` 仅作字段设计参考。
-内部文件与主仓 `brands/official/` 同构（客户子仓根 = 渠道包根），`zk brand` 对两者一视同仁。
+内部文件与主仓 `brands/official/` 同构（客户子仓根 = 渠道包根），`zk brand`（未实现，backlog）对两者一视同仁。
 
 ```text
 zeokeel/demo-oem-index/           # demo 索引仓（CI 只读；示例客户渠道以 submodule 追加；official/beta 品牌在主仓 brands/）
@@ -193,7 +193,7 @@ submodule 取法：`GIT_SSH_COMMAND` 注入 key + `[url] insteadOf` 重写；`--
 Windows `…-windows-x64-setup.exe`；个人版 `zeokeel-personal-<ver>-<os>-<arch>.<ext>`；镜像 tag `zeokeel/server:<ver>-<channel>`，
 导出 `zeokeel-enterprise-<ver>-<channel>-linux-amd64.tar.zst`；交付目录 `dist/<ver>/<channel>/{clients,images,SHA256SUMS,SBOM/,CLIENT-RELEASE.json,CHANNEL.json}`。
 
-**可复现与校验和**：版本唯一真源 = git tag `vX.Y.Z`（`zk version check` 断言 tag == 清单 == 产物 `VERSION`）；
+**可复现与校验和**：版本唯一真源 = git tag `vX.Y.Z`（`zk version check`，未实现，backlog，断言 tag == 清单 == 产物 `VERSION`）；
 `cargo --locked` + `--offline`（vendor）、`pnpm --frozen-lockfile`、固定 `SOURCE_DATE_EPOCH`、生成物无时间戳；
 基础镜像按 digest 钉（builder/caddy/postgres），CI 镜像预烤 NSIS/WiX/linuxdeploy/webkit；每个交付 tar 带 `SHA256SUMS`+SBOM+
 脱敏 `CHANNEL.json`；nightly 同 channel 两次冷构建比对哈希（容忍签名段），不一致即红。
@@ -321,7 +321,7 @@ curl -fsS https://$DOMAIN/healthz  # 门户下载页即落地页
 | 产物隔离 | 每渠道独立 artifact 目录/文件名带 channel；OEM 产物**不进公开 release**，走私有更新面；跨渠道中转路径不含渠道名（HMAC 派生临时前缀，取回即销毁） |
 | 私有仓权限 | 索引仓/客户仓对 CI 只读；写权限仅限两名维护者；客户无本仓写权（提交经我方 review）；分支保护 + 必须 PR |
 | 密钥注入 | 仓库/子仓零密钥；签名与上传凭据只进 CI secret（OIDC/短期优先）；镜像与 tar 不含密钥；渠道 id 与 token 打码；错误只报字段名 |
-| SBOM | 每产物 CycloneDX（cargo+pnpm），进交付目录与 tar；深度 OEM 代码包必须出现；`zk sbom --edition E --profile X --channel C`（**已实现，见下方实现状态/限制**） |
+| SBOM | 每产物 CycloneDX（cargo+pnpm），进交付目录与 tar；深度 OEM 代码包必须出现；`zk sbom --edition E --profile X --channel C`（**命令已实现；进 tar/镜像打包 UNVERIFIED**，见下方限制） |
 | 许可证 | 本产品 MIT（两版均免费开源）；`cargo-deny` + pnpm 许可证白名单；生成 `THIRD-PARTY.md`（含 caddy/postgres 镜像与内置字体/图标素材） |
 | 供应链/数据 | lockfile + vendor + 基础镜像 digest + 依赖审计 + 发布前签名；企业数据留客户服务器、个人数据本地；遥测默认关且不含 PII |
 | 白标合规 | MIT 允许商用改名，但 ZeoKeel 商标/官方标识不得用于暗示背书；**官方默认显示 Powered by，OEM 默认隐藏、可按渠道配置**（D62） |

@@ -45,7 +45,7 @@ POC 尚未入库该负向 fixture（见 `experiments/composition-poc/README.md` 
 **决策**：包身份/版本/角色/契约/依赖/facet 只写在 `zk.toml`；`Cargo.toml`、`package.json` 中对应字段
 由 `zk validate` 交叉校验一致，而不是反过来生成。
 **理由**：同一事实两处手写必然漂移（先例的返工点之一）；但 Cargo/npm 的清单是工具链硬要求，不能省。
-**后果**：新增/改包要同步两处，校验器兜底；`zk init` 生成骨架减少手工。
+**后果**：新增/改包要同步两处，校验器兜底；`zk init`（未实现，backlog）生成骨架减少手工。
 
 ### ADR-004 · `requires` 只写角色，不写包名 `accepted`
 
@@ -529,7 +529,7 @@ M1 的 IPC 命令/事件/设置边界目前用 `ui-kit/types.ts` 手写镜像 + 
 | R7 | cordis 内核限制（async 支持、panic 容器、生命周期语义） | M | H | 研究简报 `research/kernel.md` 已梳理边界；宿主侧补服务监督（`supervision` feature）、超时、取消；关键语义写测试 | 内核升级必须跑全量换包矩阵（先例教训） |
 | R8 | rig 高频 breaking（1–3 周/次，0.46-rc 已发布）+ MSRV 1.97.1/edition 2024 + lock 体积（facade 663 vs core+agent 244 包） | H | M | ADR-007 双层隔离；`=0.45.0` 精确钉；只依赖 rig-core+rig-agent；升级仅改两个适配包并跑契约对拍/录制回放；`zk-llm-openai`/`zk-llm-mock` 保证契约可被非 rig 实现 | 升级 PR 必附 conformance + 冷构建时长/lock 体积变化 |
 | R9 | 前端包 id 覆盖率不足、React 双实例、bundle 膨胀 | M | M | composer 校验 `required ⊆ provided`；vite 单实例配置；bundle 体积预算；包依赖去重 | 构建期失败 + 体积预算 job |
-| R10 | 团队认知负担：包化"四件套"（清单/契约/符合性/README）拖慢迭代 | H | M | `zk init` 脚手架；包模板；`zk doctor`；文档只有一份入口；新包 review checklist | 新建包的平均落地时间作为指标 |
+| R10 | 团队认知负担：包化"四件套"（清单/契约/符合性/README）拖慢迭代 | H | M | `zk init`（未实现，backlog）脚手架；包模板；`zk doctor`（未实现，backlog）；文档只有一份入口；新包 review checklist | 新建包的平均落地时间作为指标 |
 | R11 | 服务端迁移事故（历史迁移被改写/无修复通道） | M | H | ADR-022：不可变 + 内容哈希 + 只前向；备份/恢复演练；升级 e2e | 改历史迁移必须红；恢复演练 M6 退出条件 |
 | R12 | 性能预算（启动、流式首字、二进制体积） | M | M | 启动阶段计时、首 token 计时、体积预算；profile 裁剪（minimal 证明可裁） | 性能 job 对比基线，超阈值告警 |
 | R13 | 契约发布/单实例方案不可行 → 第三方接入落空 | M | H | S0-P1 先做 2 天 spike；退路：固定 git rev 或 vendor-only，并在文档降级承诺 | spike 结论必须落 ADR；未通过则 M3 退出条件改口径 |
