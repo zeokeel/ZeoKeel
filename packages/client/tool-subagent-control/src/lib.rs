@@ -220,10 +220,8 @@ mod tests {
     #[test]
     fn list_agents_includes_async_children() {
         zk_kit_subagent::register("list-async-1", "c", 1, "inspect");
-        let runner = Arc::new(FakeRunner {
-            interrupted: Mutex::new(Vec::new()),
-        });
-        zk_kit_subagent::set_runner(runner);
+        // `list_agents` reads the kit registry; do not replace the global runner
+        // here or the sibling test can observe the fake runner swap.
         let value = tool().call_json(&context(), serde_json::json!({})).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&value).unwrap();
         assert!(parsed["max_async"].as_u64().unwrap() >= 1);

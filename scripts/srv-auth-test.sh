@@ -14,6 +14,25 @@ BASE="http://127.0.0.1:${PORT}"
 PSQL=(sudo -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -Atq)
 q() { "${PSQL[@]}" -c "$1"; }
 sha() { printf '%s' "$1" | sha256sum | cut -d' ' -f1; }
+CLIENT_ID="0.1.0;official;linux-x64;test"
+# Round-6 business gate: every client business (and gateway) curl carries the
+# same client identity. Gateway settlement ids remain server-generated.
+curl() {
+  local arg needs_client=0 has_client_header=0
+  for arg in "$@"; do
+    if [[ "$arg" == *"/api/client/v1/"* || "$arg" == *"$BASE/v1/"* ]]; then
+      needs_client=1
+    fi
+    if [[ "$arg" == X-ZeoKeel-Client:* ]]; then
+      has_client_header=1
+    fi
+  done
+  if (( needs_client && !has_client_header )); then
+    command curl -H "X-ZeoKeel-Client: $CLIENT_ID" "$@"
+  else
+    command curl "$@"
+  fi
+}
 start_server() {
   local port="$1" log="$2"
   ZEOKEEL_DATABASE_URL="postgres://$ROLE:$ROLE@127.0.0.1:5432/$DB" \
@@ -169,10 +188,11 @@ CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/client/v1/auth
 [[ "$CODE" == "401" ]]
 
 # ---------- wallet adjust: idempotent + fail-closed audit ----------
-CODE=$(curl -sS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -o /dev/null -w '%{http_code}' -X POST "$BASE/api/admin/wallet/$ALICE_ID/adjust" -H 'content-type: application/json' -d '{"delta_micros":1000000,"reason":"test grant","idempotency_key":"grant-alice-1"}')
+CODE=$(curl -sS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -H 'X-Request-Id: probe-audit-client-id' -o /dev/null -w '%{http_code}' -X POST "$BASE/api/admin/wallet/$ALICE_ID/adjust" -H 'content-type: application/json' -d '{"delta_micros":1000000,"reason":"test grant","idempotency_key":"grant-alice-1"}')
 [[ "$CODE" == "200" ]]
 CODE=$(curl -sS -b /tmp/zk-auth-admin.cookies -H "X-CSRF-Token: $CSRF" -o /dev/null -w '%{http_code}' -X POST "$BASE/api/admin/wallet/$ALICE_ID/adjust" -H 'content-type: application/json' -d '{"delta_micros":1000000,"reason":"test grant","idempotency_key":"grant-alice-1"}')
 [[ "$CODE" == "200" ]]
+[[ "$(q "SELECT request_id FROM audit_log WHERE action = 'wallet.adjust' ORDER BY id DESC LIMIT 1")" == "probe-audit-client-id" ]]
 ALICE_JWT=$(curl -fsS -X POST "$BASE/api/client/v1/auth/login" -H 'content-type: application/json' -d '{"username":"alice","password":"alice-pass","device_id":"alice-dev"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
 BAL=$(curl -fsS "$BASE/api/client/v1/wallet" -H "Authorization: Bearer $ALICE_JWT" | python3 -c 'import json,sys;print(json.load(sys.stdin)["balance_micros"])')
 [[ "$BAL" == "1000000" ]]
@@ -209,6 +229,8 @@ BAL2B=$(curl -fsS "$BASE/api/client/v1/wallet" -H "Authorization: Bearer $ALICE_
 [[ "$BAL2B" == "999850" ]]
 # ... and the billing key is server-generated, never the client header.
 [[ "$(q "SELECT count(*) FROM usage WHERE request_id = 'probe-fixed-id'")" == "0" ]]
+[[ "$(q "SELECT count(*) FROM usage_pending WHERE request_id = 'probe-fixed-id'")" == "0" ]]
+[[ "$(q "SELECT count(DISTINCT request_id) FROM usage WHERE model = 'deepseek-chat'")" -ge 2 ]]
 # ---------- gateway streaming billing with real Responses SSE shape ----------
 SSE=$(curl -sS -N -X POST "$BASE/v1/responses" -H "Authorization: Bearer $ALICE_JWT" -H 'content-type: application/json' -d '{"model":"deepseek-chat","input":"hello","stream":true}')
 printf '%s' "$SSE" | grep -q "response.completed"
