@@ -31,7 +31,7 @@
 
 - 已实现：`fs.read`、`fs.write`、`fs.edit`、`fs.search`、`bash`、`bash_persistent`、`job_output/list/kill`、`glob`、`grep`、`skill`、`web.fetch`、`working_directory`、`todo`、`present`、`load_workspace_dependencies`、`create_worktree`、`terminal`、`goal`、`schedule`、`pwsh`、`read_image`、`subagent`、`subagent_start`、`subagent_status`、`subagent_interrupt`、`subagent_fork`、`workflow`、`ralph`、`ask_user_question`、`extract_json`、`read_document`（PDF/EPUB）、`session_search`、`web_search`、`pwsh_persistent`、`subagent_control`、`cordis`（禁用）、`agent_team`（实验禁用）；UI 已有审批卡、问题卡、provider 流式/取消；每个工具包至少一条行为测试，`scripts/agent-e2e.sh` 覆盖 9 条人机流程（审批/拒绝/取消/ask-user/bash/present/多步；retries=0）。
 - 部分/未实现：`agent-team`（未启用）、`call-timeout`（agent 级策略，超时已可经 `AppSettings.tools` 配置）、workflow 并行（DAG 已支持）、subagent fork 的实时历史共享（当前为上下文快照）、pwsh persistent 平台支持。`schedule` 执行器为 opt-in：仅当 `ZEOKEEL_ENABLE_SCHEDULE_AUTORUN=1` 时读取工作区 `.zeokeel/schedules.json` 并自动起 turn；条目必须带 `schedule` 工具写入的 `origin` 标记、按 `interval_seconds` 重复（cron 在创建时校验但不解释）。
-- 完整矩阵与测试状态以 `docs/generated/AGENT-TOOL-MATRIX.md` 为准。
+- 完整矩阵与测试状态见 `docs/generated/AGENT-TOOL-MATRIX.md`（由 `scripts/agent-tool-matrix.py` 生成，为对照参考、**不是产品 SSOT**；权威 writer 见 `docs/24` §3）。
 - 平台不支持必须返回明确错误，不得静默缺失。
 
 ## 5. rig 能力释放矩阵（2026-10-31 round 3）
