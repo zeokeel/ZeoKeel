@@ -1,6 +1,6 @@
 # Round-12 最终独立审计（目标 1–4 / 文档真源 / 全量门禁 / 残余）
 
-- 评审对象：`HEAD 3c4f21b`（首评；`ci(e2e): run schedule auto-run e2e; add round-12 final audit spec`）。复评：`HEAD 3cb1ca2`（§10）；**终评对象：`HEAD 84ccf3f`（`docs(12): mark roadmap exit checklists as historical plan with evidence/UNVERIFIED pointers`；父 3cb1ca2；§11）**。终评工作树 clean（唯一未跟踪文件即本记录）。
+- 评审对象：`HEAD 3c4f21b`（首评；`ci(e2e): run schedule auto-run e2e; add round-12 final audit spec`）。复评：`HEAD 3cb1ca2`（§10）；**终评对象：`HEAD 84ccf3f`（`docs(12): mark roadmap exit checklists as historical plan with evidence/UNVERIFIED pointers`；父 3cb1ca2；§11）**。**Post-approval note：`HEAD b717565` 为 CI-only（e2e job 追加 agent/login/admin；见 §12），不在 84ccf3f 评审对象内，不改变 APPROVED。** 终评工作树 clean（唯一未跟踪文件即本记录）。
 - 评审者：**auditor-build**（独立终审；实现者未参与本记录；round-12 audit only）。
 - 独立性：本记录由未实现 round-12 功能的 auditor-build 完成；Lead/其他 agent 提供实现与本地 e2e 证据，本审计独立复跑门禁/e2e/命令探测。
 - 关联 spec：`specs/changes/2026-10-31-round12-final-audit`（proposal/spec/design/tasks/acceptance；proposal 已链接本记录）。
@@ -170,3 +170,13 @@
   - `python3 scripts/docs-check.py` → **0**；`spec-check.py` → **0**；`docs-command-check.py` self-test+正式 → **0**。
   - 首评全量门禁/e2e（HEAD 3c4f21b）独立结果保持有效（430 tests、全部 e2e 0、srv-auth 0、SBOM --check 0）；P1-1 的 `pnpm test:e2e` alias 在 3cb1ca2 已独立验证 0。
 - 终评结论：**APPROVED（HEAD 84ccf3f；P0=0 / P1=0；P2/backlog/UNVERIFIED 保留）**。
+
+## 12. Post-approval CI-only change（HEAD b717565）
+
+- 对象：`HEAD b717565`（`ci(e2e): run agent, login and admin e2e jobs`；父 `dd2ac9e`），仅 `.github/workflows/ci.yml` +12 行；**无产品/runtime/contracts/generated/docs 改动**。此提交在 round-12 评审对象 `84ccf3f` 之后，不改变已批准对象的结论。
+- 内容：e2e job 在 m1 + schedule 之后追加 `scripts/agent-e2e.sh`、安装/启动本地 PostgreSQL、运行真实 PG 的 `scripts/login-e2e.sh` + `scripts/admin-e2e.sh`；既有 m1/schedule 步骤与 artifact 上传不变。
+- 复核：
+  - YAML `yaml.safe_load` 成功；e2e steps 顺序为 m1 → agent → schedule → PostgreSQL install/start → login+admin → upload。
+  - 本机已独立跑过 agent-e2e **0**、login-e2e **0**、admin-e2e **0**（见 §4.2）；CI 真实 PG 依赖 `sudo -u postgres`/localhost:5432，与脚本本机假设一致。
+  - `docs-check`/`spec-check`/`review-check` 不受影响（本 commit 无 docs/spec/reviews 变化）；review-check 当前 **0**。
+- 结论：**APPROVED 仍成立（P0=0 / P1=0）**；该 CI-only 改动无产品/runtime/docs 行为，不构成 P0/P1。**GitHub hosted runner 上的 PostgreSQL 安装/启动与三条 e2e 仍未实际执行 → UNVERIFIED**，不得据此写“CI 全 e2e 已绿”；仍以 evidence policy 为准。
