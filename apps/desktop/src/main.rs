@@ -10,6 +10,7 @@ mod automation;
 mod changes;
 mod events;
 mod ipc;
+mod mcp_oauth;
 mod native_client;
 mod serve;
 

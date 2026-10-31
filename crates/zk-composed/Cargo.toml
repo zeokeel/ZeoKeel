@@ -14,6 +14,7 @@ zk-cap-rerank = { path = "../../packages/client/cap-rerank" }
 zk-cap-transcription = { path = "../../packages/client/cap-transcription" }
 zk-cap-vector = { path = "../../packages/client/cap-vector" }
 zk-client-update-github = { path = "../../packages/client/update" }
+zk-connector-mcp = { path = "../../packages/client/connector-mcp" }
 zk-contract-admin-ui = { path = "../../packages/contracts/admin-ui" }
 zk-contract-agent = { path = "../../packages/contracts/agent" }
 zk-contract-app = { path = "../../packages/contracts/app" }

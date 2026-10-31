@@ -3,6 +3,8 @@
 //! @capability kit.server
 #![forbid(unsafe_code)]
 
+pub mod master_key;
+
 use std::collections::BTreeSet;
 use std::future::Future;
 use std::sync::OnceLock;

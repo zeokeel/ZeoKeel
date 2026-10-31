@@ -1,55 +1,93 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
-import { buildAuthorizeUrl, createPkcePair, exchangeCode, parseOAuthTokens, refreshOAuthToken, savePendingAuth, takePendingAuth, tokenNeedsRefresh, type OAuthMetadata } from "../src/oauth";
+/**
+ * Connector OAuth glue tests: the PKCE/loopback flow itself is covered by the Rust
+ * tests (`apps/desktop/src/mcp_oauth.rs`); here we test the IPC view adapter, token
+ * parsing and status polling (docs/07 §6).
+ */
+import { describe, expect, it } from "vitest";
+import {
+  oauthMetadataPayload,
+  parseOAuthFlowStatus,
+  parseOAuthTokens,
+  tokenNeedsRefresh,
+  waitForOAuthFlow,
+  type ConnectorOAuthView,
+} from "../src/oauth";
 
-const metadata: OAuthMetadata = {
+const view: ConnectorOAuthView = {
+  clientId: "public-client",
+  scopes: ["mcp.read"],
+  redirectUri: "",
   authorizeUrl: "https://auth.example/authorize",
   tokenUrl: "https://auth.example/token",
-  clientId: "public-client",
-  redirectUri: "http://127.0.0.1/callback",
-  scopes: ["mcp", "offline_access"],
 };
 
-afterEach(() => { vi.restoreAllMocks(); });
-
-describe("connector oauth", () => {
-  it("creates PKCE challenge and authorize URL", async () => {
-    const pair = await createPkcePair();
-    expect(pair.verifier.length).toBeGreaterThan(20);
-    expect(pair.challenge).not.toBe(pair.verifier);
-    const url = new URL(buildAuthorizeUrl(metadata, pair.challenge, "state-1"));
-    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
-    expect(url.searchParams.get("client_id")).toBe("public-client");
-    expect(url.searchParams.get("state")).toBe("state-1");
+describe("connector oauth glue", () => {
+  it("maps catalog camelCase metadata to the IPC contract snake_case shape", () => {
+    expect(oauthMetadataPayload(view)).toEqual({
+      client_id: "public-client",
+      scopes: ["mcp.read"],
+      redirect_uri: "",
+      authorize_url: "https://auth.example/authorize",
+      token_url: "https://auth.example/token",
+    });
+    // No client_secret ever crosses this seam (public client + PKCE, ADR-060).
+    expect(Object.keys(oauthMetadataPayload(view))).not.toContain("client_secret");
   });
 
-  it("exchanges and refreshes tokens with expiry", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "a1", refresh_token: "r1", expires_in: 3600 }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "a2", refresh_token: "r2", expires_in: 3600 }), { status: 200 }));
-    const tokens = await exchangeCode(metadata, "code", "verifier", 1_000);
-    expect(tokens.access_token).toBe("a1");
-    expect(tokenNeedsRefresh(tokens, 1_000)).toBe(false);
-    const refreshed = await refreshOAuthToken(metadata, tokens, 2_000);
-    expect(refreshed.access_token).toBe("a2");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it("parses keychain token payloads", () => {
-    expect(parseOAuthTokens(JSON.stringify({ access_token: "a", refresh_token: "r", expires_at: 1 }))?.access_token).toBe("a");
+  it("parses keychain token payloads and refresh skew", () => {
+    const tokens = parseOAuthTokens(
+      JSON.stringify({ access_token: "a", refresh_token: "r", expires_at: 1_000 }),
+    );
+    expect(tokens?.access_token).toBe("a");
+    expect(tokens?.refresh_token).toBe("r");
+    expect(tokenNeedsRefresh({ access_token: "a", refresh_token: "r", expires_at: 1_000 })).toBe(true);
+    expect(tokenNeedsRefresh({ access_token: "a", refresh_token: "r", expires_at: 3_600_000 }, 0)).toBe(false);
     expect(parseOAuthTokens("not-json")).toBeNull();
     expect(parseOAuthTokens(null)).toBeNull();
+    // A token without a refresh token is reported as unusable for refresh decisions.
+    expect(parseOAuthTokens(JSON.stringify({ access_token: "a", expires_at: 1 }))).toBeNull();
   });
 
-  it("round-trips pending PKCE state", () => {
-    sessionStorage.clear();
-    savePendingAuth({ connectorId: "c1", verifier: "v", state: "s", metadata });
-    const pending = takePendingAuth();
-    expect(pending?.connectorId).toBe("c1");
-    expect(takePendingAuth()).toBeNull();
+  it("parses oauth.status snapshots and ignores malformed ones", () => {
+    expect(parseOAuthFlowStatus({ state: "idle", error: null })).toEqual({ state: "idle", error: null });
+    expect(parseOAuthFlowStatus({ state: "pending" })).toEqual({ state: "pending", error: null });
+    expect(parseOAuthFlowStatus({ state: "failed", error: "OAUTH_TIMEOUT" })).toEqual({
+      state: "failed",
+      error: "OAUTH_TIMEOUT",
+    });
+    expect(parseOAuthFlowStatus({ state: "weird" })).toBeNull();
+    expect(parseOAuthFlowStatus("nope")).toBeNull();
+    expect(parseOAuthFlowStatus(null)).toBeNull();
   });
 
-  it("fails closed on refresh error", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 401 }));
-    await expect(refreshOAuthToken(metadata, { access_token: "a", refresh_token: "r", expires_at: 0 })).rejects.toThrow("OAUTH_HTTP_401");
+  it("polls oauth.status until the background flow stops being pending", async () => {
+    const calls: string[] = [];
+    let polls = 0;
+    const call = (name: string): Promise<unknown> => {
+      calls.push(name);
+      polls += 1;
+      if (polls < 3) return Promise.resolve({ state: "pending", error: null });
+      return Promise.resolve({ state: "authorized", error: null });
+    };
+    const status = await waitForOAuthFlow(call, "mcp-demo", { pollMs: 0, timeoutMs: 5_000 });
+    expect(status).toEqual({ state: "authorized", error: null });
+    expect(calls.every((name) => name === "oauth.status")).toBe(true);
+    expect(polls).toBe(3);
+  });
+
+  it("surfaces a failed flow error and times out honestly", async () => {
+    const failed = await waitForOAuthFlow(
+      () => Promise.resolve({ state: "failed", error: "OAUTH_TOKEN_HTTP_400" }),
+      "mcp-demo",
+      { pollMs: 0, timeoutMs: 1_000 },
+    );
+    expect(failed).toEqual({ state: "failed", error: "OAUTH_TOKEN_HTTP_400" });
+
+    const timedOut = await waitForOAuthFlow(
+      () => Promise.resolve({ state: "pending", error: null }),
+      "mcp-demo",
+      { pollMs: 0, timeoutMs: 1 },
+    );
+    expect(timedOut).toEqual({ state: "failed", error: "OAUTH_TIMEOUT" });
   });
 });

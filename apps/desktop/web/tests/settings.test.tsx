@@ -116,6 +116,34 @@ describe("settings dialog", () => {
     expect(onSaved).not.toHaveBeenCalled();
   });
 
+  it("round-trips the web-search endpoint settings (B11)", async () => {
+    const captured: { settings: AppSettings | null } = { settings: null };
+    const onSaved = vi.fn((settings: AppSettings) => {
+      captured.settings = settings;
+    });
+    render(<Harness onSaved={onSaved} />);
+
+    const baseUrl = screen.getByLabelText("搜索服务地址（仅 https）");
+    await userEvent.type(baseUrl, "http://search.example");
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(screen.getByText("请输入以 https:// 开头的合法地址")).toBeTruthy();
+    expect(onSaved).not.toHaveBeenCalled();
+
+    await userEvent.clear(baseUrl);
+    await userEvent.type(baseUrl, "https://search.example/api");
+    const timeout = screen.getByLabelText("请求超时（ms，1000-120000）");
+    await userEvent.clear(timeout);
+    await userEvent.type(timeout, "30000");
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(1);
+    });
+    expect(captured.settings?.web_search).toEqual({
+      base_url: "https://search.example/api",
+      timeout_ms: 30000,
+    });
+  });
+
   it("closes on Escape", async () => {
     const onSaved = vi.fn();
     render(<Harness onSaved={onSaved} />);

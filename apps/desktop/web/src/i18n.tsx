@@ -139,6 +139,8 @@ const zhCN = {
   settingsThemeLight: "浅色",
   settingsThemeDark: "深色",
   settingsLanguage: "语言",
+  settingsLanguageZh: "中文（简体）",
+  settingsLanguageEn: "English (US)",
   settingsAutoApprove: "自动批准只读工具",
   settingsSave: "保存",
   settingsSaving: "保存中…",
@@ -317,6 +319,12 @@ const zhCN = {
   settingsMediaTranscriptionModel: "转写模型",
   settingsMediaRerankModel: "重排模型",
   settingsMediaHint: "留空字段使用环境变量回退；保存后应用。",
+  settingsSectionWebSearch: "网络搜索",
+  settingsWebSearchBaseUrl: "搜索服务地址（仅 https）",
+  settingsWebSearchBaseUrlHint: "留空则使用 ZEOKEEL_SEARCH_URL 环境变量回退，再回退到 DuckDuckGo 默认端点。",
+  settingsWebSearchTimeout: "请求超时（ms，1000-120000）",
+  settingsWebSearchHint: "保存后下一次搜索立即生效；端点必须为 https；该端点无密钥，客户端不保存搜索凭据。",
+  settingsInvalidSecureUrl: "请输入以 https:// 开头的合法地址",
 } as const;
 
 export type MessageKey = keyof typeof zhCN;
@@ -456,6 +464,8 @@ const enUS: Record<MessageKey, string> = {
   settingsThemeLight: "Light",
   settingsThemeDark: "Dark",
   settingsLanguage: "Language",
+  settingsLanguageZh: "中文（简体）",
+  settingsLanguageEn: "English (US)",
   settingsAutoApprove: "Auto-approve read-only tools",
   settingsSave: "Save",
   settingsSaving: "Saving…",
@@ -634,12 +644,24 @@ const enUS: Record<MessageKey, string> = {
   settingsMediaTranscriptionModel: "Transcription model",
   settingsMediaRerankModel: "Rerank model",
   settingsMediaHint: "Empty fields fall back to environment settings; applies on save.",
+  settingsSectionWebSearch: "Web search",
+  settingsWebSearchBaseUrl: "Search endpoint (https only)",
+  settingsWebSearchBaseUrlHint: "Empty falls back to the ZEOKEEL_SEARCH_URL environment variable, then the built-in DuckDuckGo endpoint.",
+  settingsWebSearchTimeout: "Request timeout (ms, 1000-120000)",
+  settingsWebSearchHint: "Applies to the next search after saving; the endpoint must be https; it is keyless, so the client stores no search credential.",
+  settingsInvalidSecureUrl: "Enter a valid address starting with https://",
 };
 
 const dictionaries: Record<Locale, Record<string, string>> = {
   "zh-CN": zhCN,
   "en-US": enUS,
 };
+
+/**
+ * Dictionaries exported for the B13 parity/audit test (key sets, empty values,
+ * placeholder parity). Components must keep using `translate`/`useUi().t`.
+ */
+export const messagesByLocale: Record<Locale, Record<string, string>> = dictionaries;
 
 function format(template: string, vars: Record<string, string | number>): string {
   return template.replace(/\{(\w+)\}/g, (match: string, name: string) => {

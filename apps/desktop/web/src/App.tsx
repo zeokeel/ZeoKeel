@@ -19,7 +19,7 @@ import { useResolvedTheme } from "./theme";
 import type { Transport } from "./types";
 import { parseFileEntries, parseWorkspaceChanges, parseUpdateRelease, type FileEntry, type WorkspaceChange } from "./protocol";
 import { downloadSkillArchive, fetchAppHtml, fetchApps, fetchConnectors, fetchSkills, fetchTombstones, openApp, sendInstallReceipt, toggleConnector, type AppItem, type ConnectorItem, type SkillItem } from "./store";
-import { buildAuthorizeUrl, createPkcePair, exchangeCode, parseOAuthTokens, refreshOAuthToken, savePendingAuth, takePendingAuth, tokenNeedsRefresh } from "./oauth";
+import { oauthMetadataPayload, parseOAuthTokens, tokenNeedsRefresh, waitForOAuthFlow } from "./oauth";
 import { clearSession, fetchBootstrapInfo, loadGatewayModel, loadServerUrl, loadSession, login as loginRequest, refreshSession, saveGatewayModel, saveServerUrl, saveSession, type AuthSession } from "./auth";
 
 /** Channel default login address (C14/ADR-042); non-empty = locked address. */
@@ -114,22 +114,6 @@ export function App(props: { transport: Transport }) {
     }
   };
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
-    const stateValue = params.get("state");
-    if (code === null || stateValue === null) return;
-    const pending = takePendingAuth();
-    if (pending?.state !== stateValue) return;
-    void exchangeCode(pending.metadata, code, pending.verifier)
-      .then(async (tokens) => {
-        await props.transport.call("oauth.save", { connector_id: pending.connectorId, tokens }).catch((error: unknown) => { console.warn("[zk] oauth-save-failed", String(error)); });
-        setAuthorized((values) => values.includes(pending.connectorId) ? values : [...values, pending.connectorId]);
-        window.history.replaceState({}, "", window.location.pathname);
-      })
-      .catch(() => { setContentError(t("oauthFailed")); });
-  }, [props.transport, t]);
-
   // Enterprise session: configure gateway, load catalog, refresh token (docs/19 §3.2, docs/38).
   useEffect(() => {
     if (state.meta.edition !== "enterprise" || session === null) return;
@@ -146,13 +130,20 @@ export function App(props: { transport: Transport }) {
           if (connector.oauth === null) continue;
           const stored = await props.transport.call("oauth.load", { connector_id: connector.id }).catch(() => null);
           const raw = isRecord(stored) ? stored["tokens"] : null;
-          let tokens = parseOAuthTokens(raw);
+          const tokens = parseOAuthTokens(raw);
           if (tokens === null) continue;
-          if (tokenNeedsRefresh(tokens)) {
-            tokens = await refreshOAuthToken({ authorizeUrl: connector.oauth.authorizeUrl, tokenUrl: connector.oauth.tokenUrl, clientId: connector.oauth.clientId, redirectUri: connector.oauth.redirectUri, scopes: connector.oauth.scopes }, tokens).catch(() => null);
-            if (tokens !== null) await props.transport.call("oauth.save", { connector_id: connector.id, tokens }).catch(() => undefined);
+          let authorized = !tokenNeedsRefresh(tokens);
+          if (!authorized) {
+            // The host rotates the stored token via the loopback flow module
+            // (`oauth.refresh`); poll its status instead of doing crypto here.
+            await props.transport.call("oauth.refresh", {
+              connector_id: connector.id,
+              oauth: oauthMetadataPayload(connector.oauth),
+            }).catch(() => undefined);
+            const status = await waitForOAuthFlow((name, payload) => props.transport.call(name, payload), connector.id, { timeoutMs: 30_000 }).catch(() => null);
+            authorized = status?.state === "authorized";
           }
-          if (tokens !== null) oauthIds.push(connector.id);
+          if (authorized) oauthIds.push(connector.id);
         }
         setAuthorized(oauthIds);
         const rows = isRecord(installedValue) ? installedValue["items"] : null;
@@ -384,14 +375,26 @@ export function App(props: { transport: Transport }) {
         }}
         authorized={authorized}
         onAuthorize={(item) => {
-          if (item.oauth === null) return;
-          void createPkcePair().then((pair) => {
-            const stateValue = crypto.randomUUID();
-            const metadata = { authorizeUrl: item.oauth?.authorizeUrl ?? "", tokenUrl: item.oauth?.tokenUrl ?? "", clientId: item.oauth?.clientId ?? "", redirectUri: item.oauth?.redirectUri ?? "", scopes: item.oauth?.scopes ?? [] };
-            if (metadata.authorizeUrl === "" || metadata.tokenUrl === "") { setContentError(t("oauthNotConfigured")); return; }
-            savePendingAuth({ connectorId: item.id, verifier: pair.verifier, state: stateValue, metadata });
-            window.location.assign(buildAuthorizeUrl(metadata, pair.challenge, stateValue));
-          }).catch(() => { setContentError(t("oauthFailed")); });
+          const oauth = item.oauth;
+          if (oauth === null) return;
+          if (oauth.authorizeUrl === "" || oauth.tokenUrl === "") { setContentError(t("oauthNotConfigured")); return; }
+          setContentError(null);
+          // The Rust host opens the system browser, catches the loopback redirect,
+          // exchanges the code (PKCE S256) and writes the keychain; the UI only polls.
+          void props.transport.call("oauth.authorize", {
+            connector_id: item.id,
+            oauth: oauthMetadataPayload(oauth),
+            timeout_seconds: 180,
+          })
+            .then(() => waitForOAuthFlow((name, payload) => props.transport.call(name, payload), item.id))
+            .then((status) => {
+              if (status.state === "authorized") {
+                setAuthorized((values) => values.includes(item.id) ? values : [...values, item.id]);
+                return;
+              }
+              setContentError(status.error !== null ? `${t("oauthFailed")}: ${status.error}` : t("oauthFailed"));
+            })
+            .catch((error: unknown) => { setContentError(error instanceof Error ? error.message : t("oauthFailed")); });
         }}
         apps={apps}
         appOpened={appOpened}

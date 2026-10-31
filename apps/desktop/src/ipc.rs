@@ -8,8 +8,8 @@ use std::sync::{mpsc, Arc, Mutex};
 
 use serde_json::{json, Value};
 use tokio::sync::broadcast;
-use zk_contract_agent::AgentHookSink;
-use zk_contract_config::{AppSettings, ProviderKind, ToolSettings};
+use zk_contract_agent::{AgentHookSink, HistoryMessage, HistoryRole};
+use zk_contract_config::{AppSettings, ProviderKind, ToolSettings, WebSearchSettings};
 use zk_contract_ipc::results::{ChatSendResult, MetaInfo};
 use zk_contract_ipc::{commands, CommandResponse, UiEvent};
 use zk_contract_session::{FileEntry, FileKind, Message, WorkspaceFilesResult};
@@ -42,6 +42,20 @@ pub struct AppState {
     approvals: Arc<ApprovalBroker>,
     questions: Arc<QuestionBroker>,
     agent_config_error: Mutex<Option<String>>,
+    /// Background MCP connector OAuth flows (state only; never tokens).
+    oauth_flows: Mutex<HashMap<String, OAuthFlowStatus>>,
+}
+
+/// One background connector OAuth flow (`docs/07` §6): `pending|authorized|failed`.
+///
+/// Deliberately holds no token material — tokens go straight to the keychain via
+/// the existing `oauth.save` store, and errors carry status codes only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct OAuthFlowStatus {
+    /// `pending` while the browser/loopback flow is running.
+    pub state: String,
+    /// Stable error code when `state == "failed"` (no token material).
+    pub error: Option<String>,
 }
 
 impl AppState {
@@ -64,6 +78,7 @@ impl AppState {
             approvals,
             questions,
             agent_config_error: Mutex::new(None),
+            oauth_flows: Mutex::new(HashMap::new()),
         })
     }
 
@@ -197,6 +212,7 @@ pub(crate) fn runtime_snapshot_for(
     settings: &AppSettings,
     include_agent: bool,
     include_tools: bool,
+    include_web_search: bool,
 ) -> zk_contract_config::RuntimeSettings {
     zk_contract_config::RuntimeSettings {
         agent: include_agent
@@ -205,6 +221,9 @@ pub(crate) fn runtime_snapshot_for(
         tools: include_tools
             .then_some(settings.tools)
             .filter(|tools| *tools != ToolSettings::default()),
+        web_search: include_web_search
+            .then(|| settings.web_search.clone())
+            .filter(|web_search| *web_search != WebSearchSettings::default()),
     }
 }
 
@@ -309,11 +328,72 @@ pub(crate) fn apply_persisted_settings(
     if should_publish_agent_settings(&settings, file_exists) {
         apply_agent_settings(&settings)?;
     }
-    let snapshot = runtime_snapshot_for(&settings, file_exists, file_exists);
-    if snapshot.agent.is_some() || snapshot.tools.is_some() {
+    let snapshot = runtime_snapshot_for(&settings, file_exists, file_exists, file_exists);
+    if snapshot.agent.is_some() || snapshot.tools.is_some() || snapshot.web_search.is_some() {
         publish_runtime_settings(&snapshot)?;
     }
     Ok(snapshot.tools)
+}
+
+fn apply_connector_catalog(catalog_json: &str) -> Result<usize, String> {
+    let count = zk_connector_mcp::update_from_catalog(catalog_json)?;
+    restore_connector_oauth_tokens()?;
+    Ok(count)
+}
+
+/// Re-install client-held OAuth tokens into the MCP transport after a catalog sync.
+///
+/// Tokens live in the OS keychain (`oauth.save`); the transport keeps them in
+/// memory and must be told again after every force-update/login (it is cleared on
+/// logout by `clear_catalog_config`). Failures are per-server and non-fatal: the
+/// affected connector then fails honestly with `MCP_OAUTH_REQUIRED` on use.
+fn restore_connector_oauth_tokens() -> Result<(), String> {
+    let server_ids = zk_connector_mcp::configured_server_ids()?;
+    for server_id in server_ids {
+        let Ok(Some(raw)) = oauth_stored_raw(&server_id) else {
+            continue;
+        };
+        let Ok(tokens) = crate::mcp_oauth::OAuthTokens::from_stored_json(&raw) else {
+            continue;
+        };
+        let _ = zk_connector_mcp::set_oauth_token(&server_id, Some(tokens.access_token));
+    }
+    Ok(())
+}
+
+/// Fetch the enterprise connector catalog and install it as MCP client config.
+///
+/// Called after successful login/bootstrap (`auth.configure`); a failure is
+/// reported to the caller but must not break login (tools then stay honestly
+/// unavailable until the next successful sync).
+fn sync_connector_catalog(server_url: &str, access_token: &str) -> Result<usize, String> {
+    let base = server_url.trim_end_matches('/');
+    if base.is_empty() || access_token.trim().is_empty() {
+        return Err("connectors/catalog: missing server_url/access_token".to_owned());
+    }
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|error| format!("connectors/catalog: client: {error}"))?;
+    let request =
+        crate::native_client::apply_headers(client.get(format!("{base}/api/client/v1/connectors")))
+            .header(
+                reqwest::header::AUTHORIZATION,
+                format!("Bearer {access_token}"),
+            );
+    let response = request
+        .send()
+        .map_err(|error| format!("connectors/catalog: request: {error}"))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "connectors/catalog: HTTP {}",
+            response.status().as_u16()
+        ));
+    }
+    let body = response
+        .text()
+        .map_err(|error| format!("connectors/catalog: body: {error}"))?;
+    apply_connector_catalog(&body)
 }
 
 /// Dispatch one command. Never panics; all failures become `CommandResponse::err`.
@@ -481,7 +561,7 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             // Publish only explicitly saved non-default sections (env fallback
             // stays authoritative for untouched/default sections).
             if let Err(error) =
-                publish_runtime_settings(&runtime_snapshot_for(&settings, true, true))
+                publish_runtime_settings(&runtime_snapshot_for(&settings, true, true, true))
             {
                 return CommandResponse::err(error);
             }
@@ -547,6 +627,27 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 Err(error) => CommandResponse::err(error.to_string()),
             }
         }
+        "connectors.configure" => {
+            let Some(catalog) = payload.get("catalog") else {
+                return CommandResponse::err("missing catalog");
+            };
+            let text = match catalog {
+                Value::String(text) => text.clone(),
+                other => other.to_string(),
+            };
+            match apply_connector_catalog(&text) {
+                Ok(count) => CommandResponse::ok(json!({ "configured": count })),
+                Err(error) => CommandResponse::err(format!("connectors/configure: {error}")),
+            }
+        }
+        "connectors.reload" => match zk_connector_mcp::reload_connectors() {
+            Ok(()) => CommandResponse::ok(json!({ "reloaded": true })),
+            Err(error) => CommandResponse::err(format!("connectors/reload: {error}")),
+        },
+        "connectors.clear" => match zk_connector_mcp::clear_catalog_config() {
+            Ok(()) => CommandResponse::ok(json!({ "cleared": true })),
+            Err(error) => CommandResponse::err(format!("connectors/clear: {error}")),
+        },
         commands::AUTH_CONFIGURE => {
             let (Some(base_url), Some(access_token)) = (
                 payload.get("server_url").and_then(Value::as_str),
@@ -563,7 +664,24 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 .runtime
                 .configure_llm(base_url, access_token, model, "gateway")
             {
-                Ok(()) => CommandResponse::ok(json!({ "configured": true })),
+                Ok(()) => {
+                    // Connector catalog -> MCP client config (B16 phase-3). A catalog
+                    // failure must not block login; tools stay honestly unavailable.
+                    match sync_connector_catalog(base_url, access_token) {
+                        Ok(count) => CommandResponse::ok(json!({
+                            "configured": true,
+                            "mcp_servers": count,
+                        })),
+                        Err(error) => {
+                            eprintln!("zk: connector catalog sync failed: {error}");
+                            CommandResponse::ok(json!({
+                                "configured": true,
+                                "mcp_servers": 0,
+                                "mcp_sync_error": error,
+                            }))
+                        }
+                    }
+                }
                 Err(error) => CommandResponse::err(format!("auth/configure: {error}")),
             }
         }
@@ -581,6 +699,8 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 }
             }
             state.runtime.cancel_agent();
+            // Drop catalog-provided MCP config/sessions on logout (B16 phase-3).
+            let _ = zk_connector_mcp::clear_catalog_config();
             CommandResponse::ok(json!({ "logged_out": true }))
         }
         commands::UPDATE_CHECK => {
@@ -600,6 +720,9 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
         commands::OAUTH_TOKEN_SAVE => oauth_save(payload),
         commands::OAUTH_TOKEN_LOAD => oauth_load(payload),
         commands::OAUTH_TOKEN_CLEAR => oauth_clear(payload),
+        commands::OAUTH_AUTHORIZE => oauth_authorize(state, payload),
+        commands::OAUTH_STATUS => oauth_status(state, payload),
+        commands::OAUTH_REFRESH => oauth_refresh(state, payload),
         commands::CHAT_SEND => chat_send(state, payload),
         commands::CHAT_CANCEL => chat_cancel(state, payload),
         commands::APPROVAL_DECIDE => {
@@ -739,7 +862,7 @@ fn spawn_and_reap(mut command: std::process::Command) -> Result<(), String> {
     Ok(())
 }
 
-fn open_platform_browser(url: &str) -> Result<(), String> {
+pub(crate) fn open_platform_browser(url: &str) -> Result<(), String> {
     let (program, args) = open_url_invocation(url)?;
     let mut command = std::process::Command::new(program);
     command
@@ -748,6 +871,16 @@ fn open_platform_browser(url: &str) -> Result<(), String> {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     spawn_and_reap(command)
+}
+
+/// Validate an OAuth authorize URL, then open it in the system browser (no wait).
+///
+/// Reuses the `system.open_url` validation (absolute http(s), no credentials,
+/// no fragment) so the OAuth flow can never hand the platform opener an
+/// unexpected scheme.
+pub(crate) fn open_platform_browser_checked(url: &str) -> Result<(), String> {
+    let url = validate_open_url(url)?;
+    open_platform_browser(&url)
 }
 
 /// `system.open_url`: validate, then spawn the platform opener without waiting.
@@ -981,17 +1114,66 @@ fn write_dev_oauth(map: &serde_json::Map<String, Value>) -> Result<(), String> {
     Ok(())
 }
 
-fn oauth_entry(connector_id: &str) -> Result<keyring::Entry, String> {
-    if connector_id.is_empty()
-        || connector_id.len() > 128
-        || !connector_id
+fn valid_connector_id(connector_id: &str) -> bool {
+    !connector_id.is_empty()
+        && connector_id.len() <= 128
+        && connector_id
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
-    {
+}
+
+fn oauth_entry(connector_id: &str) -> Result<keyring::Entry, String> {
+    if !valid_connector_id(connector_id) {
         return Err("OAUTH_VALIDATION".to_owned());
     }
     keyring::Entry::new("zeokeel-connector-oauth", connector_id)
         .map_err(|error| format!("keychain: {error}"))
+}
+
+/// Persist one connector's token JSON (OS keychain; dev file fallback in tests).
+fn oauth_save_tokens(connector_id: &str, tokens: &Value) -> Result<(), String> {
+    if !tokens.is_object() {
+        return Err("OAUTH_VALIDATION".to_owned());
+    }
+    let entry = match oauth_entry(connector_id) {
+        Ok(entry) => entry,
+        Err(_) if dev_oauth_fallback() => {
+            let mut map = read_dev_oauth();
+            map.insert(connector_id.to_owned(), tokens.clone());
+            return write_dev_oauth(&map);
+        }
+        Err(error) => return Err(error),
+    };
+    match entry.set_password(&tokens.to_string()) {
+        Ok(()) => Ok(()),
+        Err(_error) if dev_oauth_fallback() => {
+            let mut map = read_dev_oauth();
+            map.insert(connector_id.to_owned(), tokens.clone());
+            write_dev_oauth(&map)
+        }
+        Err(error) => Err(format!("keychain: {error}")),
+    }
+}
+
+/// Load one connector's raw token JSON string (never logged).
+fn oauth_stored_raw(connector_id: &str) -> Result<Option<String>, String> {
+    let entry = match oauth_entry(connector_id) {
+        Ok(entry) => entry,
+        Err(_) if dev_oauth_fallback() => {
+            return Ok(read_dev_oauth()
+                .get(connector_id)
+                .map(std::string::ToString::to_string));
+        }
+        Err(error) => return Err(error),
+    };
+    match entry.get_password() {
+        Ok(raw) => Ok(Some(raw)),
+        Err(_) if dev_oauth_fallback() => Ok(read_dev_oauth()
+            .get(connector_id)
+            .map(std::string::ToString::to_string)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(error) => Err(format!("keychain: {error}")),
+    }
 }
 
 fn oauth_save(payload: &Value) -> CommandResponse {
@@ -1001,32 +1183,9 @@ fn oauth_save(payload: &Value) -> CommandResponse {
     ) else {
         return CommandResponse::err("missing connector_id/tokens");
     };
-    if !tokens.is_object() {
-        return CommandResponse::err("OAUTH_VALIDATION");
-    }
-    let entry = match oauth_entry(connector_id) {
-        Ok(entry) => entry,
-        Err(_) if dev_oauth_fallback() => {
-            let mut map = read_dev_oauth();
-            map.insert(connector_id.to_owned(), tokens.clone());
-            return match write_dev_oauth(&map) {
-                Ok(()) => CommandResponse::ok(json!({ "saved": true, "fallback": true })),
-                Err(error) => CommandResponse::err(format!("keychain fallback: {error}")),
-            };
-        }
-        Err(error) => return CommandResponse::err(error),
-    };
-    match entry.set_password(&tokens.to_string()) {
+    match oauth_save_tokens(connector_id, tokens) {
         Ok(()) => CommandResponse::ok(json!({ "saved": true })),
-        Err(_error) if dev_oauth_fallback() => {
-            let mut map = read_dev_oauth();
-            map.insert(connector_id.to_owned(), tokens.clone());
-            match write_dev_oauth(&map) {
-                Ok(()) => CommandResponse::ok(json!({ "saved": true, "fallback": true })),
-                Err(error) => CommandResponse::err(format!("keychain fallback: {error}")),
-            }
-        }
-        Err(error) => CommandResponse::err(format!("keychain: {error}")),
+        Err(error) => CommandResponse::err(error),
     }
 }
 
@@ -1034,22 +1193,9 @@ fn oauth_load(payload: &Value) -> CommandResponse {
     let Some(connector_id) = payload.get("connector_id").and_then(Value::as_str) else {
         return CommandResponse::err("missing connector_id");
     };
-    let entry = match oauth_entry(connector_id) {
-        Ok(entry) => entry,
-        Err(_) if dev_oauth_fallback() => {
-            return CommandResponse::ok(
-                json!({ "tokens": read_dev_oauth().get(connector_id).map(Value::to_string) }),
-            );
-        }
-        Err(error) => return CommandResponse::err(error),
-    };
-    match entry.get_password() {
+    match oauth_stored_raw(connector_id) {
         Ok(raw) => CommandResponse::ok(json!({ "tokens": raw })),
-        Err(_) if dev_oauth_fallback() => CommandResponse::ok(
-            json!({ "tokens": read_dev_oauth().get(connector_id).map(Value::to_string) }),
-        ),
-        Err(keyring::Error::NoEntry) => CommandResponse::ok(json!({ "tokens": null })),
-        Err(error) => CommandResponse::err(format!("keychain: {error}")),
+        Err(error) => CommandResponse::err(error),
     }
 }
 
@@ -1057,6 +1203,9 @@ fn oauth_clear(payload: &Value) -> CommandResponse {
     let Some(connector_id) = payload.get("connector_id").and_then(Value::as_str) else {
         return CommandResponse::err("missing connector_id");
     };
+    // Disconnect path: drop the in-memory MCP bearer token first, whichever
+    // keychain backend (real or dev fallback) handles the stored copy.
+    let _ = zk_connector_mcp::set_oauth_token(connector_id, None);
     let entry = match oauth_entry(connector_id) {
         Ok(entry) => entry,
         Err(_) if dev_oauth_fallback() => {
@@ -1082,6 +1231,191 @@ fn oauth_clear(payload: &Value) -> CommandResponse {
         Err(keyring::Error::NoEntry) => CommandResponse::ok(json!({ "cleared": true })),
         Err(error) => CommandResponse::err(format!("keychain: {error}")),
     }
+}
+
+/// Read + validate the OAuth public-client metadata from an IPC payload.
+fn oauth_flow_config(
+    payload: &Value,
+) -> Result<(String, zk_contract_connector::ConnectorOAuth, u64), CommandResponse> {
+    let Some(connector_id) = payload.get("connector_id").and_then(Value::as_str) else {
+        return Err(CommandResponse::err("missing connector_id"));
+    };
+    if !valid_connector_id(connector_id) {
+        return Err(CommandResponse::err("OAUTH_VALIDATION"));
+    }
+    let Some(oauth) = payload.get("oauth") else {
+        return Err(CommandResponse::err("missing oauth metadata"));
+    };
+    let config: zk_contract_connector::ConnectorOAuth = serde_json::from_value(oauth.clone())
+        .map_err(|_| CommandResponse::err("OAUTH_VALIDATION: oauth metadata shape"))?;
+    config.validate().map_err(CommandResponse::err)?;
+    let timeout_seconds = payload
+        .get("timeout_seconds")
+        .and_then(Value::as_u64)
+        .unwrap_or(crate::mcp_oauth::DEFAULT_TIMEOUT_SECONDS)
+        .clamp(
+            crate::mcp_oauth::MIN_TIMEOUT_SECONDS,
+            crate::mcp_oauth::MAX_TIMEOUT_SECONDS,
+        );
+    Ok((connector_id.to_owned(), config, timeout_seconds))
+}
+
+fn oauth_flow_set(state: &AppState, connector_id: &str, status: OAuthFlowStatus) {
+    if let Ok(mut flows) = state.oauth_flows.lock() {
+        flows.insert(connector_id.to_owned(), status);
+    }
+}
+
+fn oauth_flow_pending(state: &AppState, connector_id: &str) -> bool {
+    state
+        .oauth_flows
+        .lock()
+        .ok()
+        .and_then(|flows| flows.get(connector_id).cloned())
+        .is_some_and(|status| status.state == "pending")
+}
+
+/// `oauth.authorize`: start the loopback + PKCE flow in the background.
+///
+/// Returns `{started:true}` immediately (the browser flow can take minutes);
+/// the UI polls [`oauth_status`] — which never returns token material.
+fn oauth_authorize(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
+    let (connector_id, config, timeout_seconds) = match oauth_flow_config(payload) {
+        Ok(parsed) => parsed,
+        Err(error) => return error,
+    };
+    if oauth_flow_pending(state, &connector_id) {
+        return CommandResponse::err("OAUTH_ALREADY_PENDING");
+    }
+    oauth_flow_set(
+        state,
+        &connector_id,
+        OAuthFlowStatus {
+            state: "pending".to_owned(),
+            error: None,
+        },
+    );
+    let thread_state = Arc::clone(state);
+    let thread_id = connector_id.clone();
+    std::thread::spawn(move || {
+        let result = crate::mcp_oauth::authorize(
+            &config,
+            std::time::Duration::from_secs(timeout_seconds),
+            crate::mcp_oauth::now_ms(),
+            &crate::mcp_oauth::open_system_browser,
+        );
+        let status = match result {
+            Ok(tokens) => match oauth_save_tokens(&thread_id, &tokens.to_json()) {
+                Ok(()) => {
+                    // Hand the bearer token to the MCP transport (in-memory only).
+                    let _ = zk_connector_mcp::set_oauth_token(
+                        &thread_id,
+                        Some(tokens.access_token.clone()),
+                    );
+                    OAuthFlowStatus {
+                        state: "authorized".to_owned(),
+                        error: None,
+                    }
+                }
+                Err(error) => OAuthFlowStatus {
+                    state: "failed".to_owned(),
+                    error: Some(error),
+                },
+            },
+            Err(error) => OAuthFlowStatus {
+                state: "failed".to_owned(),
+                error: Some(error),
+            },
+        };
+        oauth_flow_set(&thread_state, &thread_id, status);
+    });
+    CommandResponse::ok(json!({
+        "started": true,
+        "connector_id": connector_id,
+        "timeout_seconds": timeout_seconds,
+    }))
+}
+
+/// `oauth.status`: poll one connector's flow state (`idle|pending|authorized|failed`).
+fn oauth_status(state: &AppState, payload: &Value) -> CommandResponse {
+    let Some(connector_id) = payload.get("connector_id").and_then(Value::as_str) else {
+        return CommandResponse::err("missing connector_id");
+    };
+    if !valid_connector_id(connector_id) {
+        return CommandResponse::err("OAUTH_VALIDATION");
+    }
+    match state
+        .oauth_flows
+        .lock()
+        .ok()
+        .and_then(|flows| flows.get(connector_id).cloned())
+    {
+        Some(status) => CommandResponse::ok(json!({
+            "state": status.state,
+            "error": status.error,
+        })),
+        None => CommandResponse::ok(json!({ "state": "idle", "error": null })),
+    }
+}
+
+/// `oauth.refresh`: rotate the stored token in the background (poll `oauth.status`).
+///
+/// Refresh happens even when the stored token is not yet near expiry: the UI calls
+/// this on boot/reconnect, and providers may have invalidated the access token early.
+fn oauth_refresh(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
+    let (connector_id, config, _timeout_seconds) = match oauth_flow_config(payload) {
+        Ok(parsed) => parsed,
+        Err(error) => return error,
+    };
+    if oauth_flow_pending(state, &connector_id) {
+        return CommandResponse::err("OAUTH_ALREADY_PENDING");
+    }
+    let raw = match oauth_stored_raw(&connector_id) {
+        Ok(Some(raw)) => raw,
+        Ok(None) => return CommandResponse::err("OAUTH_NO_TOKEN"),
+        Err(error) => return CommandResponse::err(error),
+    };
+    let tokens = match crate::mcp_oauth::OAuthTokens::from_stored_json(&raw) {
+        Ok(tokens) => tokens,
+        Err(error) => return CommandResponse::err(error),
+    };
+    oauth_flow_set(
+        state,
+        &connector_id,
+        OAuthFlowStatus {
+            state: "pending".to_owned(),
+            error: None,
+        },
+    );
+    let thread_state = Arc::clone(state);
+    let thread_id = connector_id.clone();
+    std::thread::spawn(move || {
+        let result = crate::mcp_oauth::refresh(&config, &tokens, crate::mcp_oauth::now_ms());
+        let status = match result {
+            Ok(next) => match oauth_save_tokens(&thread_id, &next.to_json()) {
+                Ok(()) => {
+                    let _ = zk_connector_mcp::set_oauth_token(
+                        &thread_id,
+                        Some(next.access_token.clone()),
+                    );
+                    OAuthFlowStatus {
+                        state: "authorized".to_owned(),
+                        error: None,
+                    }
+                }
+                Err(error) => OAuthFlowStatus {
+                    state: "failed".to_owned(),
+                    error: Some(error),
+                },
+            },
+            Err(error) => OAuthFlowStatus {
+                state: "failed".to_owned(),
+                error: Some(error),
+            },
+        };
+        oauth_flow_set(&thread_state, &thread_id, status);
+    });
+    CommandResponse::ok(json!({ "started": true, "connector_id": connector_id }))
 }
 
 fn remove_skill(payload: &Value) -> CommandResponse {
@@ -1282,6 +1616,9 @@ fn validate_settings(settings: &AppSettings) -> Result<(), String> {
     if let Err(error) = settings.media.validate() {
         return Err(error.to_string());
     }
+    if let Err(error) = settings.web_search.validate() {
+        return Err(error.to_string());
+    }
     if settings.provider.kind != ProviderKind::Mock {
         let url = settings.provider.base_url.trim();
         if !(url.starts_with("http://") || url.starts_with("https://")) {
@@ -1418,9 +1755,22 @@ fn run_turn(state: &Arc<AppState>, job: &TurnJob) {
         workspace_id: job.workspace_id.clone(),
         workspace_root: job.workspace_root.clone(),
     };
-    let result = state
+    // B8: SQLite session store is the replay authority. Drop the just-persisted current
+    // user message so the prompt is not duplicated; tool rows are text-only and are not
+    // replayed (rig history needs paired tool-call ids).
+    let replay = state
         .runtime
-        .run_stream_in_shared(&context, &job.stream_id, &job.text, sink);
+        .sessions()
+        .messages_in(&job.workspace_id, &job.conversation_id)
+        .unwrap_or_default();
+    let history = replay_history(&replay, &job.text);
+    let result = state.runtime.run_stream_in_shared_with_history(
+        &context,
+        &job.stream_id,
+        &job.text,
+        &history,
+        sink,
+    );
     match result {
         Ok(reply) => {
             let status = if job.cancelled.load(Ordering::SeqCst) {
@@ -1447,6 +1797,42 @@ fn run_turn(state: &Arc<AppState>, job: &TurnJob) {
     if let Ok(mut streams) = state.streams.lock() {
         streams.remove(&job.stream_id);
     }
+}
+
+/// Maximum replayed history messages per turn (keeps the prompt bounded).
+const MAX_REPLAY_MESSAGES: usize = 40;
+
+/// Map persisted session messages to prompt history for replay (B8).
+///
+/// Only `user`/`assistant` text rows are replayed; the current prompt (already
+/// persisted as the last user row) is dropped, and the tail is capped so a long
+/// conversation cannot grow the prompt without bound.
+fn replay_history(messages: &[Message], current_input: &str) -> Vec<HistoryMessage> {
+    let mut history: Vec<HistoryMessage> = Vec::new();
+    for message in messages {
+        match message.role.as_str() {
+            "user" => history.push(HistoryMessage {
+                role: HistoryRole::User,
+                content: message.content.clone(),
+            }),
+            "assistant" if message.status != "error" => history.push(HistoryMessage {
+                role: HistoryRole::Assistant,
+                content: message.content.clone(),
+            }),
+            _ => {}
+        }
+    }
+    let current_is_last = history
+        .last()
+        .is_some_and(|last| last.role == HistoryRole::User && last.content == current_input);
+    if current_is_last {
+        history.pop();
+    }
+    let len = history.len();
+    if len > MAX_REPLAY_MESSAGES {
+        history = history.split_off(len.saturating_sub(MAX_REPLAY_MESSAGES));
+    }
+    history
 }
 
 /// Build the persisted assistant message for one finished turn.
@@ -1498,6 +1884,7 @@ fn chat_cancel(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)] // test-only
     use base64::Engine;
+    use serde_json::{json, Value};
     use std::io::Write;
 
     /// Serializes tests that mutate the process-wide `ZEOKEEL_HOME` (settings
@@ -1544,12 +1931,17 @@ mod tests {
         settings.provider.base_url = "https://upstream.example".to_owned();
         settings.agent.max_steps = 7;
         settings.tools.tool_timeout_ms = 5_000;
-        super::publish_runtime_settings(&super::runtime_snapshot_for(&settings, true, true))
+        settings.web_search.base_url = "https://search.example.invalid/".to_owned();
+        settings.web_search.timeout_ms = 20_000;
+        super::publish_runtime_settings(&super::runtime_snapshot_for(&settings, true, true, true))
             .unwrap();
 
         let published = zk_contract_config::runtime_settings().unwrap().unwrap();
         assert_eq!(published.agent.as_ref().unwrap().max_steps, 7);
         assert_eq!(published.tools.unwrap().tool_timeout_ms, 5_000);
+        let published_search = published.web_search.clone().unwrap();
+        assert_eq!(published_search.base_url, "https://search.example.invalid/");
+        assert_eq!(published_search.timeout_ms, 20_000);
         let json = serde_json::to_string(&published).unwrap();
         assert!(!json.contains("api_key"), "snapshot leaked api_key: {json}");
         assert!(
@@ -1566,31 +1958,47 @@ mod tests {
     #[test]
     fn runtime_snapshot_publishes_only_non_default_sections() {
         let defaults = zk_contract_config::AppSettings::default();
-        let empty = super::runtime_snapshot_for(&defaults, true, true);
+        let empty = super::runtime_snapshot_for(&defaults, true, true, true);
         assert!(empty.agent.is_none(), "default agent section not published");
         assert!(empty.tools.is_none(), "default tools section not published");
+        assert!(
+            empty.web_search.is_none(),
+            "default web_search section not published"
+        );
 
         let mut tools_only = zk_contract_config::AppSettings::default();
         tools_only.tools.tool_timeout_ms = 5_000;
-        let snapshot = super::runtime_snapshot_for(&tools_only, true, true);
+        let snapshot = super::runtime_snapshot_for(&tools_only, true, true, true);
         assert!(
             snapshot.agent.is_none(),
             "tools-only save must not publish agent defaults"
         );
         assert_eq!(snapshot.tools.unwrap().tool_timeout_ms, 5_000);
+        assert!(snapshot.web_search.is_none());
 
         let mut agent_only = zk_contract_config::AppSettings::default();
         agent_only.agent.max_steps = 12;
-        let snapshot = super::runtime_snapshot_for(&agent_only, true, true);
+        let snapshot = super::runtime_snapshot_for(&agent_only, true, true, true);
         assert_eq!(snapshot.agent.unwrap().max_steps, 12);
         assert!(
             snapshot.tools.is_none(),
             "agent-only save must not publish tool defaults"
         );
+        assert!(snapshot.web_search.is_none());
 
-        // Boot must respect file existence for both sections.
-        let nothing = super::runtime_snapshot_for(&agent_only, false, false);
-        assert!(nothing.agent.is_none() && nothing.tools.is_none());
+        // Web-search-only saves publish just that section (settings > env > default).
+        let mut search_only = zk_contract_config::AppSettings::default();
+        search_only.web_search.base_url = "https://search.example.invalid/".to_owned();
+        search_only.web_search.timeout_ms = 30_000;
+        let snapshot = super::runtime_snapshot_for(&search_only, true, true, true);
+        assert!(snapshot.agent.is_none() && snapshot.tools.is_none());
+        let published = snapshot.web_search.unwrap();
+        assert_eq!(published.base_url, "https://search.example.invalid/");
+        assert_eq!(published.timeout_ms, 30_000);
+
+        // Boot must respect file existence for every section.
+        let nothing = super::runtime_snapshot_for(&agent_only, false, false, false);
+        assert!(nothing.agent.is_none() && nothing.tools.is_none() && nothing.web_search.is_none());
     }
 
     #[test]
@@ -1602,6 +2010,20 @@ mod tests {
         invalid.tools.approval_timeout_ms = 2_000_000;
         assert!(super::validate_settings(&invalid).is_err());
         assert!(super::validate_settings(&zk_contract_config::AppSettings::default()).is_ok());
+    }
+
+    #[test]
+    fn invalid_web_search_settings_are_rejected_by_validate_settings() {
+        let mut invalid = zk_contract_config::AppSettings::default();
+        invalid.web_search.base_url = "http://search.example.invalid".to_owned();
+        assert!(super::validate_settings(&invalid).is_err());
+        invalid.web_search.base_url = "https://search.example.invalid/".to_owned();
+        invalid.web_search.timeout_ms = 500;
+        assert!(super::validate_settings(&invalid).is_err());
+        invalid.web_search.timeout_ms = 120_001;
+        assert!(super::validate_settings(&invalid).is_err());
+        invalid.web_search.timeout_ms = 15_000;
+        assert!(super::validate_settings(&invalid).is_ok());
     }
 
     #[test]
@@ -1875,6 +2297,101 @@ mod tests {
     }
 
     #[test]
+    fn settings_set_persists_and_publishes_web_search_endpoint() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-search-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", &home);
+        let state = super::AppState::new(zk_composed::build().expect("composed build"));
+        zk_contract_config::clear_runtime_settings().unwrap();
+
+        let settings = zk_contract_config::AppSettings {
+            web_search: zk_contract_config::WebSearchSettings {
+                base_url: "https://search.example.invalid/api".to_owned(),
+                timeout_ms: 30_000,
+            },
+            ..zk_contract_config::AppSettings::default()
+        };
+        let saved = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SETTINGS_SET,
+            &serde_json::json!({"settings": settings}),
+        );
+        assert!(saved.ok, "{:?}", saved.error);
+
+        // Persisted (survives a restart: the store reloads the same section).
+        let reloaded = state.runtime().settings().load().unwrap();
+        assert_eq!(
+            reloaded.web_search,
+            zk_contract_config::WebSearchSettings {
+                base_url: "https://search.example.invalid/api".to_owned(),
+                timeout_ms: 30_000,
+            }
+        );
+
+        // Published non-secret snapshot: tool-web-search reads settings > env.
+        let published = zk_contract_config::runtime_settings().unwrap().unwrap();
+        let published_search = published.web_search.expect("web_search published");
+        assert_eq!(
+            published_search.base_url,
+            "https://search.example.invalid/api"
+        );
+        assert_eq!(published_search.timeout_ms, 30_000);
+
+        // `settings.get` masks credentials but keeps the (keyless) search section.
+        let got = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SETTINGS_GET,
+            &serde_json::json!({}),
+        );
+        assert!(got.ok, "{:?}", got.error);
+        let got_data = got.data.unwrap_or(serde_json::Value::Null);
+        assert_eq!(
+            got_data["web_search"]["base_url"],
+            serde_json::Value::String("https://search.example.invalid/api".to_owned())
+        );
+        assert_eq!(
+            got_data["web_search"]["timeout_ms"],
+            serde_json::json!(30_000)
+        );
+        assert_eq!(
+            got_data["provider"]["api_key"],
+            serde_json::Value::String(String::new())
+        );
+
+        // Boot with a settings file publishes the saved web-search section too.
+        zk_contract_config::clear_runtime_settings().unwrap();
+        super::apply_persisted_settings(state.runtime()).unwrap();
+        let booted = zk_contract_config::runtime_settings().unwrap().unwrap();
+        assert_eq!(
+            booted
+                .web_search
+                .expect("boot published web_search")
+                .timeout_ms,
+            30_000
+        );
+
+        // Invalid endpoint is rejected by settings.set and does not overwrite.
+        let mut invalid = settings;
+        invalid.web_search.base_url = "http://search.example.invalid".to_owned();
+        let rejected = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SETTINGS_SET,
+            &serde_json::json!({"settings": invalid}),
+        );
+        assert!(!rejected.ok, "plain-http search endpoint must be rejected");
+        let unchanged = state.runtime().settings().load().unwrap();
+        assert_eq!(
+            unchanged.web_search.base_url,
+            "https://search.example.invalid/api"
+        );
+
+        zk_contract_config::clear_runtime_settings().unwrap();
+        std::env::remove_var("ZEOKEEL_HOME");
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
     fn agent_settings_apply_to_the_runtime_registry_and_validate() {
         let mut settings = zk_contract_config::AppSettings::default();
         settings.agent.completion.temperature = Some(0.25);
@@ -1899,7 +2416,7 @@ mod tests {
             "tools-only save must clear the agent registry"
         );
         // settings.set also publishes the per-section snapshot: agent None.
-        let snapshot = super::runtime_snapshot_for(&tools_only, true, true);
+        let snapshot = super::runtime_snapshot_for(&tools_only, true, true, true);
         super::publish_runtime_settings(&snapshot).unwrap();
         let published = zk_contract_config::runtime_settings().unwrap().unwrap();
         assert!(
@@ -2097,5 +2614,337 @@ mod tests {
             headers.get("x-request-id").is_some(),
             "request id header missing"
         );
+    }
+
+    use zk_contract_agent::HistoryRole;
+    use zk_contract_session::Message as SessionMessage;
+
+    fn replay_message(role: &str, content: &str, status: &str) -> SessionMessage {
+        SessionMessage {
+            id: uuid::Uuid::new_v4().to_string(),
+            conversation_id: "c".to_owned(),
+            role: role.to_owned(),
+            content: content.to_owned(),
+            created_at_ms: 1,
+            status: status.to_owned(),
+            usage: None,
+        }
+    }
+
+    #[test]
+    fn replay_history_drops_current_prompt_and_maps_roles() {
+        let messages: Vec<SessionMessage> = vec![
+            replay_message("user", "earlier question", "done"),
+            replay_message("assistant", "earlier answer", "done"),
+            replay_message("user", "current prompt", "done"),
+        ];
+        let history = super::replay_history(&messages, "current prompt");
+        assert_eq!(history.len(), 2, "current prompt is not replayed twice");
+        assert_eq!(history[0].role, HistoryRole::User);
+        assert_eq!(history[0].content, "earlier question");
+        assert_eq!(history[1].role, HistoryRole::Assistant);
+        assert_eq!(history[1].content, "earlier answer");
+    }
+
+    #[test]
+    fn replay_history_skips_tool_rows_and_assistant_errors() {
+        let messages: Vec<SessionMessage> = vec![
+            replay_message("user", "q1", "done"),
+            replay_message("tool", "{\"name\":\"fs.read\"}", "done"),
+            replay_message("assistant", "错误：boom", "error"),
+            replay_message("assistant", "ok", "done"),
+        ];
+        let history = super::replay_history(&messages, "next");
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].content, "q1");
+        assert_eq!(history[1].content, "ok");
+        assert!(history.iter().all(|item| item.content != "{}"));
+    }
+
+    #[test]
+    fn replay_history_caps_the_tail() {
+        let mut messages: Vec<SessionMessage> = (0..60)
+            .map(|index| replay_message("user", &format!("message-{index}"), "done"))
+            .collect();
+        messages.push(replay_message("user", "latest prompt", "done"));
+        let history = super::replay_history(&messages, "latest prompt");
+        assert_eq!(history.len(), super::MAX_REPLAY_MESSAGES);
+        assert_eq!(history.last().expect("last").content, "message-59");
+        assert_eq!(
+            history.first().expect("first").content,
+            format!("message-{}", 60 - super::MAX_REPLAY_MESSAGES)
+        );
+    }
+
+    #[test]
+    fn connector_catalog_config_is_applied_and_secrets_rejected() {
+        zk_connector_mcp::clear_catalog_config().unwrap();
+        let catalog = serde_json::json!({"items": [{
+            "id": "desk-test",
+            "name": "Desktop MCP",
+            "transport": "stdio",
+            "enabled": true,
+            "config": {"command": "python3", "args": ["server.py"], "timeout_ms": 1000}
+        }]})
+        .to_string();
+        assert_eq!(super::apply_connector_catalog(&catalog).unwrap(), 1);
+        assert_eq!(
+            zk_connector_mcp::configured_server_ids().unwrap(),
+            vec!["desk-test".to_owned()]
+        );
+        let secret = serde_json::json!({"items": [{
+            "id": "bad",
+            "name": "Bad MCP",
+            "transport": "stdio",
+            "enabled": true,
+            "config": {"command": "x", "env": {"API_TOKEN": "v"}}
+        }]})
+        .to_string();
+        assert!(super::apply_connector_catalog(&secret).is_err());
+        zk_connector_mcp::clear_catalog_config().unwrap();
+        assert!(zk_connector_mcp::configured_server_ids()
+            .unwrap()
+            .is_empty());
+    }
+
+    // ---- MCP connector OAuth 2.0 public-client + PKCE flow (docs/07 §6) ----
+
+    fn oauth_test_env(home: &std::path::Path) {
+        std::env::set_var("ZEOKEEL_HOME", home);
+        std::env::set_var("ZEOKEEL_DEV_KEYCHAIN_FALLBACK", "1");
+    }
+
+    fn oauth_test_cleanup() {
+        crate::mcp_oauth::set_test_opener(None);
+        std::env::remove_var("ZEOKEEL_HOME");
+        std::env::remove_var("ZEOKEEL_DEV_KEYCHAIN_FALLBACK");
+    }
+
+    fn oauth_payload(
+        connector_id: &str,
+        server: &crate::mcp_oauth::test_support::FakeOAuthServer,
+    ) -> Value {
+        let config = crate::mcp_oauth::test_support::config_for(server);
+        json!({
+            "connector_id": connector_id,
+            "oauth": serde_json::to_value(&config).expect("oauth metadata"),
+            "timeout_seconds": 60,
+        })
+    }
+
+    fn wait_oauth_status(state: &std::sync::Arc<super::AppState>, connector_id: &str) -> Value {
+        let started = std::time::Instant::now();
+        loop {
+            let response = super::dispatch(
+                state,
+                zk_contract_ipc::commands::OAUTH_STATUS,
+                &json!({ "connector_id": connector_id }),
+            );
+            assert!(response.ok, "{:?}", response.error);
+            let data = response.data.unwrap_or(Value::Null);
+            let flow_state = data["state"].as_str().unwrap_or_default().to_owned();
+            if flow_state != "pending" {
+                return data;
+            }
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(15),
+                "oauth flow did not finish: {data}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    #[test]
+    fn mcp_oauth_ipc_authorize_status_and_keychain_roundtrip() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-oauth-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        oauth_test_env(&home);
+        let server = crate::mcp_oauth::test_support::FakeOAuthServer::start(
+            crate::mcp_oauth::test_support::FakeOAuthConfig::default(),
+        );
+        let opener: crate::mcp_oauth::TestOpener = std::sync::Arc::new(
+            crate::mcp_oauth::test_support::spawning_opener(std::time::Duration::from_millis(200)),
+        );
+        crate::mcp_oauth::set_test_opener(Some(opener));
+        let state = super::AppState::new(zk_composed::build().expect("composed build"));
+        let payload = oauth_payload("mcp-demo", &server);
+
+        // Unknown connector is idle.
+        let idle = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::OAUTH_STATUS,
+            &json!({ "connector_id": "mcp-demo" }),
+        );
+        assert_eq!(idle.data.unwrap_or(Value::Null)["state"], "idle");
+
+        let started = super::dispatch(&state, zk_contract_ipc::commands::OAUTH_AUTHORIZE, &payload);
+        assert!(started.ok, "{:?}", started.error);
+        assert_eq!(started.data.unwrap_or(Value::Null)["started"], true);
+
+        // A second authorize while the browser flow is running is rejected, not duplicated.
+        let duplicate =
+            super::dispatch(&state, zk_contract_ipc::commands::OAUTH_AUTHORIZE, &payload);
+        assert!(!duplicate.ok);
+        assert_eq!(duplicate.error.as_deref(), Some("OAUTH_ALREADY_PENDING"));
+
+        let status = wait_oauth_status(&state, "mcp-demo");
+        assert_eq!(status["state"], "authorized", "{status}");
+        assert!(status["error"].is_null());
+        // The polling surface must never echo tokens.
+        let status_text = status.to_string();
+        assert!(!status_text.contains("access-"), "{status_text}");
+        assert!(!status_text.contains("refresh-"), "{status_text}");
+
+        // Tokens were saved through the existing keychain IPC (dev fallback file).
+        let loaded = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::OAUTH_TOKEN_LOAD,
+            &json!({ "connector_id": "mcp-demo" }),
+        );
+        assert!(loaded.ok, "{:?}", loaded.error);
+        let raw = loaded.data.unwrap_or(Value::Null)["tokens"]
+            .as_str()
+            .expect("stored token json string")
+            .to_owned();
+        let tokens = crate::mcp_oauth::OAuthTokens::from_stored_json(&raw).expect("token parse");
+        assert!(tokens.access_token.starts_with("access-"));
+        assert!(tokens.refresh_token.is_some());
+        assert_eq!(tokens.scope.as_deref(), Some("mcp.read"));
+        // The bearer token was handed to the MCP transport for this server.
+        assert!(zk_connector_mcp::has_oauth_token("mcp-demo"));
+        // RFC 8252 loopback redirect with an ephemeral port was used.
+        let redirect = server.observed_redirect_uri().expect("redirect observed");
+        assert!(redirect.starts_with("http://127.0.0.1:"), "{redirect}");
+        assert!(redirect.ends_with("/callback"), "{redirect}");
+
+        // Refresh rotates the stored token in the background.
+        let before = tokens.access_token.clone();
+        let refreshing =
+            super::dispatch(&state, zk_contract_ipc::commands::OAUTH_REFRESH, &payload);
+        assert!(refreshing.ok, "{:?}", refreshing.error);
+        let refreshed = wait_oauth_status(&state, "mcp-demo");
+        assert_eq!(refreshed["state"], "authorized");
+        let loaded = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::OAUTH_TOKEN_LOAD,
+            &json!({ "connector_id": "mcp-demo" }),
+        );
+        let raw = loaded.data.unwrap_or(Value::Null)["tokens"]
+            .as_str()
+            .expect("stored token json string")
+            .to_owned();
+        let rotated = crate::mcp_oauth::OAuthTokens::from_stored_json(&raw).expect("token parse");
+        assert_ne!(rotated.access_token, before, "refresh must update storage");
+        assert_ne!(rotated.refresh_token, tokens.refresh_token, "rotation");
+
+        // Clear removes it; the flow state is unaffected but no token remains.
+        let cleared = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::OAUTH_TOKEN_CLEAR,
+            &json!({ "connector_id": "mcp-demo" }),
+        );
+        assert!(cleared.ok);
+        let empty = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::OAUTH_TOKEN_LOAD,
+            &json!({ "connector_id": "mcp-demo" }),
+        );
+        assert!(empty.data.unwrap_or(Value::Null)["tokens"].is_null());
+        // Disconnect also drops the in-memory MCP bearer token.
+        assert!(!zk_connector_mcp::has_oauth_token("mcp-demo"));
+
+        oauth_test_cleanup();
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
+    fn mcp_oauth_ipc_rejects_invalid_metadata_and_surfaces_failures_without_secrets() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-oauth-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        oauth_test_env(&home);
+        let state = super::AppState::new(zk_composed::build().expect("composed build"));
+
+        // Invalid endpoint metadata is rejected before any browser/listener work.
+        let invalid = json!({
+            "connector_id": "mcp-demo",
+            "oauth": {
+                "client_id": "c",
+                "scopes": [],
+                "redirect_uri": "",
+                "authorize_url": "http://auth.example.invalid/authorize",
+                "token_url": "https://auth.example.invalid/token"
+            }
+        });
+        let rejected =
+            super::dispatch(&state, zk_contract_ipc::commands::OAUTH_AUTHORIZE, &invalid);
+        assert!(!rejected.ok);
+        assert!(
+            rejected
+                .error
+                .as_deref()
+                .is_some_and(|error| error.starts_with("OAUTH_VALIDATION")),
+            "{:?}",
+            rejected.error
+        );
+        // Missing/bad connector ids never touch the keychain.
+        let bad_id = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::OAUTH_AUTHORIZE,
+            &json!({ "connector_id": "../evil", "oauth": {} }),
+        );
+        assert!(!bad_id.ok);
+
+        // A token-endpoint failure is reported as a status code only.
+        let server = crate::mcp_oauth::test_support::FakeOAuthServer::start(
+            crate::mcp_oauth::test_support::FakeOAuthConfig {
+                token_status: 500,
+                ..crate::mcp_oauth::test_support::FakeOAuthConfig::default()
+            },
+        );
+        let opener: crate::mcp_oauth::TestOpener = std::sync::Arc::new(
+            crate::mcp_oauth::test_support::spawning_opener(std::time::Duration::ZERO),
+        );
+        crate::mcp_oauth::set_test_opener(Some(opener));
+        let started = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::OAUTH_AUTHORIZE,
+            &oauth_payload("mcp-broken", &server),
+        );
+        assert!(started.ok, "{:?}", started.error);
+        let status = wait_oauth_status(&state, "mcp-broken");
+        assert_eq!(status["state"], "failed", "{status}");
+        let error = status["error"].as_str().unwrap_or_default();
+        assert_eq!(error, "OAUTH_TOKEN_HTTP_500");
+        assert!(!status.to_string().contains("SECRET"), "{status}");
+        // Failed flow must not persist a partial token.
+        let loaded = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::OAUTH_TOKEN_LOAD,
+            &json!({ "connector_id": "mcp-broken" }),
+        );
+        assert!(loaded.data.unwrap_or(Value::Null)["tokens"].is_null());
+
+        // Refresh without stored tokens is an explicit error.
+        let no_token = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::OAUTH_REFRESH,
+            &json!({
+                "connector_id": "mcp-demo",
+                "oauth": {
+                    "client_id": "c",
+                    "scopes": [],
+                    "redirect_uri": "",
+                    "authorize_url": "https://auth.example.invalid/authorize",
+                    "token_url": "https://auth.example.invalid/token"
+                }
+            }),
+        );
+        assert!(!no_token.ok);
+        assert_eq!(no_token.error.as_deref(), Some("OAUTH_NO_TOKEN"));
+
+        oauth_test_cleanup();
+        std::fs::remove_dir_all(&home).unwrap();
     }
 }

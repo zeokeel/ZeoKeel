@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 pub const EDITION: &str = "personal";
 pub const CHANNEL: &str = "official";
-pub const PACKAGES: &[&str] = &["zeokeel/cap-hooks","zeokeel/agent-rig","zeokeel/client-update-github","zeokeel/llm-rig","zeokeel/cap-audio","zeokeel/cap-image","zeokeel/cap-rerank","zeokeel/cap-transcription","zeokeel/store-session-sqlite","zeokeel/store-settings-json","zeokeel/tool-agent-team","zeokeel/tool-ask-user","zeokeel/tool-bash","zeokeel/tool-bash-persistent","zeokeel/tool-cordis","zeokeel/tool-extract","zeokeel/tool-fs","zeokeel/tool-fs-edit","zeokeel/tool-fs-search","zeokeel/tool-fs-write","zeokeel/tool-glob","zeokeel/tool-goal","zeokeel/tool-grep","zeokeel/tool-job-kill","zeokeel/tool-job-list","zeokeel/tool-job-output","zeokeel/tool-present","zeokeel/tool-pwsh","zeokeel/tool-pwsh-persistent","zeokeel/tool-ralph","zeokeel/tool-read-document","zeokeel/tool-read-image","zeokeel/tool-schedule","zeokeel/tool-session-query","zeokeel/tool-skill","zeokeel/tool-subagent","zeokeel/tool-subagent-control","zeokeel/tool-subagent-fork","zeokeel/tool-terminal","zeokeel/tool-todo","zeokeel/tool-web-fetch","zeokeel/tool-web-search","zeokeel/tool-workflow","zeokeel/tool-working-directory","zeokeel/tool-workspace-dependencies","zeokeel/tool-worktree","zeokeel/ui-kit","zeokeel/ui-shell","zeokeel/ui-chat","zeokeel/ui-commands","zeokeel/ui-inspector","zeokeel/ui-sessions","zeokeel/ui-settings","zeokeel/ui-settings-provider","zeokeel/cap-vector",];
+pub const PACKAGES: &[&str] = &["zeokeel/cap-hooks","zeokeel/agent-rig","zeokeel/client-update-github","zeokeel/llm-rig","zeokeel/cap-audio","zeokeel/cap-image","zeokeel/cap-rerank","zeokeel/cap-transcription","zeokeel/store-session-sqlite","zeokeel/store-settings-json","zeokeel/tool-agent-team","zeokeel/tool-ask-user","zeokeel/tool-bash","zeokeel/tool-bash-persistent","zeokeel/tool-cordis","zeokeel/tool-extract","zeokeel/tool-fs","zeokeel/tool-fs-edit","zeokeel/tool-fs-search","zeokeel/tool-fs-write","zeokeel/tool-glob","zeokeel/tool-goal","zeokeel/tool-grep","zeokeel/tool-job-kill","zeokeel/tool-job-list","zeokeel/tool-job-output","zeokeel/connector-mcp","zeokeel/tool-present","zeokeel/tool-pwsh","zeokeel/tool-pwsh-persistent","zeokeel/tool-ralph","zeokeel/tool-read-document","zeokeel/tool-read-image","zeokeel/tool-schedule","zeokeel/tool-session-query","zeokeel/tool-skill","zeokeel/tool-subagent","zeokeel/tool-subagent-control","zeokeel/tool-subagent-fork","zeokeel/tool-terminal","zeokeel/tool-todo","zeokeel/tool-web-fetch","zeokeel/tool-web-search","zeokeel/tool-workflow","zeokeel/tool-working-directory","zeokeel/tool-workspace-dependencies","zeokeel/tool-worktree","zeokeel/ui-kit","zeokeel/ui-shell","zeokeel/ui-chat","zeokeel/ui-commands","zeokeel/ui-inspector","zeokeel/ui-sessions","zeokeel/ui-settings","zeokeel/ui-settings-provider","zeokeel/cap-vector",];
 
 pub struct Runtime {
     agent: Arc<dyn zk_contract_agent::Agent>,
@@ -32,6 +32,10 @@ impl Runtime {
 
     pub fn run_stream_in_shared(&self, context: &zk_contract_tool::TurnContext, turn_id: &str, input: &str, sink: std::sync::Arc<dyn zk_contract_agent::EventSink>) -> Result<zk_contract_agent::AgentReply, zk_contract_agent::AgentError> {
         self.agent.run_stream_in_shared(context, turn_id, input, sink)
+    }
+
+    pub fn run_stream_in_shared_with_history(&self, context: &zk_contract_tool::TurnContext, turn_id: &str, input: &str, history: &[zk_contract_agent::HistoryMessage], sink: std::sync::Arc<dyn zk_contract_agent::EventSink>) -> Result<zk_contract_agent::AgentReply, zk_contract_agent::AgentError> {
+        self.agent.run_stream_in_shared_with_history(context, turn_id, input, history, sink)
     }
 
     pub fn cancel_agent(&self) { self.agent.cancel(); }
@@ -77,6 +81,7 @@ pub fn build() -> Result<Runtime, String> {
         Arc::new(zk_tool_job_kill::tool()),
         Arc::new(zk_tool_job_list::tool()),
         Arc::new(zk_tool_job_output::tool()),
+        Arc::new(zk_connector_mcp::tool()),
         Arc::new(zk_tool_present::tool()),
         Arc::new(zk_tool_pwsh::tool()),
         Arc::new(zk_tool_pwsh_persistent::tool()),
@@ -98,6 +103,7 @@ pub fn build() -> Result<Runtime, String> {
         Arc::new(zk_tool_workspace_dependencies::tool()),
         Arc::new(zk_tool_worktree::tool()),
     ];
+    tools.extend(zk_connector_mcp::extra_tools());
     tools.extend(zk_tool_subagent::extra_tools());
     tools.extend(zk_tool_subagent_control::extra_tools());
     let model = zk_llm_rig::model().map_err(|e| e.to_string())?;

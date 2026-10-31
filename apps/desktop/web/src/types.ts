@@ -3,7 +3,7 @@
  * packages); transport shapes stay here because they are app infrastructure.
  */
 export type * from "@zeokeel/ui-kit";
-export { defaultAgentSettings, defaultEmbeddingSettings, defaultMediaSettings, defaultSettings, defaultToolSettings } from "@zeokeel/ui-kit";
+export { defaultAgentSettings, defaultEmbeddingSettings, defaultMediaSettings, defaultSettings, defaultToolSettings, defaultWebSearchSettings } from "@zeokeel/ui-kit";
 
 import type { UiEvent } from "@zeokeel/ui-kit";
 

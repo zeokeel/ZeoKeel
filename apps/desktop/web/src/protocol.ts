@@ -11,6 +11,7 @@ import {
   defaultMediaSettings,
   defaultSettings,
   defaultToolSettings,
+  defaultWebSearchSettings,
   type AgentEvent,
   type AgentSettings,
   type AgentUsage,
@@ -29,6 +30,7 @@ import {
   type ToolChoiceSetting,
   type ToolSettings,
   type UiEvent,
+  type WebSearchSettings,
   type Workspace,
 } from "./types";
 
@@ -418,6 +420,18 @@ export function parseSettings(value: unknown): AppSettings {
     tools: parseToolSettings(value["tools"]),
     embedding: parseEmbeddingSettings(value["embedding"]),
     media: parseMediaSettings(value["media"]),
+    web_search: parseWebSearchSettings(value["web_search"]),
+  };
+}
+
+function parseWebSearchSettings(value: unknown): WebSearchSettings {
+  const base = defaultWebSearchSettings();
+  if (!isRecord(value)) {
+    return base;
+  }
+  return {
+    base_url: readString(value, "base_url") ?? base.base_url,
+    timeout_ms: readNumber(value, "timeout_ms") ?? base.timeout_ms,
   };
 }
 
