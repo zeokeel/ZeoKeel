@@ -28,8 +28,13 @@ fn memory_limit_is_memory_error() {
     let dir = std::env::temp_dir().join(format!("zk-wasm-mem-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     let db = dir.join("db.sqlite");
+    // Deterministic memory-limit probe: grow from 1 page to exactly the configured
+    // 2 MiB limit (31 further 64 KiB pages) and then trap. Mapping the trap while the
+    // instance is at the limit yields `WasmError::Memory` on every wasmtime build
+    // (the previous infinite-grow loop could exhaust fuel first, depending on whether
+    // `memory.grow` traps or returns -1, so it was not portable across runners).
     let wasm = wat::parse_str(
-        r#"(module (memory 1) (func (export "_start") (loop (memory.grow (i32.const 1)) (br 0))))"#,
+        r#"(module (memory 1) (func (export "_start") (drop (memory.grow (i32.const 31))) unreachable))"#,
     )
     .unwrap();
     let result = run(RunInput {

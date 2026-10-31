@@ -1831,7 +1831,11 @@ fn rel_from_composed(root: &Path, dir: &Path) -> String {
         .strip_prefix(root)
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|_| dir.to_path_buf());
-    format!("../../{}", rel.display())
+    // Emit forward slashes even when `zk compose` runs on Windows: the value becomes a
+    // TOML/JSON string in generated manifests, and `\` starts an invalid TOML escape
+    // (cargo metadata then fails on Windows release builds).
+    let rel = rel.to_string_lossy().replace('\\', "/");
+    format!("../../{rel}")
 }
 
 fn find_package_dir(root: &Path, manifest_id: &str) -> Result<PathBuf> {
