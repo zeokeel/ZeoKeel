@@ -75,8 +75,10 @@ jobs:
         run: cargo run -q -p zk -- compose --edition enterprise --profile default --channel official
       # The audit script runs `cargo test --offline` for gates 4/5/12; fetch once with
       # network first so a cold GitHub runner still has the registry cache those need.
-      - name: Fetch locked dependencies (needed by the audit's --offline tests)
-        run: cargo fetch --locked
+      # NOT `--locked`: the enterprise compose above changes crates/zk-composed deps, so
+      # the personal-baseline Cargo.lock legitimately needs the union of both compositions.
+      - name: Fetch dependencies (needed by the audit's --offline tests)
+        run: cargo fetch
       # gates 2/3/7/12 need runnable binaries; ZEOKEEL_SECURITY_SKIP_BUILD=1 keeps the
       # audit from rebuilding them (single build here).
       - name: Build audit binaries (zk-server + zk-desktop; gates 3/7/12 prerequisites)

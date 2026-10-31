@@ -285,10 +285,25 @@ def plausible_installer(path: pathlib.Path) -> None:
         invalid.append(f"{path.name}: contains a dry-run/placeholder marker")
         return
     suffix = path.suffix.lower()
-    if suffix in {".appimage", ".deb", ".rpm"} and not head.startswith(b"\x7fELF"):
+    # Per-format magic checks: AppImage is ELF; .deb is an ar archive; .rpm has the
+    # RPM lead magic; .dmg ends with its "koly" trailer; .exe is PE/COFF; .msi is an
+    # OLE compound file. (Treating .deb/.rpm as ELF rejected every real Linux bundle.)
+    if suffix == ".appimage" and not head.startswith(b"\x7fELF"):
         invalid.append(f"{path.name}: {suffix} is not an ELF binary")
-    if suffix in {".exe", ".msi"} and not head.startswith(b"MZ"):
+    elif suffix == ".deb" and not head.startswith(b"!<arch>"):
+        invalid.append(f"{path.name}: {suffix} is not a Debian archive (!<arch>)")
+    elif suffix == ".rpm" and not head.startswith(b"\xed\xab\xee\xdb"):
+        invalid.append(f"{path.name}: {suffix} is not an RPM package")
+    elif suffix == ".dmg":
+        with path.open("rb") as handle:
+            handle.seek(max(0, size - 512))
+            tail = handle.read()
+        if b"koly" not in tail:
+            invalid.append(f"{path.name}: {suffix} is not a UDIF image (missing koly trailer)")
+    elif suffix == ".exe" and not head.startswith(b"MZ"):
         invalid.append(f"{path.name}: {suffix} is not a PE binary")
+    elif suffix == ".msi" and not head.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+        invalid.append(f"{path.name}: {suffix} is not an OLE compound file")
 
 
 def plausible_image(path: pathlib.Path) -> None:

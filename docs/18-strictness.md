@@ -196,7 +196,7 @@ as_conversions = "deny"
 | 生成物漂移 | `cargo test --workspace export_schema && git diff --exit-code && bash scripts/schema-check.sh` | `.github/workflows/ci.yml:49-52` | CI |
 | 组合/索引门禁 | `zk validate` / `zk compose --check` / `zk capability --check` / `zk lint --duplicates` / `zk docs --check` / `zk db lock --check` | `.github/workflows/ci.yml:39-46` | CI |
 | 文档门禁 | `python3 scripts/{docs,spec,review}-check.py`、`bash scripts/schema-check.sh` | `.github/workflows/ci.yml:263-266`（docs job） | CI |
-| 安全审计前置（A18） | PostgreSQL + **enterprise compose** + `cargo fetch --locked` + `cargo build -p zk-server -p zk-desktop`（gates 2/3/7/12 的运行前置） | `.github/workflows/security.yml:58-82` | CI |
+| 安全审计前置（A18） | PostgreSQL + **enterprise compose** + `cargo fetch`（enterprise compose 会改变 zk-composed 依赖，不能用 --locked） + `cargo build -p zk-server -p zk-desktop`（gates 2/3/7/12 的运行前置） | `.github/workflows/security.yml:58-82` | CI |
 | 供应链（Rust） | `cargo deny check` / `cargo audit` / `cargo machete` | `.github/workflows/security.yml:84,86,88` | CI |
 | unsafe 统计 | `cargo geiger --all-features`（输出存证据） | `.github/workflows/security.yml:92` | CI |
 | 供应链（npm） | `pnpm audit --prod` | `.github/workflows/security.yml:100` | CI |
