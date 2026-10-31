@@ -157,6 +157,22 @@
           "description": "Locale: `zh-CN` | `en-US`.",
           "type": "string"
         },
+        "media": {
+          "description": "Personal-edition media capabilities (backward compatible default).",
+          "default": {
+            "base_url": "",
+            "api_key": "",
+            "image_model": "",
+            "audio_model": "",
+            "transcription_model": "",
+            "rerank_model": ""
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/MediaSettings"
+            }
+          ]
+        },
         "provider": {
           "description": "Provider config.",
           "allOf": [
@@ -329,6 +345,42 @@
         },
         "log": {
           "description": "Optional JSONL file that receives the hook events (append-only).",
+          "default": "",
+          "type": "string"
+        }
+      }
+    },
+    "MediaSettings": {
+      "description": "Personal-edition media capability settings (`cap-image`/`cap-audio`/ `cap-transcription`/`cap-rerank`).\n\nOne OpenAI/Voyage-compatible endpoint and key drive all four kinds; each kind has its own optional model id (empty = the capability's default model). Like [`EmbeddingSettings`], this is personal-edition only (C7): enterprise AI must go through the gateway; the generated glue never configures local providers there.",
+      "type": "object",
+      "properties": {
+        "api_key": {
+          "description": "Bearer key shared by the four media kinds (write-only: masked).",
+          "default": "",
+          "type": "string"
+        },
+        "audio_model": {
+          "description": "Speech-synthesis model id (empty = capability default).",
+          "default": "",
+          "type": "string"
+        },
+        "base_url": {
+          "description": "OpenAI-compatible API root (empty = each kind's provider default).",
+          "default": "",
+          "type": "string"
+        },
+        "image_model": {
+          "description": "Image-generation model id (empty = capability default).",
+          "default": "",
+          "type": "string"
+        },
+        "rerank_model": {
+          "description": "Rerank model id (empty = capability default).",
+          "default": "",
+          "type": "string"
+        },
+        "transcription_model": {
+          "description": "Transcription model id (empty = capability default).",
           "default": "",
           "type": "string"
         }

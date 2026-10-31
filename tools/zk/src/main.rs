@@ -1830,12 +1830,15 @@ fn compose_cargo_toml(root: &Path, resolved: &Resolved) -> Result<String> {
     for (name, path) in &deps {
         out.push_str(&format!("{name} = {{ path = \"{path}\" }}\n"));
     }
-    // The personal embedding glue builds the rig model via the shared media kit.
+    // Personal embedding/media glue builds rig models via the shared media kit.
     if resolved.edition == "personal"
-        && resolved
-            .packages
-            .iter()
-            .any(|pkg| pkg.crate_name == "zk-cap-vector")
+        && resolved.packages.iter().any(|pkg| {
+            pkg.crate_name == "zk-cap-vector"
+                || matches!(
+                    pkg.role.as_str(),
+                    "media.image" | "media.audio" | "media.transcription" | "media.rerank"
+                )
+        })
     {
         out.push_str("zk-kit-media = { path = \"../../crates/zk-kit-media\" }\n");
     }
@@ -2021,6 +2024,49 @@ fn compose_lib(root: &Path, resolved: &Resolved) -> Result<String> {
         out.push_str("    let model = zk_kit_media::embedding_model_from_config(&config).map_err(|error| format!(\"embedding model: {error:?}\"))?;\n");
         out.push_str("    zk_cap_vector::configure_with_dir(model, settings.dir.trim()).map_err(|error| format!(\"vector store: {error:?}\"))\n");
         out.push_str("}\n\n");
+    }
+    // Media capabilities (image/audio/transcription/rerank) from AppSettings:
+    // one key/base_url shared, per-kind model ids; errors aggregate so desktop
+    // `settings.set` can reject a failed config. Enterprise/no-media = no-op.
+    let media_kinds = [
+        ("media.image", "Image", "image_model"),
+        ("media.audio", "Audio", "audio_model"),
+        (
+            "media.transcription",
+            "Transcription",
+            "transcription_model",
+        ),
+        ("media.rerank", "Rerank", "rerank_model"),
+    ];
+    let selected_media: Vec<(&str, &str, String)> = media_kinds
+        .iter()
+        .filter_map(|(role, kind, field)| {
+            resolved
+                .packages
+                .iter()
+                .find(|pkg| pkg.role.as_str() == *role)
+                .map(|pkg| (*kind, *field, pkg.crate_name.replace('-', "_")))
+        })
+        .collect();
+    if resolved.edition != "personal" || selected_media.is_empty() {
+        out.push_str(
+            "pub fn configure_media_from_settings(_settings: &zk_contract_config::MediaSettings) -> Result<(), String> { Ok(()) }\n\n",
+        );
+    } else {
+        out.push_str("pub fn configure_media_from_settings(settings: &zk_contract_config::MediaSettings) -> Result<(), String> {\n");
+        out.push_str("    let api_key = settings.api_key.trim();\n");
+        out.push_str("    if api_key.is_empty() {\n        return Ok(());\n    }\n");
+        out.push_str("    let mut errors: Vec<String> = Vec::new();\n");
+        for (kind, field, crate_name) in &selected_media {
+            out.push_str(&format!(
+                "    let config = zk_kit_media::MediaConfig::new(zk_kit_media::MediaKind::{kind}.default_provider(), settings.base_url.trim(), api_key, settings.{field}.trim());\n"
+            ));
+            out.push_str(&format!(
+                "    if let Err(error) = {crate_name}::configure_from_config(&config) {{\n        errors.push(format!(\"{}: {{error:?}}\"));\n    }}\n",
+                kind.to_lowercase()
+            ));
+        }
+        out.push_str("    if errors.is_empty() {\n        Ok(())\n    } else {\n        Err(errors.join(\"; \"))\n    }\n}\n\n");
     }
     out.push_str("\n}\n\npub use inner::*;\n");
     Ok(out)
