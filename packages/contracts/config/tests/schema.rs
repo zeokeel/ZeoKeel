@@ -44,6 +44,15 @@ fn export_schema() {
         &schemars::schema_for!(zk_contract_config::EmbeddingSettings),
     );
 
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .join("shared/contracts/schema/embedding-settings.json");
+    let value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let dims = &value["properties"]["dims"];
+    assert_eq!(dims["minimum"], 1.0, "{dims}");
+    assert_eq!(dims["maximum"], 65_536.0, "{dims}");
+
     // The generated schema must bound the runtime range (UI/Ajv consumers rely
     // on it); Rust validation stays authoritative.
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");

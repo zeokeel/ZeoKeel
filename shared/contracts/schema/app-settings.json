@@ -286,7 +286,8 @@
             "null"
           ],
           "format": "uint64",
-          "minimum": 0.0
+          "maximum": 65536.0,
+          "minimum": 1.0
         },
         "dir": {
           "description": "Persistence directory for `vector-index.json`; empty = memory-only.",

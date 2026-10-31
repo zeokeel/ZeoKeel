@@ -361,7 +361,7 @@ impl AgentSettings {
 /// through the gateway (C7), and the generated glue never configures a local
 /// embedding provider there. `api_key` is write-only in the UI (`settings.get`
 /// masks it, like the chat provider key).
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
 pub struct EmbeddingSettings {
     /// OpenAI-compatible API root, e.g. `https://api.openai.com/v1`.
@@ -371,9 +371,30 @@ pub struct EmbeddingSettings {
     /// Embedding model id (e.g. `text-embedding-3-small`).
     pub model: String,
     /// Requested vector width (1..=65536), when supported by the endpoint.
+    #[schemars(range(min = 1, max = 65536))]
     pub dims: Option<u64>,
     /// Persistence directory for `vector-index.json`; empty = memory-only.
     pub dir: String,
+}
+
+impl std::fmt::Debug for EmbeddingSettings {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug = formatter.debug_struct("EmbeddingSettings");
+        debug
+            .field("base_url", &self.base_url)
+            .field(
+                "api_key",
+                &if self.api_key.is_empty() {
+                    ""
+                } else {
+                    "[redacted]"
+                },
+            )
+            .field("model", &self.model)
+            .field("dims", &self.dims)
+            .field("dir", &self.dir)
+            .finish()
+    }
 }
 
 impl EmbeddingSettings {

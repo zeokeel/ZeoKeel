@@ -1,9 +1,13 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/App";
 import { parseSettings } from "../src/protocol";
-import { readyTransport } from "./fixtures";
+import { META, readyTransport } from "./fixtures";
+
+afterEach(() => {
+  localStorage.removeItem("zk.enterprise.session");
+});
 
 describe("settings integration", () => {
   it("applies locale and theme after saving and shows a toast", async () => {
@@ -79,5 +83,32 @@ describe("update check", () => {
     await userEvent.click(await screen.findByRole("button", { name: "打开设置" }));
     await userEvent.click(await screen.findByRole("button", { name: "检查更新" }));
     expect(await screen.findByText("发现新版本 9.9.9")).toBeTruthy();
+  });
+});
+
+
+describe("enterprise settings (C7)", () => {
+  it("does not render embedding/vector index fields or their key input", async () => {
+    localStorage.setItem("zk.enterprise.session", JSON.stringify({
+      access_token: "enterprise-token",
+      refresh_token: "enterprise-refresh",
+      expires_in: 900,
+      user_id: "u1",
+      role: "employee",
+      username: "user",
+      device_name: "device",
+    }));
+    const transport = readyTransport([]);
+    transport.handle("meta.get", () => ({ ...META, edition: "enterprise" }));
+    render(<App transport={transport} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "打开设置" }));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(screen.queryByText("嵌入/向量索引")).toBeNull();
+    expect(screen.queryByLabelText("嵌入服务地址")).toBeNull();
+    expect(screen.queryByLabelText("嵌入 API Key")).toBeNull();
+    // The personal-only provider key UI is also not rendered in an enterprise composition;
+    // this personal-composition test only guarantees the embedding/local credential gate.
+    expect(screen.getByText("调度/自动化")).toBeTruthy();
   });
 });

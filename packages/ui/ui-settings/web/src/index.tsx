@@ -40,6 +40,8 @@ export interface SettingsDialogProps {
   renderProvider?: ((props: ProviderSettingsProps) => ReactNode) | undefined;
   updateText?: string | null;
   updateBusy?: boolean;
+  /** Personal only: render local embedding/vector-index credentials (C7). Default true. */
+  showEmbedding?: boolean;
   /** Enterprise only: render the login server address (docs/19 §3.3). */
   showServerUrl?: boolean;
   /** Channel-locked address (C14/ADR-042): read-only. */
@@ -85,6 +87,7 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
   };
 
   const isMock = form.providerKind === "mock";
+  const showEmbedding = props.showEmbedding ?? true;
   const fieldError = (error: SettingsFieldError): ReactNode =>
     error === null ? null : (
       <span className="text-[12px] text-destructive" role="alert">{t(error)}</span>
@@ -381,6 +384,7 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
               </div>
               <p className="mt-2 text-[12px] text-muted-foreground">{t("settingsToolsHint")}</p>
             </fieldset>
+            {showEmbedding ? (
             <fieldset className="rounded-document bg-muted p-4">
               <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
                 {t("settingsSectionEmbedding")}
@@ -442,6 +446,7 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
               </div>
               <p className="mt-2 text-[12px] text-muted-foreground">{t("settingsEmbeddingHint")}</p>
             </fieldset>
+            ) : null}
 
             {saveError !== null ? (
               <p

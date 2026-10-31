@@ -303,6 +303,20 @@ fn embedding_settings_defaults_validation_and_legacy_parse() {
             "scheme {base_url} must be rejected"
         );
     }
+    let configured = EmbeddingSettings {
+        base_url: "https://api.example.invalid/v1".to_owned(),
+        api_key: "sk-super-secret".to_owned(),
+        model: "text-embedding-3-small".to_owned(),
+        dims: Some(8),
+        dir: String::new(),
+    };
+    let debug = format!("{configured:?}");
+    assert!(
+        !debug.contains("sk-super-secret"),
+        "Debug leaked key: {debug}"
+    );
+    assert!(debug.contains("[redacted]"), "{debug}");
+
     let invalid_app = AppSettings {
         embedding: EmbeddingSettings {
             dims: Some(0),

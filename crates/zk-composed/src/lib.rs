@@ -125,21 +125,15 @@ pub fn configure_capabilities_from_env() {
     }
 }
 
-pub fn configure_embedding_from_settings(settings: &zk_contract_config::EmbeddingSettings) {
+pub fn configure_embedding_from_settings(settings: &zk_contract_config::EmbeddingSettings) -> Result<(), String> {
     let api_key = settings.api_key.trim();
     if api_key.is_empty() {
-        return;
+        return Ok(());
     }
     let dims = settings.dims.and_then(|value| usize::try_from(value).ok());
     let config = zk_kit_media::EmbeddingConfig::new(settings.base_url.trim(), api_key, settings.model.trim(), dims);
-    match zk_kit_media::embedding_model_from_config(&config) {
-        Ok(model) => {
-            if let Err(error) = zk_cap_vector::configure_with_dir(model, settings.dir.trim()) {
-                eprintln!("zk: embedding configure failed (zk_cap_vector): {error:?}");
-            }
-        }
-        Err(error) => eprintln!("zk: embedding configure failed (zk_kit_media): {error:?}"),
-    }
+    let model = zk_kit_media::embedding_model_from_config(&config).map_err(|error| format!("embedding model: {error:?}"))?;
+    zk_cap_vector::configure_with_dir(model, settings.dir.trim()).map_err(|error| format!("vector store: {error:?}"))
 }
 
 

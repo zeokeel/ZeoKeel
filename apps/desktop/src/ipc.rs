@@ -241,6 +241,37 @@ pub(crate) fn apply_persisted_schedule(
     }
 }
 
+/// Boot path for the embedding provider.
+///
+/// Personal edition: load the saved settings and apply them (propagating a
+/// failed config so `main` records it in `meta.get.agent_config_error`).
+/// Enterprise: never hold/persist a local provider (C7) — ignore it and clear
+/// any stale personal-edition values from the settings file.
+pub(crate) fn configure_persisted_embedding(runtime: &zk_composed::Runtime) -> Result<(), String> {
+    if zk_composed::EDITION != "personal" {
+        let mut settings = runtime
+            .settings()
+            .load()
+            .map_err(|error| format!("settings load: {error}"))?;
+        if settings.embedding != zk_contract_config::EmbeddingSettings::default() {
+            settings.embedding = zk_contract_config::EmbeddingSettings::default();
+            runtime
+                .settings()
+                .save(&settings)
+                .map_err(|error| format!("clear persisted embedding provider: {error}"))?;
+            eprintln!(
+                "zk-desktop: cleared persisted embedding provider (enterprise is gateway-only, C7)"
+            );
+        }
+        return Ok(());
+    }
+    let settings = runtime
+        .settings()
+        .load()
+        .map_err(|error| format!("settings load: {error}"))?;
+    apply_embedding_settings(&settings)
+}
+
 /// Boot path: load persisted settings and publish the agent section only when
 /// the settings file was explicitly saved with non-default agent settings.
 ///
@@ -249,16 +280,24 @@ pub(crate) fn apply_persisted_schedule(
 pub(crate) fn apply_persisted_settings(
     runtime: &zk_composed::Runtime,
 ) -> Result<Option<ToolSettings>, String> {
-    let settings = runtime
+    let mut settings = runtime
         .settings()
         .load()
         .map_err(|error| format!("settings load: {error}"))?;
     let file_exists = settings_file_exists();
-    if zk_composed::EDITION == "personal" {
-        // Boot order: env-based capability configuration already ran in
-        // `boot_desktop`; explicit saved settings override it here.
-        if let Err(error) = apply_embedding_settings(&settings) {
-            eprintln!("zk-desktop: embedding settings not applied: {error}");
+    // Enterprise must never hold/persist a local embedding provider (C7):
+    // ignore and clear any stale personal-edition values.
+    if zk_composed::EDITION != "personal"
+        && settings.embedding != zk_contract_config::EmbeddingSettings::default()
+    {
+        settings.embedding = zk_contract_config::EmbeddingSettings::default();
+        match runtime.settings().save(&settings) {
+            Ok(()) => eprintln!(
+                "zk-desktop: cleared persisted embedding provider (enterprise is gateway-only, C7)"
+            ),
+            Err(error) => {
+                eprintln!("zk-desktop: failed to clear persisted embedding provider (C7): {error}")
+            }
         }
     }
     // A settings file (even one carrying the default schedule) is explicit:
@@ -1098,20 +1137,56 @@ fn masked_settings(settings: &AppSettings) -> Value {
     value
 }
 
-/// Apply the personal-edition embedding provider settings (C7: enterprise never
-/// configures a local embedding provider; the generated glue is a no-op there).
+/// Whether an embedding section carries any non-default configuration.
+fn embedding_attempted(embedding: &zk_contract_config::EmbeddingSettings) -> bool {
+    embedding.is_configured()
+        || !embedding.base_url.trim().is_empty()
+        || !embedding.model.trim().is_empty()
+        || embedding.dims.is_some()
+        || !embedding.dir.trim().is_empty()
+}
+
+/// Enterprise (C7) never accepts a local embedding provider; personal edition
+/// does. Pure helper so both editions are unit-testable.
+fn embedding_edition_rejection(
+    edition: &str,
+    embedding: &zk_contract_config::EmbeddingSettings,
+) -> Option<String> {
+    if edition == "personal" {
+        return None;
+    }
+    embedding_attempted(embedding).then(|| {
+        "embedding provider is personal-edition only; enterprise AI must use the gateway (C7)"
+            .to_owned()
+    })
+}
+
+/// Apply the embedding provider settings.
+///
+/// Personal edition validates and pushes the config into the generated glue
+/// (errors propagate to the caller: `settings.set` must not persist a failed
+/// config, boot records it as `agent_config_error`). Enterprise rejects any
+/// attempted local provider and otherwise no-ops (C7).
 pub(crate) fn apply_embedding_settings(settings: &AppSettings) -> Result<(), String> {
     settings
         .embedding
         .validate()
         .map_err(|error| format!("embedding settings: {error}"))?;
+    if let Some(rejection) = embedding_edition_rejection(zk_composed::EDITION, &settings.embedding)
+    {
+        return Err(rejection);
+    }
     if zk_composed::EDITION == "personal" {
-        zk_composed::configure_embedding_from_settings(&settings.embedding);
+        zk_composed::configure_embedding_from_settings(&settings.embedding)
+            .map_err(|error| format!("embedding settings: {error}"))?;
     }
     Ok(())
 }
 
 /// Keep stored write-only secrets when the UI sends a masked (empty) value.
+///
+/// The embedding key is only kept for personal edition: enterprise must never
+/// retain an upstream embedding key (C7).
 fn keep_existing_secrets(settings: &mut AppSettings, existing: Option<&AppSettings>) {
     let Some(existing) = existing else {
         return;
@@ -1119,7 +1194,7 @@ fn keep_existing_secrets(settings: &mut AppSettings, existing: Option<&AppSettin
     if settings.provider.api_key.trim().is_empty() {
         settings.provider.api_key = existing.provider.api_key.clone();
     }
-    if settings.embedding.api_key.trim().is_empty() {
+    if zk_composed::EDITION == "personal" && settings.embedding.api_key.trim().is_empty() {
         settings.embedding.api_key = existing.embedding.api_key.clone();
     }
 }
@@ -1365,6 +1440,10 @@ mod tests {
     use base64::Engine;
     use std::io::Write;
 
+    /// Serializes tests that mutate the process-wide `ZEOKEEL_HOME` (settings
+    /// store/session DB resolution happens at runtime-build time).
+    static HOME_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     fn zip_bytes(entries: &[(&str, &[u8], Option<u32>)]) -> Vec<u8> {
         let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
         for (name, content, mode) in entries {
@@ -1560,6 +1639,21 @@ mod tests {
         invalid.embedding.base_url = "ftp://example.invalid".to_owned();
         assert!(super::apply_embedding_settings(&invalid).is_err());
         assert!(super::validate_settings(&invalid).is_err());
+
+        // Glue-level failure (key present, model empty) propagates so
+        // settings.set can reject and skip the save.
+        let mut missing_model = settings.clone();
+        missing_model.embedding.model = String::new();
+        assert!(super::apply_embedding_settings(&missing_model).is_err());
+
+        // Enterprise (C7) rejects any attempted local embedding provider.
+        assert!(super::embedding_edition_rejection("enterprise", &settings.embedding).is_some());
+        assert!(super::embedding_edition_rejection(
+            "enterprise",
+            &zk_contract_config::EmbeddingSettings::default()
+        )
+        .is_none());
+        assert!(super::embedding_edition_rejection("personal", &settings.embedding).is_none());
     }
 
     #[test]
@@ -1623,6 +1717,60 @@ mod tests {
     }
 
     #[test]
+    fn settings_set_rejects_failed_embedding_without_persisting() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-settings-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", &home);
+        let state = super::AppState::new(zk_composed::build().expect("composed build"));
+
+        // Establish the persisted settings file with defaults.
+        let saved = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SETTINGS_SET,
+            &serde_json::json!({"settings": zk_contract_config::AppSettings::default()}),
+        );
+        assert!(saved.ok, "{:?}", saved.error);
+        let before = state.runtime().settings().load().unwrap();
+        assert_eq!(
+            before.embedding,
+            zk_contract_config::EmbeddingSettings::default()
+        );
+
+        // Configured key + empty model: validation passes but the glue fails.
+        let mut invalid = before.clone();
+        invalid.embedding = zk_contract_config::EmbeddingSettings {
+            base_url: "https://api.example.invalid/v1".to_owned(),
+            api_key: "sk-invalid-key".to_owned(),
+            model: String::new(),
+            dims: None,
+            dir: String::new(),
+        };
+        let response = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SETTINGS_SET,
+            &serde_json::json!({"settings": invalid}),
+        );
+        assert!(!response.ok, "failed embedding config must be rejected");
+        assert!(
+            response
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("embedding")),
+            "{:?}",
+            response.error
+        );
+        // The store still holds the last successfully saved settings.
+        let after = state.runtime().settings().load().unwrap();
+        assert_eq!(
+            after.embedding,
+            zk_contract_config::EmbeddingSettings::default()
+        );
+        std::env::remove_var("ZEOKEEL_HOME");
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
     fn agent_settings_apply_to_the_runtime_registry_and_validate() {
         let mut settings = zk_contract_config::AppSettings::default();
         settings.agent.completion.temperature = Some(0.25);
@@ -1674,6 +1822,7 @@ mod tests {
 
     #[test]
     fn installs_valid_archive_and_rejects_hostile_entries() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
         let home = std::env::temp_dir().join(format!("zk-skill-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&home).unwrap();
         std::env::set_var("ZEOKEEL_HOME", &home);

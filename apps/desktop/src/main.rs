@@ -173,6 +173,10 @@ fn boot_desktop() -> Result<(Arc<AppState>, zk_bootstrap::Bootstrap), String> {
     apply_persisted_provider(&runtime);
     let persisted_settings = ipc::apply_persisted_settings(&runtime);
     let state = AppState::new(runtime);
+    if let Err(error) = ipc::configure_persisted_embedding(state.runtime()) {
+        eprintln!("zk-desktop: embedding settings not applied: {error}");
+        state.record_agent_config_error(error);
+    }
     match persisted_settings {
         Err(error) => {
             eprintln!("zk-desktop: settings from persisted settings not applied: {error}");
