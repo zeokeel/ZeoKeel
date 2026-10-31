@@ -58,6 +58,24 @@ jobs:
           cargo run -q -p zk -- compose --edition enterprise --profile default --channel official
           pnpm --dir apps/desktop/web build
           pnpm --dir apps/admin/web build
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Local PostgreSQL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql
+          sudo systemctl start postgresql
+          sudo -u postgres psql -c "SELECT version();"
+      - name: Build server
+        run: cargo build -p zk-server
+      - name: Server integration (real PG, auth/billing/audit)
+        run: bash scripts/srv-auth-test.sh
+
   e2e:
     runs-on: ubuntu-24.04
     steps:
