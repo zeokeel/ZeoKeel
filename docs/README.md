@@ -58,6 +58,7 @@
 | 27 | 工作区与对话归属（workspace-scoped） | `26` | 存储引擎见 `24` §7；UX 见 `19` |
 | 28 | UI 设计系统 / UI 包组合 / 渠道品牌 logo | `27` | UI 包见 `16`；渠道见 `23`；视觉 UX 见 `19` |
 | 29 | UI 模块地图与 UX 骨架（合并/拆分） | `28` | 包/槽位见 `16`；视觉见 `27`；工作区见 `26` |
+| 30 | 已知限制与 UNVERIFIED 清单（发布/交付/功能残余唯一真源） | 根 `KNOWN-LIMITATIONS.md` | `40` 只做摘要并链接；`37` 发布清单只引用 |
 
 ### 2.1 冲突裁决
 
@@ -158,6 +159,7 @@
 | `26` | 工作区与对话 | 中 |
 | `27` | UI 设计系统 | 中 |
 | `28` | UI 模块地图/UX 骨架 | 中 |
+| `40` | 已知限制（摘要；正文唯一真源为根 `KNOWN-LIMITATIONS.md`） | 短 |
 | `PLAN` | 总规划 | 中 |
 
 ## 6. 维护规则
@@ -177,3 +179,4 @@
 - [1.0 发布清单](37-release-1.0-checklist.md)
 - [Agent runtime（rig）](38-agent-runtime.md)
 - [Agent prompts（DSH 参考）](39-agent-prompts.md)
+- [已知限制（摘要）](40-known-limitations.md) → 正文 [`KNOWN-LIMITATIONS.md`](../KNOWN-LIMITATIONS.md)

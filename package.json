@@ -1,7 +1,7 @@
 {
   "name": "zeokeel",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0-rc.1",
   "packageManager": "pnpm@12.16.1",
   "scripts": {
     "compose": "cargo run -p zk -- compose --edition personal --profile default --channel official",
