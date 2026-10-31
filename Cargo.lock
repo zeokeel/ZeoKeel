@@ -9617,9 +9617,6 @@ dependencies = [
 [[package]]
 name = "zk-ui-connectors"
 version = "1.0.0-rc.1"
-dependencies = [
- "zk-contract-ui",
-]
 
 [[package]]
 name = "zk-ui-inspector"
