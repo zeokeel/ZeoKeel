@@ -11,13 +11,39 @@ targets = [
 ]
 
 [advisories]
-unmaintained = "all"
-unsound = "all"
-# Transitive "unmaintained" advisories from the desktop keychain stack
-# (keyring -> secret-service -> zbus -> zvariant/zvariant_derive 5.x). cargo-deny
-# reports "no safe upgrade"; keyring 4 is the maintained API and the crates are
-# not exposed to untrusted input. Re-evaluate on the next keyring/zbus upgrade.
-ignore = ["RUSTSEC-2026-0370", "RUSTSEC-2026-0372"]
+# RC.1 policy: block vulnerabilities; surface unmaintained/unsound transitive crates
+# as warnings (wasmtime 50 / Tauri 2.7 / keyring 4 pin sets offer no safe upgrade).
+# Ignored vulnerability advisories below affect APIs this codebase does not use;
+# each has a narrow, documented rationale and a post-RC upgrade path.
+unmaintained = "warn"
+unsound = "warn"
+ignore = [
+  # zip 4.6: affected APIs are ZipArchive::extract / ZipStreamReader::extract.
+  # zk-* never calls extract(); it iterates by_index + enclosed_name and rejects
+  # hostile entries explicitly (gate 4 + zk-kit-tools hostile-entry tests).
+  "RUSTSEC-2026-0367",
+  "RUSTSEC-2026-0368",
+  "RUSTSEC-2026-0369",
+  # zstd 0.13 via wasmtime-internal-cache: only decompresses wasmtime's own local
+  # module cache (self-produced). wasmtime 50 pins zstd 0.13, so the fixed 0.14
+  # line cannot be selected without a wasmtime major upgrade (post-RC).
+  "RUSTSEC-2026-0391",
+  "RUSTSEC-2026-0395",
+  "RUSTSEC-2026-0396",
+  "RUSTSEC-2026-0397",
+  "RUSTSEC-2026-0398",
+  "RUSTSEC-2026-0399",
+  "RUSTSEC-2026-0400",
+  "RUSTSEC-2026-0401",
+  "RUSTSEC-2026-0402",
+  "RUSTSEC-2026-0403",
+  "RUSTSEC-2026-0404",
+  "RUSTSEC-2026-0405",
+  "RUSTSEC-2026-0406",
+  # keyring/zbus transitive unmaintained (no safe upgrade; local keychain only).
+  "RUSTSEC-2026-0370",
+  "RUSTSEC-2026-0372",
+]
 
 [licenses]
 confidence-threshold = 0.93
