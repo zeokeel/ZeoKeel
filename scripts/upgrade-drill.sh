@@ -173,15 +173,53 @@ if [[ "$ASSET_RC" -ne 0 ]]; then
 fi
 record client-sha256 pass "$(tr '\n' ' ' < "$TMP/asset-check.txt")"
 
+# Local artefacts may be deliberately small test fixtures rather than release packages.
+PLACEHOLDER="$(python3 - "$MANIFEST" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.load(open(sys.argv[1], encoding="utf-8"))
+small = []
+for asset in manifest.get("assets") or []:
+    name = asset.get("name") or "?"
+    size = asset.get("size")
+    if isinstance(size, int) and size < 4096:
+        small.append(f"{name}={size}B")
+print(",".join(small))
+PY
+)"
+if [[ -n "$PLACEHOLDER" ]]; then
+  record release-artifact unverified "placeholder client asset(s) in deploy/updates: $PLACEHOLDER; real dist (build-dist.sh) required for a real upgrade drill"
+else
+  record release-artifact pass "manifest assets are non-placeholder"
+fi
+
+# Dry-run can still validate the deploy backup/restore scripts locally.
+BACKUP_LAYOUT=0
+for script in deploy/scripts/backup.sh deploy/scripts/restore.sh; do
+  if [[ ! -f "$script" ]]; then record backup-layout fail "missing $script"; BACKUP_LAYOUT=1; continue; fi
+done
+if [[ "$BACKUP_LAYOUT" -eq 1 ]]; then
+  fail "deploy/scripts backup/restore scripts missing" "backup-layout"
+fi
+if bash -n deploy/scripts/backup.sh && bash -n deploy/scripts/restore.sh; then
+  record backup-layout pass "deploy/scripts/backup.sh + restore.sh present and syntax-clean"
+else
+  fail "deploy/scripts backup/restore syntax error" "backup-layout"
+fi
+
 if ! command -v docker >/dev/null 2>&1; then
+  record docker-drill unverified "docker unavailable on this host: real image upgrade/rollback drill requires a Docker host (CI path)"
   record backup-docker unverified "docker unavailable on this host"
   record upgrade-rollback-restore unverified "docker unavailable; use --docker on a Docker host"
   unverified_exit "docker unavailable: backup/upgrade/rollback/restore not executed (docs/11 §5 UNVERIFIED)"
 fi
 if [[ "$MODE" != "docker" ]]; then
+  record docker-drill unverified "dry-run: run --docker --dist <dist> on a Docker host for the real drill"
   record backup-docker unverified "dry-run does not touch Docker"
   record upgrade-rollback-restore unverified "dry-run does not execute upgrade/rollback/restore"
-  unverified_exit "dry-run: only local manifest/asset checks executed; run --docker for the real drill"
+  unverified_exit "dry-run: only local manifest/asset/backup-layout checks executed; run --docker for the real drill"
 fi
 
 # ---------------------------------------------------------------- docker drill

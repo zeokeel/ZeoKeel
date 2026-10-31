@@ -1,41 +1,47 @@
 # 2026-10-30-hardening-release · 验收（M6）
 
-- 状态：`blocked`（环境阻塞；脚本不再 false-green）
-- 具体阻塞：本机无 Docker/trivy/证书/三平台 runner，cargo deny/audit/pnpm audit 不可用/无网络；13 项安全门禁与交付物无法验证。
-- 验收人：pending
-- 证据目录：`target/evidence/m6/`
+- 状态：`blocked`（环境/实现阻塞项 UNVERIFIED；本地可执行项本轮已实跑，见下表，未 false-green）
+- 本轮证据：2026-10-31，HEAD `d0a1c95` + `1.0.0-rc.1` 发布工程未提交改动（worktree）
+- 验收人：pending（独立评审 `docs/reviews/2026-10-30-m6-implementation.md` 结论仍 CHANGES-REQUESTED，待复评）
+- 证据目录：`target/evidence/m6/`、`target/evidence/release-1.0-rc1/security/`
+- 13 项安全门禁唯一真源：`docs/21` §10；可执行实现：`scripts/security-audit.sh`
 
-## 1. 自动验证（每项 exact command + 阈值/失败即红）
+## 1. 自动验证（本轮实跑；exit 语义见 docs/11 §5）
 
-| # | 命令 | 通过条件 | 证据 |
+| # | 命令 | 本轮结果（exit） | 证据 |
 | --- | --- | --- | --- |
-| 1 | `bash scripts/security-audit.sh` | 13 项 JSON，0 高危，status=pass | `target/evidence/m6/security.json` |
-| 2 | `bash scripts/backup-restore.sh` | restore→migrate→start→login/smoke→reconcile/audit pass | `backup-restore.log` |
-| 3 | `bash scripts/upgrade-drill.sh --full` | backup→upgrade→rollback→restore pass；Docker 子项 UNVERIFIED | `upgrade-full.log` |
-| 4 | `bash scripts/fault-injection.sh` | kill -9/PG stop/disk/audit fail 矩阵 pass；每项一致性断言 | `fault-injection.json` |
-| 5 | `bash scripts/perf-budget.sh` | server ready ≤2s、health p95 ≤50ms、admin ≤400KB gzip、desktop ≤500KB gzip、mock 首 token ≤300ms；镜像/网关记录 | `perf.json` |
-| 6 | `bash scripts/reproducible-build.sh` | 两次冷构建 zk/server/desktop/admin dist sha 完全一致（镜像 UNVERIFIED） | `reproducible.json` |
-| 7 | axe 矩阵 | admin/client/portal 每页 0 serious/critical；Tab/Esc/⌘K/focus/reduced motion/zh-en | screenshots + axe.json |
-| 8 | SBOM/license | 每产物 CycloneDX + license allowlist；deep OEM 包子集 | `SBOM/` |
-| 9 | `python3 scripts/docs-check.py` / `spec-check.py` / `review-check.py` | 0 errors | 日志 |
-| 10 | 独立评审 | APPROVED | `docs/reviews/2026-10-30-m6-implementation.md` |
+| 1 | `bash scripts/security-audit.sh` | **exit 2 unverified**：13 项 7 pass / 0 fail / 6 unverified（overall 不为 pass） | `target/evidence/m6/security/{security.json,security-audit.md,logs/}` |
+| 1b | `ZEOKEEL_SECURITY_STRICT=1 bash scripts/security-audit.sh` | **exit 1 fail**（strict：unverified 视为 fail） | `target/evidence/m6/security-strict/security.json` |
+| 2 | `bash scripts/backup-restore.sh` | **exit 2 unverified**：12 checks 9 pass / 3 unverified | `target/evidence/m6/backup-restore.json`、`m6/backup/` |
+| 3 | `bash scripts/upgrade-drill.sh`（dry-run） | **exit 2 unverified**：manifest/schema/asset/backup-layout pass；Docker drill + 占位资产 unverified | `target/evidence/m6/upgrade-drill.json` |
+| 3b | `bash scripts/upgrade-drill.sh --docker --dist <dist>` | 未执行：本机无 docker/dist（CI 可执行路径） | — |
+| 4 | `bash scripts/fault-injection.sh` | **exit 2 unverified**：7 pass / 5 unverified | `target/evidence/m6/fault-injection.json` |
+| 5 | `bash scripts/perf-budget.sh` | **exit 2 unverified**：本机预算项全过；image/500-user unverified | `target/evidence/m6/perf.json` |
+| 6 | `bash scripts/reproducible-build.sh` | **exit 2 unverified**：4 artifacts 两次构建一致 / 2 unverified（image tar、严格 flag 集） | `target/evidence/m6/reproducible.json` |
+| 7 | `bash scripts/admin-e2e.sh`（m6-a11y 矩阵） | 上轮 e2e：11 passed（含 admin a11y/portal axe）；client 全页矩阵未全量 | `target/evidence/release-check/e2e/admin-e2e.log` |
+| 8 | `bash scripts/sbom.sh <out>` | 源码 SBOM pass；personal/enterprise CycloneDX 已产出；产物级 SBOM unverified | `target/evidence/release-1.0-rc1/sbom/`、`m6/security/sbom.json` |
+| 9 | `python3 scripts/docs-check.py` / `spec-check.py` / `review-check.py` | 0 errors / 0 warnings；review-check ok（27 records） | 本地运行 |
+| 10 | 独立评审 | M6 实现评审 CHANGES-REQUESTED（2026-10-30）；威胁模型评审记录待产出（A7） | `docs/reviews/2026-10-30-m6-implementation.md` |
 
-## 1.1 实测证据（2026-10-30）
+## 1.1 本轮关键实测值（2026-10-31）
 
-- `security-audit.sh`：26 findings，high_fail=0；`target/evidence/m6/security.json`
-- `backup-restore.sh`：32 tables restore + login smoke；PITR/WAL UNVERIFIED
-- `upgrade-drill.sh --full`：backup + dry-run upgrade/readyz；Docker 真升级 UNVERIFIED
-- `fault-injection.sh`：DB down→readyz 非 200、audit 表缺失→用户创建非 200、kill -9 重启行数一致
-- `perf-budget.sh`：ready 976ms、health p95 0.95ms、admin 107895B、desktop 269444B gzip；pass
-- `reproducible-build.sh`：zk 两次 sha 一致；server/desktop/镜像 UNVERIFIED
-- `admin-e2e.sh`：11 passed（含 m6 a11y 全管理台 + M5 portal）
-- `login-e2e.sh`：4 passed；server/desktop 日志 grep token=0
-- `cargo test --workspace` / clippy：pass
+- perf：server ready 993ms、health p95 0.61ms、admin initial gzip 112419B、desktop initial gzip 345968B、mock first token 83.47ms、gateway p50 87.46ms / p95 122.66ms。
+- backup/restore：source ready 1048ms、restore ready 470ms；users=2/audit=1/ledger=0/tables=32 回灌一致；audit hash-chain 0 broken；truncated dump 被 pg_restore 拒绝。
+- fault injection：DB down→`/readyz` 503 且可恢复；audit 写失败→用户创建 HTTP 500 且 0 行写入（fail-closed）；kill -9 后 users/audit 行数不变、chain 完整；SIGTERM 10s 内退出。
+- reproducible：zk `10953b6a…`、zk-server `6c77dc57…`、zk-desktop `a9659bc9…` 两次 clean build sha 一致；admin dist 3 文件两次构建一致。
+- security 13 项：pass = 2（auth/JWT/CSRF/RBAC）、3（SSRF+rebinding）、4（zip/WASM）、5（command/input）、11（隐私口径）、12（日志/错误 secrets）、13（弱管控声明）；unverified = 1（威胁模型评审）、6（密钥生命周期）、7（WORM 锚定）、8（依赖审计工具）、9（产物 SBOM）、10（镜像扫描）。
 
-## 2. UNVERIFIED（环境阻塞，不得写 complete）
+## 2. UNVERIFIED（环境/实现阻塞，不得写 complete）
 
-- Docker 镜像扫描/save/load/compose/PITR 实跑；三平台安装包；macOS 公证；镜像 tar 可复现；500 用户压测。
+- 安全：威胁模型独立评审（A7）；`cargo deny/audit`、`pnpm audit --prod`（本机未安装/无网络，CI `security.yml`）；镜像扫描（无 docker/trivy/镜像）；产物级 SBOM。
+- 密钥：master.key 文件/加密/轮换未实现（上游 key 明文 `api_key_enc`，`docs/07`“未决”）；JWT/更新签名轮换无本地演练；WORM 每日锚定未实现。
+- 备份：WAL/PITR（`archive_mode=off`）、age/KMS 加密 + 异地、master.key 文件恢复。
+- 升级：Docker 镜像 load/upgrade/rollback/restore（本机无 Docker/dist）；`deploy/updates/` 仍为 18B 占位客户端资产（build-dist 真实 dist 后才有意义）。
+- 性能/容量：镜像体积、500 用户压测（无 harness/key）。
+- 交付：三平台安装包、macOS 公证、Windows 真机、真实 provider/媒体在线（唯一真源 `KNOWN-LIMITATIONS.md` §2）。
+- 评审：M6 实现复评、威胁模型评审未出（release-reviewer/A7）。
 
 ## 3. 说明
 
-- 失败即红；P1 issue 需 owner/复评；环境项保持 UNVERIFIED。
+- 失败即红；环境项保持 UNVERIFIED；13 项门禁真源见 `docs/21` §10。
+- 本 acceptance 只按本轮证据更新，不回写历史结论；`blocked` 保留到 13 项 + Docker/PITR/评审全部转 pass。
