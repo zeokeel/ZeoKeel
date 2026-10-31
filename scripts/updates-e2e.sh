@@ -32,11 +32,15 @@ sudo -u postgres psql -Atq -c "CREATE ROLE $ROLE LOGIN PASSWORD '$ROLE';"; sudo 
 # the enterprise binary before invoking this script).
 COMPOSITION="$(bash scripts/ensure-enterprise-composition.sh)" \
   || { echo "updates-e2e: cannot compose the enterprise server (A18)" >&2; exit 2; }
+echo "updates-e2e: composition=$COMPOSITION"
 if [[ "$COMPOSITION" == "composed-enterprise" || ! -x target/debug/zk-server ]]; then
   cargo build -q -p zk-server
 fi
+echo "updates-e2e: starting enterprise server"
 ZEOKEEL_DATABASE_URL="postgres://$ROLE:$ROLE@127.0.0.1:5432/$DB" ZEOKEEL_SERVER_ADDR="127.0.0.1:$PORT" ZEOKEEL_UPDATE_DIR=deploy/updates ./target/debug/zk-server >/tmp/zk-updates.log 2>&1 & SERVER_PID=$!
-for _ in $(seq 1 40); do curl -fsS "$BASE/healthz" >/dev/null 2>&1 && break; sleep 0.25; done
+ready=0
+for _ in $(seq 1 80); do if curl -fsS "$BASE/healthz" >/dev/null 2>&1; then ready=1; break; fi; sleep 0.25; done
+if [[ "$ready" != "1" ]]; then echo "updates-e2e: server readiness timeout; log:" >&2; cat /tmp/zk-updates.log >&2; exit 1; fi
 curl -fsS "$BASE/api/updates/manifest" -H 'X-ZeoKeel-Client: 0.1.0;official;linux-x64;dev' | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["channel_id"]=="official" and d["edition"]=="enterprise"'
 CODE=$(curl -sS -o /tmp/zk-updates-mismatch.json -w '%{http_code}' "$BASE/api/updates/manifest" -H 'X-ZeoKeel-Client: 0.1.0;oem-demo;linux-x64;dev'); [[ "$CODE" == "409" ]]
 # Below min_supported -> 426 CLIENT_TOO_OLD (docs/04 §2.7 / docs/09 §7.3).

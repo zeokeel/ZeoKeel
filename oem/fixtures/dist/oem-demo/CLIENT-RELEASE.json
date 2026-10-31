@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "channel_id": "oem-demo",
+  "edition": "enterprise",
+  "client_version": "0.1.0",
+  "server_version": "0.1.0",
+  "assets": [
+    {
+      "name": "AcmeKeel.AppImage",
+      "sha256": "76237ff0b33be6135b367266d04e402b77183f90889fd41acfba46c7503f0e8b",
+      "size": 12
+    }
+  ]
+}

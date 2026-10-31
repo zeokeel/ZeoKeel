@@ -33,9 +33,9 @@ sudo -u postgres psql -v ON_ERROR_STOP=1 -Atqc "CREATE ROLE $ROLE LOGIN PASSWORD
 sudo -u postgres createdb -O "$ROLE" "$DB"
 
 cargo run -q -p zk -- compose --edition enterprise --profile default --channel official >/dev/null
-cargo build -q -p zk-server -p zk-desktop
 pnpm --dir apps/desktop/web build >/dev/null
 pnpm --dir apps/admin/web build >/dev/null
+cargo build -q -p zk-server -p zk-desktop
 
 rm -rf target/evidence/round6/upgrade-home
 mkdir -p target/evidence/round6/upgrade-home

@@ -29,3 +29,7 @@ target/evidence/
 # playwright local artifacts
 test-results/
 playwright-report/
+
+# OEM delivery e2e fixture (test-only, not a release artifact; build-dist rejects fixtures/)
+!oem/fixtures/dist/
+!oem/fixtures/dist/**

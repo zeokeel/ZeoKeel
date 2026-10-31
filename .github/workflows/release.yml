@@ -166,7 +166,7 @@ jobs:
       - uses: pnpm/action-setup@v4
         with: { version: "12.16.1" }
       - uses: actions/setup-node@v4
-        with: { node-version: "22", cache: "pnpm" }
+        with: { node-version: "22" }
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - name: Compose selected edition x channel

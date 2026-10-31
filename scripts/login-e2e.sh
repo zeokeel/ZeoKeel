@@ -71,9 +71,9 @@ HTTPServer(("127.0.0.1", 8801), H).serve_forever()
 PYOAUTH
 python3 /tmp/zk-oauth-server.py >/dev/null 2>&1 & OAUTH_PID=$!
 cargo run -q -p zk -- compose --edition enterprise --profile default --channel official >/dev/null
-cargo build -q -p zk-server -p zk-desktop
 pnpm --dir apps/desktop/web build >/dev/null
 pnpm --dir apps/admin/web build >/dev/null
+cargo build -q -p zk-server -p zk-desktop
 sudo -u postgres psql -Atq -c "CREATE ROLE $ROLE LOGIN PASSWORD '$ROLE';"
 sudo -u postgres createdb -O "$ROLE" "$DB"
 # Security round-2 fixtures (docs/21 §10): loopback plaintext fake upstream needs the
