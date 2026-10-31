@@ -331,7 +331,7 @@ curl -fsS https://$DOMAIN/healthz  # 门户下载页即落地页
 > 覆盖 **Cargo.lock 全部 crate**（name/version/checksum + workspace package license，来自
 > `cargo metadata --no-deps --offline`）与 **pnpm workspace 直接包**（`pnpm-workspace.yaml` globs 下的
 > package.json name/version/license，purl 为 `pkg:npm/...`）。CI docker job 产出
-> `target/evidence/sbom/zeokeel-enterprise.cdx.json` 并上传 artifact。**限制**：pnpm transitive 依赖
+> `target/evidence/sbom/zeokeel-enterprise.cdx.json` 并上传 artifact。**限制**：components 来自全 workspace Cargo.lock + pnpm direct 定义，personal/enterprise 输出可能相同（edition 仅校验组合，不做过滤）；pnpm transitive 依赖
 > （需 pnpm-lock 解析）尚未纳入；Docker 镜像内 SBOM 与「SBOM 打包进交付 tar」仍由 release/build-dist
 > 流程处理，当前 **UNVERIFIED**；`--check` 只证明生成确定性，不证明镜像内容。
 
