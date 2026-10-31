@@ -76,7 +76,108 @@ fn persistent_shell_keeps_state() {
             .unwrap();
     assert!(second.contains("/sub"));
     assert!(second.contains(":ok"));
-    zk_kit_tools::persistent::close_all();
+    zk_kit_tools::persistent::close(&context).unwrap();
+}
+
+#[test]
+fn persistent_sessions_are_independent() {
+    use zk_kit_tools::persistent::ShellKind;
+    let (dir, mut context) = ctx();
+    context.conversation_id = "multi-session".to_owned();
+    std::fs::create_dir_all(dir.join("alpha")).unwrap();
+    std::fs::create_dir_all(dir.join("beta")).unwrap();
+    let _ = zk_kit_tools::persistent::run_in_session(
+        &context,
+        ShellKind::Bash,
+        "one",
+        "cd alpha",
+        5000,
+    );
+    let _ =
+        zk_kit_tools::persistent::run_in_session(&context, ShellKind::Bash, "two", "cd beta", 5000);
+    let one = zk_kit_tools::persistent::run_in_session(
+        &context,
+        ShellKind::Bash,
+        "one",
+        "printf '%s' \"$PWD\"",
+        5000,
+    )
+    .unwrap();
+    let two = zk_kit_tools::persistent::run_in_session(
+        &context,
+        ShellKind::Bash,
+        "two",
+        "printf '%s' \"$PWD\"",
+        5000,
+    )
+    .unwrap();
+    assert!(one.contains("/alpha"));
+    assert!(two.contains("/beta"));
+    let mut listed = zk_kit_tools::persistent::list_sessions(&context, ShellKind::Bash);
+    listed.sort();
+    assert_eq!(listed, vec!["one".to_owned(), "two".to_owned()]);
+    assert!(zk_kit_tools::persistent::close_session(&context, ShellKind::Bash, "one").unwrap());
+    assert!(!zk_kit_tools::persistent::is_session_open(
+        &context,
+        ShellKind::Bash,
+        "one"
+    ));
+    let again = zk_kit_tools::persistent::run_in_session(
+        &context,
+        ShellKind::Bash,
+        "two",
+        "printf '%s' \"$PWD\"",
+        5000,
+    )
+    .unwrap();
+    assert!(again.contains("/beta"));
+    zk_kit_tools::persistent::close_session(&context, ShellKind::Bash, "two").unwrap();
+}
+
+#[test]
+fn persistent_session_cap_is_enforced() {
+    use zk_kit_tools::persistent::ShellKind;
+    let (_dir, context) = ctx();
+    let mut open = Vec::new();
+    for index in 0..zk_kit_tools::persistent::MAX_SESSIONS_PER_CONVERSATION {
+        let session = format!("cap-{index}");
+        zk_kit_tools::persistent::open_session(&context, ShellKind::Bash, &session).unwrap();
+        open.push(session);
+    }
+    let error = zk_kit_tools::persistent::open_session(&context, ShellKind::Bash, "cap-over")
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("session limit"), "unexpected error: {error}");
+    for session in open {
+        zk_kit_tools::persistent::close_session(&context, ShellKind::Bash, &session).unwrap();
+    }
+}
+
+#[test]
+fn pwsh_session_is_honest_about_availability() {
+    use zk_kit_tools::persistent::ShellKind;
+    let (_dir, context) = ctx();
+    match zk_kit_tools::persistent::open_session(&context, ShellKind::Pwsh, "pw") {
+        Ok(_) => {
+            let out = zk_kit_tools::persistent::run_in_session(
+                &context,
+                ShellKind::Pwsh,
+                "pw",
+                "Write-Output 'zk-pwsh-ok'",
+                10_000,
+            )
+            .unwrap();
+            assert!(out.contains("zk-pwsh-ok"));
+            zk_kit_tools::persistent::close_session(&context, ShellKind::Pwsh, "pw").unwrap();
+        }
+        Err(error) => {
+            let message = error.to_string();
+            assert!(
+                message.contains("TOOL_UNSUPPORTED_PLATFORM"),
+                "unexpected pwsh error: {message}"
+            );
+        }
+    }
 }
 
 #[test]

@@ -2,7 +2,7 @@
 
 # Package Index
 
-edition `personal` · channel `official` · 55 packages
+edition `personal` · channel `official` · 56 packages
 
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
@@ -32,6 +32,7 @@ edition `personal` · channel `official` · 55 packages
 | `tool.jobs.kill` | `zeokeel/tool-job-kill` | `zk-tool-job-kill` | `zk-contract-tool` | singleton |
 | `tool.jobs.list` | `zeokeel/tool-job-list` | `zk-tool-job-list` | `zk-contract-tool` | singleton |
 | `tool.jobs.output` | `zeokeel/tool-job-output` | `zk-tool-job-output` | `zk-contract-tool` | singleton |
+| `tool.mcp` | `zeokeel/connector-mcp` | `zk-connector-mcp` | `zk-contract-tool` | singleton |
 | `tool.present` | `zeokeel/tool-present` | `zk-tool-present` | `zk-contract-tool` | singleton |
 | `tool.pwsh` | `zeokeel/tool-pwsh` | `zk-tool-pwsh` | `zk-contract-tool` | singleton |
 | `tool.pwsh_persistent` | `zeokeel/tool-pwsh-persistent` | `zk-tool-pwsh-persistent` | `zk-contract-tool` | singleton |

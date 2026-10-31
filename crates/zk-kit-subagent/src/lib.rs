@@ -34,6 +34,18 @@ pub trait SubagentRunner: Send + Sync {
         self.run(prompt, context, depth)
     }
 
+    /// Run one turn with a **fresh** child conversation (B4): implementations must
+    /// not reuse the previous round's conversation/memory. The default delegates to
+    /// [`Self::run`] for runners without per-round isolation.
+    fn run_fresh(
+        &self,
+        prompt: &str,
+        context: &TurnContext,
+        depth: usize,
+    ) -> Result<String, String> {
+        self.run(prompt, context, depth)
+    }
+
     /// Start a background child and return its id without waiting.
     ///
     /// # Errors

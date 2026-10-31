@@ -118,6 +118,10 @@ pub trait ServerPackage {
 - 结构化日志（tracing）+ 请求 ID + 用户 ID（脱敏）；管理台可查最近错误。
 - 审计：谁在何时做了什么（管理操作、审批、下发），只追加；**哈希链必选 + WORM** 见 `21` §7。
 - 指标：HTTP QPS/延迟、网关上游延迟与错误、余额阻断次数、队列深度、DB 连接池、WASM 执行数。
+- **网关上游连接复用（2026-10-31 性能修复）**：网关使用进程级单一 `reqwest::Client`（连接池、`redirect(Policy::none())`），
+  每个 provider 的 timeout 在单次请求上设置；**禁止每请求重建 client**（曾因 TLS/连接器初始化把 500 用户 smoke 的网关吞吐
+  压在 ~12 settled req/s）。PG 连接池默认 `max_connections=16`（`zk-srv-http::connect`）；本地 500 用户 / 50 并发 smoke
+  实测 98.4 settled req/s、gateway p95 46.5ms（预算 5s），该池非瓶颈；真实部署容量仍 UNVERIFIED（见 `KNOWN-LIMITATIONS` §2）。
 - `/healthz`（进程活着）、`/readyz`（DB 就绪 + 迁移完成 + 必需包 Active）。
 - 备份：`pg_dump` + `/data`（应用 SQLite/日志）；**master.key 单独离线保管，不放进备份包**；恢复流程见 `20` §3。
 - 升级：停服 → 备份 → **离线导入镜像（`docker load`）** → 改 `SERVER_IMAGE` → `docker compose up -d` → 迁移自动执行 → `/readyz` 校验 → 失败回滚镜像与备份（见 `09` §7.2，禁止自动拉取/自动升级）。

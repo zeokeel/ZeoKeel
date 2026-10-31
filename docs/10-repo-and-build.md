@@ -95,6 +95,28 @@ profile 在 edition 解析结果之上做环境覆盖（`profiles/base.toml` →
 规则：**基线 `personal × default × official` 的产物入库**；其它组合在 CI 内生成不提交；头部
 `@generated` + `@edition/@profile/@channel`（`24` §1.2/§3）；`--check` 防手改；生成顺序确定（按包 id 排序、无时间戳）。
 
+### 4.1 A18：个人基线不生成服务端，服务端构建/运行必须先 enterprise compose
+
+`edition = personal`（入库基线，`targets = ["desktop"]`）由 `zk compose` 生成 **stub** `apps/server/src/main.rs`
+（打印 "server target is not part of the personal composition" 并 `exit 2`）与零 srv 依赖的 `apps/server/Cargo.toml`。
+因此任何**构建或运行 `zk-server`**（或依赖服务端的管理台）的 CI job / 本地脚本都必须：
+
+```bash
+cargo run -q -p zk -- compose --edition enterprise --profile default --channel official   # 前置
+cargo build -p zk-server
+# 本地/交互式使用后恢复入库基线：
+cargo run -q -p zk -- compose --edition personal --profile default --channel official
+# 或 scripts/restore-baseline.sh（也会恢复 A18 stub main.rs 并 compose --check）
+```
+
+- CI：`ci.yml` integration、`security.yml` 在 build 前 compose enterprise，并断言二进制非 stub
+  （`cargo tree -p zk-server` 含 `zk-srv-http`、二进制不含个人版 stub 标记）；job 一次性，无需恢复。
+- 脚本：`scripts/ensure-enterprise-composition.sh` 统一前置；`scripts/{srv-auth-test,apps-e2e,updates-e2e}.sh`
+  与 `scripts/load-smoke.sh --local` 自行 compose 时在 EXIT trap 调 `scripts/restore-baseline.sh`。
+- release：`release.yml` 已按所选 edition compose（仅 enterprise 构建 server）。
+- 细节/门禁真值见 `docs/18` §7.3。
+
+
 ## 5. 工具链与依赖钉死
 
 - Rust `1.99.1`（`rust-toolchain.toml` 固定；≥1.97.1 是 rig 0.45 MSRV / edition 2024；本机与 CI 同版本）。

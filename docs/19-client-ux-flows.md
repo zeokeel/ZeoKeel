@@ -129,6 +129,16 @@ Boot
 - OEM 词条只覆盖 `brand.*`；缺键构建失败；`lang` 属性、locale 切换持久化、CJK 字体回退。
 - RTL：M1 不做，但布局不得写死 `left/right`（用 logical properties），M6 再支持。
 - 主题：token 包 + 深浅色；OEM accent；图表/代码高亮同样走 token。
+- **rc.1 现状（B12 矩阵，可执行）**：`e2e/m1-a11y.spec.ts` 覆盖 client `serve`（空态/聊天/设置/命令面板/检查器），
+  断言 0 serious/critical + 首 Tab 跳过链接、Tab 顺序命名/可见焦点、Esc 关闭且焦点回位、⌘K/Ctrl+B 键盘路径、
+  `prefers-reduced-motion` 生效；`e2e/m6-a11y.spec.ts` 覆盖 admin 登录页 + 10 个页面 + 键盘焦点，以及静态
+  `deploy/portal/index.html`（`lang`/axe/键盘）；`e2e/m5-portal.spec.ts` 覆盖 runtime portal `/portal`（axe + `lang` +
+  键盘可见焦点）。门禁仍以 `11` 的 serious/critical 为准；证据
+  `target/evidence/release-1.0-rc1/phase-b/b12b14/`。真实 Tauri WebView / 三平台矩阵仍属 M6 平台项（UNVERIFIED）。
+- **性能 / 真实环境 harness（B14，可执行、按环境降级）**：`scripts/real-provider-smoke.sh`（真实 provider/媒体/
+  embedding 在线调用；无 key 时显式打印 UNVERIFIED 并 exit 2，禁止 mock 冒充）、`scripts/load-smoke.sh`（对本机
+  `serve`/server 做并发 smoke，目标 500 虚拟用户并报 p50/p95/错误率）。本机基线证据
+  `target/evidence/release-1.0-rc1/phase-b/b14-perf/`、`b12b14/`；**产品容量对真实部署仍 UNVERIFIED**。
 
 ## 7. 平台集成与本地载体安全
 
@@ -184,3 +194,12 @@ Boot
 - 设置页“调度/自动化”：开关 `enabled` + 扫描间隔 `scan_seconds`（秒，5..=3600）。
 - 优先级：显式保存的设置（包括默认 `disabled/10`）> 无设置文件时的 `ZEOKEEL_ENABLE_SCHEDULE_AUTORUN` env fallback。
 - 保存后热生效：执行器常驻内核任务，disabled 时 idle；开关/间隔更新无需重启。UI 当前不展示 env fallback 的 effective 状态（fresh install 仍按 env 运行；用户保存后以设置为准）。
+
+## 网络搜索设置（R9.3/B11）
+
+- 设置页“网络搜索”：端点 `base_url`（**仅 https**，可留空）+ 请求超时 `timeout_ms`（ms，1000..=120000，默认 15000）。
+- 优先级：显式保存的设置 > `ZEOKEEL_SEARCH_URL` env fallback > 内置 DuckDuckGo 默认端点；空 `base_url` 表示“不覆盖”（env/默认生效），超时无 env fallback（设置或 15000）。
+- 生效方式：桌面在 `settings.set`/启动时发布非密 `RuntimeSettings.web_search`；`tool-web-search` 在每次调用时解析（无需重启），不回显、不落任何搜索凭据（该端点无密钥）。
+- 校验：非 https/非法 URL、超时越界由 `settings.set` 拒绝且不保存；UI 同步给出字段错误。
+- 版本：工具出口端点不是 AI provider，C7（企业 AI 只走网关）不适用；C6 弱管控不限制工具出口，故 personal/enterprise 均可配置。
+

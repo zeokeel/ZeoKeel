@@ -108,7 +108,11 @@
 **实现状态（M2）**：上游路由来自 DB `models`→`providers`（priority/timeout_secs/max_retries，迁移 0015），
 按 provider 重试后跨 provider failover（5xx/超时），env 只作为 bootstrap fallback；管理面提供
 `GET/POST/PATCH /api/admin/providers`、`GET /api/admin/models`、`PUT /api/admin/models/{model}`（key 掩码、审计 fail-closed）。
-**未决**：上游 key 目前在 server 侧明文 `api_key_enc`（API 掩码），master-key 加密/轮换需要单独 ADR。
+**实现（1.0.0-rc.1）**：provider key 以 `master.key` 版本化 AEAD 加密存 `providers.api_key_enc`
+（AES-256-GCM，格式 `vN:<base64(nonce||ct)>`；新写用最高版本、解密按前缀选版本；legacy 明文只读+告警，admin update 重加密；
+无 key 时新写 fail-closed）。上游 URL 严格校验：仅 `https://` 公网 host（loopback `http://` 仅本地 dev flag
+`ZEOKEEL_ALLOW_INSECURE_UPSTREAM=1`），拒绝 userinfo/私网/loopback/link-local/metadata/local/internal host；
+网关 `reqwest` 不跟随重定向。轮换/演练见 `21` §3 与 `scripts/master-key-rotate.sh`。
 
 **错误**：不向上游细节；`MODEL_NOT_FOUND`、`MODEL_NOT_PRICED`、`WALLET_EXHAUSTED`、`RATE_LIMITED`、
 `UPSTREAM`（可重试标记）。
@@ -150,6 +154,68 @@
 - 管理员配置 stdio 命令/参数/环境变量，或 http URL；员工只看到"启用/停用"与状态。
 - 员工启用后，客户端执行本地 stdio 或连接远程；OAuth 公共客户端 + PKCE，授权码在客户端完成，令牌本地保存；服务端只存连接器定义/公共客户端元数据（无 client_secret）。
 - 更新：管理员改配置 → 客户端强制拉新配置并重启该连接器；审计记录。
+
+### 6.1 实现状态（2026-10-31，`1.0.0-rc.1`，B16/R9.6，phase-3 final，B15 收敛）
+
+客户端 transport 包：`zeokeel/connector-mcp` / crate `zk-connector-mcp`（role `tool.mcp`，四件套：
+`zk.toml` + `zk-contract-connector::{McpServerConfig,ConnectorConfig,ConnectorCatalogItem}` + 测试 + README；
+构建期组合，无运行期插件加载）。
+
+- **已实现并测试（phase-3）**：
+  - stdio JSON-RPC（`initialize` + `notifications/initialized`、`tools/list`、`tools/call`）：spawn 配置
+    command/args（无 shell 拼接）、`env_clear` 后只注入 allow-list env（键名含 secret/token/password 等被拒绝，
+    ADR-060）、逐请求超时、子进程 drop 时 kill + reap、不打印/记录 token 或 env。
+  - **HTTP(S) POST**（JSON 与 `text/event-stream` 响应解析）：TLS 用 `reqwest` + rustls；`MCP_HTTPS_UNSUPPORTED`
+    已移除，https 正常路径有测试覆盖（本地 TCP 探针断言 TLS ClientHello）。
+  - **配置 passthrough（客户端侧）**：`servers_from_catalog` 把企业 catalog `{"items":[{id,name,transport,
+    enabled,config:{command,args,env,url,timeout_ms}}]}` 映射为 MCP server；secret-looking env 拒绝、disabled 跳过；
+    `update_from_catalog`/`clear_catalog_config` 为配置安装/清理入口（本地 fallback `ZEOKEEL_MCP_SERVERS`）。
+  - **会话生命周期/force-update**：每个 connector 只 `initialize` 一次并复用会话；配置 fingerprint 变化或
+    `update_from_catalog`/`reload_connectors` 触发会话重启（下一调用重新 initialize）。
+  - 暴露给 agent：`mcp_call` + `mcp_list_tools`（`extra_tools()` 经既有 glue 注册；未配置/未知 server/不可达 ⇒
+    `MCP_CAPABILITY_UNAVAILABLE` 诚实不可用）。
+  - **OAuth 2.0 公共客户端 + PKCE（R9.6，`apps/desktop/src/mcp_oauth.rs`）**：生成 PKCE S256（verifier 43–128 字符 +
+    `BASE64URL(SHA256)`），绑定 **127.0.0.1 临时端口** loopback redirect（`/callback`，RFC 8252）并打开系统浏览器；
+    收到授权码后校验 `state`，再用 `code_verifier` 换取 token（`reqwest` + rustls，token endpoint 不跟随重定向）。
+    `refresh_token` 轮换保留旧值兜底；整体流程超时（默认 180s，30..=600 可配）。token 只经既有 keychain IPC
+    `oauth.save` 落盘；`oauth.status` 只回 `idle|pending|authorized|failed` + 稳定错误码（不含 token），错误不携带响应体。
+    IPC：`oauth.authorize`（后台启动，立即返回）/`oauth.status`（轮询）/`oauth.refresh`（后台轮换）。端点校验复用契约
+    `ConnectorOAuth::validate`（https；http 仅 loopback；拒绝 userinfo/fragment；redirect 非 loopback 拒绝）。
+  - **OAuth token 注入 MCP HTTP**：`zk_connector_mcp::set_oauth_token(server_id, Option<String>)`（内存、无 Debug/日志）
+    仅对 `oauth_required` 的 http(s) server 注入 `Authorization: Bearer <token>`；无 token ⇒ `MCP_OAUTH_REQUIRED`
+    （诚实不可用，不发请求）；非 OAuth server 永不携带该头；`update_from_catalog` 只保留仍存在的 connector token，
+    `clear_catalog_config`/logout/IPC `oauth.clear` 清除；desktop 登录/catalog 同步后从 keychain 重新注入。
+  - 测试：`cargo test -p zk-connector-mcp`（16 tests：fake stdio server list/call/timeout/malformed/nonzero-exit/config、
+    catalog 映射/secret 拒绝、会话复用与 force-update 重启、HTTP JSON/SSE、TLS ClientHello、OAuth 注入/清除/
+    `MCP_OAUTH_REQUIRED`/retain 语义）；`cargo test -p zk-desktop mcp_oauth`（16 tests：RFC 7636 向量、loopback 临时端口、
+    fake OAuth server 全流程、state 不匹配、PKCE 拒绝、token 超时/500 不泄漏响应体、refresh 轮换与重用拒绝、IPC
+    authorize→status→keychain→refresh→clear）。无外部网络（仅 localhost fixture）。
+    证据 `target/evidence/release-1.0-rc1/phase-b/b16-oauth/`；安全门禁 gate5b（审计 JSON id 14）以 `cargo test -p
+    zk-connector-mcp` 为可执行证据。
+- **服务端/桌面接线（phase-3 已完成）**：
+  - 服务端 `GET /api/client/v1/connectors` 现下发 sanitize 后的非敏感 `config`（command/args/env allowlist/url/
+    timeout_ms；`authorize_url`/`token_url` 仅在 `oauth` 元数据中，secret 键剔除）；`scripts/srv-store-test.sh`
+    断言 catalog config 与无 secret。
+  - desktop `auth.configure`（登录/bootstrap/refresh）拉取 catalog → `zk_connector_mcp::update_from_catalog`；
+    logout → `clear_catalog_config`；更新事件可经 IPC `connectors.configure` / `connectors.reload` /
+    `connectors.clear` 触发（web 侧接线）。客户端单元测试覆盖 catalog→config 与 secret 拒绝。
+- **UNVERIFIED / 剩余**：
+  ① OAuth 流程与 token 注入已实现并有本地 fixture 测试，但**真实 IdP/provider 联调 UNVERIFIED**（本机无外部网络/
+    无真实 OAuth MCP server；需在带网络的验收环境执行一次真实 authorize→token→`mcp_call`）；标准 OAuth 元数据
+    discovery（`.well-known`）未实现，endpoint 由服务端 catalog 显式下发；
+  ② 连接器远端生命周期管理（长驻 server 进程守护/健康检查/崩溃重连）未实现：当前为按需会话 + 配置变更重启。
+
+### 6.2 威胁模型补充（MCP client transport）
+
+- `stdio` 只执行管理员/本地配置的 command + 原样 args（**不经 shell**）；env 仅 allow-list，静态 secret 被拒绝（ADR-060），
+  OAuth token 只在客户端 keychain，不写入 connector config/日志。
+- `http://` 仅允许 loopback/dev host（`localhost`/`127.*`/`::1`）；非 loopback 必须 `https://`，否则客户端拒绝
+  （`MCP_INSECURE_TRANSPORT`）。生产连接器应使用 https 或本地 stdio。
+- 连接器工具调用对 agent 可见（`mcp_call` mutating=true），企业弱管控下不做工具白名单（C6）；server 不代理 MCP 流量。
+- **OAuth 客户端**：公共客户端 + PKCE（无 `client_secret`，ADR-060）；redirect 仅 `http://127.0.0.1:<临时端口>/callback`
+  （listener 只绑 127.0.0.1，不绑 0.0.0.0）；`state` 不匹配/缺 code 立即失败并回 400 页面；token endpoint 禁用重定向
+  （防 SSRF 跳转）；`authorize_url`/`token_url` 必须 https（http 仅 loopback dev）；token 只存 keychain + transport 内存，
+  不写 config/日志，`oauth.status` 与错误码不含 token（错误只回 `OAUTH_TOKEN_HTTP_<status>`，不含响应体）。
 
 ## 7. WASM 应用中心
 

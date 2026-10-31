@@ -29,6 +29,12 @@ base_edition 链（personal）
   `compose --check` 只校验入库基线，非基线元组会被拒绝（避免用个人版基线比对其它 edition 的产物）。
 - 非基线 edition 中不存在的生成段必须由 writer 写成确定性的空实现（例如个人版 `apps/admin/web/src/generated/registry.ts`），
   不能残留其它 edition 的生成物；否则入库基线会夹带企业包（违反 C1）。
+- `edition.targets` 决定 app 产物：`personal` 为 `["desktop"]`（R8.2/F6，无 ADR 豁免），`enterprise` 为
+  `["server","desktop"]`（admin/门户为 server 内嵌产物）。`zk compose` 对未选中的 `server` target 生成
+  **trimmed 产物**：`apps/server/Cargo.toml` 无任何 `zk-srv-*` 依赖、`apps/server/src/main.rs` 为确定性 stub、
+  `apps/server/src/generated/packages.rs` 的 `PACKAGES` 为空；workspace 因 manifest 无 srv 依赖 + stub main 仍可编译。
+  非基线企业组合由 CI/构建脚本先 `zk compose` 再构建，生成完整 server manifest/main（template:
+  `tools/zk/templates/app_server*.Cargo.toml`、`app_server.main.rs`）；入库基线只含 personal trimmed 产物。
 - `zk compose/api` 的 `--channel` 必填（无默认），`--profile` 默认 `default`；`zk db lock` 只处理迁移，不需要 channel；生成物头部写 `@edition/@profile/@channel`。
 
 ### 1.3 解析输出（resolve report）
@@ -234,11 +240,11 @@ protected = false
 | 产物（路径） | 唯一 writer | `--check` 行为 |
 | --- | --- | --- |
 | `crates/zk-composed/{Cargo.toml,src/lib.rs}`（Rust glue） | `zk compose` | 生成到临时目录逐字节比较，不写 |
-| `apps/server/src/generated/`、`apps/admin/web/src/generated/` | `zk compose` | 同上 |
+| `apps/server/src/{generated/,main.rs}`（main 仅 server target；personal 为 stub）、`apps/admin/web/src/generated/` | `zk compose` | 同上 |
 | `apps/desktop/web/src/generated/`（UI registry、路由/命令表） | `zk compose` | 同上 |
 | `shared/contracts/{api-catalog,http-routes,openapi,permissions}.json` | `zk api`（读 `[[routes]]`）——**未实现（backlog）**，当前无此生成物 | — |
 | `shared/contracts/{ipc-commands,ui-contributions,ui-slots,roles,packages,i18n-catalog}.json` + `shared/ts/i18n.gen.ts` | `zk compose` | 同上 |
-| `apps/{desktop,server}/Cargo.toml` | `zk compose`（块内） | 块外不覆盖 |
+| `apps/{desktop,server}/Cargo.toml` | `zk compose`（按 `edition.targets` 选择完整/trimmed 模板） | 块外不覆盖 |
 | `zk.lock` | `zk db lock`（当前仅迁移锁；组合锁 `zk lock`/`verify-lock` **未实现（backlog）**） | `zk db lock --check` |
 | `metadata.snapshot.json` | `zk metadata snapshot`——**未实现（backlog）** | — |
 | `edition.gen.{rs,ts}` | `zk compose` | 同上 |

@@ -7,11 +7,11 @@ DSH reference: `research/dsh-agent-inventory.md` §2. Status is honest: implemen
 | bash | tool.bash | zeokeel/tool-bash | implemented | approval + background |
 | bash-persistent | tool.bash_persistent | zeokeel/tool-bash-persistent | implemented | same session cwd/env |
 | pwsh | tool.pwsh | zeokeel/tool-pwsh | implemented | platform gated |
-| pwsh-persistent | tool.pwsh_persistent | zeokeel/tool-pwsh-persistent | unsupported | explicit platform error |
+| pwsh-persistent | tool.pwsh_persistent | zeokeel/tool-pwsh-persistent | implemented | persistent pwsh session; TOOL_UNSUPPORTED_PLATFORM when pwsh missing |
 | fs read/write/edit/read_image | tool.fs/tool.fs-write/tool.fs-edit/tool.read_image | zeokeel/tool-fs* | implemented | read_image data URL |
 | fs-search glob/grep | tool.glob/tool.grep | zeokeel/tool-glob/tool-grep | implemented |  |
 | jobs output/list/kill | tool.jobs.* | zeokeel/tool-job-* | implemented | in-process registry |
-| terminal | tool.terminal | zeokeel/tool-terminal | partial | single session per conversation |
+| terminal | tool.terminal | zeokeel/tool-terminal | implemented | multi-session per conversation (open/status/send/close/list) |
 | todo | tool.todo | zeokeel/tool-todo | implemented |  |
 | ask-user | tool.ask_user | zeokeel/tool-ask-user | implemented | UI question card + IPC |
 | present | tool.present | zeokeel/tool-present | implemented |  |
@@ -19,14 +19,14 @@ DSH reference: `research/dsh-agent-inventory.md` §2. Status is honest: implemen
 | structured extraction | tool.extract | zeokeel/tool-extract | implemented | rig extractor runner |
 | web search | tool.web_search | zeokeel/tool-web-search | implemented | DuckDuckGo/HTTPS provider env |
 | skill | tool.skill | zeokeel/tool-skill | implemented | read-only |
-| goal | tool.goal | zeokeel/tool-goal | partial | no round driver |
+| goal | tool.goal | zeokeel/tool-goal | implemented | bounded round driver set/status/run/cancel; persisted rounds; max default 10 clamp 1..100; restart-safe |
 | schedule | tool.schedule | zeokeel/tool-schedule | implemented | desktop scheduler executes due intervals; AppSettings.agent.schedule {enabled,scan_seconds} (env fallback) |
 | session-query | tool.session_query | zeokeel/tool-session-query | implemented | search/read |
 | subagent | tool.subagent | zeokeel/tool-subagent | implemented | sync run + async subagent_start (background, id) |
 | subagent_fork | tool.subagent_fork | zeokeel/tool-subagent-fork | implemented | forks current conversation context |
 | subagent-control | tool.subagent_control | zeokeel/tool-subagent-control | implemented | list_agents (sync+async), subagent_status, subagent_interrupt; cap 8 |
 | workflow | tool.workflow | zeokeel/tool-workflow | implemented | linear + DAG topological order |
-| ralph | tool.ralph | zeokeel/tool-ralph | partial | bounded loop; no fresh context isolation |
+| ralph | tool.ralph | zeokeel/tool-ralph | implemented | bounded loop; every round runs in a fresh child context (B4 run_fresh) |
 | working-directory | tool.working_directory | zeokeel/tool-working-directory | implemented |  |
 | workspace-dependencies | tool.workspace_dependencies | zeokeel/tool-workspace-dependencies | implemented |  |
 | read document (PDF/EPUB) | tool.read_document | zeokeel/tool-read-document | implemented | PDF/EPUB positive + negative tests |
@@ -39,4 +39,4 @@ DSH reference: `research/dsh-agent-inventory.md` §2. Status is honest: implemen
 | rig hooks | agent.hooks | zeokeel/cap-hooks | implemented | HookEvent lifecycle; configure ZEOKEEL_AGENT_HOOKS_ENABLED |
 | call-timeout | - | agent-rig | implemented (exemption) | AppSettings.tools.tool_timeout_ms (ZEOKEEL_TOOL_TIMEOUT_MS fallback); agent-level policy, no separate package per C3 exemption |
 | tool-cordis | tool.cordis | zeokeel/tool-cordis | disabled | C2 forbids runtime plugin loading |
-| agent-team | tool.agent_team | zeokeel/tool-agent-team | experimental | explicit unsupported error |
+| agent-team | tool.agent_team | zeokeel/tool-agent-team | implemented | coordinator + async workers via kit.subagent; cap 8/depth 3; bounded aggregate wait, timeout interrupts workers |

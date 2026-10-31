@@ -95,6 +95,9 @@
 - 默认走 mock/replay（确定性、离线）；真模型测试单独 job，密钥隔离，按需跑。
 - 网关测试用假上游（本地 mock server），覆盖 OpenAI 兼容协议与流式。
 - e2e 不依赖公网；OEM 渠道测试用本地 fixture 客户仓。
+- B14 harness 语义：`scripts/real-provider-smoke.sh`（真实 provider/媒体/embedding）与 `scripts/load-smoke.sh`
+  （目标 500 并发 smoke）**必须有 key/环境才执行**；缺环境时显式 `UNVERIFIED` + exit 2（strict 场景计失败），
+  禁止用 mock/回放冒充真实调用、禁止把未跑成写成 pass。证据落 `target/evidence/release-1.0-rc1/phase-b/`。
 
 > 静态检查/类型/边界校验的全局规则见 `18-strictness.md`；本节只讲 UI 层。
 

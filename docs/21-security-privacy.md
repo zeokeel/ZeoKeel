@@ -144,7 +144,7 @@
 
 | # | 门禁 | 可执行命令 | 证据 | 本机 round-2 |
 | --- | --- | --- | --- | --- |
-| 1 | 威胁模型评审 + P0 缓解 | `docs/reviews/2026-10-31-threat-model.md` 必须含**精确整行** `- 威胁模型评审结论：APPROVED`（文件存在不算 pass） | `logs/01-threat-model.log` | unverified（评审者复评后写 marker） |
+| 1 | 威胁模型评审 + P0 缓解 | `docs/reviews/2026-10-31-threat-model.md` 必须含**精确整行** `- 威胁模型评审结论：APPROVED`（文件存在不算 pass） | `logs/01-threat-model.log`、`security2/security.json` gate 1 | pass（2026-10-31 复评 APPROVED，marker 已写入） |
 | 2 | 认证绕过 / JWT 吊销 / refresh reuse / CSRF / 越权矩阵 | `bash scripts/srv-auth-test.sh`（脚本内注入 loopback dev flag + 临时测试 master key） | `logs/02-auth-jwt-csrf-rbac.log` | pass（真实 PG） |
 | 3 | SSRF（上游 `base_url` 严格校验 + 重定向）+ 本地 `serve` rebinding | `cargo test -p zk-srv-gateway --lib -- security_round2_tests` + 脚本内置 provider CRUD 探针 + `zk-desktop --serve` Host/Origin/未认证 IPC 探针 | `logs/03-ssrf-rebinding.log` | pass（修复 P0-1） |
 | 4 | zip 穿越/炸弹/链接（客户端）+ WASM 逃逸/资源限额 | `cargo test -p zk-desktop --bin zk-desktop -- hostile_entries`; `cargo test -p zk-kit-tools --test kit rejects_traversal_and_absolute`; `cargo test -p zk-kit-wasm` | `logs/04-zip-wasm.log` | pass |
@@ -162,6 +162,12 @@
 **gate 3 SSRF 规则（P0-1，2026-10-31 修复）**：上游 `base_url` 仅允许 `https://<public host>`；`http://` 仅在显式 `ZEOKEEL_ALLOW_INSECURE_UPSTREAM=1` 时允许 loopback（本地 fake upstream/测试专用，部署禁用）；拒绝 userinfo、空 host、loopback/private/link-local/multicast/unspecified/保留段 IP（v4/v6 含 IPv4-mapped）、`localhost`/`*.localhost`/`*.local`/`*.internal`/`metadata`/`metadata.google.internal`/`instance-data`、数字混淆 host；网关 `reqwest` 统一 `redirect(Policy::none())`，不跟随 302/307。测试：`zk-srv-gateway` 单测矩阵 + `security-audit` provider CRUD 探针。
 
 **master.key（gate 6）**：`crates/zk-kit-server::master_key` 实现 AES-256-GCM 版本化密钥环，密文格式 `vN:<base64(nonce||ct)>`；密钥来源 `<ZEOKEEL_MASTER_KEY_DIR>/master.key.vN`（`master.key` = v1，0600，拒绝组/全局可读）或 env `ZEOKEEL_MASTER_KEY`（32B hex/base64，版本 `ZEOKEEL_MASTER_KEY_VERSION` 默认 1）。新写入用最高版本；解密按前缀选版本；旧明文字段（无 `vN:` 前缀）**可读但告警**，下次写入即加密。无密钥时**新写入 fail-closed**（`MASTER_KEY_UNAVAILABLE`），已有明文仍可读以兼容旧 e2e/DB。JWT 签名密钥/更新签名密钥轮换仍是离线/HSM 部署控制（无本地演练）。
+
+> **2026-10-31 最终本机快照**（HEAD `6d89107` + A18 worktree）：`bash scripts/security-audit.sh` 非 strict →
+> **exit 2、overall `unverified`、pass=10 / fail=0 / unverified=1（gate 8：本机无 cargo-deny/audit、pnpm 网络）/ unverified_external=3（gate 7/9/10）**；
+> gate 1（威胁模型 APPROVED）与 gate 14（B16 MCP transport）均为 `pass`。`ZEOKEEL_SECURITY_STRICT=1` 本机 exit 1
+> 仅因 gate 8/trivy 的 CI 前置未在本机；CI `security.yml` 提供这些前置后 strict 只应因 env-only 未验证而 exit 0。
+> 证据：`target/evidence/release-1.0-rc1/security2/security.json`、`security2-strict/security.json`、`target/evidence/m6/security/logs/`。
 
 执行要求：
 

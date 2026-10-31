@@ -30,7 +30,11 @@
 裁剪机制（**edition → profile → channel 三层，构建期固定**）：
 
 - `editions/enterprise.toml` 继承 `personal`，`exclude` 个人专属包，`[packages]` 追加/覆盖企业角色；`profiles/*` 只做环境覆盖；`channel` 注入品牌/默认值（含 `server_url`）。
-- 角色统一为 `llm.provider.default`（本地 provider ↔ `zeokeel/llm-gateway`）、`client.update`（GitHub ↔ 服务端）、`auth.client`；`targets` 统一为 `server,desktop,admin`（门户/webadmin 作为 server/admin 内嵌产物）。
+- 角色统一为 `llm.provider.default`（本地 provider ↔ `zeokeel/llm-gateway`）、`client.update`（GitHub ↔ 服务端）、`auth.client`；
+  `targets`：个人版 `["desktop"]`、企业版 `["server","desktop"]`（admin/门户作为 server 内嵌产物）。未选中的
+  `server` target 由 `zk compose` 生成 trimmed manifest/stub（**无 `zk-srv-*` 依赖、无服务端 glue**，R8.2/F6），
+   `release.yml` 的 `cargo build --release -p zk-server` 与 docker 镜像步骤均仅 `edition == 'enterprise'` 执行；
+   A18 测试断言 plan 闭包/生成物/发布 gating 三处（证据 `target/evidence/release-1.0-rc1/phase-a/a18/`）。
 - edition 事实由 `zk compose` 固化成常量 `edition.gen.{rs,ts}`（`EDITION`/`LOGIN_REQUIRED`/`PROVIDER_MODE`/`UPDATE_SOURCE`/`CHANNEL_ID`/`DEFAULT_SERVER_URL`），`--check` 字节比对；**禁止 Cargo feature 或运行期 env 切 edition**（理由同 `03-composition-and-ci.md` §2）。
 - 企业版能力**在服务端**：客户端二进制不含"解锁代码"；`zk plan --edition personal --profile default --channel official` 可证明服务端包/企业包不在闭包里。
 - 新增版本 = 新 edition + profile + channel；不改构建器、不加开关。
@@ -240,6 +244,8 @@ curl -fsS https://$DOMAIN/healthz  # 门户下载页即落地页
 
 **门户下载页**：`/` 与 `/portal` 为零脚本 HTML（CSP `default-src 'none'`）；员工从这里下载客户端安装包，下载卡片读镜像内
 `CLIENT-RELEASE.json` 并按渠道 `platforms` 收窄（未声明平台整块不渲染，不出现灰卡片）；管理入口只在页脚；品牌/主题构建期注入。
+语言：默认 zh-CN；`/portal/en` 为**追加**的英文变体（同样零脚本，语言切换只是 `<a href>`，两页互相 `hreflang` 链接），
+zh 页面内容/URL 不变（兼容既有书签与 e2e）。`deploy/portal/index.html` 静态占位页同时含 zh-CN 与 en 两段。
 
 **升级 / 回滚 / 备份**：完整流程、门禁、备份/PITR、runbook 见 [`20` §3–§4](20-operations.md)；本节只定义交付物（镜像/安装包/门户）与 `.env`。
 
