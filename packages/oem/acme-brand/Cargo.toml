@@ -4,6 +4,6 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 [dependencies]
-zk-contract-ui = { path = "../../contracts/ui" }
+zk-contract-ui = { path = "../../contracts/ui", version = "1.0.0-rc.1" }
 [lints]
 workspace = true

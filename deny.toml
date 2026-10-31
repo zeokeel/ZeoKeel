@@ -13,7 +13,11 @@ targets = [
 [advisories]
 unmaintained = "all"
 unsound = "all"
-ignore = []
+# Transitive "unmaintained" advisories from the desktop keychain stack
+# (keyring -> secret-service -> zbus -> zvariant/zvariant_derive 5.x). cargo-deny
+# reports "no safe upgrade"; keyring 4 is the maintained API and the crates are
+# not exposed to untrusted input. Re-evaluate on the next keyring/zbus upgrade.
+ignore = ["RUSTSEC-2026-0370", "RUSTSEC-2026-0372"]
 
 [licenses]
 confidence-threshold = 0.93
