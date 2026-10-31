@@ -370,10 +370,13 @@ $ python3 resolve.py hardened && cargo build --offline  # ok，但 Cargo.lock �
 ```yaml
 stages: validate → compose → build → test → matrix → package
 
+> **实现状态（2026-10-31）**：`zk api`（routes≥manifest 生成 api-catalog/openapi/permissions）、
+> `zk lock`/`zk verify-lock`（组合锁）、`zk metadata snapshot` **尚未实现**，因此不在当前 CI 命令中；
+> 上面示例保留为 M0 之后的计划形态。当前可执行门禁见 `AGENTS.md` §6 与 `.github/workflows/ci.yml`。
+
 jobs:
   manifests:        zk validate                       # 含契约唯一性（按 package id/source，fail closed）
   drift:            zk compose --edition personal --profile default --channel official --check
-                    zk api --edition personal --profile default --channel official --check
                     zk capability --check
                     zk docs --check
                     zk db lock --check
@@ -385,7 +388,7 @@ jobs:
   matrix-os:        strategy: matrix.os = [ubuntu, macos, windows]   # M0 起就跑 cargo check
   matrix:           strategy: matrix.profile = [default, mock, minimal, hardened]
                     strategy: matrix.channel = [official, beta, oem-demo]
-                    per profile/channel: compose → cargo build --offline → zk verify-lock
+                    per profile/channel: compose → cargo build --offline
                                  → verify-dist → Playwright(e2e) → 真应用冒烟
   swap:             strategy: matrix.swap = 生成的换包列表（见 6.2）
   external:         vendor/git 源 fixture 构建 + 负向测试（M0 只做 vendor 形态，见 6.5）

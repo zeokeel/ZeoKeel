@@ -433,6 +433,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn invalid_and_overlong_request_ids_are_replaced_consistently() {
+        let overlong = "a".repeat(129);
+        for invalid in ["bad id", "bad/id", "bad:id", overlong.as_str()] {
+            let (status, headers, body) = call_with_request_id(
+                gate_router(),
+                "/api/client/v1/workspaces",
+                Some("0.0.0;official;linux-x64;test"),
+                Some(invalid),
+            )
+            .await;
+            assert_eq!(status, StatusCode::UPGRADE_REQUIRED);
+            let value: Value = serde_json::from_slice(&body).expect("json");
+            let body_id = value["error"]["request_id"].as_str().expect("request id");
+            let header_id = headers
+                .get("x-request-id")
+                .and_then(|value| value.to_str().ok())
+                .expect("response request id");
+            assert_eq!(body_id, header_id, "{invalid:?}");
+            assert_ne!(body_id, invalid, "invalid id must not be reflected");
+            assert!(uuid::Uuid::parse_str(body_id).is_ok(), "{body_id}");
+        }
+    }
+
+    #[tokio::test]
+    async fn valid_request_id_charset_is_kept_verbatim() {
+        let (status, headers, body) = call_with_request_id(
+            gate_router(),
+            "/api/client/v1/workspaces",
+            Some("0.0.0;official;linux-x64;test"),
+            Some("A.z_9-valid"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UPGRADE_REQUIRED);
+        assert_eq!(
+            headers
+                .get("x-request-id")
+                .and_then(|value| value.to_str().ok()),
+            Some("A.z_9-valid")
+        );
+        let value: Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(value["error"]["request_id"], "A.z_9-valid");
+    }
+
+    #[tokio::test]
     async fn incoming_request_id_is_echoed_in_header_and_body() {
         let (status, headers, body) = call_with_request_id(
             gate_router(),

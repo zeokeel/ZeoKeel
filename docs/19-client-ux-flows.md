@@ -178,3 +178,9 @@ Boot
 - [ ] M1 页面六态 + 键盘/axe；审批卡读屏/超时通知为 M2。
 - [ ] 应用窗口 capability 隔离测试通过；`serve` Host/Origin/rebinding 测试通过。
 - [ ] i18n 缺词/复数/日期；OEM 覆盖缺键构建失败。
+
+## 调度/自动化设置
+
+- 设置页“调度/自动化”：开关 `enabled` + 扫描间隔 `scan_seconds`（秒，5..=3600）。
+- 优先级：显式保存的设置（包括默认 `disabled/10`）> 无设置文件时的 `ZEOKEEL_ENABLE_SCHEDULE_AUTORUN` env fallback。
+- 保存后热生效：执行器常驻内核任务，disabled 时 idle；开关/间隔更新无需重启。UI 当前不展示 env fallback 的 effective 状态（fresh install 仍按 env 运行；用户保存后以设置为准）。

@@ -497,10 +497,17 @@ pub fn request_id_from_headers(headers: &HeaderMap) -> String {
     headers
         .get("x-request-id")
         .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && value.len() <= 128)
+        .filter(|value| valid_request_id(value))
         .map(str::to_owned)
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
+}
+
+fn valid_request_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
+        })
 }
 
 /// Attach the response `X-Request-Id` when not already present.
@@ -983,6 +990,39 @@ mod request_context_tests {
         assert_eq!(request_id_from_headers(&headers), "req-123");
         let generated = request_id_from_headers(&HeaderMap::new());
         assert!(uuid::Uuid::parse_str(&generated).is_ok(), "{generated}");
+    }
+
+    #[test]
+    fn request_id_rejects_invalid_charset_and_overlong_values() {
+        let mut valid = HeaderMap::new();
+        valid.insert("x-request-id", HeaderValue::from_static("A.z_9-valid"));
+        assert_eq!(request_id_from_headers(&valid), "A.z_9-valid");
+
+        for invalid in ["bad id", "bad/id", "bad:id", "bad\tid", "é"] {
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                "x-request-id",
+                HeaderValue::from_str(invalid).expect("header value"),
+            );
+            let generated = request_id_from_headers(&headers);
+            assert!(
+                uuid::Uuid::parse_str(&generated).is_ok(),
+                "invalid {invalid:?} should generate UUID, got {generated}"
+            );
+        }
+        let mut overlong = HeaderMap::new();
+        overlong.insert(
+            "x-request-id",
+            HeaderValue::from_str(&"a".repeat(129)).expect("overlong header"),
+        );
+        let generated = request_id_from_headers(&overlong);
+        assert!(uuid::Uuid::parse_str(&generated).is_ok(), "{generated}");
+        let mut max = HeaderMap::new();
+        max.insert(
+            "x-request-id",
+            HeaderValue::from_str(&"a".repeat(128)).expect("max header"),
+        );
+        assert_eq!(request_id_from_headers(&max), "a".repeat(128));
     }
 
     #[test]

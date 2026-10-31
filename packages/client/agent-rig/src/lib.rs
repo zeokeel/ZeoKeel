@@ -950,6 +950,7 @@ fn prune_children(children: &mut HashMap<String, AsyncChild>) {
 struct TestHooks {
     hold: AtomicBool,
     panic: AtomicBool,
+    fail_spawn: AtomicBool,
 }
 
 #[cfg(test)]
@@ -1062,6 +1063,19 @@ impl RigSubagentRunner {
             live_threads: Arc::clone(&self.live_threads),
             active: true,
         })
+    }
+
+    /// Spawn one child thread; a cfg(test) hook can inject a deterministic
+    /// spawn failure so the no-slot-leak/no-record path is testable.
+    fn spawn_child<F>(&self, name: String, body: F) -> std::io::Result<std::thread::JoinHandle<()>>
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        #[cfg(test)]
+        if self.test_hooks.fail_spawn.load(Ordering::SeqCst) {
+            return Err(std::io::Error::other("injected spawn failure"));
+        }
+        std::thread::Builder::new().name(name).spawn(body)
     }
 
     /// Transition one finished child; returns the terminal state actually kept.
@@ -1177,57 +1191,52 @@ impl zk_kit_subagent::SubagentRunner for RigSubagentRunner {
         let id_for_thread = id.clone();
         let flag_for_thread = Arc::clone(&flag);
         let conversation_for_thread = child_conversation_id.clone();
-        let spawn = std::thread::Builder::new()
-            .name(format!("zk-subagent-{seq}"))
-            .spawn(move || {
-                let _slot_and_depth = ChildThreadGuard {
-                    live_threads,
-                    child_conversation_id: conversation_for_thread,
-                };
-                let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    #[cfg(test)]
-                    run_test_child_hooks(&hooks);
-                    let agent = RigAgent::new(model, tools)
-                        .map_err(|error| error.to_string())?
-                        .with_streaming(false)
-                        .with_cancel_flag(Arc::clone(&flag_for_thread));
-                    agent
-                        .run_in(&child_context, &prompt)
-                        .map(|reply| reply.text)
-                        .map_err(|error| error.to_string())
-                }));
-                let result = match outcome {
-                    Ok(result) => result,
-                    Err(payload) => {
-                        let message = panic_message(payload.as_ref());
-                        eprintln!(
-                            "zk-agent-rig: async subagent {id_for_thread} panicked: {message}"
-                        );
-                        Err(format!("subagent thread panicked: {message}"))
-                    }
-                };
-                let state = RigSubagentRunner::complete_child(
-                    &children,
-                    &id_for_thread,
-                    &flag_for_thread,
-                    result,
-                );
-                if state == ChildState::Cancelled {
-                    zk_kit_subagent::mark_cancelled(&id_for_thread);
-                } else {
-                    zk_kit_subagent::finish(&id_for_thread, state == ChildState::Done);
+        let spawn = self.spawn_child(format!("zk-subagent-{seq}"), move || {
+            let _slot_and_depth = ChildThreadGuard {
+                live_threads,
+                child_conversation_id: conversation_for_thread,
+            };
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                #[cfg(test)]
+                run_test_child_hooks(&hooks);
+                let agent = RigAgent::new(model, tools)
+                    .map_err(|error| error.to_string())?
+                    .with_streaming(false)
+                    .with_cancel_flag(Arc::clone(&flag_for_thread));
+                agent
+                    .run_in(&child_context, &prompt)
+                    .map(|reply| reply.text)
+                    .map_err(|error| error.to_string())
+            }));
+            let result = match outcome {
+                Ok(result) => result,
+                Err(payload) => {
+                    let message = panic_message(payload.as_ref());
+                    eprintln!("zk-agent-rig: async subagent {id_for_thread} panicked: {message}");
+                    Err(format!("subagent thread panicked: {message}"))
                 }
-            });
+            };
+            let state = RigSubagentRunner::complete_child(
+                &children,
+                &id_for_thread,
+                &flag_for_thread,
+                result,
+            );
+            if state == ChildState::Cancelled {
+                zk_kit_subagent::mark_cancelled(&id_for_thread);
+            } else {
+                zk_kit_subagent::finish(&id_for_thread, state == ChildState::Done);
+            }
+        });
         if let Err(error) = spawn {
+            // Spawn failed before a thread existed: release the reservation and
+            // drop the child record entirely (no phantom running/failed entry).
             lease.active = false;
             self.live_threads.fetch_sub(1, Ordering::SeqCst);
             zk_kit_subagent::clear_context_depth(&child_conversation_id);
-            zk_kit_subagent::finish(&id, false);
+            zk_kit_subagent::forget(&id);
             if let Ok(mut children) = self.children.lock() {
-                if let Some(child) = children.get_mut(&id) {
-                    child.state = ChildState::Failed;
-                    child.result = Some(Err(format!("spawn async subagent: {error}")));
-                }
+                children.remove(&id);
                 prune_children(&mut children);
             }
             return Err(format!("spawn async subagent: {error}"));
@@ -2152,11 +2161,13 @@ mod tests {
         let runner = RigSubagentRunner::new(model.into(), Vec::new());
         let hooks = runner.hooks();
         hooks.panic.store(true, Ordering::SeqCst);
+        let mut ids = Vec::new();
         for index in 0..(MAX_CHILD_RECORDS + 16) {
             let id = runner
                 .start(&format!("retained {index}"), &context(), 0)
                 .expect("start");
             let _ = wait_result(&runner, &id);
+            ids.push(id);
         }
         wait_live_threads(&runner, 0);
         let children = runner.children.lock().unwrap();
@@ -2170,7 +2181,136 @@ mod tests {
             zk_kit_subagent::list().len() <= zk_kit_subagent::MAX_AGENT_RECORDS,
             "kit registry must stay bounded"
         );
+        // Oldest finished ids are evicted: status becomes unknown (NotFound in
+        // the control tool), while the newest record is still queryable.
+        let oldest = ids.first().cloned().expect("first id");
+        let newest = ids.last().cloned().expect("last id");
+        assert!(runner.status(&oldest).is_none(), "oldest completed evicted");
+        assert!(runner.status(&newest).is_some(), "newest record retained");
         hooks.panic.store(false, Ordering::SeqCst);
+    }
+
+    #[test]
+    fn retention_evicts_oldest_completed_but_keeps_running() {
+        let model = MockCompletionModel::from_turns([MockTurn::text("x")]);
+        let runner = RigSubagentRunner::new(model.into(), Vec::new());
+        {
+            let mut children = runner.children.lock().unwrap();
+            children.insert(
+                "running-keep".to_owned(),
+                AsyncChild {
+                    seq: 0,
+                    depth: 1,
+                    prompt: "keep me".to_owned(),
+                    state: ChildState::Running,
+                    result: None,
+                    flag: Arc::new(AtomicBool::new(false)),
+                },
+            );
+            for index in 1..=(MAX_CHILD_RECORDS + 5) {
+                children.insert(
+                    format!("done-{index}"),
+                    AsyncChild {
+                        seq: u64::try_from(index).unwrap_or(u64::MAX),
+                        depth: 1,
+                        prompt: "done".to_owned(),
+                        state: ChildState::Done,
+                        result: Some(Ok("r".to_owned())),
+                        flag: Arc::new(AtomicBool::new(false)),
+                    },
+                );
+            }
+            prune_children(&mut children);
+            assert!(children.len() <= MAX_CHILD_RECORDS);
+        }
+        assert!(
+            runner.status("running-keep").is_some(),
+            "running entries are never evicted"
+        );
+        assert!(
+            runner.status("done-1").is_none(),
+            "oldest completed entries are evicted"
+        );
+        assert!(
+            runner
+                .status(&format!("done-{}", MAX_CHILD_RECORDS + 5))
+                .is_some(),
+            "newest completed entries are retained"
+        );
+    }
+
+    #[test]
+    fn async_spawn_failure_leaks_no_slot_or_record() {
+        let model = MockCompletionModel::from_turns([MockTurn::text("after spawn failure")]);
+        let runner = RigSubagentRunner::new(model.into(), Vec::new());
+        let hooks = runner.hooks();
+        hooks.fail_spawn.store(true, Ordering::SeqCst);
+        let error = runner.start("spawn fail", &context(), 0).unwrap_err();
+        assert!(error.contains("spawn async subagent"), "{error}");
+        assert_eq!(
+            runner.live_threads(),
+            0,
+            "failed spawn must not leak a slot"
+        );
+        assert!(
+            runner.children.lock().unwrap().is_empty(),
+            "failed spawn must not leave a child record"
+        );
+        assert!(
+            zk_kit_subagent::list()
+                .iter()
+                .all(|agent| agent.prompt != "spawn fail"),
+            "failed spawn must not leave a kit registry record"
+        );
+        // The runner is reusable after a spawn failure.
+        hooks.fail_spawn.store(false, Ordering::SeqCst);
+        let id = runner
+            .start("retry after failure", &context(), 0)
+            .expect("start");
+        let result = wait_result(&runner, &id);
+        assert_eq!(result, Ok("after spawn failure".to_owned()));
+        wait_live_threads(&runner, 0);
+        assert_eq!(runner.live_threads(), 0);
+    }
+
+    #[test]
+    fn async_real_thread_stress_respects_live_cap_and_legal_states() {
+        let model = MockCompletionModel::from_turns(
+            (0..48)
+                .map(|_| MockTurn::text("stress"))
+                .collect::<Vec<_>>(),
+        );
+        let runner = RigSubagentRunner::new(model.into(), Vec::new());
+        let mut ids = Vec::new();
+        for index in 0..40 {
+            match runner.start(&format!("stress {index}"), &context(), 0) {
+                Ok(id) => {
+                    assert!(
+                        runner.live_threads() <= MAX_ASYNC_SUBAGENTS,
+                        "live threads exceeded the cap"
+                    );
+                    if index % 2 == 0 {
+                        let _ = runner.interrupt(&id);
+                    }
+                    ids.push(id);
+                }
+                Err(error) => assert!(
+                    error.contains("concurrency limit"),
+                    "unexpected start error: {error}"
+                ),
+            }
+        }
+        wait_live_threads(&runner, 0);
+        assert_eq!(runner.live_threads(), 0, "stress run leaked live slots");
+        assert!(!ids.is_empty());
+        for id in &ids {
+            let status = runner.status(id).expect("record retained (<64 children)");
+            assert!(
+                matches!(status.status.as_str(), "done" | "failed" | "cancelled"),
+                "illegal terminal state: {}",
+                status.status
+            );
+        }
     }
 
     #[test]

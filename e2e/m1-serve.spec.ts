@@ -74,11 +74,40 @@ test.describe("M1 serve carrier (real dispatch + SQLite)", () => {
     await page.screenshot({ path: "target/evidence/m1/serve-inspector-changes-empty.png" });
   });
 
-  test("settings dialog opens in serve mode", async ({ page }) => {
+  test("settings persist the schedule config across reload (serve + SQLite)", async ({ page }) => {
     await page.goto(`${SERVE}/`, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /设置|Settings/ }).first().click();
     await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByText("调度/自动化")).toBeVisible();
+
+    const schedule = page.getByLabel("启用定时调度");
+    await expect(schedule).not.toBeChecked();
+    await schedule.check();
+    const scan = page.getByLabel("扫描间隔（秒，5-3600）");
+    await scan.fill("30");
+    await page.getByRole("button", { name: "保存" }).click();
+    await expect(page.getByText("设置已保存")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("dialog")).toBeHidden({ timeout: 20_000 });
+
+    // Reload the SPA (new boot) and reopen settings: the saved values must come back from disk.
+    await page.reload({ waitUntil: "networkidle" });
+    await page.getByRole("button", { name: /设置|Settings/ }).first().click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByLabel("启用定时调度")).toBeChecked();
+    await expect(page.getByLabel("扫描间隔（秒，5-3600）")).toHaveValue("30");
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toBeHidden();
+
+    // Optional cross-check through IPC (host persisted settings), not just the UI.
+    const response = await page.request.post(`${SERVE}/ipc`, {
+      data: { name: "settings.get", payload: {} },
+    });
+    expect(response.ok()).toBeTruthy();
+    const body: unknown = await response.json();
+    expect(body).toMatchObject({
+      ok: true,
+      data: { agent: { schedule: { enabled: true, scan_seconds: 30 } } },
+    });
+    await page.screenshot({ path: "target/evidence/m1/serve-settings-schedule.png" });
   });
 });

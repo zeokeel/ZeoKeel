@@ -197,7 +197,7 @@ cargo machete
 zk validate
 zk compose --edition personal --profile default --channel official --check
 zk compose --edition enterprise --profile default --channel official --check
-zk api --edition personal --profile default --channel official --check
+# zk api --edition ... --check  # 未实现（backlog，见 docs/24 §3）
 zk capability --check
 zk docs --check
 python3 scripts/review-check.py

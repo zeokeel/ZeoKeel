@@ -236,13 +236,13 @@ protected = false
 | `crates/zk-composed/{Cargo.toml,src/lib.rs}`（Rust glue） | `zk compose` | 生成到临时目录逐字节比较，不写 |
 | `apps/server/src/generated/`、`apps/admin/web/src/generated/` | `zk compose` | 同上 |
 | `apps/desktop/web/src/generated/`（UI registry、路由/命令表） | `zk compose` | 同上 |
-| `shared/contracts/{api-catalog,http-routes,openapi,permissions}.json` | `zk api`（读 `[[routes]]`） | 同上 |
+| `shared/contracts/{api-catalog,http-routes,openapi,permissions}.json` | `zk api`（读 `[[routes]]`）——**未实现（backlog）**，当前无此生成物 | — |
 | `shared/contracts/{ipc-commands,ui-contributions,ui-slots,roles,packages,i18n-catalog}.json` + `shared/ts/i18n.gen.ts` | `zk compose` | 同上 |
 | `apps/{desktop,server}/Cargo.toml` | `zk compose`（块内） | 块外不覆盖 |
-| `zk.lock` | `zk lock` | `zk verify-lock` 只校验 |
-| `metadata.snapshot.json` | `zk metadata snapshot`（离线构建用） | 只校验 |
+| `zk.lock` | `zk db lock`（当前仅迁移锁；组合锁 `zk lock`/`verify-lock` **未实现（backlog）**） | `zk db lock --check` |
+| `metadata.snapshot.json` | `zk metadata snapshot`——**未实现（backlog）** | — |
 | `edition.gen.{rs,ts}` | `zk compose` | 同上 |
-| `shared/contracts/errors.json` | `zk api`（从契约错误码枚举生成，`04` §7/§10） | 临时目录比较 |
+| `shared/contracts/errors.json` | `zk api`（从契约错误码枚举生成，`04` §7/§10）——**未实现（backlog）** | — |
 | `shared/contracts/events.json` | `zk compose`（事件 topic 注册表，`04` §8） | 同上 |
 | `shared/ts/*.ts` | `cargo test --workspace export_bindings`（ts-rs） | `git diff --exit-code` |
 | `shared/schema/*.json`、包内 `schema/*.json` | `cargo test --workspace export_schema`（schemars） | 同上 |
@@ -263,7 +263,7 @@ protected = false
 
 ## 4. 路由/命令真源时序
 
-- **静态真源**：`[[routes]]` / `[[commands]]` 在 manifest 中声明；`zk api` 在**不编译**的情况下生成 catalog/permissions（T0 可跑）。
+- **静态真源（未实现，backlog）**：`[[routes]]` / `[[commands]]` 在 manifest 中声明；`zk api` 在**不编译**的情况下生成 catalog/permissions（T0 可跑）。当前无 manifest 路由声明；服务端路由以各包 `routes()` 代码为真源，`zk api`/运行时 Register 对账尚待实现。
 - **运行期校验**：服务端 `Register()` 读取生成表，与包实际注册的路由逐项比对；缺 `api_version/rate_limit/step_up` 或多/少/方法冲突/路径冲突 → **拒启**。
 - 中间件顺序固定：request_id → auth → rate limit → body limit → permission → audit → handler；不允许包自定义全局顺序。
 - 客户端 IPC 同样：`commands.gen.ts` 与主进程 handler 表比对，缺一拒启/构建失败。

@@ -176,6 +176,13 @@ pub fn mark_cancelled(id: &str) {
     }
 }
 
+/// Remove one child record entirely (spawn failure / eviction).
+pub fn forget(id: &str) {
+    if let Ok(mut guard) = agents().lock() {
+        guard.retain(|agent| agent.id != id);
+    }
+}
+
 /// List known child runs (most recent last).
 #[must_use]
 pub fn list() -> Vec<AgentInfo> {
@@ -305,6 +312,14 @@ mod tests {
             "running child must not be evicted"
         );
         finish("bounded-running", true);
+    }
+
+    #[test]
+    fn forget_removes_one_child_record() {
+        register("forget-me", "c", 1, "x");
+        assert!(list().iter().any(|agent| agent.id == "forget-me"));
+        forget("forget-me");
+        assert!(!list().iter().any(|agent| agent.id == "forget-me"));
     }
 
     #[test]
