@@ -69,6 +69,7 @@
 - **R9.3 配置**：`docs/38` 记录为 env-only fallback 的 agent hooks/memory/web-search 等进入 `AppSettings` + 设置 UI（env 仅 fallback）；enterprise 按 C7 不适用的项在 UI 隐藏并拒绝。
 - **R9.4 可访问性/i18n**：client/admin/portal 关键页面 axe 矩阵（0 serious/critical）、Tab/Esc/⌘K/focus/reduced-motion、zh/en 文案完整（portal 至少 zh+en）。
 - **R9.5 真实环境**：真实 provider/媒体/embedding 在线调用与 500 用户压测提供可执行 harness（需要 key/环境的项标 UNVERIFIED，禁止 mock 冒充真实）。
+- **R9.6 连接器（MCP）客户端**：`docs/07` §6 声称客户端执行本地 stdio/http/sse 连接器、OAuth 公共客户端 + PKCE 令牌本地；当前**无任何客户端 MCP transport 实现**（grep 证据）。实现 MCP 客户端（JSON-RPC：initialize/tools.list/tools.call；stdio 子进程与 http/sse；配置来自服务端下发，令牌只存客户端本地），把远端连接器工具暴露给 agent（经既有工具注册/glue 机制，不新增运行期插件加载，C2）；未配置/不可达时诚实不可用。安全门禁 gate5b 由 fail 转 pass。
 
 ## 2. 边界与错误
 

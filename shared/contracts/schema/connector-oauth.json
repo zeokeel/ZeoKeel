@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ConnectorOAuth",
+  "description": "OAuth public-client metadata (no client_secret; ADR-060, docs/07 §6).\n\nThe desktop client runs the authorization-code + PKCE flow itself: it opens the system browser at [`authorize_url`](Self::authorize_url), listens on an ephemeral loopback redirect (RFC 8252), then exchanges the code at [`token_url`](Self::token_url). Tokens stay in the client keychain; the server only stores this non-secret metadata.",
+  "type": "object",
+  "required": [
+    "client_id",
+    "redirect_uri"
+  ],
+  "properties": {
+    "authorize_url": {
+      "description": "OAuth authorize endpoint (non-secret; catalog `config.authorize_url`).",
+      "default": "",
+      "type": "string"
+    },
+    "client_id": {
+      "type": "string"
+    },
+    "redirect_uri": {
+      "type": "string"
+    },
+    "scopes": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "token_url": {
+      "description": "OAuth token endpoint (non-secret; catalog `config.token_url`).",
+      "default": "",
+      "type": "string"
+    }
+  }
+}

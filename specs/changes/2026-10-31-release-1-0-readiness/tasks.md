@@ -41,6 +41,7 @@
 | B13 | B | i18n zh/en 完整性 | `packages/ui/*/web/src/`、`apps/desktop/web/src/` | — | 单测 + `rg` 硬编码检查 | ☐ |
 | B14 | B | 真实 provider/媒体在线 + 500 用户压测 harness（env-gated） | `scripts/`、`e2e/` | B6 | 有 key 时 pass；无 key 时 UNVERIFIED 报告 | ☐ |
 | B15 | B | 矩阵/docs/38 收敛更新（status 与实际一致） | `docs/generated/AGENT-TOOL-MATRIX.md`（生成器输入）、`docs/38-agent-runtime.md` | B1–B13 | `python3 scripts/agent-tool-matrix.py --check` | ☐ |
+| B16 | B | MCP 客户端 transport（stdio/http/sse + JSON-RPC tools）+ OAuth token 本地 + 作为 agent 工具暴露；修 gate5b | `packages/client/connector-mcp/`（新包四件套）、`zk.toml`/editions、生成 glue、`apps/desktop`、契约 | A1 | `cargo test -p <new>` + MCP e2e（本地 fake MCP server）+ `zk validate`/`compose --check` + security-audit gate5b | ☐ |
 | C1 | C | 全量门禁 + 独立评审 + archive spec | `specs/archive/2026-10-31-release-1-0-readiness/`、`docs/reviews/` | A*,B* | 全部 verify 绿 + `review-check` | ☐ |
 | C2 | C | push 分支触发 CI，修复 runner 差异 | 远端 `release/1.0.0-rc.1` | C1 | `gh run watch` 全绿 | ☐ |
 | C3 | C | tag `v1.0.0-rc.1` 触发 release，产出真实 dist 并验证 | 远端 tag/Release | C2 | `gh release view` + `zk channel verify` | ☐ |

@@ -16,9 +16,25 @@ stop_pid() {
   wait "$pid" 2>/dev/null || true
 }
 stop_server() { stop_pid "${SERVER_PID:-}"; SERVER_PID=""; }
-cleanup() { stop_server; sudo -u postgres dropdb --if-exists --force "$DB" >/dev/null 2>&1 || true; sudo -u postgres psql -Atq -c "DROP ROLE IF EXISTS $ROLE" >/dev/null 2>&1 || true; }
+cleanup() {
+  stop_server
+  sudo -u postgres dropdb --if-exists --force "$DB" >/dev/null 2>&1 || true
+  sudo -u postgres psql -Atq -c "DROP ROLE IF EXISTS $ROLE" >/dev/null 2>&1 || true
+  # A18: if this script composed enterprise, restore the committed personal baseline.
+  if [[ "${COMPOSITION:-}" == "composed-enterprise" ]]; then
+    bash scripts/restore-baseline.sh >/dev/null 2>&1 || true
+  fi
+}
 trap cleanup EXIT
 sudo -u postgres psql -Atq -c "CREATE ROLE $ROLE LOGIN PASSWORD '$ROLE';"; sudo -u postgres createdb -O "$ROLE" "$DB"
+# A18 target trimming: the committed personal baseline generates a stub zk-server
+# (exit 2, zero srv deps). Compose enterprise unless the caller already did (CI builds
+# the enterprise binary before invoking this script).
+COMPOSITION="$(bash scripts/ensure-enterprise-composition.sh)" \
+  || { echo "updates-e2e: cannot compose the enterprise server (A18)" >&2; exit 2; }
+if [[ "$COMPOSITION" == "composed-enterprise" || ! -x target/debug/zk-server ]]; then
+  cargo build -q -p zk-server
+fi
 ZEOKEEL_DATABASE_URL="postgres://$ROLE:$ROLE@127.0.0.1:5432/$DB" ZEOKEEL_SERVER_ADDR="127.0.0.1:$PORT" ZEOKEEL_UPDATE_DIR=deploy/updates ./target/debug/zk-server >/tmp/zk-updates.log 2>&1 & SERVER_PID=$!
 for _ in $(seq 1 40); do curl -fsS "$BASE/healthz" >/dev/null 2>&1 && break; sleep 0.25; done
 curl -fsS "$BASE/api/updates/manifest" -H 'X-ZeoKeel-Client: 0.1.0;official;linux-x64;dev' | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["channel_id"]=="official" and d["edition"]=="enterprise"'

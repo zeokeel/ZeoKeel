@@ -120,6 +120,18 @@
           "$ref": "#/definitions/ToolSettings"
         }
       ]
+    },
+    "web_search": {
+      "description": "Web-search tool endpoint settings (backward compatible default).",
+      "default": {
+        "base_url": "",
+        "timeout_ms": 15000
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/WebSearchSettings"
+        }
+      ]
     }
   },
   "definitions": {
@@ -551,6 +563,25 @@
           "type": "integer",
           "format": "uint64",
           "minimum": 0.0
+        }
+      }
+    },
+    "WebSearchSettings": {
+      "description": "Web-search tool endpoint settings (`tool.web_search`).\n\nThe search tool calls a keyless DuckDuckGo-compatible instant-answer endpoint, so this section carries **no credential**. It is a tool egress endpoint (not an AI provider), therefore C7 does not apply: both editions may point the tool at their own endpoint (C6 weak control). The runtime resolves **explicit settings > `ZEOKEEL_SEARCH_URL` > built-in default** and requires https. `schemars` bounds the timeout so the generated Ajv schema rejects out-of-range values before Rust validation runs (C10).",
+      "type": "object",
+      "properties": {
+        "base_url": {
+          "description": "Endpoint base URL (https only); empty = fall back to the env/default.",
+          "default": "",
+          "type": "string"
+        },
+        "timeout_ms": {
+          "description": "Request timeout in milliseconds (`1000..=120000`; default 15000).",
+          "default": 15000,
+          "type": "integer",
+          "format": "uint64",
+          "maximum": 120000.0,
+          "minimum": 1000.0
         }
       }
     }

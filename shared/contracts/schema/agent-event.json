@@ -190,6 +190,25 @@
       }
     },
     {
+      "description": "Provider token usage for the turn, emitted once before the terminal event (`TurnCompleted`/`TurnCancelled`) when the provider reported usage.\n\nAdditive event (B7): consumers that ignore unknown variants keep working; `TurnCompleted.reply.usage` remains populated for backward compatibility.",
+      "type": "object",
+      "required": [
+        "type",
+        "usage"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "usage"
+          ]
+        },
+        "usage": {
+          "$ref": "#/definitions/AgentUsage"
+        }
+      }
+    },
+    {
       "description": "Turn finished successfully.",
       "type": "object",
       "required": [

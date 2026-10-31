@@ -208,6 +208,14 @@
     "version": "0.1.0"
   },
   {
+    "id": "zeokeel/connector-mcp",
+    "kind": "capability",
+    "roles": [
+      "tool.mcp"
+    ],
+    "version": "0.1.0"
+  },
+  {
     "id": "zeokeel/tool-present",
     "kind": "capability",
     "roles": [

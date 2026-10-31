@@ -62,6 +62,10 @@ cleanup() {
   if [[ -n "${UPSTREAM_FAIL_PID:-}" ]]; then kill "$UPSTREAM_FAIL_PID" >/dev/null 2>&1 || true; fi
   sudo -u postgres dropdb --if-exists "$DB" >/dev/null 2>&1 || true
   sudo -u postgres psql -Atq -c "DROP ROLE IF EXISTS $ROLE" >/dev/null 2>&1 || true
+  # A18: if this script composed enterprise, restore the committed personal baseline.
+  if [[ "${COMPOSITION:-}" == "composed-enterprise" ]]; then
+    bash scripts/restore-baseline.sh >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 sudo -u postgres psql -v ON_ERROR_STOP=1 -Atqc "CREATE ROLE $ROLE LOGIN PASSWORD '$ROLE';"
@@ -114,6 +118,10 @@ HTTPServer(("127.0.0.1", int(__import__("sys").argv[1])), H).serve_forever()
 PYFAIL
 python3 /tmp/zk-fake-upstream-fail.py "$UPSTREAM_FAIL_PORT" >/dev/null 2>&1 &
 UPSTREAM_FAIL_PID=$!
+# A18 target trimming: the committed personal baseline generates a stub zk-server
+# (exit 2, zero srv deps). Compose enterprise unless the caller already did (CI jobs do).
+COMPOSITION="$(bash scripts/ensure-enterprise-composition.sh)" \
+  || { echo "srv-auth-test: cannot compose the enterprise server (A18)" >&2; exit 2; }
 cargo build -q -p zk-server
 LOG=/tmp/zk-auth-test.log
 : >"$LOG"
