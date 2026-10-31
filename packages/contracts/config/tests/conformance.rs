@@ -2,8 +2,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
 
 use zk_contract_config::{
-    AgentSettings, AppSettings, ProviderKind, RuntimeSettings, ScheduleSettings, ToolChoiceSetting,
-    ToolSettings,
+    AgentSettings, AppSettings, EmbeddingSettings, ProviderKind, RuntimeSettings, ScheduleSettings,
+    ToolChoiceSetting, ToolSettings,
 };
 
 #[test]
@@ -37,6 +37,9 @@ fn legacy_settings_without_agent_still_parse() {
     assert!(settings.agent.hooks.enabled);
     assert_eq!(settings.tools, ToolSettings::default());
     assert_eq!(settings.agent.schedule, ScheduleSettings::default());
+    assert_eq!(settings.embedding, EmbeddingSettings::default());
+    assert!(!settings.embedding.is_configured());
+    settings.embedding.validate().unwrap();
     assert!(!settings.agent.schedule.enabled);
     assert_eq!(settings.agent.schedule.scan_seconds, 10);
     settings.agent.schedule.validate().unwrap();
@@ -256,4 +259,63 @@ fn schedule_settings_validate_and_clamp() {
     )
     .unwrap();
     assert_eq!(legacy.schedule, ScheduleSettings::default());
+}
+
+#[test]
+fn embedding_settings_defaults_validation_and_legacy_parse() {
+    let defaults = EmbeddingSettings::default();
+    assert_eq!(defaults.base_url, "");
+    assert_eq!(defaults.api_key, "");
+    assert_eq!(defaults.model, "");
+    assert!(defaults.dims.is_none());
+    assert_eq!(defaults.dir, "");
+    assert!(!defaults.is_configured());
+    defaults.validate().unwrap();
+
+    let configured = EmbeddingSettings {
+        base_url: "https://api.example.invalid/v1".to_owned(),
+        api_key: "sk-test".to_owned(),
+        model: "text-embedding-3-small".to_owned(),
+        dims: Some(1_536),
+        dir: "/tmp/vector-index".to_owned(),
+    };
+    assert!(configured.is_configured());
+    configured.validate().unwrap();
+    assert_eq!(
+        configured,
+        serde_json::from_str::<EmbeddingSettings>(&serde_json::to_string(&configured).unwrap())
+            .unwrap()
+    );
+    for dims in [0, 65_537] {
+        let invalid = EmbeddingSettings {
+            dims: Some(dims),
+            ..configured.clone()
+        };
+        assert!(invalid.validate().is_err(), "dims {dims} must be rejected");
+    }
+    for base_url in ["ftp://example.invalid", "api.example.invalid"] {
+        let invalid = EmbeddingSettings {
+            base_url: base_url.to_owned(),
+            ..configured.clone()
+        };
+        assert!(
+            invalid.validate().is_err(),
+            "scheme {base_url} must be rejected"
+        );
+    }
+    let invalid_app = AppSettings {
+        embedding: EmbeddingSettings {
+            dims: Some(0),
+            ..EmbeddingSettings::default()
+        },
+        ..AppSettings::default()
+    };
+    assert!(invalid_app.validate().is_err());
+
+    // Legacy settings JSON without `embedding` keeps backwards compatibility.
+    let legacy: AppSettings = serde_json::from_str(
+        r#"{"schema":1,"provider":{"kind":"mock"},"theme":"auto","locale":"zh-CN","auto_approve_read_only":true}"#,
+    )
+    .unwrap();
+    assert_eq!(legacy.embedding, EmbeddingSettings::default());
 }

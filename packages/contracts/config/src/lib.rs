@@ -355,6 +355,68 @@ impl AgentSettings {
     }
 }
 
+/// Personal-edition embedding/vector provider settings (`cap-vector`).
+///
+/// Custom settings are only valid for personal edition: enterprise AI must go
+/// through the gateway (C7), and the generated glue never configures a local
+/// embedding provider there. `api_key` is write-only in the UI (`settings.get`
+/// masks it, like the chat provider key).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(default)]
+pub struct EmbeddingSettings {
+    /// OpenAI-compatible API root, e.g. `https://api.openai.com/v1`.
+    pub base_url: String,
+    /// Bearer key (write-only: masked by `settings.get`).
+    pub api_key: String,
+    /// Embedding model id (e.g. `text-embedding-3-small`).
+    pub model: String,
+    /// Requested vector width (1..=65536), when supported by the endpoint.
+    pub dims: Option<u64>,
+    /// Persistence directory for `vector-index.json`; empty = memory-only.
+    pub dir: String,
+}
+
+impl EmbeddingSettings {
+    /// Smallest accepted vector width.
+    pub const MIN_DIMS: u64 = 1;
+    /// Largest accepted vector width.
+    pub const MAX_DIMS: u64 = 65_536;
+
+    /// Validate the vector width and API scheme.
+    ///
+    /// # Errors
+    ///
+    /// [`ConfigError::Invalid`] for out-of-range `dims` or a non-http(s)
+    /// `base_url`.
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if let Some(dims) = self.dims {
+            if !(Self::MIN_DIMS..=Self::MAX_DIMS).contains(&dims) {
+                return Err(ConfigError::Invalid(format!(
+                    "embedding.dims must be within 1..=65536 (got {dims})"
+                )));
+            }
+        }
+        let base_url = self.base_url.trim();
+        if !base_url.is_empty()
+            && !(base_url.starts_with("http://") || base_url.starts_with("https://"))
+        {
+            return Err(ConfigError::Invalid(format!(
+                "embedding.base_url must start with http:// or https:// (got `{base_url}`)"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Whether a settings override carries enough data to configure a provider.
+    ///
+    /// A blank API key is the UI's masked value and means "no override" (keep
+    /// whatever was configured from the environment at boot).
+    #[must_use]
+    pub fn is_configured(&self) -> bool {
+        !self.api_key.trim().is_empty()
+    }
+}
+
 /// App settings persisted locally.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct AppSettings {
@@ -377,6 +439,9 @@ pub struct AppSettings {
     /// Tool execution / approval timeouts (backward compatible default).
     #[serde(default)]
     pub tools: ToolSettings,
+    /// Personal-edition embedding/vector provider (backward compatible default).
+    #[serde(default)]
+    pub embedding: EmbeddingSettings,
 }
 
 impl Default for AppSettings {
@@ -390,7 +455,21 @@ impl Default for AppSettings {
             server_url: String::new(),
             agent: AgentSettings::default(),
             tools: ToolSettings::default(),
+            embedding: EmbeddingSettings::default(),
         }
+    }
+}
+
+impl AppSettings {
+    /// Validate every configurable section before persisting/applying it.
+    ///
+    /// # Errors
+    ///
+    /// [`ConfigError::Invalid`] naming the offending field.
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        self.agent.validate()?;
+        self.tools.validate()?;
+        self.embedding.validate()
     }
 }
 

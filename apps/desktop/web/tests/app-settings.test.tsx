@@ -26,6 +26,12 @@ describe("settings integration", () => {
     const scan = screen.getByLabelText("扫描间隔（秒，5-3600）");
     await userEvent.clear(scan);
     await userEvent.type(scan, "30");
+    const embedUrl = screen.getByLabelText("嵌入服务地址");
+    await userEvent.type(embedUrl, "https://embed.example/v1");
+    const embedModel = screen.getByLabelText("嵌入模型");
+    await userEvent.type(embedModel, "text-embedding-3-small");
+    const embedDims = screen.getByLabelText("向量维度（1-65536，可选）");
+    await userEvent.type(embedDims, "1024");
     const toolTimeout = screen.getByLabelText("工具超时（ms，1000-600000）");
     await userEvent.clear(toolTimeout);
     await userEvent.type(toolTimeout, "60000");
@@ -47,6 +53,13 @@ describe("settings integration", () => {
     expect(sentSettings.agent.memory.enabled).toBe(false);
     expect(sentSettings.tools).toEqual({ tool_timeout_ms: 60000, approval_timeout_ms: 450000 });
     expect(sentSettings.agent.schedule).toEqual({ enabled: true, scan_seconds: 30 });
+    expect(sentSettings.embedding).toEqual({
+      base_url: "https://embed.example/v1",
+      api_key: "",
+      model: "text-embedding-3-small",
+      dims: 1024,
+      dir: "",
+    });
 
     expect(document.documentElement.lang).toBe("en-US");
     expect(document.documentElement.dataset["theme"]).toBe("dark");

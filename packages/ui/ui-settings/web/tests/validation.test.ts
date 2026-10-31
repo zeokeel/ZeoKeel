@@ -55,6 +55,11 @@ describe("settings validation", () => {
       scanSeconds: "30",
       toolTimeoutMs: "60000",
       approvalTimeoutMs: "450000",
+      embeddingBaseUrl: "https://embed.example/v1",
+      embeddingApiKey: "sk-embed",
+      embeddingModel: "text-embedding-3-small",
+      embeddingDims: "1024",
+      embeddingDir: "/tmp/zk-vectors",
     };
     expect(validateSettings(form)).toEqual(EMPTY_SETTINGS_ERRORS);
     const settings = formToSettings(form, 1);
@@ -76,6 +81,14 @@ describe("settings validation", () => {
       schedule: { enabled: true, scan_seconds: 30 },
     });
     expect(settings.tools).toEqual({ tool_timeout_ms: 60000, approval_timeout_ms: 450000 });
+    expect(settings.embedding).toEqual({
+      base_url: "https://embed.example/v1",
+      api_key: "sk-embed",
+      model: "text-embedding-3-small",
+      dims: 1024,
+      dir: "/tmp/zk-vectors",
+    });
+    expect(toForm(settings).embeddingDims).toBe("1024");
     expect(toForm(settings).maxSteps).toBe("12");
     expect(toForm(settings).toolChoiceMode).toBe("specific");
   });
@@ -94,6 +107,9 @@ describe("settings validation", () => {
     expect(toForm(defaultSettings()).scanSeconds).toBe("10");
     expect(toForm(defaultSettings()).scheduleEnabled).toBe(false);
     expect(settings.tools).toEqual({ tool_timeout_ms: 120000, approval_timeout_ms: 300000 });
+    expect(settings.embedding).toEqual({ base_url: "", api_key: "", model: "", dims: null, dir: "" });
+    expect(toForm(defaultSettings()).embeddingDims).toBe("");
+    expect(toForm(defaultSettings()).embeddingBaseUrl).toBe("");
   });
 
   it("validates the schedule scan interval range (5..3600)", () => {
@@ -103,6 +119,19 @@ describe("settings validation", () => {
     expect(validateSettings({ ...base, scanSeconds: "5" }).scanSeconds).toBeNull();
     expect(validateSettings({ ...base, scanSeconds: "3600" }).scanSeconds).toBeNull();
     expect(validateSettings({ ...base, scanSeconds: "1.5" }).scanSeconds).toBe("settingsInvalidInteger");
+  });
+
+  it("validates embedding base URL and optional dims bounds (1..65536)", () => {
+    const base = toForm(defaultSettings());
+    expect(validateSettings({ ...base, embeddingBaseUrl: "https://embed.example/v1", embeddingDims: "1024" }).embeddingBaseUrl).toBeNull();
+    expect(validateSettings({ ...base, embeddingBaseUrl: "https://embed.example/v1", embeddingDims: "1024" }).embeddingDims).toBeNull();
+    expect(validateSettings({ ...base, embeddingBaseUrl: "not a url" }).embeddingBaseUrl).toBe("settingsInvalidUrl");
+    expect(validateSettings({ ...base, embeddingBaseUrl: "ftp://embed.example" }).embeddingBaseUrl).toBe("settingsInvalidUrl");
+    expect(validateSettings({ ...base, embeddingDims: "0" }).embeddingDims).toBe("settingsInvalidRange");
+    expect(validateSettings({ ...base, embeddingDims: "65537" }).embeddingDims).toBe("settingsInvalidRange");
+    expect(validateSettings({ ...base, embeddingDims: "65536" }).embeddingDims).toBeNull();
+    expect(validateSettings({ ...base, embeddingDims: "1.5" }).embeddingDims).toBe("settingsInvalidInteger");
+    expect(validateSettings({ ...base, embeddingDims: "" }).embeddingDims).toBeNull();
   });
 
   it("keeps a saved server URL (docs/19 §3.3)", () => {

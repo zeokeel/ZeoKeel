@@ -80,6 +80,15 @@ export interface AgentUsage {
   cost_micros?: number | null;
 }
 
+/** Mirrors `zk_contract_config::EmbeddingSettings` (vector index provider). */
+export interface EmbeddingSettings {
+  base_url: string;
+  api_key: string;
+  model: string;
+  dims: number | null;
+  dir: string;
+}
+
 /** Mirrors `zk_contract_config::ToolSettings` (timeouts in ms). */
 export interface ToolSettings {
   tool_timeout_ms: number;
@@ -99,6 +108,8 @@ export interface AppSettings {
   agent: AgentSettings;
   /** Tool/approval timeout settings (serde default for old stores). */
   tools: ToolSettings;
+  /** Embedding/vector-index settings (serde default for old stores). */
+  embedding: EmbeddingSettings;
 }
 
 /** Mirrors `zk_contract_session::Workspace`. */
@@ -260,6 +271,10 @@ export function defaultAgentSettings(): AgentSettings {
   };
 }
 
+export function defaultEmbeddingSettings(): EmbeddingSettings {
+  return { base_url: "", api_key: "", model: "", dims: null, dir: "" };
+}
+
 export function defaultToolSettings(): ToolSettings {
   return { tool_timeout_ms: 120000, approval_timeout_ms: 300000 };
 }
@@ -274,6 +289,7 @@ export function defaultSettings(): AppSettings {
     server_url: "",
     agent: defaultAgentSettings(),
     tools: defaultToolSettings(),
+    embedding: defaultEmbeddingSettings(),
   };
 }
 

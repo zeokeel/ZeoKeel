@@ -39,6 +39,10 @@ fn export_schema() {
         "schedule-settings.json",
         &schemars::schema_for!(zk_contract_config::ScheduleSettings),
     );
+    write(
+        "embedding-settings.json",
+        &schemars::schema_for!(zk_contract_config::EmbeddingSettings),
+    );
 
     // The generated schema must bound the runtime range (UI/Ajv consumers rely
     // on it); Rust validation stays authoritative.

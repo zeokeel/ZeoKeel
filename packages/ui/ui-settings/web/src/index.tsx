@@ -381,6 +381,67 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
               </div>
               <p className="mt-2 text-[12px] text-muted-foreground">{t("settingsToolsHint")}</p>
             </fieldset>
+            <fieldset className="rounded-document bg-muted p-4">
+              <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
+                {t("settingsSectionEmbedding")}
+              </legend>
+              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 sm:col-span-2" htmlFor="settings-embedding-base-url">
+                  <span className={labelClass}>{t("settingsEmbeddingBaseUrl")}</span>
+                  <input
+                    id="settings-embedding-base-url"
+                    aria-label={t("settingsEmbeddingBaseUrl")}
+                    className={inputClass}
+                    type="url"
+                    inputMode="url"
+                    value={form.embeddingBaseUrl}
+                    onChange={(event) => { update("embeddingBaseUrl", event.target.value); }}
+                    placeholder="https://api.example.com/v1"
+                    aria-invalid={errors.embeddingBaseUrl !== null}
+                  />
+                  {fieldError(errors.embeddingBaseUrl)}
+                </label>
+                <label className="flex flex-col gap-1" htmlFor="settings-embedding-api-key">
+                  <span className={labelClass}>{t("settingsEmbeddingApiKey")}</span>
+                  <input
+                    id="settings-embedding-api-key"
+                    aria-label={t("settingsEmbeddingApiKey")}
+                    className={inputClass}
+                    type="password"
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={form.embeddingApiKey}
+                    onChange={(event) => { update("embeddingApiKey", event.target.value); }}
+                    placeholder="sk-..."
+                  />
+                  <span className="text-[12px] text-muted-foreground">{t("settingsEmbeddingApiKeyHint")}</span>
+                </label>
+                <label className="flex flex-col gap-1" htmlFor="settings-embedding-model">
+                  <span className={labelClass}>{t("settingsEmbeddingModel")}</span>
+                  <input
+                    id="settings-embedding-model"
+                    aria-label={t("settingsEmbeddingModel")}
+                    className={inputClass}
+                    value={form.embeddingModel}
+                    onChange={(event) => { update("embeddingModel", event.target.value); }}
+                    placeholder="text-embedding-3-small"
+                  />
+                </label>
+                {numeric("settings-embedding-dims", t("settingsEmbeddingDims"), form.embeddingDims, (value) => { update("embeddingDims", value); }, errors.embeddingDims, { min: 1, max: 65536 })}
+                <label className="flex flex-col gap-1 sm:col-span-2" htmlFor="settings-embedding-dir">
+                  <span className={labelClass}>{t("settingsEmbeddingDir")}</span>
+                  <input
+                    id="settings-embedding-dir"
+                    aria-label={t("settingsEmbeddingDir")}
+                    className={inputClass}
+                    value={form.embeddingDir}
+                    onChange={(event) => { update("embeddingDir", event.target.value); }}
+                    placeholder="$ZEOKEEL_HOME/vector-index"
+                  />
+                </label>
+              </div>
+              <p className="mt-2 text-[12px] text-muted-foreground">{t("settingsEmbeddingHint")}</p>
+            </fieldset>
 
             {saveError !== null ? (
               <p

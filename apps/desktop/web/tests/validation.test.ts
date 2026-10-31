@@ -176,6 +176,15 @@ describe("protocol boundary rejects invalid data after schema validation", () =>
     })).toBe(true);
   });
 
+  it("validates embedding settings via the regenerated app_settings schema", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const current = defaultSettings();
+    expect(validateAppSettings({ ...current, embedding: { base_url: "https://embed.example/v1", api_key: "", model: "m", dims: 1024, dir: "/tmp/v" } })).toBe(true);
+    expect(validateAppSettings({ ...current, embedding: { base_url: "", api_key: "", model: "", dims: null, dir: "" } })).toBe(true);
+    expect(validateAppSettings({ ...current, embedding: { ...current.embedding, dims: "1024" } })).toBe(false);
+    expect(validateAppSettings({ ...current, embedding: { ...current.embedding, dims: -1 } })).toBe(false);
+  });
+
   it("validates schedule settings via the regenerated app_settings schema", () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const current = defaultSettings();
@@ -190,6 +199,18 @@ describe("protocol boundary rejects invalid data after schema validation", () =>
     expect(validateAppSettings({ ...defaultSettings(), tools: { tool_timeout_ms: 60000, approval_timeout_ms: 450000 } })).toBe(true);
     expect(validateAppSettings({ ...defaultSettings(), tools: { tool_timeout_ms: "60000", approval_timeout_ms: 450000 } })).toBe(false);
     expect(validateAppSettings({ ...defaultSettings(), tools: { tool_timeout_ms: -1, approval_timeout_ms: 450000 } })).toBe(false);
+  });
+
+  it("parses embedding settings with serde defaults for old settings", () => {
+    const current = defaultSettings();
+    expect(parseSettings({ ...current, embedding: undefined }).embedding).toEqual({ base_url: "", api_key: "", model: "", dims: null, dir: "" });
+    expect(parseSettings({ ...current, embedding: { base_url: "https://embed.example/v1", model: "m", dims: 1024 } }).embedding).toEqual({
+      base_url: "https://embed.example/v1",
+      api_key: "",
+      model: "m",
+      dims: 1024,
+      dir: "",
+    });
   });
 
   it("parses schedule settings with serde defaults for old settings", () => {

@@ -138,6 +138,21 @@
           "description": "Auto-approve read-only tools (M1 default true for fs.read).",
           "type": "boolean"
         },
+        "embedding": {
+          "description": "Personal-edition embedding/vector provider (backward compatible default).",
+          "default": {
+            "base_url": "",
+            "api_key": "",
+            "model": "",
+            "dims": null,
+            "dir": ""
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/EmbeddingSettings"
+            }
+          ]
+        },
         "locale": {
           "description": "Locale: `zh-CN` | `en-US`.",
           "type": "string"
@@ -263,6 +278,42 @@
             "null"
           ],
           "format": "double"
+        }
+      }
+    },
+    "EmbeddingSettings": {
+      "description": "Personal-edition embedding/vector provider settings (`cap-vector`).\n\nCustom settings are only valid for personal edition: enterprise AI must go through the gateway (C7), and the generated glue never configures a local embedding provider there. `api_key` is write-only in the UI (`settings.get` masks it, like the chat provider key).",
+      "type": "object",
+      "properties": {
+        "api_key": {
+          "description": "Bearer key (write-only: masked by `settings.get`).",
+          "default": "",
+          "type": "string"
+        },
+        "base_url": {
+          "description": "OpenAI-compatible API root, e.g. `https://api.openai.com/v1`.",
+          "default": "",
+          "type": "string"
+        },
+        "dims": {
+          "description": "Requested vector width (1..=65536), when supported by the endpoint.",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "dir": {
+          "description": "Persistence directory for `vector-index.json`; empty = memory-only.",
+          "default": "",
+          "type": "string"
+        },
+        "model": {
+          "description": "Embedding model id (e.g. `text-embedding-3-small`).",
+          "default": "",
+          "type": "string"
         }
       }
     },

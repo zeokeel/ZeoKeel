@@ -39,6 +39,12 @@ export interface SettingsForm {
   // Tool/approval timeouts (ms, strings for empty/invalid UI states).
   toolTimeoutMs: string;
   approvalTimeoutMs: string;
+  // Embedding / vector index (empty dims means "provider default").
+  embeddingBaseUrl: string;
+  embeddingApiKey: string;
+  embeddingModel: string;
+  embeddingDims: string;
+  embeddingDir: string;
 }
 
 export type SettingsFieldError = string | null;
@@ -55,6 +61,8 @@ export interface SettingsErrors {
   scanSeconds: SettingsFieldError;
   toolTimeoutMs: SettingsFieldError;
   approvalTimeoutMs: SettingsFieldError;
+  embeddingBaseUrl: SettingsFieldError;
+  embeddingDims: SettingsFieldError;
 }
 
 export const EMPTY_SETTINGS_ERRORS: SettingsErrors = {
@@ -69,6 +77,8 @@ export const EMPTY_SETTINGS_ERRORS: SettingsErrors = {
   scanSeconds: null,
   toolTimeoutMs: null,
   approvalTimeoutMs: null,
+  embeddingBaseUrl: null,
+  embeddingDims: null,
 };
 
 function isHttpUrl(value: string): boolean {
@@ -173,6 +183,11 @@ export function toForm(settings: AppSettings): SettingsForm {
     scanSeconds: String(agent.schedule.scan_seconds),
     toolTimeoutMs: String(settings.tools.tool_timeout_ms),
     approvalTimeoutMs: String(settings.tools.approval_timeout_ms),
+    embeddingBaseUrl: settings.embedding.base_url,
+    embeddingApiKey: settings.embedding.api_key,
+    embeddingModel: settings.embedding.model,
+    embeddingDims: settings.embedding.dims === null ? "" : String(settings.embedding.dims),
+    embeddingDir: settings.embedding.dir,
   };
 }
 
@@ -189,6 +204,9 @@ export function validateSettings(form: SettingsForm): SettingsErrors {
   const toolTimeout = numberField(form.toolTimeoutMs, { min: 1000, max: 600000, integer: true });
   const approvalTimeout = numberField(form.approvalTimeoutMs, { min: 1000, max: 1800000, integer: true });
   const scan = numberField(form.scanSeconds, { min: 5, max: 3600, integer: true });
+  const embeddingDims = form.embeddingDims.trim() === ""
+    ? { value: null, error: null }
+    : numberField(form.embeddingDims, { min: 1, max: 65536, integer: true });
   return {
     baseUrl:
       form.providerKind === "mock" || isHttpUrl(form.baseUrl.trim()) ? null : "settingsInvalidUrl",
@@ -202,6 +220,11 @@ export function validateSettings(form: SettingsForm): SettingsErrors {
     scanSeconds: scan.error ?? (scan.value === null ? "settingsInvalidInteger" : null),
     toolTimeoutMs: toolTimeout.error ?? (toolTimeout.value === null ? "settingsInvalidInteger" : null),
     approvalTimeoutMs: approvalTimeout.error ?? (approvalTimeout.value === null ? "settingsInvalidInteger" : null),
+    embeddingBaseUrl:
+      form.embeddingBaseUrl.trim() === "" || isHttpUrl(form.embeddingBaseUrl.trim())
+        ? null
+        : "settingsInvalidUrl",
+    embeddingDims: embeddingDims.error ?? (embeddingDims.value === null && form.embeddingDims.trim() !== "" ? "settingsInvalidInteger" : null),
   };
 }
 
@@ -250,6 +273,15 @@ export function formToSettings(form: SettingsForm, schema: number): AppSettings 
     tools: {
       tool_timeout_ms: numberField(form.toolTimeoutMs, { min: 1000, max: 600000, integer: true }).value ?? 120000,
       approval_timeout_ms: numberField(form.approvalTimeoutMs, { min: 1000, max: 1800000, integer: true }).value ?? 300000,
+    },
+    embedding: {
+      base_url: form.embeddingBaseUrl.trim(),
+      api_key: form.embeddingApiKey,
+      model: form.embeddingModel.trim(),
+      dims: form.embeddingDims.trim() === ""
+        ? null
+        : numberField(form.embeddingDims, { min: 1, max: 65536, integer: true }).value,
+      dir: form.embeddingDir.trim(),
     },
   };
 }
