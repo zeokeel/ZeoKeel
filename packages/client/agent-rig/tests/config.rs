@@ -203,6 +203,7 @@ fn configured_tool_timeout_is_enforced_per_turn() {
                 tool_timeout_ms: zk_contract_config::ToolSettings::MIN_TOOL_TIMEOUT_MS,
                 approval_timeout_ms: zk_contract_config::ToolSettings::default()
                     .approval_timeout_ms,
+                approval_policy: None,
             },
             ..zk_agent_rig::AgentRuntimeConfig::default()
         });

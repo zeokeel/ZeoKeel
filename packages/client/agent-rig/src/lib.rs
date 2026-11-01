@@ -30,7 +30,7 @@ use zk_contract_agent::{
     Agent, AgentError, AgentEvent, AgentReply, AgentUsage, ApprovalDecision, EventSink,
     HistoryMessage, HistoryRole, ToolCallRecord,
 };
-use zk_contract_config::AgentSettings;
+use zk_contract_config::{AgentSettings, ApprovalPolicy};
 use zk_contract_tool::{ApprovalGate, Tool, TurnContext};
 
 mod effect_log;
@@ -93,6 +93,8 @@ struct ToolRunContext<'a> {
     hook_sink: Option<&'a Arc<dyn HookSink>>,
     tool_timeout_ms: u64,
     approval_timeout_ms: u64,
+    /// Config-driven local approval policy (config spec; instance override wins).
+    approval_policy: ApprovalPolicy,
     /// Number of tool callbacks currently executing (cancel waits for a boundary).
     in_tool: Arc<AtomicUsize>,
 }
@@ -319,9 +321,16 @@ impl RigAgent {
             } else {
                 spec.parameters
             };
-            let should_ask = policy.as_ref().map_or(spec.requires_approval, |policy| {
-                policy.should_ask(spec.requires_approval, spec.mutating)
-            });
+            // Instance-injected policy (tests/embedders) wins; otherwise the
+            // config-driven policy applies (ToolSettings.approval_policy).
+            let should_ask = policy.as_ref().map_or_else(
+                || {
+                    runtime
+                        .approval_policy
+                        .should_ask(spec.requires_approval, spec.mutating)
+                },
+                |policy| policy.should_ask(spec.requires_approval, spec.mutating),
+            );
             let approval = Arc::clone(&self.approval);
             let approval_name = spec.name.clone();
             let sensitive_keys = tool.sensitive_arg_keys();
@@ -584,6 +593,7 @@ impl RigAgent {
                 hook_sink: hook_sink.as_ref(),
                 tool_timeout_ms,
                 approval_timeout_ms,
+                approval_policy: config.tools.effective_approval_policy(),
                 in_tool: Arc::clone(&in_tool),
             },
         );
@@ -2892,6 +2902,98 @@ mod tests {
             event,
             AgentEvent::ApprovalRequested { .. } | AgentEvent::ApprovalResolved { .. }
         )));
+    }
+
+    struct ReadOnlyTool;
+
+    impl Tool for ReadOnlyTool {
+        fn spec(&self) -> zk_contract_tool::ToolSpec {
+            zk_contract_tool::ToolSpec {
+                name: "fs.read".to_owned(),
+                description: "read-only test tool".to_owned(),
+                parameters: serde_json::json!({"type": "object"}),
+                mutating: false,
+                requires_approval: false,
+            }
+        }
+        fn call(&self, _args: &str) -> Result<String, zk_contract_tool::ToolError> {
+            Ok("read ok".to_owned())
+        }
+    }
+
+    fn config_with_policy(policy: ApprovalPolicy) -> AgentRuntimeConfig {
+        AgentRuntimeConfig {
+            tools: zk_contract_config::ToolSettings {
+                approval_policy: Some(policy),
+                ..zk_contract_config::ToolSettings::default()
+            },
+            ..AgentRuntimeConfig::default()
+        }
+    }
+
+    #[test]
+    fn config_driven_policy_controls_read_only_approval() {
+        for (policy, expect_calls) in [
+            (ApprovalPolicy::Ask, 0_usize),
+            (ApprovalPolicy::AutoReadOnly, 0),
+            (ApprovalPolicy::Strict, 1),
+        ] {
+            let model = MockCompletionModel::from_turns([
+                MockTurn::tool_call("call-1", "fs.read", serde_json::json!({"path": "a.txt"})),
+                MockTurn::text("done"),
+            ]);
+            let gate = FixedGate::new(vec![ApprovalDecision::AllowOnce]);
+            let agent = RigAgent::new(model.into(), vec![Arc::new(ReadOnlyTool)])
+                .unwrap()
+                .with_streaming(false)
+                .with_approval(gate.clone())
+                .with_agent_config(config_with_policy(policy));
+            let sink = Arc::new(VecSink(StdMutex::new(Vec::new())));
+            agent
+                .run_stream_in_shared(&tool_context(), "t", "read a.txt", sink.clone())
+                .unwrap();
+            assert_eq!(
+                gate.calls.load(Ordering::SeqCst),
+                expect_calls,
+                "policy {policy:?} ask count"
+            );
+            let events = sink.0.lock().unwrap();
+            let requested = events
+                .iter()
+                .any(|event| matches!(event, AgentEvent::ApprovalRequested { .. }));
+            assert_eq!(requested, expect_calls == 1, "policy {policy:?} events");
+        }
+    }
+
+    #[test]
+    fn config_policy_never_auto_approves_requires_approval_tools() {
+        // T1 weak invariant: all three policies still ask for a tool that
+        // declares `requires_approval`.
+        for policy in [
+            ApprovalPolicy::Ask,
+            ApprovalPolicy::AutoReadOnly,
+            ApprovalPolicy::Strict,
+        ] {
+            let model = MockCompletionModel::from_turns([
+                MockTurn::tool_call("call-1", "fs.write", serde_json::json!({"path": "a.txt"})),
+                MockTurn::text("done"),
+            ]);
+            let gate = FixedGate::new(vec![ApprovalDecision::AllowOnce]);
+            let agent = RigAgent::new(model.into(), vec![metadata_tool("fs.write", None)])
+                .unwrap()
+                .with_streaming(false)
+                .with_approval(gate.clone())
+                .with_agent_config(config_with_policy(policy));
+            let sink = Arc::new(VecSink(StdMutex::new(Vec::new())));
+            agent
+                .run_stream_in_shared(&tool_context(), "t", "write", sink)
+                .unwrap();
+            assert_eq!(
+                gate.calls.load(Ordering::SeqCst),
+                1,
+                "policy {policy:?} must ask"
+            );
+        }
     }
 
     #[test]

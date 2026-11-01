@@ -20,7 +20,7 @@
 //! when a directory/log is configured.
 
 use serde::{Deserialize, Serialize};
-use zk_contract_config::{AgentSettings, ToolChoiceSetting, ToolSettings};
+use zk_contract_config::{AgentSettings, ApprovalPolicy, ToolChoiceSetting, ToolSettings};
 
 /// Default model context window when no override is configured (docs/38 F4).
 pub const DEFAULT_CONTEXT_WINDOW_TOKENS: u64 = 128_000;
@@ -333,6 +333,12 @@ impl AgentRuntimeConfig {
                 config.tools.approval_timeout_ms = timeout;
             }
         }
+        // Test/e2e fallback; the default `ask` stays unpinned so a fresh install
+        // keeps the built-in semantics (config spec R3/R5).
+        config.tools.approval_policy = std::env::var("ZEOKEEL_APPROVAL_POLICY")
+            .ok()
+            .map(|value| ApprovalPolicy::parse(&value))
+            .filter(|policy| *policy != ApprovalPolicy::Ask);
         config.max_steps = config.max_steps.clamp(1, 200);
         config
     }
@@ -647,6 +653,7 @@ mod tests {
         zk_contract_config::ToolSettings {
             tool_timeout_ms,
             approval_timeout_ms,
+            approval_policy: None,
         }
     }
 

@@ -39,6 +39,11 @@ test.describe("M3 client content store", () => {
     await expect(connectors.getByRole("button", { name: "授权" }).first()).toBeVisible();
     await connectors.getByRole("button", { name: "启用" }).click();
     await expect(connectors.getByRole("button", { name: "停用" })).toBeVisible({ timeout: 10_000 });
+    // Web wiring (config spec R7): toggling synced the catalog to the host without
+    // surfacing a connectors.* error, and the manual reload path works.
+    await expect(connectors.getByRole("alert")).toHaveCount(0);
+    await connectors.getByRole("button", { name: "重新加载连接器" }).click();
+    await expect(connectors.getByRole("alert")).toHaveCount(0);
     await page.screenshot({ path: "target/evidence/m3/client-connectors.png" });
     await connectors.getByRole("button", { name: "关闭", exact: true }).click();
 

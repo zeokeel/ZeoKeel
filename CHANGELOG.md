@@ -1,5 +1,24 @@
 # Changelog
 
+## 未发布（客户端配置/审批 Phase 1c，2026-11-01）
+
+### 审批策略（`2026-11-01-client-config-approval-mcp`）
+
+- `AppSettings.tools.approval_policy` 新增封闭枚举 `ask | auto_read_only | strict`：`ask`（默认）只询问声明
+  `requires_approval` 的工具；`auto_read_only` = 只读工具自动 + **所有 mutating** 工具询问；`strict` = 全部询问。
+  **弱不变式**：任何策略都不自动批准 `requires_approval == true` 的工具（唯一例外是 S4 always-allow——用户先前显式授权）。
+- `auto_approve_read_only` 标记 **deprecated**：加载/保存时映射 `false→strict`、`true→ask` 并幂等规范化为
+  `tools.approval_policy`；未知枚举值/非法类型降级 `ask`，不阻止启动。
+- 设置弹窗「工具与审批」pane 新增策略选择（保存后下一轮生效）；env fallback `ZEOKEEL_APPROVAL_POLICY`。
+
+### 连接器 IPC（同一 spec）
+
+- 新命令 `connectors.configure {catalog} → {configured}`、`connectors.reload → {reloaded}`、`connectors.clear → {cleared}`；
+  错误码封闭集 `connectors/catalog-invalid | connectors/apply-failed | connectors/reload-failed | connectors/clear-failed`。
+- 企业版 web 已接线：登录/刷新后 `configure`、连接器启停后 `configure`、面板「重新加载」→ `reload`、登出 → `clear`；
+  非法 catalog 保留旧配置并显示错误（不假装成功）。
+- MCP 本地配置（`AppSettings.mcp`、`mcp.test`、企业 catalog-only）拆到 `2026-11-01-client-mcp-config`，本版本未实现。
+
 ## 1.0.0-rc.1 (2026-10-31)
 
 > 发布候选（本地验证）。`1.0.0` 正式版需 rc 验收 + 远端 CI/release 实跑通过后由用户确认；

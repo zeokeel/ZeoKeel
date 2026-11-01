@@ -19,7 +19,8 @@ import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
 import type { Transport } from "./types";
 import { parseFileEntries, parseWorkspaceChanges, parseUpdateRelease, type FileEntry, type WorkspaceChange } from "./protocol";
-import { downloadSkillArchive, fetchAppHtml, fetchApps, fetchConnectors, fetchSkills, fetchTombstones, openApp, sendInstallReceipt, toggleConnector, type AppItem, type ConnectorItem, type SkillItem } from "./store";
+import { downloadSkillArchive, fetchAppHtml, fetchApps, fetchConnectorCatalog, fetchSkills, fetchTombstones, openApp, sendInstallReceipt, toggleConnector, type AppItem, type ConnectorItem, type SkillItem } from "./store";
+import { clearConnectorCatalog, reloadConnectorSessions, syncConnectorCatalog } from "./connectors-sync";
 import { oauthMetadataPayload, parseOAuthTokens, tokenNeedsRefresh, waitForOAuthFlow } from "./oauth";
 import { clearSession, fetchBootstrapInfo, loadGatewayModel, loadServerUrl, loadSession, login as loginRequest, refreshSession, saveGatewayModel, saveServerUrl, saveSession, type AuthSession } from "./auth";
 
@@ -113,6 +114,9 @@ export function App(props: { transport: Transport }) {
     if (current !== null) {
       void props.transport.call("auth.logout", { access_token: current.access_token }).catch(() => undefined);
     }
+    // Drop any catalog-provided MCP config on logout (config spec R7; idempotent
+    // with the host's own auth.logout cleanup).
+    void clearConnectorCatalog(props.transport).catch(() => undefined);
   };
 
   // Enterprise session: configure gateway, load catalog, refresh token (docs/19 §3.2, docs/38).
@@ -121,13 +125,18 @@ export function App(props: { transport: Transport }) {
     const url = activeServerUrl;
     if (url === "") return;
     void props.transport.call("auth.configure", { server_url: url, access_token: session.access_token, model: loadGatewayModel() }).catch(() => undefined);
-    void Promise.all([fetchSkills(session, url), fetchConnectors(session, url), props.transport.call("skills.installed", {}), fetchTombstones(session, url), fetchApps(session, url)])
-      .then(async ([skillItems, connectorItems, installedValue, tombstones, appItems]) => {
+    void Promise.all([fetchSkills(session, url), fetchConnectorCatalog(session, url), props.transport.call("skills.installed", {}), fetchTombstones(session, url), fetchApps(session, url)])
+      .then(async ([skillItems, connectorCatalog, installedValue, tombstones, appItems]) => {
         setSkills(skillItems);
-        setConnectors(connectorItems);
+        setConnectors(connectorCatalog.items);
         setApps(appItems);
+        // Web -> host catalog sync (config spec R7): the host validates and
+        // installs the MCP config; failures stay visible, the old config runs on.
+        void syncConnectorCatalog(props.transport, connectorCatalog).catch((error: unknown) => {
+          setContentError(error instanceof Error ? error.message : t("connectorsCatalogFailed"));
+        });
         const oauthIds: string[] = [];
-        for (const connector of connectorItems) {
+        for (const connector of connectorCatalog.items) {
           if (connector.oauth === null) continue;
           const stored = await props.transport.call("oauth.load", { connector_id: connector.id }).catch(() => null);
           const raw = isRecord(stored) ? stored["tokens"] : null;
@@ -430,10 +439,19 @@ export function App(props: { transport: Transport }) {
         }}
         onToggleConnector={(item) => {
           if (session === null) return;
+          setContentError(null);
           void toggleConnector(session, effectiveUrl, item)
-            .then(() => fetchConnectors(session, effectiveUrl))
-            .then(setConnectors)
+            .then(() => fetchConnectorCatalog(session, effectiveUrl))
+            .then((catalog) => {
+              setConnectors(catalog.items);
+              return syncConnectorCatalog(props.transport, catalog);
+            })
             .catch((error: unknown) => { setContentError(error instanceof Error ? error.message : t("connectorFailed")); });
+        }}
+        onReloadConnectors={() => {
+          setContentError(null);
+          void reloadConnectorSessions(props.transport)
+            .catch((error: unknown) => { setContentError(error instanceof Error ? error.message : t("connectorsReloadFailed")); });
         }}
         onCheckUpdate={state.meta.edition === "personal" ? () => {
           setUpdateBusy(true);
@@ -479,6 +497,7 @@ interface AppShellProps {
   onInstall: (item: SkillItem) => void;
   onAuthorize: (item: ConnectorItem) => void;
   onToggleConnector: (item: ConnectorItem) => void;
+  onReloadConnectors: () => void;
   authorized: string[];
   apps: AppItem[];
   appOpened: string | null;
@@ -492,7 +511,7 @@ interface AppShellProps {
 }
 
 function AppShell(props: AppShellProps) {
-  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel, updateText, updateBusy, onCheckUpdate, skills, connectors, installed, contentError, contentBusy, onInstall, onAuthorize, onToggleConnector, authorized, apps, appOpened, appError, onOpenApp, surface, onCloseSurface, onSurfaceRequest, serverUrlLocked, onLogout } = props;
+  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel, updateText, updateBusy, onCheckUpdate, skills, connectors, installed, contentError, contentBusy, onInstall, onAuthorize, onToggleConnector, onReloadConnectors, authorized, apps, appOpened, appError, onOpenApp, surface, onCloseSurface, onSurfaceRequest, serverUrlLocked, onLogout } = props;
   const t = ui.t;
   const state = controller.state;
   const enterprise = state.meta.edition === "enterprise";
@@ -660,7 +679,7 @@ function AppShell(props: AppShellProps) {
       overlay={enterprise ? (
         <>
           <SlotErrorBoundary name="ui.skills"><SkillsSlot open={panel === "skills"} items={skills} installed={installed} busy={contentBusy} error={contentError} onInstall={onInstall} onClose={() => { setPanel(null); }} /></SlotErrorBoundary>
-          <SlotErrorBoundary name="ui.connectors"><ConnectorsSlot open={panel === "connectors"} items={connectors} error={contentError} authorized={authorized} onAuthorize={onAuthorize} onToggle={onToggleConnector} onClose={() => { setPanel(null); }} /></SlotErrorBoundary>
+          <SlotErrorBoundary name="ui.connectors"><ConnectorsSlot open={panel === "connectors"} items={connectors} error={contentError} authorized={authorized} onAuthorize={onAuthorize} onToggle={onToggleConnector} onReload={onReloadConnectors} onClose={() => { setPanel(null); }} /></SlotErrorBoundary>
           <SlotErrorBoundary name="ui.apps"><AppsSlot open={panel === "apps"} items={apps} error={appError} opened={appOpened} onOpenApp={onOpenApp} onClose={() => { setPanel(null); }} /></SlotErrorBoundary>
         </>
       ) : null}

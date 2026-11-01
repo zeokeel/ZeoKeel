@@ -56,12 +56,13 @@ export async function fetchSkills(session: AuthSession, serverUrl: string): Prom
   });
 }
 
-export async function fetchConnectors(session: AuthSession, serverUrl: string): Promise<ConnectorItem[]> {
-  const response = await serverFetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/connectors`, {
-    headers: { authorization: `Bearer ${session.access_token}` },
-  });
-  if (!response.ok) throw new Error(`connectors HTTP ${String(response.status)}`);
-  const body: unknown = await response.json();
+/** Connector catalog plus its raw JSON (for `connectors.configure`). */
+export interface ConnectorCatalog {
+  items: ConnectorItem[];
+  catalog: Record<string, unknown>;
+}
+
+function parseConnectorItems(body: unknown): ConnectorItem[] {
   const items = record(body)?.["items"];
   if (!Array.isArray(items)) return [];
   return items.flatMap((item) => {
@@ -81,6 +82,21 @@ export async function fetchConnectors(session: AuthSession, serverUrl: string): 
     };
     return [{ id: text(value["id"]) ?? name, name, transport, enabled: bool(value["enabled"]) ?? false, can_enable: canEnable, oauth: oauth?.clientId === "" ? null : oauth }];
   });
+}
+
+/** Fetch the enterprise connector catalog (items + raw JSON for the host). */
+export async function fetchConnectorCatalog(session: AuthSession, serverUrl: string): Promise<ConnectorCatalog> {
+  const response = await serverFetch(`${serverUrl.replace(/\/$/, "")}/api/client/v1/connectors`, {
+    headers: { authorization: `Bearer ${session.access_token}` },
+  });
+  if (!response.ok) throw new Error(`connectors HTTP ${String(response.status)}`);
+  const body: unknown = await response.json();
+  return { items: parseConnectorItems(body), catalog: record(body) ?? {} };
+}
+
+/** Items-only compatibility wrapper (skills/apps panels). */
+export async function fetchConnectors(session: AuthSession, serverUrl: string): Promise<ConnectorItem[]> {
+  return (await fetchConnectorCatalog(session, serverUrl)).items;
 }
 
 function toBase64(bytes: Uint8Array): string {

@@ -96,6 +96,9 @@ Boot
 
 - **布局**：左导航（每个 `ui.settings.pane` 贡献一项，按 `order` 升序）+ 右侧当前 pane；默认选中第一个可用 pane。
   窄窗（< 720px）导航退化为顶部横向 tab，内容区不横向滚动。企业地址锁定提示、退出登录、企业模型在「企业」pane（仅 enterprise 贡献）。
+- **审批策略（config spec C-4）**：审批策略控件位于「工具与审批」pane（order 40，两 edition 共用）：
+  `ask`（默认）/`auto_read_only`/`strict` 三选一；文案说明「任何策略都不会自动批准声明需要审批的工具；strict 会询问只读/交互工具」；
+  保存后立即生效（runtime settings 发布），旧 `auto_approve_read_only` 不单独呈现（只做迁移）。
 - **pane 来源**：全部内建 pane（通用/模型/本地 Provider/Agent/工具与审批/网络与检索/嵌入/媒体/企业/关于）都是
   `ui.settings.pane` 贡献；`editions` 在构建期过滤（personal 无企业 pane；enterprise 无 provider/embedding/media），pane 内无 edition 分支。
   无任何 pane 贡献时显示空态 +「恢复默认」入口，不白屏；单个 pane 渲染异常由 `SlotErrorBoundary` 局部降级，仍可切到其它 pane。

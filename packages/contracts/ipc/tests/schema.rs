@@ -99,4 +99,20 @@ fn export_schema() {
         "ipc-settings-set-result.json",
         &schemars::schema_for!(zk_contract_ipc::results::SettingsSetResult),
     );
+    write(
+        "ipc-connectors-configure.json",
+        &schemars::schema_for!(zk_contract_ipc::payloads::ConnectorsConfigurePayload),
+    );
+    write(
+        "ipc-connectors-configure-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::ConnectorsConfigureResult),
+    );
+    write(
+        "ipc-connectors-reload-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::ConnectorsReloadResult),
+    );
+    write(
+        "ipc-connectors-clear-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::ConnectorsClearResult),
+    );
 }

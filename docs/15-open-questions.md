@@ -157,3 +157,4 @@
 | D65 | 安全门槛 = **内部安全评审**；不做第三方渗透/等保/SOC2 作为发布前置 |
 | D66 | **所有对话必须归属工作区**（本地目录 + 稳定 id）；无工作区不建会话；agent cwd/工具默认根 = 工作区根；会话列表/消息按工作区隔离（参考 DSH workspace/session 设计） |
 | D67 | **M1 IPC 边界校验走 C10 过渡例外（ADR-059）**：手写 TS 镜像 + 运行时 guard；T22（schemars JSON Schema → TS/`SCHEMAS` + Ajv；不引入 ts-rs）为 M2 前硬退出条件 |
+| D68 | **本地审批策略封闭枚举 + 旧字段迁移 + 连接器 web 接线**（config spec C-1/C-2/C-3/C-6，不新增 ADR）：`ApprovalPolicy {ask, auto_read_only, strict}` 存 `AppSettings.tools.approval_policy`；`ask`=只问 `requires_approval`，`auto_read_only`=只读自动+全 mutating 询问，`strict`=全询问；弱不变式：任何策略不自动批准 `requires_approval==true`（S4 always-allow 例外属用户显式授权）。旧 `auto_approve_read_only` 映射 `false→strict`/`true→ask` 并幂等规范化；`connectors.configure/reload/clear` 进 `zk-contract-ipc`，企业 web 登录/刷新/启停/登出/手动重载接线。MCP 本地配置/企业 catalog-only 另拆 `2026-11-01-client-mcp-config`（后续实现）。 |

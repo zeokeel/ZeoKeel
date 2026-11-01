@@ -143,6 +143,12 @@ pub mod commands {
     pub const AUTH_LOGOUT: &str = "auth.logout";
     /// Open an http(s) URL in the platform browser (fixed argv; fire-and-forget).
     pub const SYSTEM_OPEN_URL: &str = "system.open_url";
+    /// Install/refresh the enterprise connector catalog (sanitized, non-secret).
+    pub const CONNECTORS_CONFIGURE: &str = "connectors.configure";
+    /// Drop cached MCP sessions so the next call re-initializes from config.
+    pub const CONNECTORS_RELOAD: &str = "connectors.reload";
+    /// Clear the catalog-provided connector config (logout/disconnect).
+    pub const CONNECTORS_CLEAR: &str = "connectors.clear";
 }
 
 /// Typed command payloads (single source for `schemars` JSON Schema).
@@ -271,6 +277,17 @@ pub mod payloads {
         /// Answers keyed by question id (opaque JSON).
         pub answers: serde_json::Value,
     }
+
+    /// `connectors.configure` payload.
+    ///
+    /// `catalog` is the raw server response (`{items:[...]}`) or its JSON
+    /// string form; the host validates it through the connector contract before
+    /// touching the live MCP config (invalid payloads keep the old config).
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ConnectorsConfigurePayload {
+        /// Connector catalog (`{items:[...]}` object or JSON string).
+        pub catalog: serde_json::Value,
+    }
 }
 
 /// Typed command results (single source for `schemars` JSON Schema).
@@ -357,5 +374,26 @@ pub mod results {
         pub settings: zk_contract_config::AppSettings,
         /// Revision after this save (`previous + 1`).
         pub revision: u64,
+    }
+
+    /// `connectors.configure` result: number of MCP servers installed.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ConnectorsConfigureResult {
+        /// Enabled servers installed from the catalog (0 when none are enabled).
+        pub configured: u64,
+    }
+
+    /// `connectors.reload` result: whether cached MCP sessions were dropped.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ConnectorsReloadResult {
+        /// True on success (the command fails instead of returning false).
+        pub reloaded: bool,
+    }
+
+    /// `connectors.clear` result: whether the catalog config was cleared.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ConnectorsClearResult {
+        /// True on success (the command fails instead of returning false).
+        pub cleared: bool,
     }
 }

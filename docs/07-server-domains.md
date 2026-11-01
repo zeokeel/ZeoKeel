@@ -198,7 +198,10 @@
     断言 catalog config 与无 secret。
   - desktop `auth.configure`（登录/bootstrap/refresh）拉取 catalog → `zk_connector_mcp::update_from_catalog`；
     logout → `clear_catalog_config`；更新事件可经 IPC `connectors.configure` / `connectors.reload` /
-    `connectors.clear` 触发（web 侧接线）。客户端单元测试覆盖 catalog→config 与 secret 拒绝。
+    `connectors.clear` 触发；**web 已接线**（企业版：登录/刷新后 `connectors.configure`、启停后 configure、
+    手动 `connectors.reload`、登出 `connectors.clear`；契约常量/DTO 在 `zk-contract-ipc`，失败码
+    `connectors/catalog-invalid`/`connectors/apply-failed`/`connectors/reload-failed`/`connectors/clear-failed`）。
+    客户端单元测试覆盖 catalog→config 与 secret 拒绝。
 - **UNVERIFIED / 剩余**：
   ① OAuth 流程与 token 注入已实现并有本地 fixture 测试，但**真实 IdP/provider 联调 UNVERIFIED**（本机无外部网络/
     无真实 OAuth MCP server；需在带网络的验收环境执行一次真实 authorize→token→`mcp_call`）；标准 OAuth 元数据

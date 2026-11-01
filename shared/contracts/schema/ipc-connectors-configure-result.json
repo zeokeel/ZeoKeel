@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ConnectorsConfigureResult",
+  "description": "`connectors.configure` result: number of MCP servers installed.",
+  "type": "object",
+  "required": [
+    "configured"
+  ],
+  "properties": {
+    "configured": {
+      "description": "Enabled servers installed from the catalog (0 when none are enabled).",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    }
+  }
+}

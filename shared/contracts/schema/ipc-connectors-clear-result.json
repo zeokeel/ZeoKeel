@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ConnectorsClearResult",
+  "description": "`connectors.clear` result: whether the catalog config was cleared.",
+  "type": "object",
+  "required": [
+    "cleared"
+  ],
+  "properties": {
+    "cleared": {
+      "description": "True on success (the command fails instead of returning false).",
+      "type": "boolean"
+    }
+  }
+}

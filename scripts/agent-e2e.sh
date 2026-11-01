@@ -66,11 +66,17 @@ def respond(body):
         call={"id":"call_goal","type":"function","function":{"name":"goal","arguments":json.dumps({"action":"create","objective":"ship"})}}
     elif "schedule" in user and tool_count==0:
         call={"id":"call_schedule","type":"function","function":{"name":"schedule","arguments":json.dumps({"action":"create","cron":"0 9 * * *","prompt":"standup"})}}
+        return {"id":"chatcmpl-schedule","object":"chat.completion","choices":[{"index":0,"finish_reason":"tool_calls","message":{"role":"assistant","content":None,"tool_calls":[call]}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
     elif "skill" in user and tool_count==0:
         call={"id":"call_skill","type":"function","function":{"name":"skill","arguments":json.dumps({"action":"list"})}}
     elif "slow" in user:
         import time; time.sleep(5)
         return {"id":"chatcmpl-slow","object":"chat.completion","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"slow done"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
+    if "read only" in user:
+        if tool_count==0:
+            call={"id":"call_readonly","type":"function","function":{"name":"fs.read","arguments":json.dumps({"path":"agent-e2e.txt"})}}
+            return {"id":"chatcmpl-readonly","object":"chat.completion","choices":[{"index":0,"finish_reason":"tool_calls","message":{"role":"assistant","content":None,"tool_calls":[call]}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
+        return {"id":"chatcmpl-final","object":"chat.completion","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"read only done"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
     if tool_count>0 and "multi" not in user:
         return {"id":"chatcmpl-final","object":"chat.completion","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"已完成工具调用并通过审批。"}}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}
     if "multi" in user and tool_count>=2:

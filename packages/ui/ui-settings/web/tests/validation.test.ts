@@ -88,7 +88,7 @@ describe("settings validation", () => {
       hooks: { enabled: false, log: "/tmp/zk-hooks.jsonl" },
       schedule: { enabled: true, scan_seconds: 30 },
     });
-    expect(settings.tools).toEqual({ tool_timeout_ms: 60000, approval_timeout_ms: 450000 });
+    expect(settings.tools).toEqual({ tool_timeout_ms: 60000, approval_timeout_ms: 450000, approval_policy: null });
     expect(settings.embedding).toEqual({
       base_url: "https://embed.example/v1",
       api_key: "sk-embed",
@@ -128,7 +128,7 @@ describe("settings validation", () => {
     expect(settings.agent.schedule).toEqual({ enabled: false, scan_seconds: 10 });
     expect(toForm(defaultSettings()).scanSeconds).toBe("10");
     expect(toForm(defaultSettings()).scheduleEnabled).toBe(false);
-    expect(settings.tools).toEqual({ tool_timeout_ms: 120000, approval_timeout_ms: 300000 });
+    expect(settings.tools).toEqual({ tool_timeout_ms: 120000, approval_timeout_ms: 300000, approval_policy: null });
     expect(settings.embedding).toEqual({ base_url: "", api_key: "", model: "", dims: null, dir: "" });
     expect(settings.media).toEqual({ base_url: "", api_key: "", image_model: "", audio_model: "", transcription_model: "", rerank_model: "" });
     expect(toForm(defaultSettings()).mediaImageModel).toBe("");

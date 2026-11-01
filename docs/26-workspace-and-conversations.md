@@ -167,8 +167,13 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_m
 | `session.messages` | `{workspace_id, conversation_id}` | `Message[]` | `session/not-found`、`session/workspace-mismatch` |
 | `chat.send` | `{workspace_id, conversation_id, text}` | `{stream_id,workspace_id}` | 同上 + `session/active-turn` |
 | `chat.cancel` | `{workspace_id, stream_id}` | `{cancelled:true}` | `workspace/not-found` |
+| `connectors.configure` | `{catalog: object \| string}` | `{configured:n}` | `connectors/catalog-invalid`、`connectors/apply-failed` |
+| `connectors.reload` | — | `{reloaded:true}` | `connectors/reload-failed` |
+| `connectors.clear` | — | `{cleared:true}` | `connectors/clear-failed` |
 
 - 所有会话命令必须带 `workspace_id` 并校验归属；`chat.send` **不再自动建会话**。
+- `connectors.*` 只由企业版 web 在登录/刷新（configure）、启停（configure）、手动重载（reload）、登出（clear）时调用；
+  personal 无登录/连接器面板不发这些命令；personal 的本地 MCP 配置为另一 change（`client-mcp-config`），不与本组命令混用。
 - 并发：Workspace mutation 全局串行（单 writer/互斥）；同一会话单 turn；切换 Workspace 取消活动 turn 并广播 `turn_cancelled`。
 - 错误码为封闭集合，M1 落在 `shared/contracts/errors.json`（T4）。
 - 默认 Workspace 规则：始终恰好 1 个；`set_default` 切换；默认不可移除，先切 default 再移除；reassign 目标可为默认（含默认作为接收方），但不能是自身/不可用。

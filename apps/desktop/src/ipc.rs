@@ -302,19 +302,32 @@ pub(crate) fn apply_persisted_settings(
         .load()
         .map_err(|error| format!("settings load: {error}"))?;
     let file_exists = settings_file_exists();
+    let mut dirty = false;
+    // Boot normalization (config spec R4): canonicalize the deprecated
+    // `auto_approve_read_only` field into `tools.approval_policy`. A fresh
+    // install is never persisted so the env/default fallback stays active.
+    if file_exists {
+        let before = settings.clone();
+        settings.normalize_approval_policy();
+        dirty |= settings != before;
+    }
     // Enterprise must never hold/persist a local embedding provider (C7):
     // ignore and clear any stale personal-edition values.
     if zk_composed::EDITION != "personal"
         && settings.embedding != zk_contract_config::EmbeddingSettings::default()
     {
         settings.embedding = zk_contract_config::EmbeddingSettings::default();
+        dirty = true;
+        eprintln!(
+            "zk-desktop: cleared persisted embedding provider (enterprise is gateway-only, C7)"
+        );
+    }
+    if dirty {
         match runtime.settings().save(&settings) {
-            Ok(()) => eprintln!(
-                "zk-desktop: cleared persisted embedding provider (enterprise is gateway-only, C7)"
-            ),
-            Err(error) => {
-                eprintln!("zk-desktop: failed to clear persisted embedding provider (C7): {error}")
+            Ok(()) => {
+                eprintln!("zk-desktop: persisted normalized settings (approval policy/edition)")
             }
+            Err(error) => eprintln!("zk-desktop: failed to persist normalized settings: {error}"),
         }
     }
     // A settings file (even one carrying the default schedule) is explicit:
@@ -334,6 +347,23 @@ fn apply_connector_catalog(catalog_json: &str) -> Result<usize, String> {
     let count = zk_connector_mcp::update_from_catalog(catalog_json)?;
     restore_connector_oauth_tokens()?;
     Ok(count)
+}
+
+/// Map connector catalog/session failures to the closed IPC error set
+/// (config spec C-3): invalid catalogs are `connectors/catalog-invalid`, any
+/// other apply/session failure keeps its phase (`apply`/`reload`/`clear`).
+fn connectors_error(phase: &str, error: &str) -> String {
+    let invalid = error.starts_with("MCP_CONFIG")
+        || error.starts_with("MCP_VALIDATION")
+        || error.starts_with("MCP_INSECURE");
+    if invalid {
+        return format!("connectors/catalog-invalid: {error}");
+    }
+    match phase {
+        "reload" => format!("connectors/reload-failed: {error}"),
+        "clear" => format!("connectors/clear-failed: {error}"),
+        _ => format!("connectors/apply-failed: {error}"),
+    }
 }
 
 /// Re-install client-held OAuth tokens into the MCP transport after a catalog sync.
@@ -567,6 +597,9 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 }
             }
             keep_existing_secrets(&mut settings, existing.as_ref());
+            // Config spec R4: canonicalize the legacy approval field before
+            // validating/publishing/persisting (idempotent).
+            settings.normalize_approval_policy();
             if let Err(error) = validate_settings(&settings) {
                 return CommandResponse::err(error);
             }
@@ -664,26 +697,41 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 Err(error) => CommandResponse::err(error.to_string()),
             }
         }
-        "connectors.configure" => {
+        commands::CONNECTORS_CONFIGURE => {
             let Some(catalog) = payload.get("catalog") else {
-                return CommandResponse::err("missing catalog");
+                return CommandResponse::err("connectors/catalog-invalid: missing catalog");
             };
             let text = match catalog {
                 Value::String(text) => text.clone(),
                 other => other.to_string(),
             };
             match apply_connector_catalog(&text) {
-                Ok(count) => CommandResponse::ok(json!({ "configured": count })),
-                Err(error) => CommandResponse::err(format!("connectors/configure: {error}")),
+                Ok(count) => CommandResponse::ok(
+                    serde_json::to_value(zk_contract_ipc::results::ConnectorsConfigureResult {
+                        configured: u64::try_from(count).unwrap_or(u64::MAX),
+                    })
+                    .unwrap_or(Value::Null),
+                ),
+                Err(error) => CommandResponse::err(connectors_error("configure", &error)),
             }
         }
-        "connectors.reload" => match zk_connector_mcp::reload_connectors() {
-            Ok(()) => CommandResponse::ok(json!({ "reloaded": true })),
-            Err(error) => CommandResponse::err(format!("connectors/reload: {error}")),
+        commands::CONNECTORS_RELOAD => match zk_connector_mcp::reload_connectors() {
+            Ok(()) => CommandResponse::ok(
+                serde_json::to_value(zk_contract_ipc::results::ConnectorsReloadResult {
+                    reloaded: true,
+                })
+                .unwrap_or(Value::Null),
+            ),
+            Err(error) => CommandResponse::err(connectors_error("reload", &error)),
         },
-        "connectors.clear" => match zk_connector_mcp::clear_catalog_config() {
-            Ok(()) => CommandResponse::ok(json!({ "cleared": true })),
-            Err(error) => CommandResponse::err(format!("connectors/clear: {error}")),
+        commands::CONNECTORS_CLEAR => match zk_connector_mcp::clear_catalog_config() {
+            Ok(()) => CommandResponse::ok(
+                serde_json::to_value(zk_contract_ipc::results::ConnectorsClearResult {
+                    cleared: true,
+                })
+                .unwrap_or(Value::Null),
+            ),
+            Err(error) => CommandResponse::err(connectors_error("clear", &error)),
         },
         commands::AUTH_CONFIGURE => {
             let (Some(base_url), Some(access_token)) = (
@@ -3112,6 +3160,163 @@ mod tests {
         assert_eq!(no_token.error.as_deref(), Some("OAUTH_NO_TOKEN"));
 
         oauth_test_cleanup();
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
+    fn settings_set_normalizes_legacy_approval_policy() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-approval-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", &home);
+        let state = super::AppState::new(zk_composed::build().expect("composed build"));
+
+        // Legacy `auto_approve_read_only=false` (never consumed before) maps to strict.
+        let legacy = zk_contract_config::AppSettings {
+            auto_approve_read_only: false,
+            ..zk_contract_config::AppSettings::default()
+        };
+        let saved = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SETTINGS_SET,
+            &serde_json::json!({"settings": legacy}),
+        );
+        assert!(saved.ok, "{:?}", saved.error);
+        let loaded = state.runtime().settings().load().unwrap();
+        assert_eq!(
+            loaded.tools.approval_policy,
+            Some(zk_contract_config::ApprovalPolicy::Strict)
+        );
+        assert!(!loaded.auto_approve_read_only);
+        let snapshot = zk_contract_config::runtime_settings().unwrap().unwrap();
+        assert_eq!(
+            snapshot
+                .tools
+                .expect("tools published for a non-default policy")
+                .effective_approval_policy(),
+            zk_contract_config::ApprovalPolicy::Strict
+        );
+
+        // Explicitly choosing ask canonicalizes to "no policy" + legacy mirror true.
+        let mut ask = loaded.clone();
+        ask.tools.approval_policy = Some(zk_contract_config::ApprovalPolicy::Ask);
+        ask.auto_approve_read_only = false;
+        let saved = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SETTINGS_SET,
+            &serde_json::json!({"settings": ask}),
+        );
+        assert!(saved.ok, "{:?}", saved.error);
+        let loaded = state.runtime().settings().load().unwrap();
+        assert_eq!(loaded.tools.approval_policy, None);
+        assert!(loaded.auto_approve_read_only);
+        assert_eq!(
+            loaded.effective_approval_policy(),
+            zk_contract_config::ApprovalPolicy::Ask
+        );
+
+        zk_contract_config::clear_runtime_settings().unwrap();
+        zk_contract_agent::clear_default_agent_settings().unwrap();
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
+    fn boot_normalizes_legacy_approval_policy_when_file_exists() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-approval-boot-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", &home);
+        let state = super::AppState::new(zk_composed::build().expect("composed build"));
+
+        let legacy = zk_contract_config::AppSettings {
+            auto_approve_read_only: false,
+            ..zk_contract_config::AppSettings::default()
+        };
+        state.runtime().settings().save(&legacy).unwrap();
+        assert!(super::settings_file_exists());
+        super::apply_persisted_settings(state.runtime()).unwrap();
+        let loaded = state.runtime().settings().load().unwrap();
+        assert_eq!(
+            loaded.tools.approval_policy,
+            Some(zk_contract_config::ApprovalPolicy::Strict)
+        );
+        // Idempotent: a second boot changes nothing.
+        super::apply_persisted_settings(state.runtime()).unwrap();
+        assert_eq!(state.runtime().settings().load().unwrap(), loaded);
+
+        zk_contract_config::clear_runtime_settings().unwrap();
+        crate::automation::clear_settings_override();
+        zk_contract_agent::clear_default_agent_settings().unwrap();
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
+    fn connectors_dispatch_uses_contract_commands_and_closed_errors() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home =
+            std::env::temp_dir().join(format!("zk-connectors-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", &home);
+        let state = super::AppState::new(zk_composed::build().expect("composed build"));
+
+        // Missing/invalid catalog: closed `connectors/catalog-invalid` and the
+        // previous (empty) config stays untouched.
+        let missing = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::CONNECTORS_CONFIGURE,
+            &serde_json::json!({}),
+        );
+        assert!(!missing.ok);
+        assert!(missing
+            .error
+            .as_deref()
+            .is_some_and(|error| error.starts_with("connectors/catalog-invalid")));
+        let invalid = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::CONNECTORS_CONFIGURE,
+            &serde_json::json!({"catalog": "not-json"}),
+        );
+        assert!(!invalid.ok);
+        assert!(invalid
+            .error
+            .as_deref()
+            .is_some_and(|error| error.starts_with("connectors/catalog-invalid")));
+
+        // Empty catalog is a valid (configured=0) state.
+        let configured = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::CONNECTORS_CONFIGURE,
+            &serde_json::json!({"catalog": {"items": []}}),
+        );
+        assert!(configured.ok, "{:?}", configured.error);
+        assert_eq!(
+            configured.data.unwrap_or(Value::Null)["configured"],
+            serde_json::json!(0)
+        );
+
+        let reload = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::CONNECTORS_RELOAD,
+            &serde_json::json!({}),
+        );
+        assert!(reload.ok, "{:?}", reload.error);
+        assert_eq!(
+            reload.data.unwrap_or(Value::Null)["reloaded"],
+            serde_json::json!(true)
+        );
+
+        let clear = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::CONNECTORS_CLEAR,
+            &serde_json::json!({}),
+        );
+        assert!(clear.ok, "{:?}", clear.error);
+        assert_eq!(
+            clear.data.unwrap_or(Value::Null)["cleared"],
+            serde_json::json!(true)
+        );
+
+        zk_contract_config::clear_runtime_settings().unwrap();
         std::fs::remove_dir_all(&home).unwrap();
     }
 }

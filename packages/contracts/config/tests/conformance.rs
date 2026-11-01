@@ -2,8 +2,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
 
 use zk_contract_config::{
-    AgentSettings, AppSettings, EmbeddingSettings, MediaSettings, ProviderKind, RuntimeSettings,
-    ScheduleSettings, ToolChoiceSetting, ToolSettings, WebSearchSettings,
+    AgentSettings, AppSettings, ApprovalPolicy, EmbeddingSettings, MediaSettings, ProviderKind,
+    RuntimeSettings, ScheduleSettings, ToolChoiceSetting, ToolSettings, WebSearchSettings,
 };
 
 #[test]
@@ -529,4 +529,135 @@ fn settings_store_revision_defaults_keep_third_party_stores_compatible() {
         ConfigError::Conflict("stale".to_owned()).to_string(),
         "config revision conflict: stale"
     );
+}
+
+#[test]
+fn approval_policy_truth_table_and_weak_invariant() {
+    use ApprovalPolicy::{Ask, AutoReadOnly, Strict};
+
+    // (requires_approval, mutating) -> expected ask per policy.
+    let cases = [
+        (true, true, [true, true, true]),
+        (true, false, [true, true, true]),
+        (false, true, [false, true, true]),
+        (false, false, [false, false, true]),
+    ];
+    for (requires_approval, mutating, expected) in cases {
+        assert_eq!(Ask.should_ask(requires_approval, mutating), expected[0]);
+        assert_eq!(
+            AutoReadOnly.should_ask(requires_approval, mutating),
+            expected[1]
+        );
+        assert_eq!(Strict.should_ask(requires_approval, mutating), expected[2]);
+    }
+    // T1 weak invariant: a tool that declares approval is never auto-approved.
+    for policy in [Ask, AutoReadOnly, Strict] {
+        for mutating in [true, false] {
+            assert!(
+                policy.should_ask(true, mutating),
+                "policy {policy:?} must ask for requires_approval tools"
+            );
+        }
+    }
+    // The four mutating tools that declare no approval are honestly not asked
+    // under the default policy (schedule/job_kill/goal/mcp_call).
+    assert!(!Ask.should_ask(false, true));
+}
+
+#[test]
+fn approval_policy_wire_format_and_lenient_unknown_values() {
+    use ApprovalPolicy::{Ask, AutoReadOnly, Strict};
+
+    assert_eq!(Ask.as_str(), "ask");
+    assert_eq!(AutoReadOnly.as_str(), "auto_read_only");
+    assert_eq!(Strict.as_str(), "strict");
+    assert!(serde_json::to_string(&ToolSettings {
+        approval_policy: Some(Strict),
+        ..ToolSettings::default()
+    })
+    .unwrap()
+    .contains("\"approval_policy\":\"strict\""));
+
+    // Unknown strings and invalid types degrade to `ask` instead of failing the
+    // whole document (R5).
+    let unknown: ToolSettings = serde_json::from_str(r#"{"approval_policy":"bogus"}"#).unwrap();
+    assert_eq!(unknown.approval_policy, Some(Ask));
+    let number: ToolSettings = serde_json::from_str(r#"{"approval_policy":42}"#).unwrap();
+    assert_eq!(number.approval_policy, Some(Ask));
+    let null: ToolSettings = serde_json::from_str(r#"{"approval_policy":null}"#).unwrap();
+    assert_eq!(null.approval_policy, None);
+
+    let mut settings = AppSettings::default();
+    settings.tools.approval_policy = Some(Ask);
+    assert_eq!(settings.effective_approval_policy(), Ask);
+    settings.tools.approval_policy = Some(AutoReadOnly);
+    assert_eq!(settings.effective_approval_policy(), AutoReadOnly);
+    settings.tools.approval_policy = Some(Strict);
+    assert_eq!(settings.effective_approval_policy(), Strict);
+}
+
+#[test]
+fn approval_migration_and_normalization_are_idempotent() {
+    use ApprovalPolicy::{Ask, AutoReadOnly, Strict};
+
+    // No explicit policy + legacy default (true) -> ask; canonical form keeps the
+    // policy absent so default-only documents stay unpublished.
+    let mut settings = AppSettings::default();
+    settings.normalize_approval_policy();
+    assert_eq!(settings.effective_approval_policy(), Ask);
+    assert_eq!(settings.tools.approval_policy, None);
+    assert!(settings.auto_approve_read_only);
+
+    // Legacy `false` (auto-approve off) -> strict.
+    let mut settings = AppSettings {
+        auto_approve_read_only: false,
+        ..AppSettings::default()
+    };
+    settings.normalize_approval_policy();
+    assert_eq!(settings.tools.approval_policy, Some(Strict));
+    assert!(!settings.auto_approve_read_only);
+
+    // Explicit policy wins over the legacy field; canonical mirror is written.
+    let mut settings = AppSettings {
+        auto_approve_read_only: false,
+        ..AppSettings::default()
+    };
+    settings.tools.approval_policy = Some(Ask);
+    settings.normalize_approval_policy();
+    assert_eq!(settings.tools.approval_policy, None);
+    assert!(settings.auto_approve_read_only);
+
+    let mut settings = AppSettings::default();
+    settings.tools.approval_policy = Some(AutoReadOnly);
+    settings.normalize_approval_policy();
+    assert_eq!(settings.tools.approval_policy, Some(AutoReadOnly));
+    assert!(settings.auto_approve_read_only);
+
+    // Idempotent: a second pass changes nothing.
+    let once = settings.clone();
+    settings.normalize_approval_policy();
+    assert_eq!(settings, once);
+}
+
+#[test]
+fn approval_migration_reads_legacy_json_shapes() {
+    // 4 document shapes: absent tools / no policy field / explicit value / null.
+    let absent = r#"{"schema":1,"provider":{"kind":"mock"},"theme":"auto","locale":"zh-CN","auto_approve_read_only":true}"#;
+    let parsed: AppSettings = serde_json::from_str(absent).unwrap();
+    assert_eq!(parsed.effective_approval_policy(), ApprovalPolicy::Ask);
+
+    let no_policy = r#"{"schema":1,"provider":{"kind":"mock"},"theme":"auto","locale":"zh-CN","auto_approve_read_only":false,"tools":{"tool_timeout_ms":1000,"approval_timeout_ms":1000}}"#;
+    let parsed: AppSettings = serde_json::from_str(no_policy).unwrap();
+    assert_eq!(parsed.effective_approval_policy(), ApprovalPolicy::Strict);
+
+    let explicit = r#"{"schema":1,"provider":{"kind":"mock"},"theme":"auto","locale":"zh-CN","auto_approve_read_only":false,"tools":{"tool_timeout_ms":1000,"approval_timeout_ms":1000,"approval_policy":"auto_read_only"}}"#;
+    let parsed: AppSettings = serde_json::from_str(explicit).unwrap();
+    assert_eq!(
+        parsed.effective_approval_policy(),
+        ApprovalPolicy::AutoReadOnly
+    );
+
+    let null_policy = r#"{"schema":1,"provider":{"kind":"mock"},"theme":"auto","locale":"zh-CN","auto_approve_read_only":true,"tools":{"tool_timeout_ms":1000,"approval_timeout_ms":1000,"approval_policy":null}}"#;
+    let parsed: AppSettings = serde_json::from_str(null_policy).unwrap();
+    assert_eq!(parsed.effective_approval_policy(), ApprovalPolicy::Ask);
 }

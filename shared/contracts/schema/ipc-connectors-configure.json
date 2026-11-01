@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ConnectorsConfigurePayload",
+  "description": "`connectors.configure` payload.\n\n`catalog` is the raw server response (`{items:[...]}`) or its JSON string form; the host validates it through the connector contract before touching the live MCP config (invalid payloads keep the old config).",
+  "type": "object",
+  "required": [
+    "catalog"
+  ],
+  "properties": {
+    "catalog": {
+      "description": "Connector catalog (`{items:[...]}` object or JSON string)."
+    }
+  }
+}

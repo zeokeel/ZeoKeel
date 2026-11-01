@@ -209,7 +209,8 @@
           "description": "Tool execution / approval timeouts (backward compatible default).",
           "default": {
             "tool_timeout_ms": 120000,
-            "approval_timeout_ms": 300000
+            "approval_timeout_ms": 300000,
+            "approval_policy": null
           },
           "allOf": [
             {
@@ -230,6 +231,32 @@
           ]
         }
       }
+    },
+    "ApprovalPolicy": {
+      "description": "Closed local approval policy for tool calls (config spec C-1).\n\nThe policy only decides whether the agent asks the user before running a tool. It can never auto-approve a tool whose `ToolSpec.requires_approval` is true (weak invariant T1); the only exception is the per-conversation always-allow set owned by the approval spec (S4), which is an explicit earlier user authorization, not a policy decision.",
+      "oneOf": [
+        {
+          "description": "Ask exactly for tools that declare `requires_approval` (default).",
+          "type": "string",
+          "enum": [
+            "ask"
+          ]
+        },
+        {
+          "description": "Read-only tools run without asking; every mutating tool asks.",
+          "type": "string",
+          "enum": [
+            "auto_read_only"
+          ]
+        },
+        {
+          "description": "Ask for every tool call, including read-only ones (strictest).",
+          "type": "string",
+          "enum": [
+            "strict"
+          ]
+        }
+      ]
     },
     "CompletionSettings": {
       "description": "Sampling / generation parameters for the local agent.",
@@ -576,6 +603,18 @@
       "description": "Tool execution and approval-wait timeouts for the local agent.",
       "type": "object",
       "properties": {
+        "approval_policy": {
+          "description": "Explicit local approval policy (`None` = default `ask`, not published).",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ApprovalPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "approval_timeout_ms": {
           "description": "Approval wait timeout in milliseconds (1000..=1800000).",
           "default": 300000,

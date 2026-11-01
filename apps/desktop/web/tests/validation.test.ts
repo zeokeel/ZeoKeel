@@ -209,7 +209,7 @@ describe("protocol boundary rejects invalid data after schema validation", () =>
 
   it("validates tools timeouts via the generated app_settings schema", () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    expect(validateAppSettings({ ...defaultSettings(), tools: { tool_timeout_ms: 60000, approval_timeout_ms: 450000 } })).toBe(true);
+    expect(validateAppSettings({ ...defaultSettings(), tools: { tool_timeout_ms: 60000, approval_timeout_ms: 450000, approval_policy: null } })).toBe(true);
     expect(validateAppSettings({ ...defaultSettings(), tools: { tool_timeout_ms: "60000", approval_timeout_ms: 450000 } })).toBe(false);
     expect(validateAppSettings({ ...defaultSettings(), tools: { tool_timeout_ms: -1, approval_timeout_ms: 450000 } })).toBe(false);
   });
@@ -245,8 +245,8 @@ describe("protocol boundary rejects invalid data after schema validation", () =>
   });
 
   it("parses tools timeouts with serde defaults for old settings", () => {
-    expect(parseSettings({ ...defaultSettings(), tools: undefined }).tools).toEqual({ tool_timeout_ms: 120000, approval_timeout_ms: 300000 });
-    expect(parseSettings({ ...defaultSettings(), tools: { tool_timeout_ms: 60000 } }).tools).toEqual({ tool_timeout_ms: 60000, approval_timeout_ms: 300000 });
+    expect(parseSettings({ ...defaultSettings(), tools: undefined }).tools).toEqual({ tool_timeout_ms: 120000, approval_timeout_ms: 300000, approval_policy: null });
+    expect(parseSettings({ ...defaultSettings(), tools: { tool_timeout_ms: 60000 } }).tools).toEqual({ tool_timeout_ms: 60000, approval_timeout_ms: 300000, approval_policy: null });
   });
 
   it("parses meta.get.agent_config_error for the boot warning", () => {

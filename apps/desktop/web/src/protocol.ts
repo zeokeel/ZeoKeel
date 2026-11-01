@@ -500,6 +500,11 @@ function parseEmbeddingSettings(value: unknown): EmbeddingSettings {
   };
 }
 
+/** Lenient policy reader: unknown/missing values mean "no explicit policy". */
+function readApprovalPolicy(value: unknown): "ask" | "auto_read_only" | "strict" | null {
+  return value === "ask" || value === "auto_read_only" || value === "strict" ? value : null;
+}
+
 function parseToolSettings(value: unknown): ToolSettings {
   const base = defaultToolSettings();
   if (!isRecord(value)) {
@@ -508,6 +513,7 @@ function parseToolSettings(value: unknown): ToolSettings {
   return {
     tool_timeout_ms: readNumber(value, "tool_timeout_ms") ?? base.tool_timeout_ms,
     approval_timeout_ms: readNumber(value, "approval_timeout_ms") ?? base.approval_timeout_ms,
+    approval_policy: readApprovalPolicy(value["approval_policy"]),
   };
 }
 

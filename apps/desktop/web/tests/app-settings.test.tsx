@@ -84,7 +84,7 @@ describe("settings integration", () => {
     expect(sentSettings.agent.max_steps).toBe(12);
     expect(sentSettings.agent.completion.temperature).toBe(0.7);
     expect(sentSettings.agent.memory.enabled).toBe(false);
-    expect(sentSettings.tools).toEqual({ tool_timeout_ms: 60000, approval_timeout_ms: 450000 });
+    expect(sentSettings.tools).toEqual({ tool_timeout_ms: 60000, approval_timeout_ms: 450000, approval_policy: null });
     expect(sentSettings.agent.schedule).toEqual({ enabled: true, scan_seconds: 30 });
     expect(sentSettings.embedding).toEqual({
       base_url: "https://embed.example/v1",

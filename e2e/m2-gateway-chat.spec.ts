@@ -15,6 +15,9 @@ test.describe("M2 enterprise chat through gateway", () => {
     await page.getByLabel("密码").fill("admin-pass");
     await page.getByRole("button", { name: "登录" }).click();
     await page.getByRole("button", { name: "打开设置" }).click();
+    // Paginated settings (settings-ia): the enterprise model lives in the 企业 pane.
+    const settingsDialog = page.getByRole("dialog");
+    await settingsDialog.getByRole("button", { name: /^企业$/ }).click();
     await expect(page.getByLabel("企业模型")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("模型 provider")).toHaveCount(0);
     await page.keyboard.press("Escape");

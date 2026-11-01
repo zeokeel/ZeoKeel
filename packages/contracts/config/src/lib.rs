@@ -124,6 +124,78 @@ impl Default for HookSettings {
     }
 }
 
+/// Closed local approval policy for tool calls (config spec C-1).
+///
+/// The policy only decides whether the agent asks the user before running a
+/// tool. It can never auto-approve a tool whose `ToolSpec.requires_approval`
+/// is true (weak invariant T1); the only exception is the per-conversation
+/// always-allow set owned by the approval spec (S4), which is an explicit
+/// earlier user authorization, not a policy decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalPolicy {
+    /// Ask exactly for tools that declare `requires_approval` (default).
+    #[default]
+    Ask,
+    /// Read-only tools run without asking; every mutating tool asks.
+    AutoReadOnly,
+    /// Ask for every tool call, including read-only ones (strictest).
+    Strict,
+}
+
+impl ApprovalPolicy {
+    /// Parse the wire string; unknown values degrade to [`ApprovalPolicy::Ask`]
+    /// so a hand-edited/future settings document cannot block startup (R5).
+    #[must_use]
+    pub fn parse(value: &str) -> Self {
+        match value {
+            "auto_read_only" => Self::AutoReadOnly,
+            "strict" => Self::Strict,
+            _ => Self::Ask,
+        }
+    }
+
+    /// The canonical wire string.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ask => "ask",
+            Self::AutoReadOnly => "auto_read_only",
+            Self::Strict => "strict",
+        }
+    }
+
+    /// Whether this policy asks the user before running one tool call.
+    ///
+    /// This is the single policy-evaluation implementation shared by the agent
+    /// runtime and tests. The weak invariant (T1) is encoded here:
+    /// `requires_approval == true` always returns `true`.
+    #[must_use]
+    pub fn should_ask(self, requires_approval: bool, mutating: bool) -> bool {
+        match self {
+            Self::Ask => requires_approval,
+            // C-1=A: read-only tools run silently, but every mutating tool asks.
+            Self::AutoReadOnly => requires_approval || mutating,
+            Self::Strict => true,
+        }
+    }
+}
+
+/// Lenient deserialization: unknown strings/types degrade to `Ask` (R5)
+/// instead of failing the whole settings document.
+impl<'de> Deserialize<'de> for ApprovalPolicy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        Ok(match value {
+            serde_json::Value::String(raw) => Self::parse(&raw),
+            _ => Self::default(),
+        })
+    }
+}
+
 /// Tool execution and approval-wait timeouts for the local agent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(default)]
@@ -132,6 +204,9 @@ pub struct ToolSettings {
     pub tool_timeout_ms: u64,
     /// Approval wait timeout in milliseconds (1000..=1800000).
     pub approval_timeout_ms: u64,
+    /// Explicit local approval policy (`None` = default `ask`, not published).
+    #[serde(default)]
+    pub approval_policy: Option<ApprovalPolicy>,
 }
 
 impl ToolSettings {
@@ -181,6 +256,12 @@ impl ToolSettings {
         self.approval_timeout_ms
             .clamp(Self::MIN_APPROVAL_TIMEOUT_MS, Self::MAX_APPROVAL_TIMEOUT_MS)
     }
+
+    /// The explicit policy, or the default `ask` when the document omits it.
+    #[must_use]
+    pub fn effective_approval_policy(&self) -> ApprovalPolicy {
+        self.approval_policy.unwrap_or_default()
+    }
 }
 
 impl Default for ToolSettings {
@@ -188,6 +269,7 @@ impl Default for ToolSettings {
         Self {
             tool_timeout_ms: 120_000,
             approval_timeout_ms: 300_000,
+            approval_policy: None,
         }
     }
 }
@@ -635,6 +717,42 @@ impl AppSettings {
         self.embedding.validate()?;
         self.media.validate()?;
         self.web_search.validate()
+    }
+
+    /// The effective local approval policy, bridging the deprecated
+    /// `auto_approve_read_only` field (config spec C-2: `false -> strict`,
+    /// `true -> ask`) when no explicit policy was saved.
+    #[must_use]
+    pub fn effective_approval_policy(&self) -> ApprovalPolicy {
+        self.tools
+            .approval_policy
+            .unwrap_or(if self.auto_approve_read_only {
+                ApprovalPolicy::Ask
+            } else {
+                ApprovalPolicy::Strict
+            })
+    }
+
+    /// Canonicalize the deprecated `auto_approve_read_only` field into the
+    /// explicit policy representation (idempotent; config spec R4).
+    ///
+    /// `ask` is stored as "no explicit policy" so a default-valued document
+    /// keeps the "default-only settings are not published" env-fallback rule.
+    pub fn normalize_approval_policy(&mut self) {
+        match self.effective_approval_policy() {
+            ApprovalPolicy::Ask => {
+                self.tools.approval_policy = None;
+                self.auto_approve_read_only = true;
+            }
+            ApprovalPolicy::AutoReadOnly => {
+                self.tools.approval_policy = Some(ApprovalPolicy::AutoReadOnly);
+                self.auto_approve_read_only = true;
+            }
+            ApprovalPolicy::Strict => {
+                self.tools.approval_policy = Some(ApprovalPolicy::Strict);
+                self.auto_approve_read_only = false;
+            }
+        }
     }
 }
 

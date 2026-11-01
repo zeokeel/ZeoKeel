@@ -216,6 +216,57 @@ test.describe("personal rig agent (real serve + fake upstream)", () => {
     await approval.getByRole("button", { name: "拒绝" }).click();
   });
 
+  async function setApprovalPolicy(
+    page: Page,
+    value: "ask" | "auto_read_only" | "strict",
+  ): Promise<void> {
+    await page.getByRole("button", { name: /设置|Settings/ }).first().click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: /工具与审批|Tools and approvals/ }).click();
+    await dialog.getByLabel(/审批策略|Approval policy/).selectOption(value);
+    await dialog.getByRole("button", { name: /保存|Save/ }).click();
+    await expect(dialog).toBeHidden({ timeout: 20_000 });
+  }
+
+  test("approval policy strict asks before read-only tools (C-1)", async ({ page }) => {
+    await page.goto("/", { waitUntil: "networkidle" });
+    await setApprovalPolicy(page, "strict");
+    await newConversation(page);
+    await page.getByRole("textbox").first().fill("read only");
+    await page.keyboard.press("Enter");
+    const approval = page.getByRole("group", { name: "需要审批" });
+    await expect(approval).toBeVisible({ timeout: 30_000 });
+    await page.screenshot({ path: "target/evidence/2026-11-01-client-config-approval-mcp/screenshots/approval-policy-strict.png" });
+    await approval.getByRole("button", { name: "拒绝" }).click();
+    await expect(page.getByText(/denied by approval policy/).first()).toBeVisible();
+    // Restore the default policy for the remaining tests (single persisted home).
+    await setApprovalPolicy(page, "ask");
+  });
+
+  test("approval policy auto_read_only asks before mutating tools without declared approval (C-1)", async ({ page }) => {
+    await page.goto("/", { waitUntil: "networkidle" });
+    await setApprovalPolicy(page, "auto_read_only");
+    await newConversation(page);
+    await page.getByRole("textbox").first().fill("schedule");
+    await page.keyboard.press("Enter");
+    const approval = page.getByRole("group", { name: "需要审批" });
+    await expect(approval).toBeVisible({ timeout: 30_000 });
+    await page.screenshot({ path: "target/evidence/2026-11-01-client-config-approval-mcp/screenshots/approval-policy-auto-read-only.png" });
+    await approval.getByRole("button", { name: "允许一次" }).click();
+    await expect(page.getByText("已完成工具调用并通过审批。").last()).toBeVisible({ timeout: 30_000 });
+    await setApprovalPolicy(page, "ask");
+  });
+
+  test("default ask runs a mutating tool without declared approval without prompting", async ({ page }) => {
+    await page.goto("/", { waitUntil: "networkidle" });
+    await setApprovalPolicy(page, "ask");
+    await newConversation(page);
+    await page.getByRole("textbox").first().fill("schedule");
+    await page.keyboard.press("Enter");
+    await expect(page.getByText("已完成工具调用并通过审批。").last()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("group", { name: "需要审批" })).toHaveCount(0);
+  });
   test("settings hot-swap switches the model provider", async ({ page }) => {
     const upstream2 = process.env["ZEOKEEL_AGENT_UPSTREAM2"];
     test.skip(upstream2 === undefined, "second upstream not configured");
@@ -236,6 +287,5 @@ test.describe("personal rig agent (real serve + fake upstream)", () => {
     await page.keyboard.press("Enter");
     await expect(page.getByText("second provider").last()).toBeVisible({ timeout: 30_000 });
   });
-
 
 });

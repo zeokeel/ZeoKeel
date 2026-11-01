@@ -16,8 +16,16 @@
 
 ## 2. 审批
 
-- **单 owner = agent-rig**：策略求值（`ApprovalPolicySource::should_ask`，默认 `requires_approval`；config spec 后续注入 `ApprovalPolicy`）与
+- **单 owner = agent-rig**：策略求值（config spec R1 的封闭枚举 `ApprovalPolicy {ask|auto_read_only|strict}`，经
+  `ToolSettings.approval_policy` 发布到 runtime settings；`ApprovalPolicySource` 只作测试/嵌入的实例覆盖）与
   always-allow 会话记忆都只在 `packages/client/agent-rig` 求值；宿主 `ApprovalBroker` 只做 IPC 阻塞与超时，**不持有**会话允许集合。
+- **策略真值表（C-1=A）**：`ask` = 只询问声明 `requires_approval` 的工具；`auto_read_only` = 只读工具自动 + **所有 mutating** 询问；
+  `strict` = 全部询问（含只读/交互工具，C-5 不豁免）。**弱不变式 T1**：任何策略都不自动批准 `requires_approval == true` 的工具
+  （唯一例外是 S4 always-allow，属用户先前显式授权，不是策略判定）。当前 4 个 `mutating && !requires_approval` 工具
+  （`schedule`/`job_kill`/`goal`/`mcp_call`）在 `ask` 下不询问、在 `auto_read_only`/`strict` 下询问；新增此类工具必须同步更新本清单。
+- **旧字段迁移（C-2）**：`auto_approve_read_only` 兼容映射 `false→strict`、`true→ask`；启动（设置文件存在）与 `settings.set`
+  幂等规范化为 `tools.approval_policy`（`ask` 规范化为缺省字段，保证默认-only 文档不发布、env fallback 仍生效）；
+  未知枚举值/非法类型降级 `ask`，不阻止启动（R5）。
 - 契约：`zk-contract-tool` 定义 `ApprovalMetadata`/`ApprovalRisk`/`ApprovalDecision`（agent 用 `pub use` 保持旧路径）；`ApprovalGate::decide_scoped`
   返回 typed 决策（默认实现转调旧 `decide -> bool`，第三方实现不破）。
 - 事件序列表（唯一真源 = `specs/changes/2026-11-01-client-approval-tool-rendering/design.md` §2.0）：
@@ -85,7 +93,7 @@
 | Vector/embeddings | `cap-vector`：OpenAI-compatible embedding model + cosine 索引（insert/insert_many/search/clear/len）。rig 适配在共享 `crates/zk-kit-media`（`kit.media` 的 `EmbeddingConfig`/`EmbeddingModel`/`embed_text`），cap-vector 不再直接依赖 rig-core/llm-rig（ADR-067）。**可选持久化**：配置 `ZEOKEEL_VECTOR_DIR`（或设置页 `AppSettings.embedding {base_url,api_key,model,dims,dir}` / `configure_with_dir`）后索引存 `vector-index.json`（versioned `{version, model, dims, width, documents:[{id,text,embedding}]}`），`insert_many` 为批量原子提交（全部 embedding 成功后一次 save），insert/clear 原子写（temp `0600` → rename，目录 `0700`，已存在目录也收紧为 `0700`）；上限 10k docs / 16MB（`VectorError::Capacity`，文档数在发起 embedding 前预检）；缺失/损坏/不可读/超限/**模型或维度指纹不匹配**时降级为空索引并暴露 `persistence_reason()` + stderr 日志（不 panic），下次成功保存修复文件。 | `configure(EmbeddingModel)`（读 `ZEOKEEL_VECTOR_DIR`；用持久化状态替换内存索引，无 dir 时为空）、`configure_with_dir(model, dir)`、`configure_from_env()`（`ZEOKEEL_EMBEDDING_BASE_URL/_API_KEY/_MODEL/_DIMS` + `ZEOKEEL_VECTOR_DIR`）、`unconfigure()`、`persistence_dir()`/`persistence_reason()`；未配置时 `available()==false` + `unavailable_reason()` + `CAPABILITY_UNAVAILABLE`。personal boot 顺序：先 `configure_capabilities_from_env()`（env fallback），有保存设置时再用 `AppSettings.embedding` 覆盖 env；优先级 **显式 settings > env > 未配置（capability unavailable）**。`api_key` 只写：`settings.get` 掩码为空，保存空值保留已存 key；schema `dims` 边界 1..=65536。配置失败（缺 model、base_url 非 http(s)、vector 配置错误）由 `configure_embedding_from_settings` 返回 `Result` 向上传播：`settings.set` 拒绝且不保存，boot 记录到 `meta.get.agent_config_error`（不再静默）。enterprise 不配置（C7/ADR-031，网关无 embeddings 路由）：设置 UI 隐藏、`settings.set` 拒绝任何本地 embedding 配置、boot 忽略并清除持久化的 embedding/key。 |
 | 媒体/rerank/转写 | round 3 为「诚实不可用」占位；round 4 已用 rig 媒体模型实现，见 §5.3 | `cap-audio/cap-image/cap-rerank/cap-transcription`；错误码 `CAPABILITY_UNAVAILABLE`。 |
 | 异步子代理 | `RigSubagentRunner` 后台线程执行子代理（复用同一 model/tools），`subagent_start` 立即返回 id；注册表保存 `running/done/failed/cancelled` + 最终结果；`subagent_status` 查询、`subagent_interrupt` 置共享取消标志；**存活线程**并发上限 8（RAII，取消/panic 后线程退出才释放）、深度上限 3；children/kit 记录各上限 64、淘汰最旧已完成（running 保留；evicted→NotFound）；完成/退出清理会话深度，list_agents 枚举 async 子代理 | 工具：`subagent_start{prompt}`、`subagent_status{id}`、`subagent_interrupt{id}`（`tool-subagent`/`tool-subagent-control` 经生成 glue 的 `extra_tools()` 追加）；kit `SubagentRunner::{start,status,result,interrupt}` + `AsyncAgentStatus`；`RigAgent::{with_cancel_flag,cancel_flag}`；无异步能力的 runner 诚实返回 "async subagents are not supported"。 |
-| 工具/审批超时 | `agent-rig` 每轮把已保存的 `tool_timeout_ms` 作为 DynamicTool 执行超时；桌面 `ApprovalBroker::set_timeout_ms` 在启动与 `settings.set` 后热更新审批等待超时（不再只读 env） | `AppSettings.tools`（`ToolSettings{tool_timeout_ms=120000 clamp 1000..600000, approval_timeout_ms=300000 clamp 1000..1800000}`）。优先级：显式 settings > `ZEOKEEL_TOOL_TIMEOUT_MS`/`ZEOKEEL_APPROVAL_TIMEOUT_MS` env > 默认；fresh install / 默认-only 文件不发布（env 生效，同 agent settings 的 boot 语义），保存后立即生效；越界值 `settings.set` 回传 UI 错误。 |
+| 工具/审批超时与策略 | `agent-rig` 每轮把已保存的 `tool_timeout_ms` 作为 DynamicTool 执行超时、把 `approval_policy` 作为策略求值输入；桌面 `ApprovalBroker::set_timeout_ms` 在启动与 `settings.set` 后热更新审批等待超时（不再只读 env） | `AppSettings.tools`（`ToolSettings{tool_timeout_ms=120000 clamp 1000..600000, approval_timeout_ms=300000 clamp 1000..1800000, approval_policy: Option<ApprovalPolicy>}`）。优先级：显式 settings > `ZEOKEEL_TOOL_TIMEOUT_MS`/`ZEOKEEL_APPROVAL_TIMEOUT_MS`/`ZEOKEEL_APPROVAL_POLICY` env > 默认；fresh install / 默认-only 文件不发布（env 生效，同 agent settings 的 boot 语义），保存后立即生效；越界值 `settings.set` 回传 UI 错误。 |
 | Web search | `tool-web-search` 每次 `call_json` 重新解析端点与超时（`resolve_endpoint()`），运行时仍强制 https（设置校验 + 运行时兜底）；无需重启 | `AppSettings.web_search`（`WebSearchSettings{base_url="", timeout_ms=15000 clamp 1000..120000}`，**无凭据**）；桌面 boot 与 `settings.set` 后发布非密 `RuntimeSettings.web_search`（默认值不发布）；优先级：显式 settings > `ZEOKEEL_SEARCH_URL` env > 内置 `https://api.duckduckgo.com/`；空 `base_url` = 不覆盖（env/默认生效），超时无 env fallback；非 https/非法 URL/越界超时由 `settings.set` 拒绝且不保存，Ajv schema 同步 bound（1000..=120000）。企业版同样生效：这是工具出口端点、不是 AI provider，C7 不适用（C6 弱管控不限制出口）。 |
 
 ### 5.3 媒体能力（round 4，2026-10-31）

@@ -9,6 +9,7 @@
 import type {
   AgentSettings,
   AppSettings,
+  ApprovalPolicy,
   ParallelMode,
   PromptCache,
   ReasoningEffort,
@@ -47,6 +48,15 @@ export const EMPTY_SETTINGS_ERRORS: SettingsErrors = {
   webSearchBaseUrl: null,
   webSearchTimeoutMs: null,
 };
+
+/** Map the persisted policy (or legacy boolean) to the form value. */
+function approvalPolicyOf(value: string | null, legacyReadOnly: boolean): ApprovalPolicy {
+  if (value === "ask" || value === "auto_read_only" || value === "strict") {
+    return value;
+  }
+  // Contract bridge (C-2): legacy false -> strict, true -> ask.
+  return legacyReadOnly ? "ask" : "strict";
+}
 
 function isHttpUrl(value: string): boolean {
   try {
@@ -168,6 +178,7 @@ export function toForm(settings: AppSettings): SettingsForm {
     scanSeconds: String(agent.schedule.scan_seconds),
     toolTimeoutMs: String(settings.tools.tool_timeout_ms),
     approvalTimeoutMs: String(settings.tools.approval_timeout_ms),
+    approvalPolicy: approvalPolicyOf(settings.tools.approval_policy, settings.auto_approve_read_only),
     embeddingBaseUrl: settings.embedding.base_url,
     embeddingApiKey: settings.embedding.api_key,
     embeddingModel: settings.embedding.model,
@@ -271,12 +282,15 @@ export function formToSettings(form: SettingsForm, schema: number): AppSettings 
     },
     theme: form.theme,
     locale: form.locale,
-    auto_approve_read_only: form.autoApproveReadOnly,
+    auto_approve_read_only: form.approvalPolicy !== "strict",
     server_url: form.serverUrl.trim(),
     agent: agentOf(form),
     tools: {
       tool_timeout_ms: numberField(form.toolTimeoutMs, { min: 1000, max: 600000, integer: true }).value ?? 120000,
       approval_timeout_ms: numberField(form.approvalTimeoutMs, { min: 1000, max: 1800000, integer: true }).value ?? 300000,
+      // `ask` canonicalizes to "no explicit policy" so default-only documents
+      // are not published over the env fallback (config spec R4).
+      approval_policy: form.approvalPolicy === "ask" ? null : form.approvalPolicy,
     },
     embedding: {
       base_url: form.embeddingBaseUrl.trim(),

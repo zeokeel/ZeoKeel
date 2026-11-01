@@ -101,10 +101,15 @@ export interface EmbeddingSettings {
   dir: string;
 }
 
+/** Mirrors `zk_contract_config::ApprovalPolicy` (config spec C-1). */
+export type ApprovalPolicy = "ask" | "auto_read_only" | "strict";
+
 /** Mirrors `zk_contract_config::ToolSettings` (timeouts in ms). */
 export interface ToolSettings {
   tool_timeout_ms: number;
   approval_timeout_ms: number;
+  /** Explicit local approval policy; `null` = default `ask`. */
+  approval_policy: ApprovalPolicy | null;
 }
 
 /** Mirrors `zk_contract_config::WebSearchSettings` (keyless search endpoint). */
@@ -366,7 +371,7 @@ export function defaultEmbeddingSettings(): EmbeddingSettings {
 }
 
 export function defaultToolSettings(): ToolSettings {
-  return { tool_timeout_ms: 120000, approval_timeout_ms: 300000 };
+  return { tool_timeout_ms: 120000, approval_timeout_ms: 300000, approval_policy: null };
 }
 
 export function defaultWebSearchSettings(): WebSearchSettings {
@@ -445,6 +450,8 @@ export interface SettingsForm {
   // Tool/approval timeouts (ms, strings for empty/invalid UI states).
   toolTimeoutMs: string;
   approvalTimeoutMs: string;
+  // Local approval policy (config spec: ask / auto_read_only / strict).
+  approvalPolicy: ApprovalPolicy;
   // Embedding / vector index (empty dims means "provider default").
   embeddingBaseUrl: string;
   embeddingApiKey: string;

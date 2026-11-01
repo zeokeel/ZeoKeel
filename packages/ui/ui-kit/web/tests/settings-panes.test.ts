@@ -34,6 +34,7 @@ const EMPTY_FORM: SettingsForm = {
   theme: "auto",
   locale: "zh-CN",
   autoApproveReadOnly: true,
+  approvalPolicy: "ask",
   serverUrl: "",
   maxSteps: "50",
   temperature: "",

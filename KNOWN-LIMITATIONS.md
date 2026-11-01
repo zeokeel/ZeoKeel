@@ -97,7 +97,7 @@
   `config`（command/args/env allowlist/url/timeout_ms；`authorize_url`/`token_url` 仅在 `oauth` 元数据中，
   secret 键被剔除；`scripts/srv-store-test.sh` 断言）；desktop `auth.configure` 拉取 catalog 并
   `zk_connector_mcp::update_from_catalog`，logout 清理；更新事件可经 IPC
-  `connectors.configure/reload/clear` 触发（web 侧接线）。
+  `connectors.configure/reload/clear` 触发（**web 已接线**：企业版登录/刷新/启停/登出/手动重载，见 `docs/26` §5）。
 - OAuth 授权码/PKCE 客户端流程已实现（desktop Rust：127.0.0.1 临时端口 loopback redirect + 系统浏览器 + PKCE S256
   + token 交换/刷新，token 经 keychain IPC 本地保存；MCP HTTP transport 经 `set_oauth_token` 注入
   `Authorization: Bearer`，无 token 时 `MCP_OAUTH_REQUIRED`）。**剩余 UNVERIFIED**：真实 IdP/provider 联调未做
