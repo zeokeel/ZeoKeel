@@ -15,7 +15,7 @@
 | 迁移 | 无 DB 迁移；设置 JSON additive（`schema` 保持 1）。启动（文件存在时）与 `settings.set` 时把旧 `auto_approve_read_only` 规范化为显式策略（幂等） |
 | 生成物 | `shared/contracts/schema/config-*.json`（如 `AppSettings` 变更）、`shared/contracts/schema/ipc-*.json`、`shared/contracts/ts/contracts.ts`、`docs/generated/CONTRACT-INDEX.md`；由 `cargo test --workspace export_schema` + `python3 scripts/schema-ts.py` 生成（C10/C11），禁止手改 |
 | edition/profile/channel | 不变（审批策略两版通用；`connectors.*` 只影响企业登录流程） |
-| 文档 | `docs/38` §2（审批策略，任务 1 先行）、`docs/19`（设置/审批段）、`docs/26` §5（IPC 命令表）、`docs/07` §6.1 与 `KNOWN-LIMITATIONS.md` §3.5（web 侧接线口径修正）、`CHANGELOG.md`（deprecated 说明） |
+| 文档 | `docs/38` §2（审批策略，任务 1 先行）、`docs/19`（设置/审批段）、`docs/26` §5（IPC 命令表）、`docs/07` §6.1 与 `KNOWN-LIMITATIONS.md` §3.6（web 侧接线口径修正）、`CHANGELOG.md`（deprecated 说明） |
 
 ## 1.5 复用检查（C17，必填）
 
@@ -247,9 +247,9 @@ settings.json → AppSettings::normalize_approval_policy (启动/保存，幂等
 
 - **任务 1 先行（C12/P1-2）**：把审批策略（封闭枚举 + 弱不变式 + 4 个免审批工具清单）写入 `docs/38` §2；
   把 `connectors.*` 契约与触发时机写入 `docs/26` §5（IPC 命令表）+ `docs/07` §6.1；`docs/19` 设置段补审批策略；
-  `docs/15` §C 登记 D 编号 + `docs/07` §6.1 + `docs/38` §2；**C-6 已定：不新增 ADR**。
+  `docs/07` §6.1 + `docs/38` §2；**C-6 已定：不新增 ADR**。
 - [ ] `docs/07` §6.1：删「web 侧接线」未完成口径 → 已接线 + 触发时机
-- [ ] `KNOWN-LIMITATIONS.md` §3.5：同上（保留远端生命周期 UNVERIFIED）
+- [ ] `KNOWN-LIMITATIONS.md` §3.6：同上（保留远端生命周期 UNVERIFIED）
 - [ ] `docs/26` §5：3 条新命令（输入/输出/错误码）
 - [ ] `docs/38` §2：策略枚举/求值点/热生效/弱不变式；§4 注记 4 个免审批 mutating 工具
 - [ ] `docs/19`：设置段补「审批策略」；审批卡字段仍归 approval spec

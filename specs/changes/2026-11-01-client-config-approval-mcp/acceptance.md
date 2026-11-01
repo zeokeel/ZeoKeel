@@ -57,8 +57,8 @@
 
 ## 3. 文档与决策
 
-- [x] SSOT 文档已更新：`docs/38` §2、`docs/26` §5、`docs/07` §6.1、`docs/19`（审批策略段）、`KNOWN-LIMITATIONS.md` §3.5、`docs/15`（D68）
-- [x] 决策已记录：C-1…C-6 已定（Lead 2026-11-01）；`docs/15` **D68** + `docs/07` §6.1 + `docs/38` §2（**C-6 已定不新增 ADR**）
+- [x] SSOT 文档已更新：`docs/38` §2、`docs/26` §5、`docs/07` §6.1、`docs/19`（审批策略段）、`KNOWN-LIMITATIONS.md` §3.6、`docs/38` §2 + `docs/07` §6.1
+- [x] 决策已记录：C-1…C-6 已定（Lead 2026-11-01）；`docs/38` §2 + `docs/07` §6.1 + `docs/07` §6.1 + `docs/38` §2（**C-6 已定不新增 ADR**）
 - [x] `docs/README.md` 已登记新主题：不适用（沿用既有主题）
 - [x] `CHANGELOG.md`：`auto_approve_read_only` deprecated + 映射说明；`connectors.*` 新命令说明（“未发布”段）
 - [ ] `docs/reviews/2026-11-01-client-ui-parity-specs.md` 已追加复评结论（评审记录生命周期见 `docs/reviews/README.md`）

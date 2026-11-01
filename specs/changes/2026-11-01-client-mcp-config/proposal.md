@@ -29,7 +29,7 @@ ZeoKeel 客户端**已有可用的 MCP 客户端实现**（`packages/client/conn
      新 personal-only 包必须加入该 `packages` 列表，不能只写注释。
 4. **独立评审结论**：本部分原属 `client-config-approval-mcp`，被判定「34 文件超拆分阈值」（P1-3），因此**拆为独立 spec**；
    Lead 决策 T4：**Phase 1 企业版本地 MCP 不允许，且 enterprise 下 env `ZEOKEEL_MCP_SERVERS` 也不生效（catalog-only）**，
-   需写明 C1/C6 映射并先落 docs/15 D 编号或 ADR（任务 1）。
+   需写明 C1/C6 映射并先落 docs/24 §1 / docs/07 §6.1（任务 1；不新增 ADR）。
 
 不做的后果：MCP 后端能力继续只能靠 env/服务端，UI 里无法新增/测试；企业版仍可能出现 env 与 catalog 双源；
 两级校验问题会让 catalog 升级后出现「企业连接器突然不可用」的回归。
@@ -44,14 +44,14 @@ ZeoKeel 客户端**已有可用的 MCP 客户端实现**（`packages/client/conn
 - **G3 来源优先级与 edition 口径（T4/P1-10）**：
   `catalog（已安装，含空列表）> personal 本地 settings（已安装，含空列表）> env（仅 personal 且无 settings 文件）`；
   **enterprise：catalog-only —— 本地 settings 不安装、env 也不生效**（未登录 = 无 MCP，诚实不可用）。
-  在 `docs/15` D 编号或 ADR 落定 C1/C6 映射（构建期 edition 差异，不是服务端管控）。
+  在 `docs/24` §1 / `docs/07` §6.1（不新增 ADR） 落定 C1/C6 映射（构建期 edition 差异，不是服务端管控）。
 - **G4 测试连接不污染进程状态（P1-9）**：新增**无缓存**探测路径（fresh transport：spawn/connect → initialize → tools/list →
   drop/close/kill），断言不写入全局 `SESSIONS`；命令采用两段式（`mcp.test` 启动 → `mcp.test.status` 轮询，沿用
   `oauth.authorize`/`oauth.status` 先例），有硬超时（≤15s），不改变当前生效配置。
 - **G5 UI 包与组合（P1-15）**：新增 personal-only UI 包 `zeokeel/ui-settings-mcp`（四件套）贡献 `ui.settings.pane`
   （order 70）；`editions/personal.toml` 映射角色、`editions/enterprise.toml` exclude、**`editions/personal-only.toml`
   的 `packages` 数据列表**加入该包；`zk validate` 断言 enterprise 闭包不含它。
-- **G6 文档先行 + 依赖登记 + 门禁**：任务 1 先落 docs（`docs/15` D 或 ADR、`docs/07`、`docs/16`、`docs/24` §1、
+- **G6 文档先行 + 依赖登记 + 门禁**：任务 1 先落 docs（`docs/24` §1 / `docs/07` §6.1、`docs/07`、`docs/16`、`docs/24` §1、
   `docs/04` §1.5、`docs/26` §5（`mcp.test`/`mcp.test.status` 两条 IPC 命令））；**`zk-contract-config → zk-contract-connector`（P2-8）与 `zk-contract-ipc → zk-contract-connector`（P1-13.1）** 两条依赖在 `docs/24`/`docs/04` 登记（含 public-api 影响）；
   C10/C11 生成物门禁（`export_schema`/`schema-check.sh`）进 tasks/acceptance。
 
@@ -107,7 +107,7 @@ ZeoKeel 客户端**已有可用的 MCP 客户端实现**（`packages/client/conn
 
 - [x] **T2 拆分**：MCP 部分从 config spec 拆出为独立 spec（本文件）。
 - [x] **T4 企业版 catalog-only**：Phase 1 企业**不允许**本地 MCP；enterprise 下 **env `ZEOKEEL_MCP_SERVERS` 也不生效**；
-      C1/C6 映射写入本 spec（R3/R8）与 `docs/15` D 编号；任务 1 = docs-first。
+      C1/C6 映射写入本 spec（R3/R8）与 `docs/24` §1 + `docs/07` §6.1；任务 1 = docs-first。
 - [x] **Phase 1 结构**（用户已批 A 方案）：settings-ia → approval-tool-rendering → config-approval-mcp → **mcp-config**。
 
 **本轮决策（Lead，2026-11-01）**
@@ -121,7 +121,7 @@ ZeoKeel 客户端**已有可用的 MCP 客户端实现**（`packages/client/conn
       release note 在 UI 重建（避免后台改写用户配置 / 清空后被灌回）。
 - [x] **M-5 新 personal-only 包 `zeokeel/ui-settings-mcp`**（`ui.settings.pane` order 70；构建期 edition 差异，
       先例 `ui-settings-provider`）；enterprise exclude + `editions/personal-only.toml` 数据清单。
-- [x] **M-6 不新增 ADR**：决策落 `docs/15` §C D 编号 + `docs/24` §1 / `docs/04` §1.5（契约依赖登记）+ `docs/07`/`docs/16`/`docs/38`；
+- [x] **M-6 不新增 ADR**：决策落 `docs/24` §1 / `docs/04` §1.5（契约依赖登记）+ `docs/07` §6.1 + `docs/16` + `docs/38`；
       任务 1 = docs-first。
 - [x] **预算例外批准**（Lead 2026-11-01）：`client-mcp-config ~27 文件`、`config-approval-mcp ~16 文件`；
       理由 = 用户已批 Phase 1 四段结构 + 每份 spec 按 3 阶段可独立合并（详见 §8）。

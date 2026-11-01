@@ -14,7 +14,7 @@
 | 迁移 | 无 DB 迁移；设置 JSON additive（`schema` 保持 1）。env 迁移：不自动导入（M-4 已定），仅 release note |
 | 生成物 | `shared/contracts/schema/config-*.json`、`connector-*.json`、`ipc-*mcp-test*.json`、`shared/contracts/ts/contracts.ts`、`docs/generated/CONTRACT-INDEX.md`；生成器写（C10/C11） |
 | edition/profile/channel | `editions/personal.toml` 映射 `ui.slot.settings-mcp`；`editions/enterprise.toml` exclude；**`editions/personal-only.toml:3` 的 `packages` 数据列表**加入新包（P1-15）；profile/channel 不变 |
-| 文档 | 任务 1 先行：`docs/15`（D 编号或 ADR，C1/C6）、`docs/07` §6.1、`docs/16`（新包/槽位）、`docs/24` §1 与 `docs/04` §1.5（契约依赖登记 P2-8）、`docs/38`（MCP 能力注记）；`docs/README.md` 不新增主题 |
+| 文档 | 任务 1 先行：`docs/24` §1（C1/C6 映射；不新增 ADR）、`docs/07` §6.1、`docs/16`（新包/槽位）、`docs/24` §1 与 `docs/04` §1.5（契约依赖登记 P2-8）、`docs/38`（MCP 能力注记）；`docs/README.md` 不新增主题 |
 
 ## 1.5 复用检查（C17，必填）
 
@@ -109,7 +109,7 @@ fn configured_servers() -> Result<Vec<McpServerConfig>, String> {
 | `auth.logout` | 不清本地配置（personal 无登录） | 沿用现有 `clear_catalog_config`（父 spec 接线），本地槽本就为空 |
 
 > edition 判定在桌面用 `zk_composed::EDITION`（既有用法 `ipc.rs:276,1496`），`connector-mcp` 不感知 edition（保持包内纯逻辑）。
-> C1/C6 映射：企业差异来自**构建期包集合 + 客户端来源策略**，不是服务端下发/管控；需 `docs/15` D 或 ADR 落定（任务 1）。
+> C1/C6 映射：企业差异来自**构建期包集合 + 客户端来源策略**，不是服务端下发/管控；需 `docs/24` §1 / `docs/07` §6.1 落定（任务 1）。
 
 ### 2.3 无缓存测试连接（P1-9）
 
@@ -322,7 +322,7 @@ enterprise boot：clear_local_servers + set_env_fallback_enabled(false)；auth.c
 
 ## 7. 文档更新（任务 1 先行）
 
-- [ ] `docs/15` §C：C1/C6 映射 **D 编号**（**M-6 已定：不新增 ADR**）——企业 catalog-only 属构建期 edition 差异；同时 `docs/24` §1 / `docs/04` §1.5 登记依赖（P2-8）
+- [ ] `docs/24` §1 + `docs/07` §6.1：C1/C6 映射（**M-6 已定：不新增 ADR**）——企业 catalog-only 属构建期 edition 差异；同时 `docs/24` §1 / `docs/04` §1.5 登记依赖（P2-8）
 - [ ] `docs/24` §1：**`zk-contract-config → zk-contract-connector` 与 `zk-contract-ipc → zk-contract-connector`** 依赖方向 + 「settings/IPC DTO 内含 connector DTO」兼容责任与 public-api 影响（P2-8 / P1-13.1）
 - [ ] `docs/04` §1.5：契约依赖/客户端能力措辞对齐（含两条跨契约依赖与 public-api diff 要求）
 - [ ] `docs/07` §6.1：MCP 配置来源（personal settings / enterprise catalog-only / env 仅无 settings 文件）

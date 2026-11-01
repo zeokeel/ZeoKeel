@@ -101,7 +101,7 @@
 ### R8 · 文档先行、依赖登记与门禁
 
 - **WHEN** 开始实现
-- **THEN** 任务 1（docs-first）已完成：`docs/15` §C 登记 D 编号或 ADR（C1/C6 映射：企业 catalog-only 属构建期 edition 差异，
+- **THEN** 任务 1（docs-first）已完成：`docs/24` §1 / `docs/07` §6.1 登记（不新增 ADR）（C1/C6 映射：企业 catalog-only 属构建期 edition 差异，
   不是服务端管控）；`docs/07` §6.1、`docs/16`、`docs/24` §1、`docs/04` §1.5 更新。
 - **AND** `zk-contract-config → zk-contract-connector` 依赖在 `docs/24` §1 / `docs/04` §1 登记（P2-8），
   并写明「settings schema 内含 connector DTO」的兼容责任（connector DTO 破坏性变更需同步 config schema 评审）。
@@ -178,4 +178,4 @@
 - [x] M-3 两段式 `mcp.test` → `mcp.test.status`（无缓存探测、硬超时 ≤15s、可取消）
 - [x] M-4 env 不自动导入（`ZEOKEEL_MCP_SERVERS` 仅 personal 且无 settings 文件时生效）
 - [x] M-5 新 personal-only 包 `ui-settings-mcp`（`ui.settings.pane` order 70；enterprise exclude + personal-only 清单）
-- [x] M-6 不新增 ADR；决策落 `docs/15` §C D 编号 + `docs/24` §1 / `docs/04` §1.5 + `docs/07`/`docs/16`/`docs/38`；任务 1 docs-first
+- [x] M-6 不新增 ADR；决策落 `docs/24` §1 + `docs/04` §1.5 + `docs/07` §6.1 + `docs/16` + `docs/38`；任务 1 docs-first

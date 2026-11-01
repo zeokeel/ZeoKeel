@@ -5,7 +5,7 @@
 - 日期：2026-11-01
 - 关联：`docs/reviews/2026-11-01-client-ui-parity-specs.md`（CHANGES-REQUESTED，本稿按其 P0-1/P1-1/P1-2/P1-3/P1-7/P2-1/P2-3/P2-4/P2-5/P2-6/P2-9 修复）；
   `research/client-dsh-parity-2026-11-01.md` §4/P0-4、§7 Phase 1；`target/audits/zk-client-inventory.md` §5/A1、A8；
-  `docs/38` §2；`docs/19`；`docs/26` §5；`docs/07` §6.1；`KNOWN-LIMITATIONS.md` §3.5；
+  `docs/38` §2；`docs/19`；`docs/26` §5；`docs/07` §6.1；`KNOWN-LIMITATIONS.md` §3.6；
   拆出的 MCP 子 spec：`2026-11-01-client-mcp-config`
 - 评审：docs/reviews/2026-11-01-client-ui-parity-specs.md
 - 变更预算：拆分后本 spec 约 **14 个工作项 / 约 16 个文件**（契约 3、agent-rig 2、desktop 1、desktop-web 4、UI 2、e2e 2）+ 文档 5（docs/07、19、26、38、KNOWN-LIMITATIONS）+ CHANGELOG；
@@ -117,7 +117,7 @@ P1-7（未知枚举降级无法用普通 serde 枚举实现）为阻塞项；P1-
 - [x] **C-4**：审批策略控件放 settings-ia「工具与审批」pane（order 40）；MCP 单独 personal-only pane（见 MCP spec）。
 - [x] **C-5**：Phase 1 `strict` **不豁免**纯交互工具；「先审批再提问」的双重交互作为**已知 UX**记入 spec §2 与
       acceptance §5 剩余风险（Phase 2 再评估豁免白名单）。
-- [x] **C-6**：**不新增 ADR**；决策落 `docs/15` §C D 编号 + `docs/07` §6.1 + `docs/38` §2；任务 1 = docs-first（未完成不得开工）。
+- [x] **C-6**：**不新增 ADR**；决策落 `docs/07` §6.1 + `docs/38` §2；任务 1 = docs-first（未完成不得开工）。
 - [x] **预算例外批准**（Lead 2026-11-01）：`config-approval-mcp ~16 文件`、`client-mcp-config ~27 文件`；
       理由 = 用户已批 Phase 1 四段结构 + 每份 spec 按 3 阶段可独立合并（详见 §8）。
 

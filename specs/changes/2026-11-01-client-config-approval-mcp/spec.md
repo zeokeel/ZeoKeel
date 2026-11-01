@@ -198,4 +198,4 @@
 - [x] C-3 `connectors.*` 形状沿用现状（`{catalog}`→`{configured}`；`reload/clear`→`{reloaded:true}`/`{cleared:true}`）
 - [x] C-4 审批控件放 settings-ia「工具与审批」pane（order 40）；MCP 单独 personal-only pane
 - [x] C-5 Phase 1 `strict` 不豁免纯交互工具（双重交互记为已知 UX，Phase 2 再评估）
-- [x] C-6 不新增 ADR；决策落 `docs/15` §C D 编号 + `docs/07`/`docs/38`；任务 1 docs-first
+- [x] C-6 不新增 ADR；决策落 `docs/38` §2 + `docs/07` §6.1；任务 1 docs-first

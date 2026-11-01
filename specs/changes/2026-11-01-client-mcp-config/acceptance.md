@@ -50,12 +50,12 @@
       焦点回位；axe 0 serious/critical；zh/en 无硬编码（i18n-check 绿）；e2e `axe.json` 0 serious/critical。
 - [x] **compat**：旧 settings（无 mcp）加载正常；旧前端不调新命令正常；旧 catalog 不受两级校验影响（`catalog_limits`/catalog 既有测试保持）；回滚旧版本不崩（`mcp` 字段 additive）。
 - [x] **组合**：enterprise 闭包不含 `zeokeel/ui-settings-mcp`（compose enterprise registry 无 `settings.pane.mcp`）；personal `SettingsPanes` 含 `settings.mcp` order 70；`editions/personal-only.toml` 的 `packages` 数据列表含新包。
-- [x] **文档**：`docs/24` §1 / `docs/04` §1.5 依赖登记可查；`docs/15` D 编号（或 ADR）存在；`docs/07`/`docs/16`/`docs/38` 与实现一致。
+- [x] **文档**：`docs/24` §1 / `docs/04` §1.5 依赖登记可查；`docs/24` §1 / `docs/07` §6.1 决策记录存在；`docs/07`/`docs/16`/`docs/38` 与实现一致。
 
 ## 3. 文档与决策
 
 - [x] SSOT 文档已更新：`docs/07` §6.1、`docs/16` §2（新包/pane order 70）、`docs/19`（MCP 设置段）、`docs/24` §1（**config→connector 与 ipc→connector 两条依赖** + role 表）、`docs/04` §1（依赖登记）、`docs/26` §5（两条 mcp.test 命令）、`docs/38` §2（两段式/无缓存/优先级）
-- [x] 决策已记录：M-1…M-6 已定（Lead 2026-11-01）；`docs/15` **D69** + `docs/24` §1 / `docs/04` §1 + `docs/07`/`docs/16`/`docs/38`（**M-6 已定不新增 ADR**）
+- [x] 决策已记录：M-1…M-6 已定（Lead 2026-11-01）；`docs/24` §1 + `docs/07` §6.1 + `docs/24` §1 / `docs/04` §1 + `docs/07`/`docs/16`/`docs/38`（**M-6 已定不新增 ADR**）
 - [x] `docs/README.md` 已登记新主题：不适用
 - [x] `CHANGELOG.md`：`ZEOKEEL_MCP_SERVERS` 生效条件、企业 catalog-only、MCP 本地配置新增说明（“未发布”段）
 - [ ] `docs/reviews/2026-11-01-client-ui-parity-specs.md` 已追加复评结论
