@@ -7,7 +7,8 @@
 - 表面 / 入口：会话页底部输入区（`AssistantComposer`，Phase 2a）
 - 归属包：`@zeokeel/ui-chat`（+ `apps/desktop/web` 唯一命令目录/actions）
 - 权威文档：`docs/19` §2/§11、`docs/27` §2.5/§2.6、`docs/11` §8.6
-- 状态：planned（实现开始时改 active；planned 不参与门禁强制）
+- 状态：active（实现阶段；P0/P1 ID 均有 `@interaction:<ID>` 测试与证据）
+- 直觉：同目录 `intuition.md` / `intuition-walkthrough.md`（C20；用户测试 UNVERIFIED）
 - 证据根：`target/evidence/2026-11-01-client-composer-surface/interaction/`
 - 测试：`e2e/interaction/composer-phase2a.spec.ts`（带 `@interaction:<ID>` 标签；实现时新建）
 
@@ -15,7 +16,7 @@
 
 | 元素 | role / accessible name | 键盘 | 默认焦点 | 备注 |
 | --- | --- | --- | --- | --- |
-| 输入框 | `textbox` /「消息输入框」 | Enter 发送、Shift+Enter 换行、Esc 关菜单 | 是 | 原生 textarea，自管 IME/键盘状态机 |
+| 输入框 | `textbox` /「消息输入框」 | Enter 发送、Shift+Enter 换行、Esc 关菜单 | 是 | 原生 textarea，自管 IME/键盘状态机；保持既有 textbox role（基线测试依赖） → `aria-expanded` 不放在 textarea（ARIA 不允许 role=textbox 使用它），菜单展开经 `aria-haspopup="listbox"` + `aria-controls` + `aria-activedescendant` + `role=status` live region 暴露 |
 | `/` 候选菜单 | `listbox` + `option`；`aria-expanded`/`aria-controls`/`aria-activedescendant` | ↑/↓/Enter/Esc | 否 | 与 ⌘K 共用唯一命令目录 |
 | `@` 文件候选菜单 | `listbox` + `option`（kind 标注） | ↑/↓/Enter/Esc | 否 | 数据来自 `workspace.files`，不新增 IPC |
 | 引用/附件 chip | `button`（可删除）/ 图片 | Delete/Backspace 移除 | 否 | 非内联原子 token（design §2.7） |
@@ -62,8 +63,8 @@
 
 | ID | 状态 | 主题 | 宽度 | 基线类型 | 基线文件 | 掩码/阈值 |
 | --- | --- | --- | --- | --- | --- | --- |
-| CMP2-VIS-01 | empty + `/` 菜单打开 | light | 1280 | `toHaveScreenshot` | `e2e/interaction/__snapshots__/composer-phase2a.spec.ts/composer-menu-light-1280.png` | `maxDiffPixelRatio=0.002`；隐藏光标 |
-| CMP2-A11Y-01 | menu-open / chips | — | 1280 | `toMatchAriaSnapshot` + axe | `e2e/interaction/__snapshots__/composer-phase2a.spec.ts/menu.aria.yml` | 候选文案用正则；axe 0 serious/critical |
+| CMP2-VIS-01 | empty + `/` 菜单打开 | light | 1280 | 人工确认截图（**像素基线 UNVERIFIED**，待 `pnpm e2e:ui:update` 人工确认后接入） | `target/evidence/2026-11-01-client-composer-surface/interaction/CMP2-VIS-01.png` | 结构/布局断言 + 截图证据；agent 不得自动接受基线 |
+| CMP2-A11Y-01 | menu-open / chips | — | 1280 | axe + 显式 ARIA 断言（`aria-haspopup`/`aria-controls`/`aria-activedescendant`/listbox/option/live region） | 无快照基线（aria snapshot 需人工确认，**UNVERIFIED**） | axe 0 serious/critical |
 
 ## 5. 预算与一致性
 

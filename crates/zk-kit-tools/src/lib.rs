@@ -83,6 +83,107 @@ pub fn safe_path(context: &TurnContext, relative: &str) -> Result<PathBuf, ToolE
     Ok(joined)
 }
 
+/// Join `parts` under an existing workspace `root` for a **host-side write**.
+///
+/// This is the single path-safety boundary for host writes that do not run inside
+/// a tool turn (composer attachments, `2026-11-01-client-composer-surface`):
+///
+/// - the root must exist and canonicalize; the returned path is anchored there;
+/// - every part must be one normal component: non-empty, not `.`/`..`, no path
+///   separator, no control character, not absolute;
+/// - intermediate directories are created step by step, each one checked with
+///   `symlink_metadata` (no-follow) **before** use and canonicalized afterwards
+///   (`starts_with(canonical root)` must hold at every level);
+/// - an existing symlink at any component (parent directory **or** the final
+///   file) is rejected, so a symlinked parent cannot redirect the write outside
+///   the workspace;
+/// - the final component may be a new file name (parent chain already validated);
+///   the caller owns the atomic write itself.
+///
+/// # Errors
+///
+/// [`ToolError::Denied`] for unsafe components/symlinks/escapes, [`ToolError::Io`]
+/// for filesystem failures. Nothing is written when a check fails.
+pub fn safe_join_under(root: &Path, parts: &[&str]) -> Result<PathBuf, ToolError> {
+    if parts.is_empty() {
+        return Err(ToolError::InvalidArgs("path parts are empty".to_owned()));
+    }
+    // Validate every component before touching the filesystem: a rejected path
+    // must not leave partially-created directories behind.
+    for part in parts {
+        validate_path_part(part)?;
+    }
+    let canonical_root = root
+        .canonicalize()
+        .map_err(|error| ToolError::Io(format!("workspace root: {error}")))?;
+    if !canonical_root.is_dir() {
+        return Err(ToolError::Denied(
+            "workspace root is not a directory".to_owned(),
+        ));
+    }
+    let last = parts.len().saturating_sub(1);
+    let mut current = canonical_root.clone();
+    for (index, part) in parts.iter().enumerate() {
+        let next = current.join(part);
+        match std::fs::symlink_metadata(&next) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() {
+                    return Err(ToolError::Denied(format!(
+                        "symlink is not allowed in a host write path: {part}"
+                    )));
+                }
+                if index < last && !metadata.is_dir() {
+                    return Err(ToolError::Denied(format!(
+                        "path component is not a directory: {part}"
+                    )));
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                if index < last {
+                    std::fs::create_dir(&next)
+                        .map_err(|error| ToolError::Io(format!("create dir {part}: {error}")))?;
+                }
+            }
+            Err(error) => {
+                return Err(ToolError::Io(format!("inspect path part {part}: {error}")));
+            }
+        }
+        if index < last {
+            let canonical = next
+                .canonicalize()
+                .map_err(|error| ToolError::Io(format!("canonicalize {part}: {error}")))?;
+            if !canonical.starts_with(&canonical_root) {
+                return Err(ToolError::Denied("path escapes the workspace".to_owned()));
+            }
+            current = canonical;
+        } else {
+            current = next;
+        }
+    }
+    Ok(current)
+}
+
+fn validate_path_part(part: &str) -> Result<(), ToolError> {
+    if part.is_empty() || part == "." || part == ".." {
+        return Err(ToolError::Denied(format!("unsafe path part: {part:?}")));
+    }
+    if part.contains('/') || part.contains('\\') {
+        return Err(ToolError::Denied(format!(
+            "path separator in one path part: {part:?}"
+        )));
+    }
+    if part.chars().any(char::is_control) {
+        return Err(ToolError::Denied(format!(
+            "control character in path part: {part:?}"
+        )));
+    }
+    let path = Path::new(part);
+    if path.is_absolute() || path.components().count() != 1 {
+        return Err(ToolError::Denied(format!("unsafe path part: {part:?}")));
+    }
+    Ok(())
+}
+
 /// Read a UTF-8 file (bounded).
 pub fn read_text(path: &Path) -> Result<String, ToolError> {
     let metadata = std::fs::metadata(path).map_err(|error| ToolError::Io(error.to_string()))?;
@@ -560,4 +661,134 @@ pub fn read_for_diff(path: &Path) -> Option<String> {
         return None;
     }
     std::fs::read_to_string(path).ok()
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+mod safe_join_tests {
+    use super::{safe_join_under, ToolError};
+    use std::path::{Path, PathBuf};
+
+    fn temp_root(name: &str) -> PathBuf {
+        let unique = format!(
+            "{}-{}-{}",
+            std::process::id(),
+            name,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(format!("zk-safe-join-{unique}"));
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    #[cfg(unix)]
+    fn symlink(target: &Path, link: &Path) {
+        std::os::unix::fs::symlink(target, link).unwrap();
+    }
+
+    #[test]
+    fn creates_nested_directories_and_writes_inside_the_root() {
+        let root = temp_root("ok");
+        let path = safe_join_under(
+            &root,
+            &[".zeokeel", "attachments", "conv-1", "abc-shot.png"],
+        )
+        .unwrap();
+        assert!(path.starts_with(root.canonicalize().unwrap()));
+        assert!(path.parent().unwrap().is_dir());
+        std::fs::write(&path, b"data").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"data");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn rejects_traversal_absolute_and_separator_parts() {
+        let root = temp_root("parts");
+        for parts in [
+            vec!["..", "escape.txt"],
+            vec!["a", "..", "escape.txt"],
+            vec!["/tmp/escape.txt"],
+            vec!["a/b.txt"],
+            vec!["..\\escape.txt"],
+            vec![""],
+            vec!["."],
+            vec!["a", "bad\u{0007}name"],
+        ] {
+            let error = safe_join_under(&root, &parts).expect_err("unsafe part must be denied");
+            assert!(
+                matches!(error, ToolError::Denied(_) | ToolError::InvalidArgs(_)),
+                "{parts:?} -> {error:?}"
+            );
+        }
+        assert_eq!(
+            std::fs::read_dir(&root).unwrap().count(),
+            0,
+            "rejected paths must not create anything"
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn rejects_a_missing_root() {
+        let root = temp_root("missing").join("does-not-exist");
+        assert!(safe_join_under(&root, &["x.txt"]).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_parent_directory_symlink_escape() {
+        let root = temp_root("parent-symlink");
+        let outside = temp_root("outside-parent");
+        symlink(&outside, &root.join("link"));
+        let error = safe_join_under(&root, &["link", "escape.txt"])
+            .expect_err("parent symlink must be denied");
+        assert!(matches!(error, ToolError::Denied(_)), "{error:?}");
+        assert!(!outside.join("escape.txt").exists());
+        std::fs::remove_dir_all(&root).unwrap();
+        std::fs::remove_dir_all(&outside).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_nested_attachments_symlink_escape() {
+        let root = temp_root("nested-symlink");
+        let outside = temp_root("outside-nested");
+        // `.zeokeel` itself is the symlinked parent the host must never follow.
+        symlink(&outside, &root.join(".zeokeel"));
+        let error = safe_join_under(&root, &[".zeokeel", "attachments", "conv", "x.png"])
+            .expect_err("nested symlink must be denied");
+        assert!(matches!(error, ToolError::Denied(_)), "{error:?}");
+        assert!(!outside.join("attachments").exists());
+        std::fs::remove_dir_all(&root).unwrap();
+        std::fs::remove_dir_all(&outside).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_existing_symlink_at_the_final_component() {
+        let root = temp_root("file-symlink");
+        let outside = temp_root("outside-file");
+        std::fs::create_dir_all(root.join(".zeokeel/attachments/conv")).unwrap();
+        let target = outside.join("target.txt");
+        std::fs::write(&target, b"outside").unwrap();
+        symlink(&target, &root.join(".zeokeel/attachments/conv/leak.txt"));
+        let error = safe_join_under(&root, &[".zeokeel", "attachments", "conv", "leak.txt"])
+            .expect_err("final symlink must be denied");
+        assert!(matches!(error, ToolError::Denied(_)), "{error:?}");
+        assert_eq!(std::fs::read(&target).unwrap(), b"outside");
+        std::fs::remove_dir_all(&root).unwrap();
+        std::fs::remove_dir_all(&outside).unwrap();
+    }
+
+    #[test]
+    fn allows_existing_regular_directory_components() {
+        let root = temp_root("existing");
+        std::fs::create_dir_all(root.join(".zeokeel/attachments/conv")).unwrap();
+        let path = safe_join_under(&root, &[".zeokeel", "attachments", "conv", "new.txt"]).unwrap();
+        assert!(path.starts_with(root.canonicalize().unwrap()));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 }

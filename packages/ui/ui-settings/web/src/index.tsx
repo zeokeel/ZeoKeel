@@ -79,6 +79,11 @@ export interface SettingsDialogProps {
   panes: readonly SettingsPaneContribution[];
   /** App-level (not edition-level) facts/actions the panes may use. */
   app: SettingsPaneProps["app"];
+  /**
+   * Optional deep-link pane id (composer model label: `provider` personal /
+   * `enterprise`). Unknown ids fall back to the first available pane.
+   */
+  initialPane?: string | undefined;
 }
 
 /** `settings.dialog` slot: reads settings/open state and actions from useUi. */
@@ -93,7 +98,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
-  const [selectedId, setSelectedId] = useState<string>(() => panes[0]?.id ?? "");
+  const [selectedId, setSelectedId] = useState<string>(() => {
+    const requested = props.initialPane;
+    if (requested !== undefined && panes.some((pane) => pane.id === requested)) {
+      return requested;
+    }
+    return panes[0]?.id ?? "";
+  });
   const [submitAttempt, setSubmitAttempt] = useState(0);
   // The dialog is opened from app state (no `Dialog.Trigger`), so Radix has no
   // opener to restore focus to. Remember the element that had focus when the

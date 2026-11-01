@@ -59,8 +59,14 @@
 - 工具状态**以 `docs/19` 为准**：`pending/running/success/failed/cancelled`（DSH 的 `preparing` 对应 `pending`）；审批决策后续映射 DSH `allowed-once/rejected`（M1 API 仍 `approved`）。
 - **Plan/Todo（M2 占位）**：DSH 的 plan 是 Markdown 审阅 + Todo dock，不是步骤数组；M1 不实现，UX 骨架里的步骤卡标 “Todo · M2”。
 - **审批（M1 inline 占位）**：允许一次/拒绝；DSH 的 composer takeover/持久策略/超时 post-M1；不要宣称 M1 有完整审批。
-- Composer：Enter 发送、Shift+Enter 换行、IME 安全；`/` 命令 popup、`@` 文件引用、附件、模型下拉、上下文占用、发送/停止。
-- Composer 的 `deliveryMode/attempt/queue/attachments` 为 post-M1 预留，不在 M1 承诺；M1 不注册 `ui.composer` slot，避免与 `docs/19` 冲突。
+- Composer（Phase 2a 已实现，`2026-11-01-client-composer-surface`）：受控原生 textarea + Enter 发送 / Shift+Enter 换行 /
+  IME 安全（composing 期间不发送/不开菜单）；`/` 命令 popup（与 ⌘K **同一** app 命令目录与执行入口）、`@` workspace 文件引用
+  （复用 `workspace.files`，不新增搜索 IPC）、附件（拖放/选择；≤1 MiB、≤5、8 类 allowlist；`FileReader data:` 缩略图；
+  服务端 `workspace.attachment_save` 落 `<workspace>/.zeokeel/attachments/<conv>/`）、只读模型标签（点击经
+  `openModelSettings(paneId)` 定位设置模型 pane）、usage 指示（既有 `AgentUsage`，不显示窗口百分比）；发送时引用/附件合并为
+  尾部规范化引用块（`chat.send` 契约不变），用户消息渲染为 chips。交互契约/直觉：`specs/changes/2026-11-01-client-composer-surface/{interaction,intuition}.md`。
+- Composer 的 `deliveryMode/attempt/queue/内联附件预览编辑` 仍为 post-M1 预留，不在本阶段承诺；**不注册 `ui.composer` slot**
+  （composer 留在 `ui-chat`，避免与 `docs/19` 冲突）。
 - 空态/加载/错误/离线/流式中/已取消六态。
 
 ### Inspector

@@ -593,3 +593,75 @@ export interface SettingsPaneContribution {
   /** Pane component; renders fields for the current draft. */
   Component: ComponentType<SettingsPaneProps>;
 }
+
+// ---------------------------------------------------------------------------
+// Composer input surface (`ui-chat`; `2026-11-01-client-composer-surface`)
+// ---------------------------------------------------------------------------
+
+/**
+ * One app command descriptor.
+ *
+ * The app owns exactly one command catalog; the ⌘K palette and the composer `/`
+ * menu both render this array and both execute through the same `runCommand`
+ * action (C17: no second command list, no second executor).
+ */
+export interface CommandDescriptor {
+  /** Stable command id (e.g. `new-conversation`, `cancel`, `retry`). */
+  id: string;
+  /** Localized title shown in both surfaces. */
+  title: string;
+  /** Localized group label (palette column / composer menu tag). */
+  group: string;
+  /** Optional localized hint (shortcut/summary). */
+  hint?: string;
+  /** Visible but not executable (e.g. `/cancel` outside a stream). */
+  disabled?: boolean;
+}
+
+/** One workspace file/dir candidate for `@` references (from `workspace.files`). */
+export interface WorkspaceFileRef {
+  /** Workspace-relative path with forward slashes. */
+  path: string;
+  /** `dir` entries are referenced as `@path/`. */
+  kind: "file" | "dir";
+}
+
+/**
+ * One composer draft chip: an `@` workspace reference or a saved attachment.
+ *
+ * Draft state only — never serialized as a struct on the wire: on send the shell
+ * merges the chips into the user message's trailing reference block (plain
+ * text), so `chat.send` stays unchanged.
+ */
+export interface DraftRef {
+  /** Client-only draft key (retry/removal); never sent. */
+  id?: string;
+  /** `workspace` = `@` file/dir reference; `attachment` = host-saved workspace file. */
+  kind: "workspace" | "attachment";
+  /** Workspace-relative path (directory references end with `/`; attachments only when ready). */
+  path: string;
+  /** Display name (basename for attachments, last path segment for references). */
+  name?: string;
+  /** Attachment size in bytes (attachments only). */
+  size?: number;
+  /** Canonical MIME reported by the host (attachments only). */
+  mime?: string;
+  /** Image thumbnail as a `data:` URL from `FileReader.readAsDataURL` (never `blob:`). */
+  thumbnail?: string;
+  /** Upload state for attachments (`workspace` chips are always ready). */
+  status?: "uploading" | "ready" | "error";
+  /** i18n error key when `status === "error"`. */
+  error?: string;
+}
+
+/** Mirrors `zk_contract_ipc::results::AttachmentSaveResult` (host-canonical metadata). */
+export interface AttachmentSaveResult {
+  /** Workspace-relative path written by the host (`.zeokeel/attachments/...`). */
+  path: string;
+  /** Sanitized display name (basename). */
+  name: string;
+  /** Decoded byte length. */
+  bytes: number;
+  /** Canonical MIME. */
+  mime: string;
+}

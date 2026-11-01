@@ -99,7 +99,8 @@ export async function fetchConnectors(session: AuthSession, serverUrl: string): 
   return (await fetchConnectorCatalog(session, serverUrl)).items;
 }
 
-function toBase64(bytes: Uint8Array): string {
+/** Base64 (standard, padded) for binary IPC payloads (skills archives, composer attachments). */
+export function toBase64(bytes: Uint8Array): string {
   let binary = "";
   const chunk = 0x8000;
   for (let index = 0; index < bytes.length; index += chunk) {

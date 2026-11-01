@@ -46,6 +46,14 @@
 | ACT2-A11Y-01 | P1 | 同上 | 待实现 |
 | ACT2-VIS-01 | P2 | 同上 | 待实现 |
 
+## 1.6 直觉验收（C20）
+
+- 文件：`intuition.md`（planned，12 条 INT，P0 全覆盖）+ `intuition-walkthrough.md`（3 persona × 3 task + 摩擦表，无 OPEN P0）。
+- P0 摩擦：job 作用域/已结束误停、job 停止/subagent 中断不可逆误操作（已改内联二次确认）、schedule 删除无确认/未知 id、轮询旧响应串会话——均已在 spec/design/interaction/tasks 落最小修法并关闭。
+- 3×3 persona × top task 矩阵已满格（N/A 格有理由+替代验证）；P0 无 OPEN。
+- 用户测试：**UNVERIFIED**（未执行；发布前 ≥5 人 think-aloud，证据 `target/evidence/2026-11-01-client-activity-panels/usability/`）；**未完成前 acceptance/发布文案不得声称「符合直觉/直观」**。
+- 评审：待 fresh-context 评审员按走查复核（P0 摩擦未关闭 → 不通过）。
+
 ## 2. 手工检查
 
 - [ ] activity tab：order 40（files→changes→terminal→activity）、打开即加载、2s 轮询、手动刷新、动作后刷新、切会话/关闭停止

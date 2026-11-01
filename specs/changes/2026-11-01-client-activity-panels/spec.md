@@ -20,7 +20,9 @@
   可按状态/命令过滤（可选简单过滤）；可展开查看该 job 输出；可停止运行中的 job
 - **AND** 只展示 **cwd 位于当前 workspace 根内** 的 jobs（canonicalize 后按 **路径组件** `Path::starts_with` 判断，不能用字符串前缀放过 `/workspace-evil`；其它 workspace/无 cwd 不混入）；停止/查看未知 job 返回可读错误；
   无 jobs 显示空态「暂无后台任务」；jobs 为进程内状态，重启后为空（不伪造历史）
-- **AND** 停止为显式用户动作（不是 agent 工具调用），失败（已结束/未知）不崩溃并提示
+- **AND** 停止为显式用户动作（不是 agent 工具调用）；**停止前必须内联二次确认**（显示 job id/命令/「将终止进程」影响，默认焦点「取消」，确认后才发 `activity.action{job_kill}`；取消/ Esc 不变）；确认 UI 复用 ui-kit Button/既有确认模式，不新增第二套 Dialog（C17）；
+  失败（已结束/未知）不崩溃并提示
+- **AND** 确认区 `role=alertdialog` + 可读 `aria-label`（「确认停止任务」），`aria-busy` 在 action 中；键盘可达确认/取消
 
 ### R3 · Subagent / agent-team
 
@@ -29,6 +31,7 @@
   运行中的可「中断」；已结束的显示结果不可用/历史（不提供续聊/打开子会话）
 - **AND** 展示**最近一次** `agent_team` 工具行结果（objective/status/workers[id/task/status]/completed/failed/cancelled/total，只读）；
   不改团队状态模型（不新增 roster/任务板持久化）
+- **AND** 中断前**内联二次确认**（显示 subagent id/状态/「将中断该子代理」影响，默认焦点「取消」，确认后才发 action；取消/Esc 不变）；确认区 `role=alertdialog` + aria-label（「确认中断子代理」），复用 ui-kit 确认原语，不新增第二套 Dialog（C17）
 - **AND** 中断未知/已结束 id 返回可读错误（例如「子代理不存在或已结束」），UI 刷新状态；空白显示对应空态
 
 ### R4 · Goal 状态
@@ -113,7 +116,7 @@
 - [ ] 契约/host：`activity.snapshot` 字段/边界；jobs 过滤与 kill；subagent roster/interrupt；goal/todo/present 工具行派生（含损坏/legacy）；
       schedule list/update/delete 经 tool-schedule 校验；`cargo test -p zk-contract-ipc -p zk-desktop`。
 - [ ] 派生单测：todo `list/add/update/remove` replay、goal 最近完整结果、present 去重、团队 JSON 解析失败降级；输出/条数截断。
-- [ ] UI：activity tab（order 40）渲染各分区/空态/错误/轮询停止；jobs 输出/停止；subagent 中断；schedule toggle/edit/delete 确认；
+- [ ] UI：activity tab（order 40）渲染各分区/空态/错误/轮询停止；jobs 输出/停止（**停止先内联确认，取消不发 action**）；subagent 中断（同样确认）；schedule toggle/edit/delete 确认；
       turnTail present 卡点击打开右栏预览；计划段落折叠/无匹配不显示（单测/手工）。
 - [ ] e2e（`e2e/interaction/activity.spec.ts` + `e2e/serve-m1.sh` 剧本科；`pnpm e2e:ui` 依赖 `ui-interaction-verification`，当前 UNVERIFIED）：activity tab 打开、todo/goal/schedule/present 剧本、
       schedule 暂停/删除后文件断言、present 卡→右栏预览、job 后台任务停止、subagent interrupt；axe 0 serious。

@@ -317,3 +317,41 @@ e78d1e3b8e0e8c4fddd7096401f8f16a0225b9e08e6a6251e6d17f2a75d8a1a7  specs/changes/
 - **复评结论：APPROVED**（P0=0 / P1=0；新增 P2=4，非阻断）。三份 spec 可置 `approved`：需把 proposal 状态/评审链接回填（composer 预算头改为 16）、acceptance 引用本复评；`review-check` 在 status=approved 后将校验本记录（含三个 change id 与最新 APPROVED 结论）。
 - 失效条件：本记录 §15.1 的 18 文件任一 hash 变化（除批准后的行政性回填/本记录自身）→ 复评失效；P2-R1…R4 修复亦会改 hash，建议随批准前一次改完并重算。
 - 未验证（不冒充）：真实 Tauri WebView 缩略图（P1-1 修法需 Tauri 手测）、真实 `pnpm e2e`/`cargo test`/SQLite v6、public-api diff、交互契约 P0/P1 实测证据；均为实现阶段。
+
+### 15.7 批准前编辑性修复的 hash 重算（2026-11-01）
+
+- 背景：Lead 按 §15 结论将三份 spec 置 `approved`，并在批准前顺手修复 §15.3 的 P2-R1…R4；因此 §15.1 的 18 文件 hash 已变化。本节重算当前对象 hash，并确认 §15 结论仍成立。
+- 变更范围（与 §15.1 对照，18 文件中共 **8 个变化、10 个未变**）：
+  - **P2-R1**：`composer/proposal.md` 头部预算 15→**16**（与 §8/acceptance 一致；Lead 例外已记录）。
+  - **P2-R2**：`composer/tasks.md` §2 明确 `packages/ui/ui-settings/**` 仅允许 task 5 的 `web/src/index.tsx` `initialPane` 深链，其余不写。
+  - **P2-R3**：`activity/design.md` §5 风险表删除「app 直接依赖 `zk-tool-schedule`」旧行，改为「host 经 `zk-composed` facade，app 不 import tool/kit」。
+  - **P2-R4**：`activity/design.md` §2.6 计划正则改为 `^(#{1,6}\s+)(计划|Plan)(?=\s|$|[：:])`（`#` 必选，普通段落「计划…」不匹配）+ 负向测试要求（interaction ACT2-TURNTAIL-PLAN-01）。
+  - **行政性回填（6 文件）**：三份 `proposal.md` 置 `approved`、`评审：` 指向 `docs/reviews/2026-11-01-client-phase2-specs.md`；三份 `acceptance.md` 增加「复评 APPROVED：...§15；P2-R1…R4 为批准前编辑性修复」引用。
+- 未变（10）：三份 `spec.md`、三份 `interaction.md`、`composer/design.md`、`side/design.md`、`side/tasks.md`、`activity/tasks.md`（与 §15.1 hash 相同）。
+- 新对象 SHA256（18 文件，取代 §15.1 作为后续基线）：
+
+```text
+05c5e7a7f641c11ba816a339ee3963e57444c9df29d623ecbf02bbfca9ec0b78  specs/changes/2026-11-01-client-activity-panels/acceptance.md
+0d9f3e83e7ed70500f56124d01522331e238c0ab04a8cd057279ebafafac4c22  specs/changes/2026-11-01-client-activity-panels/interaction.md
+2cb067b30a7bdbbd80980b8e8fe6f34afbf1c73001fb39e1212c63183bab34ed  specs/changes/2026-11-01-client-activity-panels/design.md
+2f25166e431a12362f44b479a6f392ba1e6d4b5d82ce7cd1d02262ec85e82455  specs/changes/2026-11-01-client-activity-panels/spec.md
+32c41dc42db8aa373bed2703a43c1a518c37044a751c22014f24a5f2e3922113  specs/changes/2026-11-01-client-composer-surface/proposal.md
+4d2e9c16bdaf69da4ba655987a1eb1566c33bb542655c45045b5ff8a15d1e3b2  specs/changes/2026-11-01-client-activity-panels/proposal.md
+590d42be434179941f461431922a5cf852ed87b6670ea8aecc483f0da53c6fcd  specs/changes/2026-11-01-client-side-panels/interaction.md
+6157e3d1e5c3b645e55efd319d9d16080ac051a5629a91dbde280dfd8fb3f24e  specs/changes/2026-11-01-client-composer-surface/spec.md
+61a4b3c70f3d75f44f7cbf644f789b14edde5a3f088abbda8ef27cc422b76b1b  specs/changes/2026-11-01-client-composer-surface/acceptance.md
+76cef548b3d171b605003b9e6b9d835d9cadd28ff11f04067705aee30f57ec22  specs/changes/2026-11-01-client-side-panels/tasks.md
+7a9e286d4ae2d9056573e2dcb6a3dfa0d75904cde3baf93a03c1f83e5173f07e  specs/changes/2026-11-01-client-composer-surface/design.md
+80569d143a13a74960dd4bd002adfba463fa84cd11654b2af897e3ae3021c9a3  specs/changes/2026-11-01-client-side-panels/proposal.md
+83877358dc01c63e5269cb1c77ba688ff987000901f8418a342f4bae0ab8012b  specs/changes/2026-11-01-client-side-panels/design.md
+8ac4cc6cf1b2a6815e93c7d04474990b9a2fe2703572c8684911aa871c8b7c9a  specs/changes/2026-11-01-client-activity-panels/tasks.md
+9aa024ff23d2a87faca5aecc9a086a3fe93582afd21630caa319d724b1e1bf34  specs/changes/2026-11-01-client-composer-surface/interaction.md
+a06ff3481c5fcc87db803323b9d9e04a44d8fb59871db5a746149babbf69e470  specs/changes/2026-11-01-client-side-panels/spec.md
+e10dd39cb4e35335f92f37082d7534775ed51affff123a856b48770484fae6f1  specs/changes/2026-11-01-client-side-panels/acceptance.md
+eb1980ce51b10a3b76897616cac8c113c939787714fe32d733f92966e4cf24cd  specs/changes/2026-11-01-client-composer-surface/tasks.md
+```
+
+- 复核结论：P2-R1…R4 均已修复；未发现新 P0/P1；三份 spec 的 approved 状态/评审链接/acceptance 引用与 §15 的 APPROVED 一致。**§15 结论仍为 APPROVED（P0=0 / P1=0；新增 P2=0，剩余风险为实现阶段 UNVERIFIED）**。
+- 复跑门禁（2026-11-01）：`python3 scripts/spec-check.py` exit 0（0 errors / 1 warning：`ui-interaction-verification` 仍 in-progress，非本三份 spec）；`python3 scripts/docs-check.py` exit 0（0 errors / 0 warnings / 41 files）；`python3 scripts/review-check.py` exit 0（ok，31 records；approved 后已校验本记录）。
+- 失效条件：本 §15.7 的 18 文件 hash 若再发生非行政性变化，需重新评审；批准后的状态/链接/acceptance 回填本身不再改变评审结论（本次已一并计入）。
+- 本轮唯一写入仍为本评审记录；未改 spec/代码/生成物。

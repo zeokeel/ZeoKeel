@@ -172,6 +172,7 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_m
 | `connectors.clear` | — | `{cleared:true}` | `connectors/clear-failed` |
 | `mcp.test` | `{server: McpServerConfig}` | `{test_id}` | `mcp/validation`、`mcp/test-in-flight` |
 | `mcp.test.status` | `{test_id}` | `{state: pending\|ok\|error, tools?, error?}` | `mcp/unsupported`（unknown id） |
+| `workspace.attachment_save` | `{workspace_id, conversation_id, name, mime, data_base64}` | `{path, name, bytes, mime}`（`path` 为 workspace 相对路径） | `attachment/too-large`、`attachment/type-not-allowed`、`attachment/empty`、`attachment/invalid`、`attachment/workspace-unavailable`、`session/workspace-mismatch`、`workspace/not-found` |
 
 - 所有会话命令必须带 `workspace_id` 并校验归属；`chat.send` **不再自动建会话**。
 - `mcp.test`/`mcp.test.status` 仅个人版 MCP pane 使用：两段式无缓存探测（15s 硬超时；`state` 为封闭枚举）；
@@ -179,6 +180,12 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_m
 - `connectors.*` 只由企业版 web 在登录/刷新（configure）、启停（configure）、手动重载（reload）、登出（clear）时调用；
   personal 无登录/连接器面板不发这些命令；personal 的本地 MCP 配置为另一 change（`client-mcp-config`），不与本组命令混用。
 - 并发：Workspace mutation 全局串行（单 writer/互斥）；同一会话单 turn；切换 Workspace 取消活动 turn 并广播 `turn_cancelled`。
+- `workspace.attachment_save`（`2026-11-01-client-composer-surface`）：composer 附件唯一落盘命令。单文件 ≤1 MiB、
+  每消息 ≤5 个（客户端计数，宿主逐文件校验）、8 类 allowlist（png/jpg/jpeg/webp/gif/pdf/txt/md/json/csv/log）；
+  文件名仅 basename + 长度/控制字符 sanitize；base64 解码后再校验字节数/magic/非空；会话归属必须属于该 workspace。
+  写入 `<workspace>/.zeokeel/attachments/<conversation_id>/<uuid>-<sanitized-name>`，路径经
+  `zk_kit_tools::safe_join_under` 逐组件 no-follow + canonicalize 父目录 + `starts_with(root)` 校验（拒绝绝对/`..`/symlink 逃逸）。
+  附件仅作为 workspace 文件 + 用户消息引用块被模型读取（不直传多模态字节）。`attachment/*` 为封闭错误码（i18n 文案）。
 - 错误码为封闭集合，M1 落在 `shared/contracts/errors.json`（T4）。
 - 默认 Workspace 规则：始终恰好 1 个；`set_default` 切换；默认不可移除，先切 default 再移除；reassign 目标可为默认（含默认作为接收方），但不能是自身/不可用。
 

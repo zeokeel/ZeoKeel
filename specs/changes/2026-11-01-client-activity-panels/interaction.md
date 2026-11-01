@@ -18,7 +18,9 @@
 | activity tab | `tab` /「活动」 | ←/→ 切 tab、Enter/Space | 否 | tablist 中 order 40；`aria-selected` |
 | 刷新按钮 | `button` /「刷新活动」 | Enter/Space | 否 | 手动刷新 snapshot |
 | jobs 行 / 停止 | `listitem` + `button` /「停止任务」 | Tab/Enter | 否 | 运行中才可停止；输出摘要可展开 |
+| job 停止确认 | `alertdialog` /「确认停止任务」 | Tab 到取消/确认、Enter、Esc | 默认「取消」 | 内联二次确认；取消不发 action |
 | subagent 行 / 中断 | `listitem` + `button` /「中断子代理」 | Tab/Enter | 否 | 仅 running 可中断 |
+| subagent 中断确认 | `alertdialog` /「确认中断子代理」 | Tab 到取消/确认、Enter、Esc | 默认「取消」 | 内联二次确认；取消不发 action |
 | schedule 行/开关/编辑/删除 | `listitem` + `switch`/`button`（编辑/删除） | Tab/Enter/Space | 否 | 删除需内联二次确认；非法值行内错误 |
 | todo 列表 | `list`/`listitem`（只读） | — | 否 | 来自工具行派生；不提供写操作 |
 | turnTail 交付卡 | `button` /「在右栏查看」 | Enter/Space | 否 | present 路径去重；点击打开 files 预览 |
@@ -45,8 +47,8 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | ACT2-SNAPSHOT-01 | 右栏已打开、有 activity | 点击「活动」tab；读取各分区 | tab order 40（files→changes→terminal→activity）；snapshot 分区渲染 jobs/subagents/team/goal/todo/schedules/presentations；空分区显示空态 | P0 | `activity.spec.ts` | `ACT2-SNAPSHOT-01.json` |
 | ACT2-POLL-01 | activity tab 打开 | 等待 2s；点手动刷新；切走/关闭 tab | 期间轮询更新；手动刷新拉新；切走/关闭停止轮询且不更新其它会话 | P0 | `activity.spec.ts` | `ACT2-POLL-01.json` |
-| ACT2-JOB-STOP-01 | 有 running job | 展开输出；点击「停止任务」 | 输出摘要/展开可见；停止后状态刷新（completed/failed 或列表移除）；未知/已结束错误可读；不产生工具行/审批 | P0 | `activity.spec.ts` | `ACT2-JOB-STOP-01.json` |
-| ACT2-SUBAGENT-INTERRUPT-01 | 当前会话有 running subagent | 点击「中断子代理」 | 中断后状态刷新为 cancelled/done；未知/已结束错误可读；roster 按 parent 过滤 | P0 | `activity.spec.ts` | `ACT2-SUBAGENT-INTERRUPT-01.json` |
+| ACT2-JOB-STOP-01 | 有 running job | 展开输出；点击「停止任务」→ 内联确认（对象 id/命令/影响）→ 确认或取消 | 确认区 `role=alertdialog` + aria-label「确认停止任务」，默认焦点「取消」；**取消/Esc 不发 action、状态不变**；确认后才停止，停止后状态刷新（completed/failed 或列表移除）；未知/已结束错误可读；不产生工具行/审批 | P0 | `activity.spec.ts` | `ACT2-JOB-STOP-01.json` |
+| ACT2-SUBAGENT-INTERRUPT-01 | 当前会话有 running subagent | 点击「中断子代理」→ 内联确认（id/状态/影响）→ 确认或取消 | 确认区 `role=alertdialog` + aria-label「确认中断子代理」，默认焦点「取消」；**取消/Esc 不发 action**；确认后状态刷新为 cancelled/done；未知/已结束错误可读；roster 按 parent 过滤 | P0 | `activity.spec.ts` | `ACT2-SUBAGENT-INTERRUPT-01.json` |
 | ACT2-SCHEDULE-EDIT-01 | 当前 workspace 有 schedule | 切换启用开关；编辑 interval/prompt 并保存 | 文件/列表同步；非法 interval(<60)/prompt>32 KiB 行内错误且不写盘；只操作当前 workspace | P0 | `activity.spec.ts` | `ACT2-SCHEDULE-EDIT-01.json` |
 | ACT2-SCHEDULE-DELETE-01 | 有 schedule 行 | 点击删除 → 内联确认/取消 | 确认后删除并刷新；取消不变；未知 id/`deleted 0` 映射 `activity/schedule-invalid`；二次确认键盘可达 | P0 | `activity.spec.ts` | `ACT2-SCHEDULE-DELETE-01.json` |
 | ACT2-TURNTAIL-PRESENT-01 | 本轮 assistant 有 present 工具结果 | 查看消息尾部；点击「在右栏查看」 | 交付卡显示文件名/描述、path 去重；点击打开右栏 files 预览；文件不存在可读错误；无空卡 | P0 | `activity.spec.ts` | `ACT2-TURNTAIL-PRESENT-01.json` |

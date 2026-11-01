@@ -128,10 +128,49 @@ fn oauth_command_names_are_stable_and_unique() {
         commands::OAUTH_STATUS,
         commands::OAUTH_REFRESH,
         commands::SYSTEM_OPEN_URL,
+        commands::WORKSPACE_ATTACHMENT_SAVE,
     ];
     let mut sorted = names.to_vec();
     sorted.sort_unstable();
     sorted.dedup();
     assert_eq!(sorted.len(), names.len(), "command names must be unique");
     assert!(names.iter().all(|name| !name.is_empty()));
+}
+
+#[test]
+fn attachment_save_contract_round_trips() {
+    use zk_contract_ipc::payloads::AttachmentSavePayload;
+    use zk_contract_ipc::results::AttachmentSaveResult;
+
+    assert_eq!(
+        zk_contract_ipc::commands::WORKSPACE_ATTACHMENT_SAVE,
+        "workspace.attachment_save"
+    );
+
+    let payload = AttachmentSavePayload {
+        workspace_id: "ws-1".to_owned(),
+        conversation_id: "conv-1".to_owned(),
+        name: "shot.png".to_owned(),
+        mime: "image/png".to_owned(),
+        data_base64: "iVBORw0KGgo=".to_owned(),
+    };
+    let text = serde_json::to_string(&payload).unwrap();
+    assert_eq!(
+        payload,
+        serde_json::from_str::<AttachmentSavePayload>(&text).unwrap()
+    );
+
+    let result = AttachmentSaveResult {
+        path: ".zeokeel/attachments/conv-1/abc-shot.png".to_owned(),
+        name: "shot.png".to_owned(),
+        bytes: 8,
+        mime: "image/png".to_owned(),
+    };
+    let value = serde_json::to_value(&result).unwrap();
+    assert_eq!(
+        value.get("path"),
+        Some(&serde_json::json!(
+            ".zeokeel/attachments/conv-1/abc-shot.png"
+        ))
+    );
 }

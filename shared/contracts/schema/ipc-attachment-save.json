@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AttachmentSavePayload",
+  "description": "`workspace.attachment_save` payload (composer attachment, additive).\n\nThe host re-validates everything (workspace/conversation ownership, byte size after decode, extension/magic allow-list, filename sanitize) and returns the canonical metadata; the client hints are not trusted.",
+  "type": "object",
+  "required": [
+    "conversation_id",
+    "data_base64",
+    "mime",
+    "name",
+    "workspace_id"
+  ],
+  "properties": {
+    "conversation_id": {
+      "description": "Conversation id; must belong to `workspace_id`.",
+      "type": "string"
+    },
+    "data_base64": {
+      "description": "Base64 (standard alphabet, padded) of the raw file bytes.",
+      "type": "string"
+    },
+    "mime": {
+      "description": "Client-declared MIME (host re-derives it from the extension/magic).",
+      "type": "string"
+    },
+    "name": {
+      "description": "Client-declared basename (host sanitizes; path separators rejected).",
+      "type": "string"
+    },
+    "workspace_id": {
+      "description": "Owning workspace id.",
+      "type": "string"
+    }
+  }
+}

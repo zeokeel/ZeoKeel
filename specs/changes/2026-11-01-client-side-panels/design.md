@@ -143,7 +143,7 @@ workspace.files      WorkspaceFilesPayload 扩展：#[serde(default)] path: Opti
   为控制 props 数量，`listDirectory/readFile/terminal` 以 `actions` 对象注入（ui-kit 类型）。
 - 符号链接：列表阶段 **不展示 symlink**（host 返回条目时 UI 用 kind/预览拒绝的双保险；host 侧 `read_dir` 后不 follow symlink）；`workspace.file_read` 对目标/父目录 symlink 一律拒绝（canonicalize + starts_with）。
   刷新清空缓存但保留 expanded；`aria-expanded`/`role="treeitem"`/`level`；目录/文件按 kind 排序（目录优先，名称 localeCompare）。
-- 预览：`previewPath: string|null` + `previewState`（loading/ok/error/unsupported）；文本 `<pre>`（保留换行、截断提示）；
+- 预览：`previewPath: string|null` + `previewState`（loading/ok/error/unsupported）；路径解析复用 composer 的 `zk_kit_tools::safe_join_under`（经 generated facade；C17），父目录 symlink 拒绝；文本 `<pre>`（保留换行、截断提示）；
   图片 `<img src={"data:"+mime+";base64,"+content}>`（CSP `img-src 'self' data:` 已允许）；不支持显示降级块 + 返回树。
 - 终端：会话列表（tabs/select）、输出 `<pre>`（自动滚底、最多保留 N 行/64 KiB）、输入行（Enter 发送、↑ 历史可选不做）；
   执行中禁用输入/显示 spinner；关闭会话确认（简单确认，不新增 Modal 组件：复用 `ui-kit` 现有 primitive 或浏览器 confirm？**design 决定**：

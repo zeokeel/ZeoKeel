@@ -1,11 +1,13 @@
 import {
   defaultSettings,
   type AppSettings,
+  type AttachmentSaveResult,
   type Conversation,
   type SettingsSaveOutcome,
   type UiActions,
   type UiValue,
   type Workspace,
+  type WorkspaceFileRef,
 } from "@zeokeel/ui-kit";
 import { translate } from "../src/i18n";
 
@@ -65,6 +67,9 @@ export function testUi(overrides: TestUiOverrides = {}): UiValue {
     settingsOpen: false,
     sidebarOpen: false,
     mock: false,
+    commands: [],
+    modelLabel: "mock",
+    modelSettingsPane: "provider",
     actions: {
       send: noop,
       cancel: noop,
@@ -77,6 +82,11 @@ export function testUi(overrides: TestUiOverrides = {}): UiValue {
       removeWorkspace: noop,
       selectConversation: noop,
       openSettings: noop,
+      openSettingsPane: noop,
+      openModelSettings: noop,
+      runCommand: noop,
+      searchWorkspaceFiles: (): Promise<WorkspaceFileRef[]> => Promise.resolve([]),
+      saveAttachment: (): Promise<AttachmentSaveResult> => Promise.reject(new Error("not configured")),
       closeSettings: noop,
       saveSettings: (settings: AppSettings): Promise<SettingsSaveOutcome> =>
         Promise.resolve({ status: "saved", settings, revision: 1 }),

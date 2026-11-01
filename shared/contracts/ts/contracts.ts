@@ -314,6 +314,21 @@ export interface ApprovalRequest {
 
 export type ApprovalRisk = "low" | "medium" | "high";
 
+export interface AttachmentSavePayload {
+  conversation_id: string;
+  data_base64: string;
+  mime: string;
+  name: string;
+  workspace_id: string;
+}
+
+export interface AttachmentSaveResult {
+  bytes: number;
+  mime: string;
+  name: string;
+  path: string;
+}
+
 export interface AuthSession {
   access_token: string;
   expires_in: number;
@@ -889,6 +904,10 @@ export const gateway_usageSchema = {"$schema":"http://json-schema.org/draft-07/s
 
 export const ipc_approval_decideSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"ApprovalDecision":{"description":"User decision for one approval request.\n\nDefined in the tool contract because [`ApprovalGate`] returns it; the agent contract re-exports it to keep `zk_contract_agent::ApprovalDecision` working.","oneOf":[{"description":"Allow exactly this call.","enum":["allow_once"],"type":"string"},{"description":"Allow this tool for the rest of the conversation (memory only).","enum":["allow_session"],"type":"string"},{"description":"Reject this call (fail-closed default).","enum":["reject"],"type":"string"},{"description":"Cancel the whole turn.","enum":["cancel"],"type":"string"}]}},"description":"`approval.decide` payload.","properties":{"approval_id":{"description":"Pending approval id.","type":"string"},"decision":{"allOf":[{"$ref":"#/definitions/ApprovalDecision"}],"description":"User decision."}},"required":["approval_id","decision"],"title":"ApprovalDecidePayload","type":"object"} as const;
 
+export const ipc_attachment_save_resultSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`workspace.attachment_save` result (host-canonical metadata).","properties":{"bytes":{"description":"Decoded byte length actually written.","format":"uint64","minimum":0.0,"type":"integer"},"mime":{"description":"Canonical MIME derived by the host (extension + magic).","type":"string"},"name":{"description":"Sanitized display name (basename only).","type":"string"},"path":{"description":"Workspace-relative path (forward slashes), e.g. `.zeokeel/attachments/<conversation>/<uuid>-<name>`.","type":"string"}},"required":["bytes","mime","name","path"],"title":"AttachmentSaveResult","type":"object"} as const;
+
+export const ipc_attachment_saveSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`workspace.attachment_save` payload (composer attachment, additive).\n\nThe host re-validates everything (workspace/conversation ownership, byte size after decode, extension/magic allow-list, filename sanitize) and returns the canonical metadata; the client hints are not trusted.","properties":{"conversation_id":{"description":"Conversation id; must belong to `workspace_id`.","type":"string"},"data_base64":{"description":"Base64 (standard alphabet, padded) of the raw file bytes.","type":"string"},"mime":{"description":"Client-declared MIME (host re-derives it from the extension/magic).","type":"string"},"name":{"description":"Client-declared basename (host sanitizes; path separators rejected).","type":"string"},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["conversation_id","data_base64","mime","name","workspace_id"],"title":"AttachmentSavePayload","type":"object"} as const;
+
 export const ipc_chat_cancelSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`chat.cancel` payload (per-stream cancellation).","properties":{"stream_id":{"description":"Active stream id to cancel.","type":"string"},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["stream_id","workspace_id"],"title":"ChatCancelPayload","type":"object"} as const;
 
 export const ipc_chat_send_resultSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`chat.send` result (one accepted turn).","properties":{"conversation_id":{"description":"Conversation that accepted the turn.","type":"string"},"stream_id":{"description":"Stream id used to correlate `UiEvent`s for this turn.","type":"string"},"workspace_id":{"description":"Owning workspace id (ownership is verified before accepting).","type":"string"}},"required":["conversation_id","stream_id","workspace_id"],"title":"ChatSendResult","type":"object"} as const;
@@ -1040,6 +1059,8 @@ export const SCHEMAS = {
   gateway_module: gateway_moduleSchema,
   gateway_usage: gateway_usageSchema,
   ipc_approval_decide: ipc_approval_decideSchema,
+  ipc_attachment_save_result: ipc_attachment_save_resultSchema,
+  ipc_attachment_save: ipc_attachment_saveSchema,
   ipc_chat_cancel: ipc_chat_cancelSchema,
   ipc_chat_send_result: ipc_chat_send_resultSchema,
   ipc_chat_send: ipc_chat_sendSchema,

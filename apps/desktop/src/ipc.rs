@@ -2,10 +2,12 @@
 //! Shared command dispatch used by both the Tauri shell and the HTTP serve carrier.
 
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 
+use base64::Engine as _;
 use serde_json::{json, Value};
 use tokio::sync::broadcast;
 use zk_contract_agent::ApprovalDecision;
@@ -719,6 +721,7 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 Err(error) => CommandResponse::err(error.to_string()),
             }
         }
+        commands::WORKSPACE_ATTACHMENT_SAVE => attachment_save(state, payload),
         commands::CONNECTORS_CONFIGURE => {
             let Some(catalog) = payload.get("catalog") else {
                 return CommandResponse::err("connectors/catalog-invalid: missing catalog");
@@ -954,6 +957,200 @@ fn list_workspace_files(root: &str) -> Result<WorkspaceFilesResult, String> {
     }
     items.sort_unstable_by_key(|entry| entry.path.clone());
     Ok(WorkspaceFilesResult { items })
+}
+
+/// Composer attachment limit: one file, 1 MiB of raw bytes.
+///
+/// The serve carrier uses axum's default 2 MiB JSON body limit; 1 MiB raw bytes
+/// become ~1.37 MiB as base64 + JSON envelope, so the default limit is enough
+/// (`2026-11-01-client-composer-surface` D2 keeps `/ipc` unchanged).
+const MAX_ATTACHMENT_BYTES: usize = 1024 * 1024;
+/// Sanitized attachment display name limit (bytes).
+const MAX_ATTACHMENT_NAME_BYTES: usize = 128;
+/// Host attachment extension allow-list (8 kinds; design §2.2).
+const ATTACHMENT_EXT_ALLOWLIST: &[&str] = &[
+    "png", "jpg", "jpeg", "webp", "gif", "pdf", "txt", "md", "json", "csv", "log",
+];
+
+/// `workspace.attachment_save`: validate + persist one composer attachment.
+///
+/// The client hints are never trusted: workspace/conversation ownership, the
+/// filename (basename only), decode size, extension allow-list, magic bytes and
+/// the canonical MIME are re-derived here. The write path is built exclusively
+/// through the generated `zk_composed::zk_kit_tools::safe_join_under` facade
+/// (no manual joining; C17/C4), which rejects `..`/absolute parts and any
+/// symlinked parent or file component.
+fn attachment_save(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
+    let request: zk_contract_ipc::payloads::AttachmentSavePayload =
+        match serde_json::from_value(payload.clone()) {
+            Ok(request) => request,
+            Err(error) => return CommandResponse::err(format!("attachment/invalid: {error}")),
+        };
+    // The client MIME is only a hint; the host derives the canonical one.
+    let _client_mime = request.mime.as_str();
+    let sessions = state.runtime.sessions();
+    let conversations = match sessions.list_conversations_in(&request.workspace_id) {
+        Ok(list) => list,
+        Err(error) => return CommandResponse::err(format!("workspace/not-found: {error}")),
+    };
+    if !conversations
+        .iter()
+        .any(|conversation| conversation.id == request.conversation_id)
+    {
+        return CommandResponse::err("session/workspace-mismatch");
+    }
+    let workspaces = match sessions.list_workspaces() {
+        Ok(list) => list,
+        Err(error) => return CommandResponse::err(error.to_string()),
+    };
+    let Some(workspace) = workspaces
+        .into_iter()
+        .find(|workspace| workspace.id == request.workspace_id)
+    else {
+        return CommandResponse::err("workspace/not-found");
+    };
+    let name = match sanitize_attachment_name(&request.name) {
+        Ok(name) => name,
+        Err(error) => return CommandResponse::err(error),
+    };
+    let Some(extension) = attachment_extension(&name) else {
+        return CommandResponse::err("attachment/type-not-allowed: missing extension");
+    };
+    if !ATTACHMENT_EXT_ALLOWLIST.contains(&extension.as_str()) {
+        return CommandResponse::err(format!("attachment/type-not-allowed: {extension}"));
+    }
+    let bytes =
+        match base64::engine::general_purpose::STANDARD.decode(request.data_base64.as_bytes()) {
+            Ok(bytes) => bytes,
+            Err(_) => return CommandResponse::err("attachment/invalid: base64"),
+        };
+    if bytes.is_empty() {
+        return CommandResponse::err("attachment/empty");
+    }
+    if bytes.len() > MAX_ATTACHMENT_BYTES {
+        return CommandResponse::err("attachment/too-large");
+    }
+    let mime = match attachment_mime(&extension, &bytes) {
+        Ok(mime) => mime,
+        Err(error) => return CommandResponse::err(error),
+    };
+    let file_name = format!("{}-{name}", uuid::Uuid::new_v4());
+    let joined = match zk_composed::zk_kit_tools::safe_join_under(
+        std::path::Path::new(&workspace.path),
+        &[
+            ".zeokeel",
+            "attachments",
+            request.conversation_id.as_str(),
+            file_name.as_str(),
+        ],
+    ) {
+        Ok(path) => path,
+        Err(error) => {
+            return CommandResponse::err(format!("attachment/workspace-unavailable: {error}"));
+        }
+    };
+    let tmp = joined.with_file_name(format!(".{file_name}.tmp"));
+    if let Err(error) = write_attachment_atomic(&joined, &tmp, &bytes) {
+        return CommandResponse::err(format!("attachment/workspace-unavailable: {error}"));
+    }
+    let relative = format!(
+        ".zeokeel/attachments/{}/{}",
+        request.conversation_id, file_name
+    );
+    CommandResponse::ok(json!(zk_contract_ipc::results::AttachmentSaveResult {
+        path: relative,
+        name,
+        bytes: u64::try_from(bytes.len()).unwrap_or(u64::MAX),
+        mime,
+    }))
+}
+
+/// Sanitize the client-declared file name (basename only; no separators).
+fn sanitize_attachment_name(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("attachment/invalid: empty file name".to_owned());
+    }
+    if trimmed.contains('/')
+        || trimmed.contains('\\')
+        || trimmed == "."
+        || trimmed == ".."
+        || trimmed.contains("..")
+    {
+        return Err("attachment/invalid: unsafe file name".to_owned());
+    }
+    if trimmed.chars().any(char::is_control) {
+        return Err("attachment/invalid: control character in file name".to_owned());
+    }
+    if trimmed.len() > MAX_ATTACHMENT_NAME_BYTES {
+        return Err("attachment/invalid: file name too long".to_owned());
+    }
+    Ok(trimmed.to_owned())
+}
+
+/// Lowercase extension of a sanitized file name (`None` when there is none).
+fn attachment_extension(name: &str) -> Option<String> {
+    let (_, extension) = name.rsplit_once('.')?;
+    if extension.is_empty() {
+        return None;
+    }
+    Some(extension.to_ascii_lowercase())
+}
+
+/// Canonical MIME for an allowed extension, validating the file magic/content.
+fn attachment_mime(extension: &str, bytes: &[u8]) -> Result<String, String> {
+    let (mime, matches) = match extension {
+        "png" => ("image/png", bytes.starts_with(b"\x89PNG\r\n\x1a\n")),
+        "jpg" | "jpeg" => ("image/jpeg", bytes.starts_with(&[0xFF, 0xD8, 0xFF])),
+        "gif" => (
+            "image/gif",
+            bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a"),
+        ),
+        "webp" => (
+            "image/webp",
+            bytes.len() >= 12
+                && bytes.starts_with(b"RIFF")
+                && bytes.get(8..12) == Some(b"WEBP".as_slice()),
+        ),
+        "pdf" => ("application/pdf", bytes.starts_with(b"%PDF-")),
+        "txt" | "log" => ("text/plain", is_attachment_text(bytes)),
+        "md" => ("text/markdown", is_attachment_text(bytes)),
+        "json" => ("application/json", is_attachment_text(bytes)),
+        "csv" => ("text/csv", is_attachment_text(bytes)),
+        _ => return Err("attachment/type-not-allowed: extension".to_owned()),
+    };
+    if !matches {
+        return Err(format!(
+            "attachment/invalid: content does not match .{extension}"
+        ));
+    }
+    Ok(mime.to_owned())
+}
+
+/// Text attachments must be valid UTF-8 without NUL bytes (bounded by the caller).
+fn is_attachment_text(bytes: &[u8]) -> bool {
+    !bytes.contains(&0u8) && std::str::from_utf8(bytes).is_ok()
+}
+
+/// Write the attachment atomically (tmp file in the same validated directory).
+fn write_attachment_atomic(
+    path: &std::path::Path,
+    tmp: &std::path::Path,
+    bytes: &[u8],
+) -> Result<(), String> {
+    let mut file = std::fs::File::create(tmp).map_err(|error| error.to_string())?;
+    file.write_all(bytes).map_err(|error| error.to_string())?;
+    file.sync_all().map_err(|error| error.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(tmp, std::fs::Permissions::from_mode(0o600))
+            .map_err(|error| error.to_string())?;
+    }
+    std::fs::rename(tmp, path).map_err(|error| {
+        let _ = std::fs::remove_file(tmp);
+        error.to_string()
+    })
 }
 
 /// Validate an external URL for `system.open_url`.
@@ -3514,6 +3711,333 @@ mod tests {
         );
 
         zk_contract_config::clear_runtime_settings().unwrap();
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    fn attachment_fixture(
+        home: &std::path::Path,
+    ) -> (
+        std::sync::Arc<super::AppState>,
+        String,
+        String,
+        std::path::PathBuf,
+    ) {
+        let ws_path = home.join("ws");
+        std::fs::create_dir_all(&ws_path).unwrap();
+        let state = super::AppState::new(zk_composed::build().expect("composed build"));
+        let created = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::WORKSPACE_CREATE,
+            &json!({ "path": ws_path.to_string_lossy(), "title": "ws" }),
+        );
+        assert!(created.ok, "{:?}", created.error);
+        let workspace_id = created.data.unwrap_or(Value::Null)["id"]
+            .as_str()
+            .expect("workspace id")
+            .to_owned();
+        let conversation = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SESSION_CREATE,
+            &json!({ "workspace_id": workspace_id, "title": "conv" }),
+        );
+        assert!(conversation.ok, "{:?}", conversation.error);
+        let conversation_id = conversation.data.unwrap_or(Value::Null)["id"]
+            .as_str()
+            .expect("conversation id")
+            .to_owned();
+        (state, workspace_id, conversation_id, ws_path)
+    }
+
+    fn attachment_payload(
+        workspace_id: &str,
+        conversation_id: &str,
+        name: &str,
+        mime: &str,
+        bytes: &[u8],
+    ) -> Value {
+        json!({
+            "workspace_id": workspace_id,
+            "conversation_id": conversation_id,
+            "name": name,
+            "mime": mime,
+            "data_base64": base64::engine::general_purpose::STANDARD.encode(bytes),
+        })
+    }
+
+    const PNG_HEADER: &[u8] = b"\x89PNG\r\n\x1a\n";
+
+    #[test]
+    fn attachment_save_writes_inside_the_workspace_with_canonical_metadata() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-attach-ok-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", &home);
+        let (state, workspace_id, conversation_id, ws_path) = attachment_fixture(&home);
+
+        let payload = attachment_payload(
+            &workspace_id,
+            &conversation_id,
+            "shot.png",
+            "application/octet-stream",
+            PNG_HEADER,
+        );
+        let saved = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::WORKSPACE_ATTACHMENT_SAVE,
+            &payload,
+        );
+        assert!(saved.ok, "{:?}", saved.error);
+        let data = saved.data.unwrap_or(Value::Null);
+        let path = data["path"].as_str().expect("path");
+        assert!(
+            path.starts_with(&format!(".zeokeel/attachments/{conversation_id}/")),
+            "{path}"
+        );
+        assert!(path.ends_with("-shot.png"), "{path}");
+        assert_eq!(data["name"], json!("shot.png"));
+        assert_eq!(data["bytes"], json!(PNG_HEADER.len()));
+        // The host MIME wins over the client hint.
+        assert_eq!(data["mime"], json!("image/png"));
+        assert_eq!(std::fs::read(ws_path.join(path)).unwrap(), PNG_HEADER);
+
+        // A second upload of the same file never overwrites (uuid-prefixed).
+        let again = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::WORKSPACE_ATTACHMENT_SAVE,
+            &payload,
+        );
+        assert!(again.ok, "{:?}", again.error);
+        assert_ne!(again.data.unwrap_or(Value::Null)["path"], json!(path));
+
+        std::env::remove_var("ZEOKEEL_HOME");
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
+    fn attachment_save_rejects_invalid_files_without_writing() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-attach-bad-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", &home);
+        let (state, workspace_id, conversation_id, ws_path) = attachment_fixture(&home);
+        let save = |payload: &Value| {
+            super::dispatch(
+                &state,
+                zk_contract_ipc::commands::WORKSPACE_ATTACHMENT_SAVE,
+                payload,
+            )
+        };
+
+        // Unsupported extension.
+        let exe = save(&attachment_payload(
+            &workspace_id,
+            &conversation_id,
+            "evil.exe",
+            "application/octet-stream",
+            b"MZ",
+        ));
+        assert!(!exe.ok);
+        assert!(exe
+            .error
+            .unwrap_or_default()
+            .starts_with("attachment/type-not-allowed"));
+
+        // Empty file.
+        let empty = save(&attachment_payload(
+            &workspace_id,
+            &conversation_id,
+            "empty.txt",
+            "text/plain",
+            b"",
+        ));
+        assert!(!empty.ok);
+        assert_eq!(empty.error.as_deref(), Some("attachment/empty"));
+
+        // Magic mismatch (png extension, text bytes).
+        let fake = save(&attachment_payload(
+            &workspace_id,
+            &conversation_id,
+            "fake.png",
+            "image/png",
+            b"not a png",
+        ));
+        assert!(!fake.ok);
+        assert!(fake
+            .error
+            .unwrap_or_default()
+            .starts_with("attachment/invalid"));
+
+        // Oversized (>1 MiB raw bytes).
+        let mut oversized = vec![0_u8; super::MAX_ATTACHMENT_BYTES.saturating_add(1)];
+        oversized[..PNG_HEADER.len()].copy_from_slice(PNG_HEADER);
+        let large = save(&attachment_payload(
+            &workspace_id,
+            &conversation_id,
+            "large.png",
+            "image/png",
+            &oversized,
+        ));
+        assert!(!large.ok);
+        assert_eq!(large.error.as_deref(), Some("attachment/too-large"));
+
+        // Invalid base64.
+        let bad = save(&json!({
+            "workspace_id": workspace_id,
+            "conversation_id": conversation_id,
+            "name": "x.txt",
+            "mime": "text/plain",
+            "data_base64": "@@@not-base64@@@",
+        }));
+        assert!(!bad.ok);
+        assert!(bad
+            .error
+            .unwrap_or_default()
+            .starts_with("attachment/invalid"));
+
+        // Path separators / traversal in the declared name.
+        for name in ["../escape.png", "a/b.png", "a\\b.png"] {
+            let rejected = save(&attachment_payload(
+                &workspace_id,
+                &conversation_id,
+                name,
+                "image/png",
+                PNG_HEADER,
+            ));
+            assert!(!rejected.ok, "{name}");
+            assert!(
+                rejected
+                    .error
+                    .unwrap_or_default()
+                    .starts_with("attachment/invalid"),
+                "{name}"
+            );
+        }
+
+        assert!(
+            !ws_path.join(".zeokeel").exists(),
+            "rejected saves must not create the attachment directory"
+        );
+        std::env::remove_var("ZEOKEEL_HOME");
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
+    fn attachment_save_accepts_one_mib_boundary() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-attach-max-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", &home);
+        let (state, workspace_id, conversation_id, ws_path) = attachment_fixture(&home);
+        let mut exact = vec![b'a'; super::MAX_ATTACHMENT_BYTES];
+        exact[..PNG_HEADER.len()].copy_from_slice(PNG_HEADER);
+        let saved = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::WORKSPACE_ATTACHMENT_SAVE,
+            &attachment_payload(
+                &workspace_id,
+                &conversation_id,
+                "exact.png",
+                "image/png",
+                &exact,
+            ),
+        );
+        assert!(saved.ok, "{:?}", saved.error);
+        let path = saved.data.unwrap_or(Value::Null)["path"]
+            .as_str()
+            .expect("path")
+            .to_owned();
+        assert_eq!(
+            std::fs::read(ws_path.join(path)).unwrap().len(),
+            super::MAX_ATTACHMENT_BYTES
+        );
+        std::env::remove_var("ZEOKEEL_HOME");
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn attachment_save_rejects_symlinked_attachments_directory() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-attach-link-{}", uuid::Uuid::new_v4()));
+        let outside = std::env::temp_dir().join(format!("zk-attach-out-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", &home);
+        let (state, workspace_id, conversation_id, ws_path) = attachment_fixture(&home);
+        std::os::unix::fs::symlink(&outside, ws_path.join(".zeokeel")).unwrap();
+
+        let saved = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::WORKSPACE_ATTACHMENT_SAVE,
+            &attachment_payload(
+                &workspace_id,
+                &conversation_id,
+                "shot.png",
+                "image/png",
+                PNG_HEADER,
+            ),
+        );
+        assert!(!saved.ok);
+        assert!(saved
+            .error
+            .unwrap_or_default()
+            .starts_with("attachment/workspace-unavailable"));
+        assert!(
+            !outside.join("attachments").exists(),
+            "symlink escape must not write outside the workspace"
+        );
+        std::env::remove_var("ZEOKEEL_HOME");
+        std::fs::remove_dir_all(&home).unwrap();
+        std::fs::remove_dir_all(&outside).unwrap();
+    }
+
+    #[test]
+    fn attachment_save_enforces_conversation_workspace_ownership() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-attach-own-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", &home);
+        let (state, workspace_id, _conversation_id, _ws_path) = attachment_fixture(&home);
+        let other_ws = home.join("other");
+        std::fs::create_dir_all(&other_ws).unwrap();
+        let created = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::WORKSPACE_CREATE,
+            &json!({ "path": other_ws.to_string_lossy(), "title": "other" }),
+        );
+        assert!(created.ok, "{:?}", created.error);
+        let other_workspace = created.data.unwrap_or(Value::Null)["id"]
+            .as_str()
+            .expect("other workspace id")
+            .to_owned();
+        let conversation = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SESSION_CREATE,
+            &json!({ "workspace_id": other_workspace, "title": "other conv" }),
+        );
+        let other_conversation = conversation.data.unwrap_or(Value::Null)["id"]
+            .as_str()
+            .expect("other conversation id")
+            .to_owned();
+
+        // The conversation does not belong to the requested workspace.
+        let rejected = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::WORKSPACE_ATTACHMENT_SAVE,
+            &attachment_payload(
+                &workspace_id,
+                &other_conversation,
+                "shot.png",
+                "image/png",
+                PNG_HEADER,
+            ),
+        );
+        assert!(!rejected.ok);
+        assert_eq!(
+            rejected.error.as_deref(),
+            Some("session/workspace-mismatch")
+        );
+        std::env::remove_var("ZEOKEEL_HOME");
         std::fs::remove_dir_all(&home).unwrap();
     }
 }

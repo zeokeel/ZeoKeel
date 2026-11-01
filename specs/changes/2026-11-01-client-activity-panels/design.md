@@ -55,7 +55,9 @@ action 复用 kit kill/interrupt 与 schedule 工具 update/delete；UI 只在�
   job kill → activity.action{action:"job_kill", id}
   subagent interrupt → {action:"subagent_interrupt", id}
   schedule toggle/edit/delete → {action:"schedule_update"|"schedule_delete", id, updates}
-  → 成功后刷新 snapshot；失败返回可读错误（保留旧快照）
+  → 动作后重新 snapshot，并以 host 当前状态校验（不新增 version 字段）；目标已被其它动作结束/未知 → 可读错误并刷新
+  → 失败返回可读错误（保留旧快照）；不乐观改状态
+  → job 停止/subagent 中断：action 前内联二次确认（对象名/影响；默认焦点取消；role=alertdialog），确认后才发 action
 turnTail：assistant 轮结束 → 扫描本轮 data-tool/present + 文本 Markdown 计划标题段落 → 交付卡/折叠计划
 ```
 
@@ -141,7 +143,7 @@ ActivityActionResult { ok: true }   # 失败走 CommandResponse.err
   面板内联在 `index.tsx`（不新增组件文件）：分区标题 + 内容 + 分区级状态；tab 切换沿用会话级持久化。
 - 数据/动作经 `UiValue.actions`（app 注入；见 §2.7）：`activitySnapshot(workspaceId, conversationId)`、`activityAction(payload)`；
   组件内 `useEffect` 2s interval（仅 tab 打开）+ 手动刷新 + 动作后刷新；`AbortController`/序号丢弃旧响应；卸载清 interval。
-- jobs：行（状态点/命令/cwd/摘要）+ 展开输出 + 停止按钮（运行中）；subagents：行 + 中断；team：最近运行卡片；
+- jobs：行（状态点/命令/cwd/摘要）+ 展开输出 + 停止按钮（**仅 running 可用**，点击先出现**内联确认区**（job id/命令/影响，默认焦点取消，role=alertdialog），确认后 `aria-busy` + 就地状态，未知/已结束显示可读错误，不重复点击）；subagents：行 + 中断（同样仅 running + 内联确认 + busy）；team：最近运行卡片；
   goal：objective/status/rounds；todo：checkbox 样式只读列表（不写）；schedule：行 + enable toggle + 内联编辑（prompt/interval）+ 删除（二次确认，
   复用 ui-kit 按钮 + 内联确认，不新增 Modal 组件）；presentations：path/description + 「在右栏查看」。
 - 六态：各分区空/加载/错误；轮询失败保留旧数据 + stale 标记；离线仍尝试本地 IPC，失败显示错误。
@@ -224,7 +226,7 @@ ActivityActionResult { ok: true }   # 失败走 CommandResponse.err
 | 工具行 legacy/损坏导致派生缺失 | 中 | 低 | 跳过+提示；单测；KNOWN | host 单测 |
 | 全局 jobs/subagent 状态与会话可见范围不一致 | 中 | 中 | cwd/parent 过滤；空态说明；KNOWN | host 单测 + e2e |
 | schedule 写坏文件 | 低 | 高 | 复用 tool 校验/原子写；未知 id/非法值拒绝；e2e 文件断言 | host 单测 + e2e |
-| 轮询负载/竞态 | 低 | 低 | 2s/仅打开 tab/序号丢弃；快照有界 | e2e/手工 |
+| 轮询负载/竞态 | 低 | 低 | 2s/仅打开 tab/关闭即停 + AbortController/序号丢弃旧响应；快照有界 | e2e/手工 |
 | 计划标题误判 | 低 | 低 | 严格标题匹配（`#` 必选，普通段落「计划…」不误判负向测试）；可折叠；无匹配不显示；单测 | 单测/手工 |
 | 与 side-panels 共享文件竞写 | 中 | 中 | 严格顺序（side-panels 合并后开工）；共享文件 owner 见 tasks §5 | 评审 |
 | app 直接依赖 tool 实现（C4） | 低 | 中 | 已改方案：app 不 import tool/kit；host（组合根）经 `zk-composed` 生成 facade 调用 `zk-tool-schedule` 公开 `Tool::call_json`，数据只走 host IPC（见 §2.4/§2.6）；无 app→tool 直接依赖 | 评审 |

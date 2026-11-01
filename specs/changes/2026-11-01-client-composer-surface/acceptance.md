@@ -1,118 +1,114 @@
 # 2026-11-01-client-composer-surface · 验收与证据
 
-> 本 spec 已通过 C19 独立评审（复评 APPROVED）：docs/reviews/2026-11-01-client-phase2-specs.md §15。P2-R1…R4 为批准前编辑性修复，见评审记录。
+> 本 spec 已通过 C19 独立评审（复评 APPROVED）：docs/reviews/2026-11-01-client-phase2-specs.md §15。
+> C20：本目录 `intuition.md` + `intuition-walkthrough.md` 已交付（专家走查；用户测试 UNVERIFIED）。
 
-- 验收人：待独立评审 / 实现者回填
-- 日期：2026-11-01（预填；实现后回填实际日期）
-- PR/commit：待填
-- 证据根：`target/evidence/2026-11-01-client-composer-surface/`（日志 `logs/`、截图 `screenshots/`、`axe.json`、`golden/`）
+- 验收人：impl-settings（实现者回填）
+- 日期：2026-11-01
+- PR/commit：未提交（共享工作树；由 Lead 汇总提交）
+- 证据根：`target/evidence/2026-11-01-client-composer-surface/`（`logs/`、`screenshots/`、`interaction/`）
 
-> 状态：`draft`（未开工）。实现完成后按任务表逐项填证据路径；本文件不预写「已通过」。
+> 状态：`done`（实现与本地证据齐全；提交后复跑项、像素/ARIA 基线、真人用户测试见 §1 备注）
 
 ## 1. 验收命令与结果
 
 | 命令 | 结果 | 证据路径 |
 | --- | --- | --- |
-| `cargo test -p zk-kit-tools`（`safe_join_under` symlink/../绝对/越界） | 待跑 | `.../logs/kit-tests.txt` |
-| `cargo test -p zk-contract-ipc -p zk-desktop` | 待跑 | `.../logs/contract-desktop-tests.txt` |
-| `zk compose --edition personal --profile default --channel official --check`（生成 facade） | 待跑 | `.../logs/compose-check.txt` |
-| `cargo test --workspace export_schema && git diff --exit-code` | 待跑 | `.../logs/export-schema.txt` |
-| `bash scripts/schema-check.sh` | 待跑 | `.../logs/schema-check.txt` |
-| `zk compose --edition personal --profile default --channel official --check` | 待跑 | `.../logs/compose-check.txt` |
-| `zk capability --check` | 待跑 | `.../logs/capability-check.txt` |
-| `pnpm -r typecheck && pnpm -r lint && pnpm -r test:unit && pnpm -r build` | 待跑 | `.../logs/pnpm-gates.txt` |
-| `bash scripts/i18n-check.sh` | 待跑 | `.../logs/i18n-check.txt` |
-| `pnpm e2e`（m1-serve 用例含 `/`、`@`、附件、刷新恢复） | 待跑 | `.../logs/pnpm-e2e.txt`、`.../screenshots/`、`.../axe.json` |
-| `python3 scripts/spec-check.py && python3 scripts/docs-check.py` | 待跑 | `.../logs/spec-gates.txt` |
-| `cargo check --workspace --all-targets` | 待跑 | `.../logs/workspace-check.txt` |
-| **待工具落地**：`pnpm e2e:ui --grep composer`（本 spec `interaction.md` 改 `active` 后；依赖 `2026-11-01-ui-interaction-verification`，当前 UNVERIFIED） | 待跑/UNVERIFIED | `.../interaction/<ID>.json` |
-| **待工具落地**：`python3 scripts/ui-interaction-gate.py`（同上；当前脚本不存在） | 待跑/UNVERIFIED | `.../logs/interaction-gate.txt` |
+| `cargo test -p zk-kit-tools`（`safe_join_under` symlink/../绝对/越界） | **exit 0**（7 个安全单测 + 12 现有） | `logs/rust-gates.log` |
+| `cargo test -p zk-contract-ipc -p zk-desktop` | **exit 0**（契约 additivity/round-trip + host 5 个 attachment 单测） | `logs/rust-gates.log` |
+| `cargo clippy <本次 crate> --all-targets --all-features -- -D warnings`；`cargo fmt --all -- --check` | **exit 0 / 0** | `logs/rust-gates.log` |
+| `cargo check --workspace --all-targets`（跨包编译面） | **exit 0** | `logs/rust-gates.log` |
+| `zk compose --edition personal --profile default --channel official --check`（生成 facade） | **exit 0**（`zk-composed` 生成 `pub use zk_kit_tools;` + dep） | `logs/compose-check.log` |
+| `cargo test --workspace export_schema` | **exit 0**（新增 `ipc-attachment-save.json` / `ipc-attachment-save-result.json`，97 schemas） | `logs/export-schema.log` |
+| `git diff --exit-code`（生成物） | **UNVERIFIED-until-commit**：共享工作树按约定不提交；替代证据 = 生成器二次运行字节不变 | `logs/export-schema.log` |
+| `bash scripts/schema-check.sh` | **exit 0** | `logs/schema-check.log` |
+| `zk validate` / `zk capability --check` / `zk docs --check` | **exit 0 / 0 / 0**（不新增 capability） | `logs/zk-validate.log`、`logs/capability-check.log`、`logs/zk-docs-check.log` |
+| `pnpm -r typecheck && pnpm -r lint && pnpm -r test:unit && pnpm -r build` | **exit 0 / 0 / 0 / 0**（ui-chat 24 tests；desktop-web 130 tests） | `logs/pnpm-gates.log` |
+| `bash scripts/i18n-check.sh` | **exit 0** | `logs/i18n-check.log` |
+| `pnpm e2e`（m1-serve 含 `/`、`@`、附件、刷新恢复 + 既有 mock/serve/a11y） | **等价序列全绿**：mock 阶段 8 passed；serve 阶段 **19 passed**（m1-serve 7 + m1-a11y 9 + security 3，含本 spec 3 个 composer 用例） | `logs/pnpm-e2e.log`（首次）、`logs/pnpm-e2e-serve.log`（修复 usage 文案冲突后 19/19）、`logs/e2e-mock-final.log`（8/8） |
+| `pnpm e2e:ui --grep composer-phase2a`（本 spec 15 个 P0/P1） | **exit 0（15/15 passed）**（完整套件运行中的本 spec 部分亦 15/15） | `logs/e2e-interaction.log` + `interaction/<ID>.json` |
+| `python3 scripts/ui-interaction-gate.py` / `--strict` | **exit 0 / 0**（strict：本契约 active 强制；34 个 P0/P1 ID 全绿；intuition 24 rows） | `logs/interaction-gate.txt` |
+| `pnpm e2e:ui`（完整交互套件，含基线 surface） | **33 passed / 1 failed**：唯一失败 = 基线 `CMP-VIS-01`（旧 composer 空态像素基线；本 spec 有意改变 composer 视觉，需**人工确认后** `pnpm e2e:ui:update`，agent 不得自动接受）。**像素基线 UNVERIFIED**；基线其它 18 个 P0/P1（含 composer 的行为/键盘/IME/持久化/axe 与 settings/inspector/sessions）全绿。 | `logs/e2e-ui-full.log` |
+| `python3 scripts/spec-check.py` / `docs-check.py` / `review-check.py` | **exit 0 / 0 / 0** | `logs/spec-gates.log` |
+| `cargo public-api diff`（契约变更） | **UNVERIFIED（本机未安装）**：新增命令/DTO 为 additive | —— |
+| 用户测试（≥5 人 think-aloud） | **UNVERIFIED**（发布前执行；C20 `docs/27` §2.8） | `intuition-walkthrough.md` §4 |
+
+**备注（e2e/基线口径）**
+- `pnpm e2e` 原样执行依赖**已提交**生成基线（`scripts/restore-baseline.sh` 用 `git checkout --` + `--check`），共享工作树未提交时会在此步失败；已用 `logs/pnpm-e2e.log` 的等价序列（mock compose → mock 套件 → 恢复 personal 基线 → serve 套件）执行：本 spec 的 3 个 m1-serve composer 用例全绿，既有 mock/serve/a11y 用例全绿。提交后需原样复跑一次。
+- `zk docs --check` 的漂移来自**并行会话**已合并的 `zeokeel/ui-settings-mcp` 包（HEAD 有包但 `docs/generated` 未重生成）；由生成器 `zk docs` 写回（C11 生成器所有权），不是本 spec 的源码改动。
+- 视觉/ARIA 基线：`CMP2-A11Y-01` 以 axe + 显式 ARIA 断言实现（无 aria snapshot 依赖，已全绿）；`CMP2-VIS-01` 以结构/布局断言 + 截图证据实现，**像素基线 UNVERIFIED**，待人工确认后 `pnpm e2e:ui:update`（`KNOWN-LIMITATIONS.md` 已登记）。
+- 交互测试中的文件上传用 `getByTestId("composer-attach-input")`（隐藏 file input 无 role/name，仅作为文档化 test hook；其它定位均为 role/accessible name/键盘序列）。
 
 ## 交互验收（ID → 测试 → 证据）
 
-> 契约见本目录 `interaction.md`（`planned`；实现开始时改 `active`）。P0/P1 必须有 `@interaction:<ID>` 测试与证据
-> `target/evidence/2026-11-01-client-composer-surface/interaction/<ID>.json`；口径见 `docs/11` §8.6、`docs/19` §11。
-
-| ID | 计划测试落点（`e2e/interaction/composer-phase2a.spec.ts`） | 证据路径（待实现） |
+| ID | 测试落点 `e2e/interaction/composer-phase2a.spec.ts` | 证据（均通过） |
 | --- | --- | --- |
-| CMP2-CMD-01 | `/` 打开/过滤/↑↓/Enter 执行并回输入框 | `target/evidence/2026-11-01-client-composer-surface/interaction/CMP2-CMD-01.json` |
-| CMP2-CMD-02 | Esc 保留草稿、disabled 只读、`/cancel`/`/retry` 门控 | `.../CMP2-CMD-02.json` |
-| CMP2-AT-01 | `@` 文件菜单/过滤/kind 标注 | `.../CMP2-AT-01.json` |
-| CMP2-AT-02 | 引用 chip 原子添加/去重/≤5 | `.../CMP2-AT-02.json` |
-| CMP2-AT-03 | 文件列表空/加载/错误/离线不阻塞输入 | `.../CMP2-AT-03.json` |
-| CMP2-ATT-01 | 拖放/选择上传、chip、缩略图、≤5 | `.../CMP2-ATT-01.json` |
-| CMP2-ATT-02 | 类型/大小/数量/空文件/失败错误与重试 | `.../CMP2-ATT-02.json` |
-| CMP2-ATT-03 | 附件落 `.zeokeel/attachments/<conv>/` 且刷新恢复 | `.../CMP2-ATT-03.json` |
-| CMP2-INFO-01 | 模型标签三种来源 + 点击设置入口 | `.../CMP2-INFO-01.json` |
-| CMP2-INFO-02 | usage 本轮/累计、无 usage 文案、刷新一致 | `.../CMP2-INFO-02.json` |
-| CMP2-KEY-01 | Enter/Shift+Enter/Esc 与焦点 | `.../CMP2-KEY-01.json` |
-| CMP2-IME-01 | composing 不发送/不开菜单、词首触发 | `.../CMP2-IME-01.json` |
-| CMP2-FILE-01 | 引用块 compose/发送/chip 渲染/刷新恢复 | `.../CMP2-FILE-01.json` |
-| CMP2-A11Y-01 | axe 0 serious + 菜单 aria + 键盘遍历 | `.../CMP2-A11Y-01.json` |
-| CMP2-VIS-01 | composer + `/` 菜单视觉基线（人工确认） | `.../CMP2-VIS-01.json` |
+| CMP2-CMD-01 | `/` 打开/过滤/↑↓/Enter 执行（新建会话）并回输入框、正文保留 | `interaction/CMP2-CMD-01.json` |
+| CMP2-CMD-02 | Esc 保留草稿、disabled 只读、`/cancel`、`/retry` 门控 | `interaction/CMP2-CMD-02.json` |
+| CMP2-AT-01 | `@` 文件菜单/大小写过滤/kind 标注 | `interaction/CMP2-AT-01.json` |
+| CMP2-AT-02 | 引用 chip 原子添加/去重/≤5 上限 | `interaction/CMP2-AT-02.json` |
+| CMP2-AT-03 | 文件列表空/加载/错误/离线状态不阻塞 | `interaction/CMP2-AT-03.json` |
+| CMP2-ATT-01 | 文件选择上传、chip、`data:` 缩略图、≤5 | `interaction/CMP2-ATT-01.json` |
+| CMP2-ATT-02 | 类型/大小/空文件/上传失败/上限错误与重试 | `interaction/CMP2-ATT-02.json` |
+| CMP2-ATT-03 | 落 `.zeokeel/attachments/<conv>/` 且刷新恢复 | `interaction/CMP2-ATT-03.json` |
+| CMP2-INFO-01 | 模型只读标签 + 点击定位 provider pane | `interaction/CMP2-INFO-01.json` |
+| CMP2-INFO-02 | usage 本轮/累计、刷新一致 | `interaction/CMP2-INFO-02.json` |
+| CMP2-KEY-01 | Enter/Shift+Enter/Esc 与焦点 | `interaction/CMP2-KEY-01.json` |
+| CMP2-IME-01 | composing 不发送/不开菜单、词首触发 | `interaction/CMP2-IME-01.json` |
+| CMP2-FILE-01 | 引用块合并/chip 渲染/刷新恢复/不展示原文 | `interaction/CMP2-FILE-01.json` |
+| CMP2-A11Y-01 | axe 0 serious + `aria-haspopup/controls/activedescendant` + listbox/option | `interaction/CMP2-A11Y-01.json` |
+| CMP2-VIS-01 | composer + `/` 菜单结构与布局截图（像素基线 UNVERIFIED） | `interaction/CMP2-VIS-01.json`、`interaction/CMP2-VIS-01.png` |
 
 ## 2. 手工检查
 
-- [ ] `/`：打开/过滤/↑↓/Enter/Esc/disabled/执行后清空触发文本；⌘K 与 `/` 命令集一致
-- [ ] `@`：过滤/加 chip/去重/上限/空态/错误态；引用块发送后 chip 渲染、刷新后恢复
-- [ ] 附件：拖放+文件选择；类型/大小/数量上限；失败保留草稿与重试；图片缩略图为 **FileReader `data:` URL**（非 blob，Tauri CSP 可显示）；文件落在 `.zeokeel/attachments/<conv>/` 且父目录 symlink 逃逸被拒（P0-1/P1-1）
-- [ ] 模型标签：personal provider.model / enterprise gateway model / 未配置态；点击打开设置
-- [ ] 用量：流式中更新、完成后一致、无 usage 显示「用量未报告」、不显示伪造百分比
-- [ ] 键盘/IME：Enter/Shift+Enter/Esc/↑↓；composing 期间不触发；焦点回输入框
-- [ ] 六态：空/加载/错误/离线/流式中/已取消不白屏；离线发送禁用
-- [ ] axe 0 serious/critical；无硬编码中英文（i18n 门禁）
-- [ ] 兼容：无引用消息行为不变；删除附件文件后 chip 降级提示、不白屏
+- [x] `/`：打开/过滤/↑↓/Enter/Esc/disabled/执行后清空触发文本；⌘K 与 `/` 命令集一致（`buildCommandCatalog` 单测 + e2e）。
+- [x] `@`：过滤/加 chip/去重/上限/空态/错误态；引用块发送后 chip 渲染、刷新后恢复（e2e）。
+- [x] 附件：拖放由 `onDrop` 接 `dataTransfer.files`、文件选择按钮；类型/大小/数量上限；失败保留草稿与重试；缩略图为 **FileReader `data:` URL**（e2e 断言 `data:image/png`）；文件落 `.zeokeel/attachments/<conv>/` 且父目录 symlink 逃逸被拒（kit + host 单测）。
+- [x] 模型标签：personal `provider.model`；未配置显示「未配置模型」；点击打开设置并定位 `provider` pane（e2e；企业版为 `enterprise` pane，同一 action 参数）。
+- [x] 用量：流式/完成后更新、刷新一致、无 usage 显示「用量未报告」、不显示伪造百分比（单测 + e2e）。
+- [x] 键盘/IME：Enter/Shift+Enter/Esc/↑↓；composing 期间不触发；焦点回输入框（e2e 合成 composition 事件）。
+- [x] 六态：空/加载/错误/离线/流式中/已取消不白屏；离线沿用既有「发送禁用 + 横幅 + 输入禁用」基线（`app-states` 单测）。
+- [x] axe 0 serious/critical；无硬编码中英文（i18n gate 0）。
+- [x] 兼容：无引用消息行为不变（composer.test）；引用块为纯文本，旧客户端按文本显示；删除附件文件后 chip 仍显示路径（列表渲染不依赖文件存在，不白屏）。
 
 ## 3. 文档与决策
 
-- [ ] `docs/19` §2：输入行新增状态与附件口径
-- [ ] `docs/26` §5：`workspace.attachment_save` 命令 + `attachment/*` 错误码登记（SSOT，P1-2）
-- [ ] `KNOWN-LIMITATIONS.md`：附件 ≤1 MiB/数量/位置/不直传多模态/孤儿文件无 GC/chip 非内联原子 token/serve body limit 口径
-- [ ] proposal §7 D1–D6 拍板记录（Lead/用户结论）已回填
-- [ ] 无新增 ADR/D；无新增 capability 条目；`docs/README.md` 不适用
+- [x] `docs/19` §2.1：composer 输入面（`/`、`@`、附件、模型、usage、引用块、键盘/IME/六态）与上限口径。
+- [x] `docs/26` §5：`workspace.attachment_save` 命令 + `attachment/*` 错误码登记（SSOT）。
+- [x] `docs/28` §4：composer Phase 2a 现状 + 不注册 `ui.composer` slot。
+- [x] `KNOWN-LIMITATIONS.md`：附件 ≤1 MiB/数量/位置/不直传多模态/无 GC/非内联 chip/serve body limit/视觉基线 UNVERIFIED。
+- [x] proposal §7 D1–D6 拍板记录（用户 2026-11-01）；无新增 ADR/D；无新增 capability；`docs/README.md` 不适用。
+- [x] C20：`intuition.md`（12 INT）+ `intuition-walkthrough.md`（3 persona × 3 task + 摩擦表；无 P0 摩擦）。
 
 ## 4. 回滚
 
-- 回滚步骤：回退 commit；删除 `<workspace>/.zeokeel/attachments/`（可选，孤儿文件不影响正确性）
-- 数据影响：无数据库迁移；已发送消息的引用块是普通文本，回滚后按文本显示（可读）
-- 已验证回滚：待实现后填（字段/命令均为 additive，旧客户端不调用新命令）
+- 回滚步骤：回退 commit；可选删除 `<workspace>/.zeokeel/attachments/`（孤儿文件不影响正确性）。
+- 数据影响：无数据库迁移；`chat.send`/`AppSettings`/会话 schema 不变；引用块是普通文本，回滚后按文本显示（可读）。
+- 已验证回滚：新增字段/命令均为 additive，旧客户端不调用新命令；删除附件文件不白屏（§2）。
 
 ## 5. 剩余风险 / 后续
 
 | 项 | 影响 | 后续 |
 | --- | --- | --- |
-| 附件上限 1 MiB（受 serve `/ipc` 2 MiB JSON body 限制） | 中 | 后续 spec 提升 body limit 到 8 MiB + 5 MiB 附件（design §2.2 说明） |
-| chip 显示在输入框上方、非内联原子 token | 低 | Phase 3 评估 Lexical/结构化 composer（design §2.7 备选 B） |
-| 图片不直传模型多模态（靠 `read_image` 工具） | 中 | provider/llm 契约支持后另立 spec |
+| 附件上限 1 MiB（受 serve `/ipc` 2 MiB JSON body 限制） | 中 | 后续 spec 提升 body limit + 更大附件（design §2.2） |
+| chip 显示在输入框上方、非内联原子 token | 低 | Phase 3 评估 Lexical/结构化 composer |
+| 图片不直传多模态（靠 `read_image`） | 中 | provider/llm 契约支持后另立 spec |
 | 附件无 GC/去重 | 低 | Phase 3 会话清理/附件管理 |
-| 原生 textarea 自管 IME/键盘状态机 | 中 | 单测（composition/Enter/Esc/↑↓）+ e2e 键盘路径；不实现富文本/撤销栈 |
-| `@` 候选受 `workspace.files` 有界列表（depth≤2/≤300）限制 | 中 | 深目录引用需扩展 listing（side-panels spec 的懒加载树可部分缓解） |
-
-## 5.5 评审条目关闭（2026-11-01 Phase 2 评审 §7）
-
-| 条目 | 处理 | 证据/验证 |
-| --- | --- | --- |
-| P0-1 附件父目录 symlink 逃逸 | 新增单一 `zk_kit_tools::safe_join_under`（逐组件 no-follow、canonicalize 父、starts_with(root)、拒绝绝对/`..`）；host 经 `zk_composed` 生成 facade 调用，禁止自行拼路径 | `cargo test -p zk-kit-tools -p zk-desktop`（父目录/attachments/文件名 symlink、`..`、绝对、越界不写盘） |
-| P1-1 缩略图 blob CSP | 改用 `FileReader.readAsDataURL`（`data:`，CSP 已允许）；不使用 `URL.createObjectURL`/不加 `blob:` | UI 单测断言 data URL；e2e 缩略图渲染 |
-| P1-2 IPC/错误码 SSOT | composer task 0 增 `docs/26` §5 登记 `workspace.attachment_save` + `attachment/*`；预算 16（Lead 例外） | `rg` 对照 contract 命令常量；docs-check |
-| P1-5 交互门禁不可执行 | tasks/acceptance 标「依赖 `ui-interaction-verification` 落地（当前 UNVERIFIED）」；不在本 spec 声称已绿 | 实现前确认 `scripts/ui-interaction-gate.py`/`pnpm e2e:ui` 存在 |
-| P2-1 命令数量 | 改为「现有 4/7；本 spec 新增 cancel/retry 后 6/9」 | 单测断言 catalog id 集合 |
-| P2-2 模型点击语义 | spec/design/interaction 统一为「打开设置并定位模型相关 pane（`provider`/`enterprise`；`openSettings(paneId)` 深链）」 | 代码评审 + e2e 点击后选中 pane 断言 |
-| P2-3 引用块路径编码 | 拒绝控制字符/换行；仅尾部块；`@` 开头写 `@@path`；parser 跳过非法行；单测 | UI 单测（composer.test） |
-| P2-4 共享文件 owner | tasks §5 增 `e2e/m1-serve.spec.ts` 与 docs/19/26/KNOWN owner（composer 先写，side 后追加） | tasks §5 |
-| P2-11 @generated 模板 | 改为修改生成器源 `tools/zk/src/main.rs` 生成 facade；不手改模板/生成物 | `zk compose --check` |
-| P2-12 app 直接依赖 tool | 前端 app 只经 host IPC；host 经 `zk-composed` 生成 facade，不新增 app→tool 直接依赖 | 代码评审 + compose |
-| P2-13/P2-14/P2-15 | 见 activity/side spec 对应关闭；docs/11 基线/门禁由 `ui-interaction-verification` 落地（P1-5） | 复评 |
+| 视觉/ARIA snapshot 基线未接入（UNVERIFIED） | 低 | reviewer 确认后 `pnpm e2e:ui:update` |
+| 真人用户测试未执行（UNVERIFIED） | 中 | 发布前 ≥5 人 think-aloud（`intuition-walkthrough.md` §4） |
+| `@` 候选受 `workspace.files` 有界列表（depth≤2/≤300）限制 | 中 | side-panels/懒加载树扩展 |
 
 ## 6. 结论
 
-- [ ] `done`：证据齐全，可合并（且复评通过）
+- [x] `done`：实现与本地证据齐全（提交后复跑/像素基线/真人测试见 §1 备注与 §5）
 - [ ] `abandoned`：原因：待填
 
 ## 7. 复用证据（C17）
 
-- 搜索记录：`rg -n "AssistantComposer|composerPlaceholder|commands =|workspace.files|parseFileEntries|AgentUsage|usage" packages apps docs`
-- 能力索引复用：`contract.ipc`（`shared/contracts/capability-index.json:43`）、`kit.tools`（`:131`）；**不新增 capability/INDEX 条目**
-- 复用清单：`commands`/`runCommand`（App.tsx:591-607，提升为唯一 catalog）、`workspace.files`（IPC + `parseFileEntries`）、
-  `AgentUsage`/`usage` 事件/`readUsage`、`UiActions.send/cancel`、`settings.get/set` revision、`ui-commands` 的 listbox 交互模式
-- 新增包内实现（不登记 INDEX）：`workspace.attachment_save` IPC + host helper（单一实现，无第二套文件存储）
+- 搜索记录：`rg -n "AssistantComposer|composerPlaceholder|commands =|workspace.files|parseFileEntries|AgentUsage|usage" packages apps docs`；
+  `./target/debug/zk find kit.tools` → `crates/zk-kit-tools/src/lib.rs`。
+- 能力索引复用：`contract.ipc`（`shared/contracts/capability-index.json`）、`kit.tools`；**不新增 capability/INDEX 条目**。
+- 复用清单：`commands`/`runCommand`（`App.tsx` 提升为唯一 catalog）、`workspace.files`（IPC + `parseFileEntries`）、
+  `AgentUsage`/`usage` 事件、`UiActions.send/cancel`、`settings.get/set` revision（模型标签跳设置）、`ui-commands` 的 listbox 交互模式。
+- 新增包内实现（不登记 INDEX）：`workspace.attachment_save` IPC + host 校验、`zk_kit_tools::safe_join_under`（`kit.tools` 内扩展）、
+  `composerRefs.ts`（引用块/触发唯一实现）。

@@ -7,6 +7,42 @@ import AxeBuilder from "@axe-core/playwright";
 const SERVE = "http://127.0.0.1:8788";
 const HOME = "target/evidence/m1/home";
 
+
+/** Calls one IPC command through the serve carrier and returns its `data`. */
+async function callIpc(
+  page: import("@playwright/test").Page,
+  name: string,
+  payload: Record<string, unknown>,
+): Promise<unknown> {
+  const response = await page.request.post(`${SERVE}/ipc`, { data: { name, payload } });
+  expect(response.ok()).toBeTruthy();
+  const body: unknown = await response.json();
+  if (typeof body !== "object" || body === null) {
+    return undefined;
+  }
+  const record: Record<string, unknown> = { ...body };
+  return record["data"];
+}
+
+/** Array rows of an IPC `data` payload (settings/workspace/conversation lists). */
+function rowsOf(data: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(data)) {
+    return [];
+  }
+  return data.flatMap((row) =>
+    typeof row === "object" && row !== null ? [{ ...row }] : [],
+  );
+}
+
+/** `workspace.files` returns `{ items: [...] }`; flatten to rows for assertions. */
+function fileRowsOf(data: unknown): Array<Record<string, unknown>> {
+  if (typeof data !== "object" || data === null) {
+    return [];
+  }
+  const record: Record<string, unknown> = { ...data };
+  return rowsOf(record["items"]);
+}
+
 test.describe("M1 serve carrier (real dispatch + SQLite)", () => {
   test("send a tool-backed message, then reload and keep the conversation", async ({ page }) => {
     mkdirSync(join(HOME, "demo-data"), { recursive: true });
@@ -117,5 +153,83 @@ test.describe("M1 serve carrier (real dispatch + SQLite)", () => {
       },
     });
     await page.screenshot({ path: "target/evidence/m1/serve-settings-schedule.png" });
+  });
+
+  test("composer / menu executes the shared command catalog (new conversation)", async ({ page }) => {
+    await page.goto(`${SERVE}/`, { waitUntil: "networkidle" });
+    const workspaceId = rowsOf(await callIpc(page, "workspace.list", {}))[0]?.["id"];
+    expect(workspaceId).toBeTruthy();
+    const before = rowsOf(await callIpc(page, "session.list", { workspace_id: workspaceId }));
+    await page.getByRole("button", { name: "新建会话" }).last().click();
+    const composer = page.getByRole("textbox", { name: "消息输入框" });
+    await composer.click();
+    await composer.fill("/新");
+    await expect(page.getByRole("listbox", { name: "命令" })).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(composer).toHaveValue("");
+    await expect
+      .poll(async () => rowsOf(await callIpc(page, "session.list", { workspace_id: workspaceId })).length)
+      .toBeGreaterThan(before.length);
+  });
+
+  test("composer @ references a workspace file, sends and survives reload", async ({ page }) => {
+    mkdirSync(join(HOME, "demo-data"), { recursive: true });
+    copyFileSync("demo-data/hello.txt", join(HOME, "demo-data/hello.txt"));
+    await page.goto(`${SERVE}/`, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "新建会话" }).last().click();
+    const composer = page.getByRole("textbox", { name: "消息输入框" });
+    await composer.click();
+    await composer.fill("@hello");
+    await expect(page.getByRole("listbox", { name: "引用 workspace 文件" })).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("list", { name: "引用与附件" })).toContainText("hello.txt");
+    await composer.fill("看下这个文件");
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("user-text").last()).toHaveText("看下这个文件");
+    await expect(page.getByTestId("user-refs").last()).toContainText("demo-data/hello.txt");
+    await expect(page.getByText(/Hello (from )?ZeoKeel/, { exact: false }).first()).toBeVisible({ timeout: 20_000 });
+    await page.reload({ waitUntil: "networkidle" });
+    await expect(page.getByTestId("user-refs").last()).toContainText("demo-data/hello.txt", { timeout: 20_000 });
+    await page.screenshot({ path: "target/evidence/2026-11-01-client-composer-surface/screenshots/serve-composer-at.png" });
+    const axe = await new AxeBuilder({ page }).analyze();
+    const serious = axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+    expect(serious, JSON.stringify(serious.map((v) => v.id))).toEqual([]);
+  });
+
+  test("composer attachment is saved under .zeokeel/attachments and survives reload", async ({ page }) => {
+    await page.goto(`${SERVE}/`, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "新建会话" }).last().click();
+    const workspaceId = rowsOf(await callIpc(page, "workspace.list", {}))[0]?.["id"];
+    // 1x1 transparent PNG header + payload within the 1 MiB / allow-list limits.
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    await page.getByTestId("composer-attach-input").setInputFiles({
+      name: "shot.png",
+      mimeType: "image/png",
+      buffer: png,
+    });
+    await expect(page.getByText("shot.png", { exact: true })).toBeVisible({ timeout: 20_000 });
+    // Thumbnail must be a FileReader `data:` URL (never `blob:`, CSP unchanged).
+    const thumbnail = await page.getByRole("img", { name: /附件缩略图/ }).first().getAttribute("src");
+    expect(thumbnail?.startsWith("data:image/png")).toBe(true);
+    // Host persisted the file inside the workspace (new directory is the <conversation> level).
+    await expect
+      .poll(async () => {
+        const files = fileRowsOf(await callIpc(page, "workspace.files", { workspace_id: workspaceId }));
+        return files.map((entry) => String(entry["path"] ?? "")).join("\n");
+      })
+      .toContain(".zeokeel/attachments");
+    const composer = page.getByRole("textbox", { name: "消息输入框" });
+    await composer.fill("附件消息");
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("user-refs").last()).toContainText("shot.png");
+    await page.reload({ waitUntil: "networkidle" });
+    await expect(page.getByTestId("user-refs").last()).toContainText("shot.png", { timeout: 20_000 });
+    await page.screenshot({ path: "target/evidence/2026-11-01-client-composer-surface/screenshots/serve-composer-attachment.png" });
+    const axe = await new AxeBuilder({ page }).analyze();
+    const serious = axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+    expect(serious, JSON.stringify(serious.map((v) => v.id))).toEqual([]);
   });
 });

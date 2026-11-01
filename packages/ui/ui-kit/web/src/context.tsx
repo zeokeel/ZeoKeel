@@ -2,8 +2,10 @@ import { createContext, useContext, type ReactNode } from "react";
 import type {
   AppSettings,
   ApprovalDecision,
+  AttachmentSaveResult,
   BootState,
   ChatMessage,
+  CommandDescriptor,
   Conversation,
   Locale,
   Meta,
@@ -11,6 +13,7 @@ import type {
   SettingsSaveOutcome,
   ThreadLoadState,
   Workspace,
+  WorkspaceFileRef,
 } from "./types";
 
 /** i18n is app infrastructure; packages only receive a translator. */
@@ -46,7 +49,17 @@ export interface UiActions {
   createConversation: () => void;
   selectConversation: (conversationId: string) => void;
   openSettings: () => void;
+  /** Open settings and deep-link to one `ui.settings.pane` id (validation app-side). */
+  openSettingsPane: (paneId: string) => void;
+  /** Open settings at the model-related pane (`provider` personal / `enterprise`). */
+  openModelSettings: (paneId: string) => void;
   closeSettings: () => void;
+  /** Execute one catalog command (the only executor for ⌘K and composer `/`). */
+  runCommand: (id: string) => void;
+  /** Workspace file candidates for `@` (cached `workspace.files`; filtered server-side list). */
+  searchWorkspaceFiles: (query: string) => Promise<WorkspaceFileRef[]>;
+  /** Save one composer attachment through `workspace.attachment_save` (host validates). */
+  saveAttachment: (file: File) => Promise<AttachmentSaveResult>;
   /** Save the whole settings document under the current revision fence. */
   saveSettings: (settings: AppSettings) => Promise<SettingsSaveOutcome>;
   /** Re-read `settings.get` after a revision conflict; returns the fresh document. */
@@ -85,6 +98,12 @@ export interface UiValue {
   settingsOpen: boolean;
   sidebarOpen: boolean;
   mock: boolean;
+  /** The single app command catalog shared by ⌘K and composer `/`. */
+  commands: CommandDescriptor[];
+  /** Localized current-model label (personal provider.model / enterprise gateway model). */
+  modelLabel: string;
+  /** Settings pane id the model label deep-links to (`provider` | `enterprise`). */
+  modelSettingsPane: string;
   actions: UiActions;
 }
 

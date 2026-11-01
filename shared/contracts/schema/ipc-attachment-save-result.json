@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AttachmentSaveResult",
+  "description": "`workspace.attachment_save` result (host-canonical metadata).",
+  "type": "object",
+  "required": [
+    "bytes",
+    "mime",
+    "name",
+    "path"
+  ],
+  "properties": {
+    "bytes": {
+      "description": "Decoded byte length actually written.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "mime": {
+      "description": "Canonical MIME derived by the host (extension + magic).",
+      "type": "string"
+    },
+    "name": {
+      "description": "Sanitized display name (basename only).",
+      "type": "string"
+    },
+    "path": {
+      "description": "Workspace-relative path (forward slashes), e.g. `.zeokeel/attachments/<conversation>/<uuid>-<name>`.",
+      "type": "string"
+    }
+  }
+}

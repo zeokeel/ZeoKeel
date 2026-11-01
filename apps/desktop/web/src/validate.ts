@@ -23,6 +23,7 @@ import {
   agent_question_askedSchema,
   app_settingsSchema,
   conversationSchema,
+  ipc_attachment_save_resultSchema,
   ipc_chat_send_resultSchema,
   ipc_command_responseSchema,
   ipc_eventSchema,
@@ -75,6 +76,7 @@ export type BoundaryName =
   | "chatSendResult"
   | "workspaceFilesResult"
   | "workspaceChangesResult"
+  | "attachmentSaveResult"
   | "questionAsked";
 
 const checks: Record<BoundaryName, ValidateFunction> = {
@@ -89,6 +91,7 @@ const checks: Record<BoundaryName, ValidateFunction> = {
   chatSendResult: ajv.compile(ipc_chat_send_resultSchema),
   workspaceFilesResult: ajv.compile(workspace_files_resultSchema),
   workspaceChangesResult: ajv.compile(workspace_changes_resultSchema),
+  attachmentSaveResult: ajv.compile(ipc_attachment_save_resultSchema),
   questionAsked: ajv.compile(agent_question_askedSchema),
 };
 
@@ -150,6 +153,10 @@ export function validateChatSendResult(value: unknown): boolean {
 
 export function validateWorkspaceFilesResult(value: unknown): boolean {
   return validateBoundary("workspaceFilesResult", value);
+}
+
+export function validateAttachmentSaveResult(value: unknown): boolean {
+  return validateBoundary("attachmentSaveResult", value);
 }
 
 export function validateQuestionAsked(value: unknown): boolean {

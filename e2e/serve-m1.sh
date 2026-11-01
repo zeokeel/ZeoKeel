@@ -25,6 +25,7 @@ cat > "$HOME_DIR/.gitignore" <<'GITIGNORE'
 sessions.db*
 settings.json
 settings.meta.json
+.zeokeel/
 agent-memory/
 .agents/
 GITIGNORE

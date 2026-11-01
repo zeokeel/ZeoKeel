@@ -55,6 +55,14 @@
 | INS2-A11Y-01 | `inspector-a11y.spec.ts`：axe 0 serious + 键盘可达 + i18n | `.../INS2-A11Y-01.json` |
 | INS2-VIS-01 | `inspector-a11y.spec.ts`：右栏默认态视觉基线（人工确认） | `.../INS2-VIS-01.json` |
 
+## 1.6 直觉验收（C20）
+
+- 文件：`intuition.md`（planned，12 条 INT，P0 全覆盖）+ `intuition-walkthrough.md`（3 persona × 3 task + 摩擦表，无 OPEN P0）。
+- P0 摩擦：预览路径越界、archive 语义/跨 workspace fork、内容搜索跨 workspace 泄露——均已在 design/tasks 落最小修法并关闭。
+- 3×3 persona × top task 矩阵已满格（N/A 格有理由+替代验证）；P0 无 OPEN。
+- 用户测试：**UNVERIFIED**（未执行；发布前 ≥5 人 think-aloud，证据 `target/evidence/2026-11-01-client-side-panels/usability/`）；**未完成前 acceptance/发布文案不得声称「符合直觉/直观」**。
+- 评审：待 fresh-context 评审员按走查复核（P0 摩擦未关闭 → 不通过）。
+
 ## 2. 手工检查
 
 - [ ] 文件树：展开/折叠/懒加载（每目录一次请求）、刷新保持展开、空/错误/行内重试、`.git`/`.zeokeel` 隐藏

@@ -1,6 +1,6 @@
 # 2026-11-01-client-composer-surface · 提案
 
-- 状态：`approved`
+- 状态：`done`
 - Owner：dsh-ref
 - 日期：2026-11-01
 - 关联：用户已批准的 Phase 2「运行时能力可见面 + composer 体验」（A 方案全量分期中的 Phase 2a）；`research/client-dsh-parity-2026-11-01.md` §3（附件/`/`/`@`/模型选择/上下文）、§4（P1-5、P2-5）；`target/audits/zk-client-inventory.md` §3（B7）、§5（C7）；`docs/19` §2（输入槽位）、`docs/28` §4（Conversation + Composer）；已实现前置：`2026-11-01-client-settings-ia`（settings revision）、`2026-11-01-client-approval-tool-rendering`（工具行/usage 事件）

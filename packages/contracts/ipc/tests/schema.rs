@@ -131,4 +131,12 @@ fn export_schema() {
         "ipc-mcp-test-status-result.json",
         &schemars::schema_for!(zk_contract_ipc::results::McpTestStatusResult),
     );
+    write(
+        "ipc-attachment-save.json",
+        &schemars::schema_for!(zk_contract_ipc::payloads::AttachmentSavePayload),
+    );
+    write(
+        "ipc-attachment-save-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::AttachmentSaveResult),
+    );
 }

@@ -66,6 +66,24 @@ export function ChatView() {
 }
 
 export { readUsage, usageFromReply } from "./UsagePart";
+export {
+  ATTACHMENT_EXTENSIONS,
+  ATTACHMENT_MAX_BYTES,
+  ATTACHMENT_MAX_COUNT,
+  REFERENCE_BLOCK_MARKER,
+  attachmentExtensionOf,
+  attachmentSizeLabel,
+  composeOutgoingText,
+  composerUsage,
+  detectComposerTrigger,
+  filterCommands,
+  isAttachmentAllowed,
+  isImageAttachment,
+  parseUserContent,
+  removeComposerTrigger,
+  validateAttachment,
+} from "./composerRefs";
+export type { ComposerTrigger, ComposerUsage, ParsedUserContent } from "./composerRefs";
 export { groupToolRows } from "./toolRows";
 export type { ToolGrouping } from "./toolRows";
 export type { UsageSummary } from "./UsagePart";

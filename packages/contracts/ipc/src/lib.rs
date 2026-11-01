@@ -153,6 +153,9 @@ pub mod commands {
     pub const MCP_TEST: &str = "mcp.test";
     /// Poll one MCP probe (`pending|ok|error`).
     pub const MCP_TEST_STATUS: &str = "mcp.test.status";
+    /// Persist one composer attachment inside the workspace
+    /// (`2026-11-01-client-composer-surface`; base64 payload, host re-validates).
+    pub const WORKSPACE_ATTACHMENT_SAVE: &str = "workspace.attachment_save";
 }
 
 /// Typed command payloads (single source for `schemars` JSON Schema).
@@ -299,6 +302,25 @@ pub mod payloads {
         /// Connector catalog (`{items:[...]}` object or JSON string).
         pub catalog: serde_json::Value,
     }
+
+    /// `workspace.attachment_save` payload (composer attachment, additive).
+    ///
+    /// The host re-validates everything (workspace/conversation ownership, byte
+    /// size after decode, extension/magic allow-list, filename sanitize) and
+    /// returns the canonical metadata; the client hints are not trusted.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct AttachmentSavePayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Conversation id; must belong to `workspace_id`.
+        pub conversation_id: String,
+        /// Client-declared basename (host sanitizes; path separators rejected).
+        pub name: String,
+        /// Client-declared MIME (host re-derives it from the extension/magic).
+        pub mime: String,
+        /// Base64 (standard alphabet, padded) of the raw file bytes.
+        pub data_base64: String,
+    }
 }
 
 /// Typed command results (single source for `schemars` JSON Schema).
@@ -438,5 +460,19 @@ pub mod results {
         /// Closed error code when `state == error` (e.g. `mcp/timeout`).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub error: Option<String>,
+    }
+
+    /// `workspace.attachment_save` result (host-canonical metadata).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct AttachmentSaveResult {
+        /// Workspace-relative path (forward slashes), e.g.
+        /// `.zeokeel/attachments/<conversation>/<uuid>-<name>`.
+        pub path: String,
+        /// Sanitized display name (basename only).
+        pub name: String,
+        /// Decoded byte length actually written.
+        pub bytes: u64,
+        /// Canonical MIME derived by the host (extension + magic).
+        pub mime: String,
     }
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   SlotErrorBoundary,
   UiProvider,
@@ -6,9 +6,12 @@ import {
   readNumber,
   readString,
   type AppSettings,
+  type AttachmentSaveResult,
   type BrandConfig,
+  type CommandDescriptor,
   type SettingsSaveOutcome,
   type UiValue,
+  type WorkspaceFileRef,
 } from "@zeokeel/ui-kit";
 import { BRAND } from "./generated/brand";
 import { AppSurfaceSlot, AppsSlot, ChatSlot, CommandsSlot, ConnectorsSlot, InspectorSlot, LoginSlot, SessionsSlot, SettingsPanes, SettingsSlot, ShellSlot, SkillsSlot } from "./generated/registry";
@@ -19,7 +22,8 @@ import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
 import type { Transport } from "./types";
 import { parseFileEntries, parseWorkspaceChanges, parseUpdateRelease, type FileEntry, type WorkspaceChange } from "./protocol";
-import { downloadSkillArchive, fetchAppHtml, fetchApps, fetchConnectorCatalog, fetchSkills, fetchTombstones, openApp, sendInstallReceipt, toggleConnector, type AppItem, type ConnectorItem, type SkillItem } from "./store";
+import { validateAttachmentSaveResult } from "./validate";
+import { downloadSkillArchive, fetchAppHtml, fetchApps, fetchConnectorCatalog, fetchSkills, fetchTombstones, openApp, sendInstallReceipt, toBase64, toggleConnector, type AppItem, type ConnectorItem, type SkillItem } from "./store";
 import { clearConnectorCatalog, reloadConnectorSessions, syncConnectorCatalog } from "./connectors-sync";
 import { probeMcpServer } from "./mcp-probe";
 import { oauthMetadataPayload, parseOAuthTokens, tokenNeedsRefresh, waitForOAuthFlow } from "./oauth";
@@ -68,6 +72,54 @@ interface SurfaceResponse {
   body_b64: string;
 }
 
+/** One command catalog input: the app owns the data, both surfaces render it. */
+export interface CommandCatalogInput {
+  t: (key: string, vars?: Record<string, string | number>) => string;
+  enterprise: boolean;
+  streaming: boolean;
+  /** Last text sent in the active conversation (`null` = nothing to retry). */
+  lastSendText: string | null;
+}
+
+/**
+ * The **single** command catalog (`2026-11-01-client-composer-surface` D1/D6).
+ *
+ * ⌘K (`ui-commands` palette) and the composer `/` menu both render this array
+ * and both execute through `UiActions.runCommand` — no second list/executor.
+ * Personal = 6 commands; enterprise adds the skills/connectors/apps panels (9).
+ */
+export function buildCommandCatalog(input: CommandCatalogInput): CommandDescriptor[] {
+  const { t, enterprise, streaming, lastSendText } = input;
+  const commands: CommandDescriptor[] = [
+    { id: "new-conversation", title: t("newConversation"), group: t("workspaceActions") },
+    { id: "toggle-sidebar", title: t("sidebarToggle"), group: t("workspaceActions") },
+    { id: "open-settings", title: t("settingsTitle"), group: t("settings") },
+    { id: "toggle-inspector", title: t("inspectorToggle"), group: t("workspaceActions") },
+    {
+      id: "cancel",
+      title: t("commandCancel"),
+      group: t("commandGroupTurn"),
+      hint: t("commandHintCancel"),
+      disabled: !streaming,
+    },
+    {
+      id: "retry",
+      title: t("commandRetry"),
+      group: t("commandGroupTurn"),
+      hint: t("commandHintRetry"),
+      disabled: streaming || lastSendText === null,
+    },
+  ];
+  if (enterprise) {
+    commands.push(
+      { id: "open-skills", title: t("panelSkills"), group: t("workspaceActions") },
+      { id: "open-connectors", title: t("panelConnectors"), group: t("workspaceActions") },
+      { id: "open-apps", title: t("panelApps"), group: t("workspaceActions") },
+    );
+  }
+  return commands;
+}
+
 export function App(props: { transport: Transport }) {
   const controller = useAppController(props.transport);
   const reportUpgrade = controller.reportUpgrade;
@@ -100,6 +152,155 @@ export function App(props: { transport: Transport }) {
       translate(state.settings.locale, key, vars),
     [state.settings.locale],
   );
+
+  // Composer surface state (`2026-11-01-client-composer-surface`): the settings
+  // pane deep-link and the workspace-file candidate cache live here so the
+  // command catalog / actions have exactly one owner (app).
+  const [settingsInitialPane, setSettingsInitialPane] = useState<string | undefined>(undefined);
+  const [panel, setPanel] = useState<"skills" | "connectors" | "apps" | null>(null);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const workspaceFilesCache = useRef<{ workspaceId: string; files: WorkspaceFileRef[] } | null>(
+    null,
+  );
+
+  const openSettings = useCallback(
+    (paneId?: string): void => {
+      setSettingsInitialPane(paneId);
+      controller.setSettingsOpen(true);
+    },
+    [controller],
+  );
+
+  const closeSettings = useCallback((): void => {
+    setSettingsInitialPane(undefined);
+    controller.setSettingsOpen(false);
+  }, [controller]);
+
+  const toggleInspector = useCallback((): void => {
+    setInspectorOpen((value) => !value);
+  }, []);
+
+  /** Single executor for the single catalog (⌘K palette + composer `/`). */
+  const runCommand = useCallback(
+    (id: string): void => {
+      switch (id) {
+        case "new-conversation":
+          controller.createConversation();
+          return;
+        case "toggle-sidebar":
+          controller.toggleSidebar();
+          return;
+        case "open-settings":
+          openSettings();
+          return;
+        case "toggle-inspector":
+          setInspectorOpen((value) => !value);
+          return;
+        case "open-skills":
+          setPanel("skills");
+          return;
+        case "open-connectors":
+          setPanel("connectors");
+          return;
+        case "open-apps":
+          setPanel("apps");
+          return;
+        case "cancel":
+          controller.cancel();
+          return;
+        case "retry":
+          controller.retrySend();
+          return;
+        default:
+          return;
+      }
+    },
+    [controller, openSettings],
+  );
+
+  /** Workspace file candidates for `@` (cached `workspace.files`; never a second IPC). */
+  const searchWorkspaceFiles = useCallback(
+    async (query: string): Promise<WorkspaceFileRef[]> => {
+      const workspaceId = state.activeWorkspaceId;
+      if (workspaceId === null) {
+        return [];
+      }
+      const cached = workspaceFilesCache.current;
+      let files = cached !== null && cached.workspaceId === workspaceId ? cached.files : null;
+      if (files === null) {
+        const raw = await props.transport.call("workspace.files", { workspace_id: workspaceId });
+        const entries = parseFileEntries(raw) ?? [];
+        const next: WorkspaceFileRef[] = [];
+        for (const entry of entries) {
+          // Candidate-only filter: hidden tool/attachment/VCS dirs stay out of `@`.
+          if (
+            entry.path === ".git" ||
+            entry.path.startsWith(".git/") ||
+            entry.path === ".zeokeel" ||
+            entry.path.startsWith(".zeokeel/")
+          ) {
+            continue;
+          }
+          next.push({ path: entry.path, kind: entry.kind === "dir" ? "dir" : "file" });
+        }
+        workspaceFilesCache.current = { workspaceId, files: next };
+        files = next;
+      }
+      const needle = query.trim().toLowerCase();
+      const matched =
+        needle === "" ? files : files.filter((file) => file.path.toLowerCase().includes(needle));
+      return matched.slice(0, 50);
+    },
+    [props.transport, state.activeWorkspaceId],
+  );
+
+  /** Persist one attachment via the single host IPC, validating the host result (C10). */
+  const saveAttachment = useCallback(
+    async (file: File): Promise<AttachmentSaveResult> => {
+      const workspaceId = state.activeWorkspaceId;
+      const conversationId = state.activeConversationId;
+      if (workspaceId === null || conversationId === null) {
+        throw new Error("attachment/invalid: no active conversation");
+      }
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const raw = await props.transport.call("workspace.attachment_save", {
+        workspace_id: workspaceId,
+        conversation_id: conversationId,
+        name: file.name,
+        mime: file.type,
+        data_base64: toBase64(bytes),
+      });
+      if (!isRecord(raw) || !validateAttachmentSaveResult(raw)) {
+        throw new Error("attachment/invalid: unexpected host response");
+      }
+      const path = readString(raw, "path");
+      const name = readString(raw, "name");
+      const mime = readString(raw, "mime");
+      const written = readNumber(raw, "bytes");
+      if (path === null || name === null || mime === null || written === null) {
+        throw new Error("attachment/invalid: incomplete host response");
+      }
+      return { path, name, mime, bytes: written };
+    },
+    [props.transport, state.activeWorkspaceId, state.activeConversationId],
+  );
+
+  const commandCatalog = buildCommandCatalog({
+    t,
+    enterprise: state.meta.edition === "enterprise",
+    streaming: state.streaming,
+    lastSendText: state.lastSendText,
+  });
+  const providerModel = state.settings.provider.model.trim();
+  const modelLabel =
+    state.meta.edition === "personal"
+      ? providerModel === ""
+        ? t("modelUnconfigured")
+        : providerModel
+      : gatewayModel === ""
+        ? t("gatewayModelUnselected")
+        : gatewayModel;
+  const modelSettingsPane = state.meta.edition === "personal" ? "provider" : "enterprise";
 
   // Channel default > persisted settings > legacy localStorage default (C14/ADR-042).
   const activeServerUrl = resolveServerUrl(state.settings.server_url);
@@ -247,6 +448,9 @@ export function App(props: { transport: Transport }) {
     settingsOpen: state.settingsOpen,
     sidebarOpen: state.sidebarOpen,
     mock: isMockMode(),
+    commands: commandCatalog,
+    modelLabel,
+    modelSettingsPane,
     actions: {
       send: controller.send,
       cancel: controller.cancel,
@@ -258,12 +462,19 @@ export function App(props: { transport: Transport }) {
       setDefaultWorkspace: controller.setDefaultWorkspace,
       removeWorkspace: controller.removeWorkspace,
       selectConversation: controller.selectConversation,
-      openSettings: () => {
-        controller.setSettingsOpen(true);
+      openSettings: (): void => {
+        openSettings();
       },
-      closeSettings: () => {
-        controller.setSettingsOpen(false);
+      openSettingsPane: (paneId: string): void => {
+        openSettings(paneId);
       },
+      openModelSettings: (paneId: string): void => {
+        openSettings(paneId);
+      },
+      closeSettings,
+      runCommand,
+      searchWorkspaceFiles,
+      saveAttachment,
       saveSettings: (next: AppSettings): Promise<SettingsSaveOutcome> => {
         const requiresRelogin =
           session !== null &&
@@ -474,6 +685,12 @@ export function App(props: { transport: Transport }) {
         }}
         serverUrlLocked={CHANNEL_SERVER_URL !== ""}
         onLogout={logout}
+        settingsInitialPane={settingsInitialPane}
+        panel={panel}
+        onPanelChange={setPanel}
+        inspectorOpen={inspectorOpen}
+        onInspectorOpenChange={setInspectorOpen}
+        onToggleInspector={toggleInspector}
       />
     </UiProvider>
   );
@@ -509,15 +726,21 @@ interface AppShellProps {
   onSurfaceRequest: (request: SurfaceRequestPayload) => Promise<unknown>;
   serverUrlLocked: boolean;
   onLogout: () => void;
+  /** Lifted panel/inspector state so the single command catalog can drive them. */
+  /** Deep-link pane for the settings dialog (composer model label). */
+  settingsInitialPane?: string | undefined;
+  panel: "skills" | "connectors" | "apps" | null;
+  onPanelChange: (panel: "skills" | "connectors" | "apps" | null) => void;
+  inspectorOpen: boolean;
+  onInspectorOpenChange: (open: boolean) => void;
+  onToggleInspector: () => void;
 }
 
 function AppShell(props: AppShellProps) {
-  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel, updateText, updateBusy, onCheckUpdate, skills, connectors, installed, contentError, contentBusy, onInstall, onAuthorize, onToggleConnector, onReloadConnectors, authorized, apps, appOpened, appError, onOpenApp, surface, onCloseSurface, onSurfaceRequest, serverUrlLocked, onLogout } = props;
+  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel, updateText, updateBusy, onCheckUpdate, skills, connectors, installed, contentError, contentBusy, onInstall, onAuthorize, onToggleConnector, onReloadConnectors, authorized, apps, appOpened, appError, onOpenApp, surface, onCloseSurface, onSurfaceRequest, serverUrlLocked, onLogout, settingsInitialPane, panel, onPanelChange, inspectorOpen, onInspectorOpenChange, onToggleInspector } = props;
   const t = ui.t;
   const state = controller.state;
   const enterprise = state.meta.edition === "enterprise";
-  const [panel, setPanel] = useState<"skills" | "connectors" | "apps" | null>(null);
-  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<"files" | "changes" | "terminal">("files");
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [changes, setChanges] = useState<WorkspaceChange[]>([]);
@@ -573,12 +796,12 @@ function AppShell(props: AppShellProps) {
     const onKey = (event: KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
         event.preventDefault();
-        setInspectorOpen((value) => !value);
+        onToggleInspector();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("keydown", onKey); };
-  }, []);
+  }, [onToggleInspector]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -589,28 +812,6 @@ function AppShell(props: AppShellProps) {
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("keydown", onKey); };
   }, [controller]);
-  const commands = [
-    { id: "new-conversation", title: t("newConversation"), group: t("workspaceActions") },
-    { id: "toggle-sidebar", title: t("sidebarToggle"), group: t("workspaceActions") },
-    { id: "open-settings", title: t("settingsTitle"), group: t("settings") },
-    { id: "toggle-inspector", title: t("inspectorToggle"), group: t("workspaceActions") },
-    ...(enterprise
-      ? [
-          { id: "open-skills", title: t("panelSkills"), group: t("workspaceActions") },
-          { id: "open-connectors", title: t("panelConnectors"), group: t("workspaceActions") },
-          { id: "open-apps", title: t("panelApps"), group: t("workspaceActions") },
-        ]
-      : []),
-  ];
-  const runCommand = (id: string): void => {
-    if (id === "new-conversation") ui.actions.createConversation();
-    if (id === "toggle-sidebar") ui.actions.toggleSidebar();
-    if (id === "open-settings") ui.actions.openSettings();
-    if (id === "toggle-inspector") setInspectorOpen((value) => !value);
-    if (id === "open-skills") setPanel("skills");
-    if (id === "open-connectors") setPanel("connectors");
-    if (id === "open-apps") setPanel("apps");
-  };
   const activeWorkspace = ui.workspaces.find((workspace) => workspace.id === ui.activeWorkspaceId);
   const active = ui.conversations.find((conversation) => conversation.id === ui.activeConversationId);
   const title = active === undefined ? t("noConversation") : active.title;
@@ -654,6 +855,7 @@ function AppShell(props: AppShellProps) {
           <SettingsSlot
             key={state.settingsOpen ? "open" : "closed"}
             panes={SettingsPanes}
+            initialPane={settingsInitialPane}
             app={{
               serverUrlLocked,
               onLogout,
@@ -680,21 +882,21 @@ function AppShell(props: AppShellProps) {
       )}
       overlay={enterprise ? (
         <>
-          <SlotErrorBoundary name="ui.skills"><SkillsSlot open={panel === "skills"} items={skills} installed={installed} busy={contentBusy} error={contentError} onInstall={onInstall} onClose={() => { setPanel(null); }} /></SlotErrorBoundary>
-          <SlotErrorBoundary name="ui.connectors"><ConnectorsSlot open={panel === "connectors"} items={connectors} error={contentError} authorized={authorized} onAuthorize={onAuthorize} onToggle={onToggleConnector} onReload={onReloadConnectors} onClose={() => { setPanel(null); }} /></SlotErrorBoundary>
-          <SlotErrorBoundary name="ui.apps"><AppsSlot open={panel === "apps"} items={apps} error={appError} opened={appOpened} onOpenApp={onOpenApp} onClose={() => { setPanel(null); }} /></SlotErrorBoundary>
+          <SlotErrorBoundary name="ui.skills"><SkillsSlot open={panel === "skills"} items={skills} installed={installed} busy={contentBusy} error={contentError} onInstall={onInstall} onClose={() => { onPanelChange(null); }} /></SlotErrorBoundary>
+          <SlotErrorBoundary name="ui.connectors"><ConnectorsSlot open={panel === "connectors"} items={connectors} error={contentError} authorized={authorized} onAuthorize={onAuthorize} onToggle={onToggleConnector} onReload={onReloadConnectors} onClose={() => { onPanelChange(null); }} /></SlotErrorBoundary>
+          <SlotErrorBoundary name="ui.apps"><AppsSlot open={panel === "apps"} items={apps} error={appError} opened={appOpened} onOpenApp={onOpenApp} onClose={() => { onPanelChange(null); }} /></SlotErrorBoundary>
         </>
       ) : null}
-      inspector={<SlotErrorBoundary name="ui.inspector"><InspectorSlot open={inspectorOpen} tab={inspectorTab} files={visibleFiles} changes={changes} changesState={changesState} changesError={changesError} changesWarning={changesWarning} onRetryChanges={() => { setChangesAttempt((value) => value + 1); }} onTab={setInspectorTab} onClose={() => { setInspectorOpen(false); }} /></SlotErrorBoundary>}
+      inspector={<SlotErrorBoundary name="ui.inspector"><InspectorSlot open={inspectorOpen} tab={inspectorTab} files={visibleFiles} changes={changes} changesState={changesState} changesError={changesError} changesWarning={changesWarning} onRetryChanges={() => { setChangesAttempt((value) => value + 1); }} onTab={setInspectorTab} onClose={() => { onInspectorOpenChange(false); }} /></SlotErrorBoundary>}
       inspectorOpen={inspectorOpen}
-      onToggleInspector={() => { setInspectorOpen((value) => !value); }}
+      onToggleInspector={onToggleInspector}
       onRetryBoot={ui.actions.retryBoot}
       onToggleSidebar={ui.actions.toggleSidebar}
       onDismissToast={controller.dismissToast}
       onOpenCommands={() => { controller.setCommandsOpen(true); }}
       onCreateWorkspace={(path, title) => { ui.actions.createWorkspace(path, title); }}
     />
-    <SlotErrorBoundary name="ui.commands"><CommandsSlot key={state.commandsOpen ? "open" : "closed"} open={state.commandsOpen} commands={commands} onRun={runCommand} onClose={() => { controller.setCommandsOpen(false); }} /></SlotErrorBoundary>
+    <SlotErrorBoundary name="ui.commands"><CommandsSlot key={state.commandsOpen ? "open" : "closed"} open={state.commandsOpen} commands={ui.commands} onRun={ui.actions.runCommand} onClose={() => { controller.setCommandsOpen(false); }} /></SlotErrorBoundary>
     </>
   );
 }

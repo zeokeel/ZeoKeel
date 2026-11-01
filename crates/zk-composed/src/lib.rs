@@ -175,3 +175,5 @@ pub fn configure_media_from_settings(settings: &zk_contract_config::MediaSetting
 }
 
 pub use inner::*;
+
+pub use zk_kit_tools;
