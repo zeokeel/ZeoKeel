@@ -182,4 +182,37 @@
   或 `gh release edit` 补 notes（不影响已发布二进制与校验和）；(2) `docs/37` 无独立 Windows 真机行，真机 UNVERIFIED
   以 `KNOWN-LIMITATIONS.md` §2 为准（Lead 描述中 "docs/37 Windows 真机项" 与文件实际内容略有偏差）。
 
+## 12. Windows CSP hotfix 复核（2026-11-01）
+
+- 复核对象：commit `4490bfbe9f937648af7855185835b20a6cc88374`（main；remote `main` 同 commit；工作树 clean）。
+  tag `v1.0.0-rc.1` **仍指 `5c0f29d`**（未移动；线上 Release 仍是旧 release run `41222029806` 的资产）→ 本节只复核
+  **代码/文档 delta**；artifact/release 批准待 tag 移动 + CI/security/release 重跑 + Windows 真机复测后再确认。
+- 根因/修复核实：`apps/desktop/web/src/validate.ts` 在模块加载时用 Ajv（`new Ajv({ strict: true })`）编译 Rust 生成的
+  JSON Schema（C10/T22），Ajv codegen 使用 `new Function`，被 Tauri WebView CSP 拒绝 → Windows 启动即错误卡片；
+  `apps/desktop/tauri.conf.json:20` 将 `script-src` 增加 `'unsafe-eval'`（`default-src 'self'`、`frame-src 'none'`、
+  `connect-src` 不变）；`docs/21` §6 CSP 文案、`KNOWN-LIMITATIONS.md:126-130` §4、`CHANGELOG.md:16-18` 记录解释与
+  1.0.0 退出条件。serve 载体（e2e）无 Tauri CSP，故 CI/本地 e2e 无法捕获该类 CSP-only 故障（真机首次暴露）。
+- 安全窄性评估：
+  - 仅主桌面 WebView 放宽；WASM app 窗口走 `zk-app://` 自定义协议并注入独立 meta CSP
+    （`apps/desktop/src/main.rs:356`：`script-src 'unsafe-inline' zk-app:`，**不含 unsafe-eval**）→ 第三方 app UI 仍不能 eval。
+  - 页面只加载本地打包资源、无远程脚本；`default-src 'self'`、`frame-src 'none'`；服务端/admin CSP 未改
+    （server 无 CSP 响应头、Caddy 仅 X-Frame-Options），admin SPA 不受 Tauri CSP 影响。
+  - Ajv 只编译构建期生成 contracts（静态 import），不 eval 外部字符串；主窗口未发现 `dangerouslySetInnerHTML`/
+    `rehype-raw` 等 HTML 注入面（grep 0）→ 例外与 C10 校验需求的关联明确、范围受限。
+  - `script-src` 原本已含 `'unsafe-inline'`（既有放宽，非本次引入）；`'unsafe-eval'` 为纯增量放宽，1.0.0 前必须移除。
+- 退出条件充分性：`docs/21` §6 + `KNOWN-LIMITATIONS.md` §4 已写死"1.0.0 前改为构建期预编译 Ajv standalone validator
+  并移除 unsafe-eval"，判为**足够但非自动** → P2 建议：(a) 把该条加入 `docs/37` 行 8（1.0.0 清单）使发布门禁可见；
+  (b) 增加自动 guard（release workflow 或 CI 断言 1.0.0 产物 `tauri.conf.json` CSP 不含 `unsafe-eval`），避免例外遗忘/回归。
+- 文档精度 P2：(1) commit/Lead 称 "docs/21 §8 CSP" 与文件不符——CSP 在 `docs/21` **§6 客户端与本地载体**（§8 为隐私）；
+  (2) `docs/21` §6 句 "禁止 eval/内联脚本，当前白名单唯一例外: unsafe-eval" 不准确（`script-src` 仍含 `'unsafe-inline'`），
+  建议改为"允许既有 `'unsafe-inline'` 与临时 `'unsafe-eval'`（Ajv，1.0.0 退出）"。
+- 残余风险（不能由本 delta 关闭）：Windows 真机复测（新 installer 启动/聊天/设置）；Tauri CSP-only 故障无自动化回归
+  （serve e2e 不覆盖 Tauri CSP；建议后续 Windows hosted runner Tauri smoke 或 CSP 断言）；tag/release 未重建（资产仍来自
+  5c0f29d，需重跑并复核 digest/SHA256SUMS/Windows exe）；`unsafe-eval` 保留至 1.0.0；`connect-src https:` 宽出口为既有
+  CSP 风险（非本次引入）。
+- 证据：`git show 4490bfb`（4 files：`apps/desktop/tauri.conf.json`、`docs/21`、`KNOWN-LIMITATIONS`、`CHANGELOG`）；
+  `docs-check` exit 0（0 errors / 0 warnings / 41 files）、`review-check` exit 0（28 records）。
+- hotfix 复核结论：APPROVED
+
+
 

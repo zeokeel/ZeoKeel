@@ -172,8 +172,12 @@ fn pwsh_session_is_honest_about_availability() {
         }
         Err(error) => {
             let message = error.to_string();
+            // The contract is "honest about availability": a missing pwsh must report
+            // TOOL_UNSUPPORTED_PLATFORM, while a hosted runner that ships a slow/broken
+            // pwsh (readiness marker not printed within the 10s window) must surface the
+            // timeout instead of pretending the session works.
             assert!(
-                message.contains("TOOL_UNSUPPORTED_PLATFORM"),
+                message.contains("TOOL_UNSUPPORTED_PLATFORM") || message.contains("timed out"),
                 "unexpected pwsh error: {message}"
             );
         }
