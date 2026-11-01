@@ -18,7 +18,7 @@
 | --- | --- | --- | --- | --- |
 | T1 | 打开 activity，查看 jobs/subagents，停止一个运行中任务 | 极高 | 高（后台资源/数据一致性） | activity tab + jobs/subagents |
 | T2 | 暂停/编辑/删除一个 schedule，并处理非法输入 | 中 | 高（定时任务/文件） | activity schedule 分区 |
-| T3 | 查看 turnTail present/plan；切会话/断网后恢复；键盘/读屏完成 T1 | 高 | 中 | turnTail + 轮询/六态/a11y |
+| T3 | 查看 turnTail present、goal.get、切会话/断网后恢复；键盘/读屏完成 T1 | 高 | 中 | turnTail + goal + 轮询/六态/a11y |
 
 ### 2.1 3×3 覆盖矩阵（防漏格）
 
@@ -45,7 +45,7 @@
 | W7 | P2/T3 | 切会话/关闭 activity 再回来 | 不想后台轮询污染新会话 | 切走即停 | 返回后重新加载当前会话 | 旧响应不覆盖新数据 | 旧轮询回包写错会话 = 数据串台 | INT-06/11 | **P0** | close/切走 clearInterval + AbortController/序号丢弃旧响应；切会话重置 snapshot | closed（design §2.3/§2.4、tasks #6） |
 | W8 | P3/T3 | 断网/轮询失败/任务已结束 | 想理解发生了什么 | stale/错误提示可见 | 旧数据保留 + 可重试 | 恢复后自动/手动刷新 | 白屏、反复弹错、假成功 | INT-06/10 | P1 | stale 标记 + 保留旧数据；错误 role=alert + 重试；动作失败不乐观改状态 | closed（spec R3/R6、design §2.3） |
 | W9 | P3/T3 | 键盘/读屏遍历 activity + 删除确认 | 完成 T1 | tablist/按钮/switch 有 role/name | 动作结果 aria-live | Esc 取消焦点回删除按钮 | 只能鼠标/焦点丢失 = 不可用 | INT-09/12 | P1 | 复用 ui-kit tab/list/switch/dialog；axe 0 serious；键盘 e2e | closed（interaction `ACT2-A11Y-01`、design §2.3） |
-| W10 | P1/T3 | assistant 文本含「## 计划」 | 想知道计划 | 计划折叠块可见，标题「计划」 | 展开 Markdown；无匹配不显示 | 可折叠回原消息 | 误把正文当计划/自动执行计划 | INT-07/08 | P1 | 仅标题段落+中文感知正则；只展示不执行（无 plan mode） | closed（spec R7/design §2.3） |
+| W10 | P1/T3 | goal 为空/损坏时看 activity；刷新/切会话 | 想知道目标 | goal 分区空/降级可读 | 只读 goal.get；不写/不派生工具行 | 刷新恢复；不串会话 | 工具行派生与真实 goal 不一致 | INT-07/08 | P1 | 只读 goal.get（不进 snapshot）；空/损坏测试；plan 不展示 | closed（spec R4/design §2.3、tasks #4/#6） |
 
 | W11 | P1/T2 | 首次用户看到 schedule 区，尝试编辑/删除 | N/A：首任务不涉及修改定时任务，频率低、失败代价高但不由首任务触发 | N/A：入口仍可见（W1） | N/A | N/A | 不适用组合，但不得漏格 | INT-01/07 | N/A | 替代验证：W1 覆盖入口发现性，W4/W5 覆盖编辑/删除与非法输入 | N/A（替代验证见左） |
 | W12 | P3/T1 | 读屏/键盘打开 activity，停止 running job | 想停止任务 | tab/行/停止按钮有 role/name | 确认区 alertdialog 读出；动作结果 aria-live | Esc 取消回停止按钮 | 只能鼠标/焦点丢失 = 不可用 | INT-02/05/09/10 | P1 | 复用 ui-kit tab/list/button + alertdialog；axe 0 serious；键盘 e2e | closed（interaction `ACT2-A11Y-01`、tasks #9） |

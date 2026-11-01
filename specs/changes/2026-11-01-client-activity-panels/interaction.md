@@ -24,7 +24,6 @@
 | schedule 行/开关/编辑/删除 | `listitem` + `switch`/`button`（编辑/删除） | Tab/Enter/Space | 否 | 删除需内联二次确认；非法值行内错误 |
 | todo 列表 | `list`/`listitem`（只读） | — | 否 | 来自工具行派生；不提供写操作 |
 | turnTail 交付卡 | `button` /「在右栏查看」 | Enter/Space | 否 | present 路径去重；点击打开 files 预览 |
-| turnTail 计划折叠 | `button` /「计划」 | Enter/Space | 否 | `<details>/<summary>` 语义；无匹配不渲染 |
 
 ## 2. 状态模型
 
@@ -35,7 +34,7 @@
 | loading | 首次打开/手动刷新 | 分区 loading | `aria-busy=true` | 请求完成 |
 | error | snapshot/动作失败 | 分区错误 + 重试 | `role=alert` | 重试成功 |
 | stale | 轮询失败但已有旧数据 | 旧数据 + stale 标记 | `role=status` | 下次成功 |
-| empty | 无 jobs/subagent/goal/todo/schedule/present | 分区空态 | — | 有数据 |
+| empty | 无 jobs/subagent/todo/schedule/present；goal 无目标 | 分区空态 | — | 有数据 |
 | busy | 动作执行中（kill/interrupt/delete） | 按钮 disabled + spinner | `aria-busy=true` | 动作完成 |
 | offline | 断网/本地 IPC 不可用 | 分区错误态 | 可读提示 | 恢复 |
 | streaming | 会话流式中 | 轮询继续；动作按可用性 | — | turn 完成/取消 |
@@ -45,14 +44,13 @@
 
 | ID | 前置 | 人的动作（点击/按键/输入） | 期望（可见 + aria + 焦点 + 持久化） | 优先级 | 测试落点 | 证据 |
 | --- | --- | --- | --- | --- | --- | --- |
-| ACT2-SNAPSHOT-01 | 右栏已打开、有 activity | 点击「活动」tab；读取各分区 | tab order 40（files→changes→terminal→activity）；snapshot 分区渲染 jobs/subagents/team/goal/todo/schedules/presentations；空分区显示空态 | P0 | `activity.spec.ts` | `ACT2-SNAPSHOT-01.json` |
+| ACT2-SNAPSHOT-01 | 右栏已打开、有 activity | 点击「活动」tab；读取各分区 | tab order 40（files→changes→terminal→activity；plan tab 50 由 plan-mode 另列）；snapshot 分区渲染 jobs/subagents/team/todo/schedules/presentations；**goal 不进 snapshot，单独调 goal.get**；空分区显示空态 | P0 | `activity.spec.ts` | `ACT2-SNAPSHOT-01.json` |
 | ACT2-POLL-01 | activity tab 打开 | 等待 2s；点手动刷新；切走/关闭 tab | 期间轮询更新；手动刷新拉新；切走/关闭停止轮询且不更新其它会话 | P0 | `activity.spec.ts` | `ACT2-POLL-01.json` |
 | ACT2-JOB-STOP-01 | 有 running job | 展开输出；点击「停止任务」→ 内联确认（对象 id/命令/影响）→ 确认或取消 | 确认区 `role=alertdialog` + aria-label「确认停止任务」，默认焦点「取消」；**取消/Esc 不发 action、状态不变**；确认后才停止，停止后状态刷新（completed/failed 或列表移除）；未知/已结束错误可读；不产生工具行/审批 | P0 | `activity.spec.ts` | `ACT2-JOB-STOP-01.json` |
 | ACT2-SUBAGENT-INTERRUPT-01 | 当前会话有 running subagent | 点击「中断子代理」→ 内联确认（id/状态/影响）→ 确认或取消 | 确认区 `role=alertdialog` + aria-label「确认中断子代理」，默认焦点「取消」；**取消/Esc 不发 action**；确认后状态刷新为 cancelled/done；未知/已结束错误可读；roster 按 parent 过滤 | P0 | `activity.spec.ts` | `ACT2-SUBAGENT-INTERRUPT-01.json` |
 | ACT2-SCHEDULE-EDIT-01 | 当前 workspace 有 schedule | 切换启用开关；编辑 interval/prompt 并保存 | 文件/列表同步；非法 interval(<60)/prompt>32 KiB 行内错误且不写盘；只操作当前 workspace | P0 | `activity.spec.ts` | `ACT2-SCHEDULE-EDIT-01.json` |
 | ACT2-SCHEDULE-DELETE-01 | 有 schedule 行 | 点击删除 → 内联确认/取消 | 确认后删除并刷新；取消不变；未知 id/`deleted 0` 映射 `activity/schedule-invalid`；二次确认键盘可达 | P0 | `activity.spec.ts` | `ACT2-SCHEDULE-DELETE-01.json` |
-| ACT2-TURNTAIL-PRESENT-01 | 本轮 assistant 有 present 工具结果 | 查看消息尾部；点击「在右栏查看」 | 交付卡显示文件名/描述、path 去重；点击打开右栏 files 预览；文件不存在可读错误；无空卡 | P0 | `activity.spec.ts` | `ACT2-TURNTAIL-PRESENT-01.json` |
-| ACT2-TURNTAIL-PLAN-01 | assistant 文本含 `## 计划`/`## Plan` | 展开/折叠计划 | 只识别标题段落（中文/英文、`#`~`######`、冒号/行尾）；Markdown 渲染；无匹配不显示；不实现 plan mode | P1 | `activity.spec.ts` | `ACT2-TURNTAIL-PLAN-01.json` |
+| ACT2-TURNTAIL-PRESENT-01 | 本轮 assistant 有 present 工具结果 | 查看消息尾部；点击「在右栏查看」 | 交付卡显示文件名/描述、path 去重；点击打开右栏 files 预览；文件不存在可读错误；无空卡；**不展示 plan（plan-mode PlanCard 负责）** | P0 | `activity.spec.ts` | `ACT2-TURNTAIL-PRESENT-01.json` |
 | ACT2-STALE-01 | 轮询失败但已有数据 | 等待下一次轮询 | 保留旧数据 + stale 提示；不反复弹错/不白屏 | P1 | `activity.spec.ts` | `ACT2-STALE-01.json` |
 | ACT2-ERROR-01 | 各分区 | 触发空/加载/错误/离线/流式中/已取消 | 分区级状态可见、可重试/返回；不丢其它分区状态 | P1 | `activity.spec.ts` | `ACT2-ERROR-01.json` |
 | ACT2-A11Y-01 | activity tab/turnTail 可见 | axe 扫描 + 键盘遍历 | 0 serious/critical；tab/动作/删除确认键盘可达；aria 正确；i18n 无硬编码 | P1 | `activity.spec.ts` | `ACT2-A11Y-01.json` |
@@ -77,4 +75,4 @@
 - 六态：每个分区必须覆盖；缺一即不通过评审。
 - 视觉更新：只允许人确认后 `pnpm e2e:ui:update`；CI 不得自动接受。
 - 门禁：实现开始时把本文件 `状态` 改 `active`，并把 P0/P1 标签/证据接入 `python3 scripts/ui-interaction-gate.py`。
-- **工具依赖（P1-5）**：`pnpm e2e:ui` 与 `scripts/ui-interaction-gate.py` 由 `2026-11-01-ui-interaction-verification` 落地；本文件写作时两者尚不存在，当前 **UNVERIFIED**，实现前必须确认可用后再声称门禁绿。
+- **工具依赖（P1-5）**：`pnpm e2e:ui` 与 `python3 scripts/ui-interaction-gate.py` 已随 `2026-11-01-ui-interaction-verification`（commit `d0b7741`）落地；实现时接入并跑 gate。

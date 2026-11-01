@@ -8,7 +8,7 @@
 ### R1 · 右栏 activity tab（order 40）
 
 - **WHEN** 用户打开右栏第 4 个 tab「活动」（activity；order 40，位于 files/changes/terminal 之后）
-- **THEN** 展示聚合快照：jobs、subagents/agent-team、goal、todo、schedules、present deliverables；各分区独立空/加载/错误态
+- **THEN** 展示聚合快照：jobs、subagents/agent-team、todo、schedules、present deliverables；**goal 不进 snapshot（独立只读 goal.get）**；各分区独立空/加载/错误态
 - **AND** 快照来源：`activity.snapshot{workspace_id, conversation_id}`；tab 打开时加载，随后 **2s 轮询** + 手动刷新按钮 + 动作后刷新；
   关闭 tab/切换会话停止轮询；旧请求结果丢弃（按会话/序列号防串）
 - **AND** tab 不新增 slot/包（在 `ui-inspector` 内，docs/16 记录 order 40）；会话级 tab 状态沿用 Phase 2b 持久化；六态不白屏
@@ -34,13 +34,12 @@
 - **AND** 中断前**内联二次确认**（显示 subagent id/状态/「将中断该子代理」影响，默认焦点「取消」，确认后才发 action；取消/Esc 不变）；确认区 `role=alertdialog` + aria-label（「确认中断子代理」），复用 ui-kit 确认原语，不新增第二套 Dialog（C17）
 - **AND** 中断未知/已结束 id 返回可读错误（例如「子代理不存在或已结束」），UI 刷新状态；空白显示对应空态
 
-### R4 · Goal 状态
+### R4 · Goal 状态（只读 goal.get，2026-11-01 修订）
 
-- **WHEN** 当前会话存在 `goal` 工具记录
-- **THEN** 显示最近一次 goal 结果（objective/status/rounds/max_rounds/reason，来自已持久化工具行）；状态枚举与 goal 工具一致
-  （active/achieved/complete/cancelled/blocked，未知值原样显示为文本并标记 unknown）
-- **AND** 无 goal 显示空态；goal 数据只读（set/run/cancel 仍由 agent 的 goal 工具执行；本 spec 不新增写入面）；
-  刷新/重进会话后仍可见（来自持久化行）；损坏/不可解析行跳过并提示「历史记录不可解析」
+- **WHEN** activity tab 打开且当前会话有 goal
+- **THEN** 只读调用既有 `goal.get{workspace_id, conversation_id}`（`2026-11-01-client-command-surface` host IPC；同一 `.zeokeel/goal.json` 单 owner）显示 objective/status/rounds/max_rounds/reason/last_result；**不产生/不依赖工具行、不新增写面、不调用 goal.set/update**。
+- **AND** 无 goal 显示空态；`.zeokeel/goal.json` 损坏/legacy 显示可读降级（不影响其它分区）；只读；不跨 workspace。
+- **AND** **goal 不进 `activity.snapshot`**（避免双实现）；activity 通过独立 `goal.get` 读取；GoalBar/`/goal` 仍是唯一写入口。
 
 ### R5 · Todo 清单
 
@@ -61,17 +60,15 @@
 - **AND** 写操作只作用于当前 workspace；成功后刷新列表；非法 id/interval(<60)/**prompt >32 KiB（host 预校验，tool-schedule 本身无长度校验）** 拒绝并提示；
   delete 未知 id 映射 `activity/schedule-invalid`（P1-3）；操作失败不破坏原文件（tool 的原子写语义）
 
-### R7 · turnTail（present 交付物 + 计划展示）
+### R7 · turnTail（仅 present 交付物；2026-11-01 修订）
 
-- **WHEN** 一条 assistant 轮结束（status done/cancelled/error 均按现有消息状态渲染）且本轮存在 `present` 工具调用或可识别计划段落
+- **WHEN** 一条 assistant 轮结束（status done/cancelled/error 均按现有消息状态渲染）且本轮存在 `present` 工具调用
 - **THEN** 在消息尾部显示 turnTail 卡：
   - **交付物**：本轮 `present` 结果解析为 path/description（去重、按调用顺序），显示文件名/描述；点击「在右栏查看」打开右栏 files 预览
     （复用 Phase 2b `workspace.file_read`/预览；文件不存在显示可读错误，不白屏）；
-  - **计划展示**：若本轮 assistant 文本含 Markdown 标题行（`#`~`######` 后接 `plan`/`计划`，大小写不敏感；中文后允许空格/冒号/行尾，
-    host/UI 正则按 `^(#{1,6}\s*)?(计划|Plan)(?=\s|$|[：:])` 实现，不能用 `\b`），折叠展示该标题段落（Markdown 渲染，复用现有 MarkdownText）；
-    无匹配/解析失败不显示计划卡
-- **AND** 不实现 plan mode/计划批准/执行状态机/计划工具；不新增消息类型（turnTail 由现有消息内容与工具行派生）；
-  无 present/计划时不显示空卡；刷新/重进会话后仍可恢复（由持久化工具行/文本派生）
+  - **不含 plan**：activity/turnTail 不展示/折叠 plan；plan 由 `2026-11-01-client-plan-mode` 的 PlanCard/plan tab 接管（activity tab order 40 不变）
+- **AND** 不展示/折叠 plan；plan 由 `client-plan-mode` 负责；不新增消息类型（present 由现有工具行派生）；
+  无 present 时不显示空卡；刷新/重进会话后仍可恢复（由持久化工具行派生）；plan 不在 activity/turnTail 展示
 
 ### R8 · 质量与边界
 
@@ -89,23 +86,23 @@
 | subagent interrupt 未知/已结束 | 可读错误（「不存在或已结束」），不崩溃 | `activity/subagent-not-found` |
 | schedule 文件损坏/不存在 | 空态或降级提示，不写坏文件 | `activity/schedule-unreadable` |
 | schedule update/delete 未知 id / interval<60 / prompt>32 KiB / 非法 cron | 拒绝并提示（id/interval/cron 复用工具校验；prompt 上限 host 预校验） | `activity/schedule-invalid` |
-| todo/goal/present 工具行损坏或 legacy 无 args | 跳过并提示「部分历史记录不可解析」 | `activity/derived-unavailable`（提示非阻塞） |
+| todo/present 工具行损坏或 legacy | 跳过并提示「部分历史记录不可解析」 | `activity/derived-unavailable`（提示非阻塞） |
+| goal 文件损坏/无 goal | 可读空/降级，不影响其它分区 | 沿用 `goal/not-found`/`goal/invalid` |
 | 轮询期间会话切换/关闭 tab | 丢弃旧结果，不更新到新会话；停止轮询 | — |
 | activity 快照输出过大 | 每条输出摘要≤4 KiB；条数有界（jobs≤50、subagents≤64、todo/schedules≤100） | `activity/truncated`（标记） |
 | present 文件不存在/预览失败 | 卡仍显示，点击报可读错误 | `workspace/path-not-found`（既有） |
 | 离线 | 本地 IPC 可能仍可用；不可用时分区错误态+重试；不白屏 | 既有离线提示 |
-| 计划标题误判 | 仅严格标题匹配，匹配不到不显示；不猜测 | — |
 
 ## 3. 权限与可见性
 
 - 角色：个人用户/企业员工均可查看/操作本会话/workspace 的 activity；无管理员/审计员专属；无服务端策略。
-- 可见性：jobs 按 cwd 限定当前 workspace；subagents 按 parent conversation；goal/todo/present 按当前会话。
+- 可见性：jobs 按 cwd 限定当前 workspace；subagents 按 parent conversation；goal/todo/present 按当前会话；plan 不展示（plan-mode 负责）。
 - 服务端是否下发策略：否（弱管控 C6）；所有动作为本地显式用户操作，不新增审批/网关语义。
 
 ## 4. 数据与兼容
 
 - 新增 IPC（additive）：`activity.snapshot`、`activity.action`（payload/result 见 design §2.2）；不改 `chat.send`/agent/审批契约。
-- 新增读面：jobs/subagent 进程内 registry；goal/todo/present 从既有持久化 `role="tool"` 行派生；schedule 复用 `.zeokeel/schedules.json`
+- 数据源（2026-11-01 修订）：jobs/subagent 进程内 registry；**goal 用 `goal.get`（不进 snapshot）**；todo/agent-team 从持久化 `role="tool"` 行 replay；present 工具行；schedule 复用 `.zeokeel/schedules.json`；plan 不读（plan-mode 负责）
   既有文件形状（工具所有权不变，无 schema 迁移、无数据库变更）。
 - 兼容性：旧客户端不调用新命令；新面板不改消息内容/事件；legacy 工具行（无 args）降级提示；旧数据无迁移。
 - 幂等：snapshot 只读；job kill/subagent interrupt 非幂等（已结束错误）；schedule toggle 幂等（目标状态）、delete 幂等（不存在返回错误或成功？design 定：不存在=可读错误）。
@@ -113,12 +110,12 @@
 
 ## 5. 验收断言（可执行）
 
-- [ ] 契约/host：`activity.snapshot` 字段/边界；jobs 过滤与 kill；subagent roster/interrupt；goal/todo/present 工具行派生（含损坏/legacy）；
+- [ ] 契约/host：`activity.snapshot` 字段/边界；jobs 过滤与 kill；subagent roster/interrupt；**goal 只读 goal.get（不进 snapshot）**；todo/present 工具行 replay（含损坏/legacy）；
       schedule list/update/delete 经 tool-schedule 校验；`cargo test -p zk-contract-ipc -p zk-desktop`。
-- [ ] 派生单测：todo `list/add/update/remove` replay、goal 最近完整结果、present 去重、团队 JSON 解析失败降级；输出/条数截断。
+- [ ] 派生单测：todo `list/add/update/remove` replay、present 去重、团队 JSON 解析失败降级；goal.get 成功/空/损坏；输出/条数截断。
 - [ ] UI：activity tab（order 40）渲染各分区/空态/错误/轮询停止；jobs 输出/停止（**停止先内联确认，取消不发 action**）；subagent 中断（同样确认）；schedule toggle/edit/delete 确认；
-      turnTail present 卡点击打开右栏预览；计划段落折叠/无匹配不显示（单测/手工）。
-- [ ] e2e（`e2e/interaction/activity.spec.ts` + `e2e/serve-m1.sh` 剧本科；`pnpm e2e:ui` 依赖 `ui-interaction-verification`，当前 UNVERIFIED）：activity tab 打开、todo/goal/schedule/present 剧本、
+      turnTail present 卡点击打开右栏预览；**不展示 plan**；无 present 不显示。
+- [ ] e2e（`e2e/interaction/activity.spec.ts` + `e2e/serve-m1.sh` 剧本科；`pnpm e2e:ui` 工具已落地）：activity tab 打开、todo/goal/schedule/present 剧本（goal 用 goal.get）、
       schedule 暂停/删除后文件断言、present 卡→右栏预览、job 后台任务停止、subagent interrupt；axe 0 serious。
 - [ ] 门禁：`cargo test --workspace export_schema` + `git diff` 幂等 + `bash scripts/schema-check.sh`；`zk compose --check`；`zk capability --check`
       （无新增条目）；`pnpm -r typecheck/lint/test:unit/build`；`bash scripts/i18n-check.sh`。
@@ -126,8 +123,8 @@
 
 ## 6. 已定决策
 
-- [x] **D1 schedule 读写路径与数据源**：`activity.snapshot` 读聚合、`activity.action` 写动作；host 经 `zk-composed` 生成 facade 复用 `zk-tool-schedule` 公开 `Tool::call_json`（不新建第二套解析/校验；app 不直接依赖 tool）。
+- [x] **D1 schedule 读写路径与数据源**：`activity.snapshot` 读聚合（**不含 goal**）、`activity.action` 写动作；host 经 `zk-composed` 生成 facade 复用 `zk-tool-schedule` 公开 `Tool::call_json`；goal 用既有 `goal.get`；app 不直接依赖 tool。
 - [x] **D2 todo/agent-team 口径**：todo 从已持久化工具行 replay；agent-team 只展示最近 `agent_team` 工具行结果；不改工具状态模型。
-- [x] **D3 plan 展示**：仅识别 assistant Markdown 计划标题段落（中文感知正则）折叠展示；不实现 plan mode/审批/状态机。
+- [x] **D3 plan 展示（已废弃/被取代）**：activity/turnTail 不展示 plan；由 `client-plan-mode` 接管（plan tab 50/PlanCard/plan.get/update/exit_plan_mode）；activity tab order 40 不变。
 - [x] **D4 刷新策略**：activity tab 打开时 2s 轮询 + 手动刷新 + 动作后刷新，关闭即停；无新事件通道。
 - 已定（Lead 2026-11-01）：activity 位置 = 右栏 tab order 40 + chat turnTail；面板数据复用现有 tool/kit，不新增第二套状态机。
