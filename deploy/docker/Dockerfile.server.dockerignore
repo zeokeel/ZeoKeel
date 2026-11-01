@@ -19,3 +19,6 @@ research
 oem/fixtures/dist
 *.pem
 *.key
+# Generated enterprise-updates inputs: keep only workflow-generated clients/CLIENT-RELEASE in the image.
+deploy/enterprise-updates/README.md
+deploy/enterprise-updates/clients/.gitkeep

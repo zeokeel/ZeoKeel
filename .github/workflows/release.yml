@@ -304,9 +304,14 @@ jobs:
           python3 - "$VERSION" <<'PY'
           import hashlib, json, pathlib, sys
           version = sys.argv[1]
-          clients = sorted(pathlib.Path("deploy/enterprise-updates/clients").iterdir())
-          if not clients:
-              raise SystemExit("no enterprise client installers")
+          installer_suffixes = {".appimage", ".deb", ".rpm", ".dmg", ".exe", ".msi"}
+          clients = [
+              path
+              for path in sorted(pathlib.Path("deploy/enterprise-updates/clients").iterdir())
+              if path.is_file() and path.suffix.lower() in installer_suffixes
+          ]
+          if len(clients) < 3:
+              raise SystemExit(f"expected three enterprise client installers, got {[c.name for c in clients]}")
           assets = []
           for path in clients:
               digest = hashlib.sha256(path.read_bytes()).hexdigest()
