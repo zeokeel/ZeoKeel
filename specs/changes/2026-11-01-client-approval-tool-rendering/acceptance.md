@@ -23,6 +23,9 @@
 | `pnpm -r typecheck && pnpm -r lint && pnpm -r test:unit` | PASS（含 build；见 logs/pnpm-gates.txt） | `.../logs/pnpm-gates.txt` |
 | `bash scripts/i18n-check.sh` | PASS（exit 0） | `.../logs/i18n-check.txt` |
 | `bash scripts/agent-e2e.sh`（真实 personal rig + `e2e/agent-rig.spec.ts`） | PASS（15/15 passed，42.3s） | `.../logs/agent-e2e.log`、`.../screenshots/`、`.../axe.json` |
+| 提交后复跑 `bash scripts/agent-e2e.sh`（HEAD `ee932b7` 基线） | **exit 0：15 passed（43.0s）** | `.../logs/agent-e2e-final.log` |
+| 提交后复跑 `pnpm e2e`（mock 回归） | **exit 0：16 passed（56.8s）** | `.../logs/pnpm-e2e-final.log` |
+| 提交后 `cargo test --workspace`（Lead 独立复跑） | **exit 0** | 本次会话输出；见 §6 备注 |
 | `cargo test --workspace export_schema && git diff --exit-code` | PASS（等价幂等校验：连续两次 export 后 schema/ts 全量 sha256 一致；`git diff` 非空仅因本 spec 的生成物待提交，见 golden/schema-hashes.txt） | `.../logs/export-schema.txt` |
 | `bash scripts/schema-check.sh` | PASS（schema-check ok） | `.../logs/schema-check.txt` |
 | `cargo check --workspace --all-targets`（P1-R2 跨包字面量编译面） | PASS（exit 0） | `.../logs/workspace-check.txt` |
