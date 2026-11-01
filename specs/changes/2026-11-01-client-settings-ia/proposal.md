@@ -1,11 +1,11 @@
 # 2026-11-01-client-settings-ia · 提案
 
-- 状态：`draft`
+- 状态：`approved`
 - Owner：lead
 - 日期：2026-11-01
 - 关联：`research/client-dsh-parity-2026-11-01.md` §4/P1-1、§7 Phase 1；`docs/16-ui-packages.md`、`docs/28-ui-module-map-and-skeleton.md`（设置分页口径需同步）
-- 评审：待独立评审（C19；approved 前补 `docs/reviews/<date>-client-settings-ia.md`）
-- 变更预算：约 15 个文件（生成器 + ui-kit 类型 + ui-settings 重构 + 新增 1 个 pane 包 + 测试/文档）；超过 10 文件但为同一目标，不拆分
+- 评审：docs/reviews/2026-11-01-client-ui-parity-specs.md
+- 变更预算：约 16–20 个文件（生成器 + 契约 + store-settings-json + ui-kit 类型 + ui-settings 重构 + 测试/文档）；超过 10 文件但为同一目标 + 用户已批 Phase 1 结构，预算例外见 §8
 
 ## 1. 背景 / 问题
 
@@ -16,7 +16,7 @@
   字段一多就无法发现/定位；`docs/28:86` 的「分页/插件清单」从未落地。
 - 唯一扩展点是 provider 表单的 `renderProvider` 注入（`ui.settings.provider` slot），其余分区写死在 dialog 内，
   新增能力（MCP、子代理、终端、jobs、审批策略）只能继续往单页里堆，形成结构债。
-- `settings.set` 提交**整份文档**且无 revision 栅栏（`packages/contracts/ipc/src/lib.rs:240-248`），
+- `settings.set` 提交**整份文档**且无 revision 栅栏（`packages/contracts/ipc/src/lib.rs:245-249`），
   多窗口/并发保存会静默覆盖。
 - 对比 DSH（0.2.1-rc.2）设置面：5 个导航分区 + 12 个「通用」行 + 侧栏插件页 4 个配置页 + 1 个只读清单，
   每个配置页由包贡献、可独立替换。ZeoKeel 当前为 0 分区，后续每加能力都要改同一个 dialog。
@@ -70,23 +70,29 @@
 
 ## 7. 需要用户拍板
 
-- [ ] **A. 设置字段组件归属**：拆成多个 UI 包（provider/embedding/media 已有包；其余拆 `ui-settings-agent`/`ui-settings-tools` 等），
-      还是本轮先保留在 `ui-settings` 内部按 pane 分文件、只把扩展点做成 slot？推荐后者（小步、少建包）。
-- [ ] **B. revision 栅栏是否本轮做**：推荐做（否则多窗口覆盖是真实风险）；若不做的代价是 Spec B 之后仍要返工。
-- [ ] **C. 设置是否保持 Dialog**：推荐保持 Dialog（与现有焦点/axe 行为一致），不做独立页面。
+- 已定（2026-11-01，用户确认 A 方案；以下为推荐项定稿）：
+- [x] **A. 设置字段组件归属**：本轮保留在 `ui-settings` 内部按 pane 分文件，只把扩展点做成 `ui.settings.pane` slot；
+      不新增多个 pane 包（小步、少建包）；`ui-settings-provider` 先迁到新 slot。
+- [x] **B. revision 栅栏本轮做**：`settings.get` 返回 revision、`settings.set` 收 `expected_revision`（`Option`，旧客户端不传=不校验）。
+- [x] **C. 设置保持 Dialog**：与现有焦点/axe 行为一致，不做独立页面。
+- [x] **D（复评 P1-R1）edition 专属 pane 机制**：采用「`[[ui.contributions]]` 增加可选 `editions` 字段 + `zk compose` 构建期过滤」，
+      不拆 edition 专属包（`ui-settings` 单包声明全部内建 pane，配 `editions=["personal"|"enterprise"]`）；需 docs/16 + docs/24 先行（任务 0）。
 
-> 未拍板前状态保持 `draft`，不进入实现。
+> 状态保持 `draft` 直至独立评审通过（C19）。
 
 ## 8. 变更预算与拆分
 
-- 预计改动文件：生成器 1、契约 1、ui-kit 1、ui-settings 5–8、pane 包 1–2、测试 3、文档 2 → 约 15。
-- 拆分：不拆；本 spec 只做 IA/扩展点/保存语义；配置语义与能力面另立 spec（见 parity 报告 §7）。
+- 预计改动文件：生成器 1、契约 2、ui-kit 1、ui-settings 6–9、pane 包 1、store-settings-json 1、测试 3、文档 3 → 约 16–20。
+- **预算例外记录**（Lead 批准 2026-11-01，含复评 P1-R1 的 editions 机制）：模板阈值为 >10 文件或 >400 行需拆分；本 spec 虽超 10 文件，但为**同一目标**（设置信息架构 + 扩展点 + 保存语义 + edition 过滤），
+  且用户已批准「Phase 1 = 设置 IA + P0 修复 + 配置接线」的分期结构（不再拆子 spec）；按任务 0–13 分阶段可独立合并。
+- 拆分：不拆；配置语义与能力面另立 spec（见 parity 报告 §7）。
 
 ## 9. 复用与已有实现（C17）
 
-- 已搜索：`rg "settings.dialog|settings.provider|slot_binding"`；`docs/generated/CAPABILITY-INDEX.md`（ui.kit/ui.slot.* 角色）。
+- 已搜索：`rg "settings.dialog|settings.provider|slot_binding|revision"`；`docs/generated/CAPABILITY-INDEX.md`（无 `ui.*` 条目）。
 - 可复用：`@zeokeel/ui-kit`（UiProvider/Button/icons/guards）、`SlotErrorBoundary`、`useDialogFocus`、`zk compose` 的
-  `[[ui.contributions]]` 机制、`shared/contracts/ui-contributions.json` 生成物。
-- 本次新增可复用能力：`ui.settings.pane` slot 类型与 `SettingsPane` props 契约（登记在 `ui-kit/types.ts` + capability 注记）。
+  `[[ui.contributions]]` 机制、`shared/contracts/ui-contributions.json` 生成物、`store-settings-json` 原子写。
+- 本次新增可复用能力：`ui.settings.pane` slot 类型与 `SettingsPaneProps` 契约；**不登记 `@capability`**（slot 不是 Rust 能力，
+  `zk capability` 只扫 Rust `src/`），`zk capability --check` 保持绿。
 - 为什么不能复用/扩展：现有 `ui.settings` 单组件 + 单 `renderProvider` 注入无法表达多 pane 的有序贡献；
   在 `ui-settings` 内硬编码会继续违反「UI 也是包」的可替换目标。
