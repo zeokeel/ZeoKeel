@@ -73,11 +73,25 @@
         "type"
       ],
       "properties": {
+        "args": {
+          "description": "Redacted JSON arguments; empty for legacy events.",
+          "default": "",
+          "type": "string"
+        },
         "name": {
           "type": "string"
         },
         "result": {
           "type": "string"
+        },
+        "status": {
+          "description": "Terminal tool status; legacy events default to `success`.",
+          "default": "success",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ToolCallStatus"
+            }
+          ]
         },
         "type": {
           "type": "string",
@@ -103,6 +117,30 @@
         },
         "args": {
           "type": "string"
+        },
+        "auto": {
+          "description": "`true` for the always-allow auto-approval pair (no blocking).",
+          "default": false,
+          "type": "boolean"
+        },
+        "deadline_ms": {
+          "description": "Absolute deadline (ms since epoch); `0` for legacy events.",
+          "default": 0,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "metadata": {
+          "description": "Tool-declared impact surface; `None` when the tool does not declare one.",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ApprovalMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "reason": {
           "type": "string"
@@ -132,6 +170,11 @@
         },
         "decision": {
           "$ref": "#/definitions/ApprovalDecision"
+        },
+        "timed_out": {
+          "description": "`true` when the resolution is the fail-closed deadline (timeout).",
+          "default": false,
+          "type": "boolean"
         },
         "type": {
           "type": "string",
@@ -349,7 +392,7 @@
       }
     },
     "ApprovalDecision": {
-      "description": "Result of an approval request.",
+      "description": "User decision for one approval request.\n\nDefined in the tool contract because [`ApprovalGate`] returns it; the agent contract re-exports it to keep `zk_contract_agent::ApprovalDecision` working.",
       "oneOf": [
         {
           "description": "Allow exactly this call.",
@@ -359,17 +402,112 @@
           ]
         },
         {
-          "description": "Reject this call.",
+          "description": "Allow this tool for the rest of the conversation (memory only).",
+          "type": "string",
+          "enum": [
+            "allow_session"
+          ]
+        },
+        {
+          "description": "Reject this call (fail-closed default).",
           "type": "string",
           "enum": [
             "reject"
           ]
         },
         {
-          "description": "Cancel the turn.",
+          "description": "Cancel the whole turn.",
           "type": "string",
           "enum": [
             "cancel"
+          ]
+        }
+      ]
+    },
+    "ApprovalMetadata": {
+      "description": "One approval request's declared impact surface (tool-side only).\n\nThe tool that requires approval declares this via [`Tool::approval_metadata`]; the agent runtime only aggregates it. All fields are `#[serde(default)]` so older consumers can ignore the struct.",
+      "type": "object",
+      "properties": {
+        "cwd": {
+          "description": "Absolute working directory of the call.",
+          "default": "",
+          "type": "string"
+        },
+        "diff": {
+          "description": "Optional unified diff for write tools (tool-side, bounded by the tool).",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "network_targets": {
+          "description": "Network targets as `host[:port]` or `<mcp:server-id>`.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "network_undetermined": {
+          "description": "`true` when the tool cannot statically determine its network targets (e.g. a free-form shell command).",
+          "default": false,
+          "type": "boolean"
+        },
+        "read_paths": {
+          "description": "Paths the call will read (workspace-relative when possible).",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "risk": {
+          "description": "Risk level declared by the tool.",
+          "default": "medium",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ApprovalRisk"
+            }
+          ]
+        },
+        "summary": {
+          "description": "One-line action summary, e.g. `\"write notes.txt\"`.",
+          "default": "",
+          "type": "string"
+        },
+        "write_paths": {
+          "description": "Paths the call will write (workspace-relative when possible).",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ApprovalRisk": {
+      "description": "Closed risk level for one approval card.",
+      "oneOf": [
+        {
+          "description": "Read-only or trivially reversible action.",
+          "type": "string",
+          "enum": [
+            "low"
+          ]
+        },
+        {
+          "description": "Mutates workspace state.",
+          "type": "string",
+          "enum": [
+            "medium"
+          ]
+        },
+        {
+          "description": "Shell / network / external side effects.",
+          "type": "string",
+          "enum": [
+            "high"
           ]
         }
       ]
@@ -450,6 +588,39 @@
           "type": "string"
         }
       }
+    },
+    "ToolCallStatus": {
+      "description": "Terminal status of one tool call (persisted with the tool row).",
+      "oneOf": [
+        {
+          "description": "The tool completed successfully.",
+          "type": "string",
+          "enum": [
+            "success"
+          ]
+        },
+        {
+          "description": "The tool ran and failed.",
+          "type": "string",
+          "enum": [
+            "failed"
+          ]
+        },
+        {
+          "description": "The approval policy / user denied the call (tool did not run).",
+          "type": "string",
+          "enum": [
+            "denied"
+          ]
+        },
+        {
+          "description": "The turn was cancelled before or after the tool produced a result.",
+          "type": "string",
+          "enum": [
+            "cancelled"
+          ]
+        }
+      ]
     }
   }
 }

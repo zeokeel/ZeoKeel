@@ -30,6 +30,7 @@ fn dto_round_trips() {
             reasoning_tokens: 2,
             cost_micros: Some(42),
         }),
+        turn_id: "turn-1".to_owned(),
     };
     let json = serde_json::to_string(&m).unwrap();
     assert_eq!(m, serde_json::from_str::<Message>(&json).unwrap());

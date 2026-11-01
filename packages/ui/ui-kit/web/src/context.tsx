@@ -1,6 +1,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 import type {
   AppSettings,
+  ApprovalDecision,
   BootState,
   ChatMessage,
   Conversation,
@@ -55,7 +56,7 @@ export interface UiActions {
   openCommands: () => void;
   retryBoot: () => void;
   retryMessages: () => void;
-  decideApproval: (approvalId: string, decision: "approved" | "rejected") => void;
+  decideApproval: (approvalId: string, decision: ApprovalDecision) => void;
   answerQuestion: (questionId: string, answers: unknown) => void;
 }
 

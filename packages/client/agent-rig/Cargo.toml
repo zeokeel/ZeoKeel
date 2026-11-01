@@ -21,6 +21,7 @@ zk-kit-subagent = { path = "../../../crates/zk-kit-subagent" }
 schemars = { workspace = true }
 zk-kit-extractor = { path = "../../../crates/zk-kit-extractor" }
 zk-kit-events = { path = "../../../crates/zk-kit-events" }
+zk-kit-tools = { path = "../../../crates/zk-kit-tools" }
 
 [dev-dependencies]
 zk-tool-subagent = { path = "../tool-subagent" }

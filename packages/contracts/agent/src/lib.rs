@@ -10,6 +10,8 @@ use thiserror::Error;
 use zk_contract_config::AgentSettings;
 use zk_contract_tool::TurnContext;
 
+pub use zk_contract_tool::{ApprovalDecision, ApprovalMetadata, ApprovalRisk};
+
 /// One executed tool call, recorded for UI and diagnostics.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ToolCallRecord {
@@ -106,18 +108,39 @@ pub enum AgentEvent {
     /// A tool call is about to run.
     ToolCallStarted { name: String, args: String },
     /// A tool call finished (success or error text in `result`).
-    ToolCallFinished { name: String, result: String },
+    ToolCallFinished {
+        name: String,
+        result: String,
+        /// Redacted JSON arguments; empty for legacy events.
+        #[serde(default)]
+        args: String,
+        /// Terminal tool status; legacy events default to `success`.
+        #[serde(default)]
+        status: ToolCallStatus,
+    },
     /// The turn needs a user approval decision.
     ApprovalRequested {
         approval_id: String,
         tool: String,
         args: String,
         reason: String,
+        /// `true` for the always-allow auto-approval pair (no blocking).
+        #[serde(default)]
+        auto: bool,
+        /// Absolute deadline (ms since epoch); `0` for legacy events.
+        #[serde(default)]
+        deadline_ms: u64,
+        /// Tool-declared impact surface; `None` when the tool does not declare one.
+        #[serde(default)]
+        metadata: Option<ApprovalMetadata>,
     },
     /// An approval request was resolved (UI may render the outcome).
     ApprovalResolved {
         approval_id: String,
         decision: ApprovalDecision,
+        /// `true` when the resolution is the fail-closed deadline (timeout).
+        #[serde(default)]
+        timed_out: bool,
     },
     /// The agent asks the user questions and pauses until answered.
     QuestionAsked {
@@ -159,16 +182,21 @@ pub struct ApprovalRequest {
     pub reason: String,
 }
 
-/// Result of an approval request.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+/// Terminal status of one tool call (persisted with the tool row).
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
-pub enum ApprovalDecision {
-    /// Allow exactly this call.
-    AllowOnce,
-    /// Reject this call.
-    Reject,
-    /// Cancel the turn.
-    Cancel,
+pub enum ToolCallStatus {
+    /// The tool completed successfully.
+    #[default]
+    Success,
+    /// The tool ran and failed.
+    Failed,
+    /// The approval policy / user denied the call (tool did not run).
+    Denied,
+    /// The turn was cancelled before or after the tool produced a result.
+    Cancelled,
 }
 
 /// One selectable option of a user question (`ask_user_question` tool input).

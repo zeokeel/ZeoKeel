@@ -15,6 +15,7 @@ import {
   type ToolCallView,
   type Workspace,
 } from "../types";
+import { groupToolRows } from "@zeokeel/ui-kit";
 import type { UpgradeInfo } from "../upgrade";
 
 export type BootState = "loading" | "ready" | "error";
@@ -102,7 +103,7 @@ export type AppAction =
   | { type: "sidebar_toggled"; open: boolean }
   | { type: "commands_open"; open: boolean }
   | { type: "upgrade_required"; info: UpgradeInfo }
-  | { type: "approval_decided"; approvalId: string; decision: "approved" | "rejected" }
+  | { type: "approval_decided"; approvalId: string; decision: ApprovalView["decision"] }
   | { type: "question_answered"; questionId: string; answers: unknown };
 
 export function createInitialState(): AppState {
@@ -142,7 +143,7 @@ function statusOfMessage(message: Message): ChatMessage["status"] {
   return "done";
 }
 
-function toChatMessage(message: Message): ChatMessage {
+function toChatMessage(message: Message, toolCalls: ToolCallView[] = []): ChatMessage {
   return {
     id: message.id,
     role: message.role === "user" ? "user" : "assistant",
@@ -150,11 +151,34 @@ function toChatMessage(message: Message): ChatMessage {
     created_at_ms: message.created_at_ms,
     status: statusOfMessage(message),
     usage: message.usage ?? null,
-    toolCalls: [],
+    toolCalls,
     approvals: [],
     questions: [],
     error: null,
+    turnId: message.turn_id ?? "",
   };
+}
+
+function storeMessagesToChat(messages: Message[]): ChatMessage[] {
+  const grouped = groupToolRows(messages);
+  const chat = grouped.visible.map((message) =>
+    toChatMessage(message, grouped.toolsByAssistant.get(message.id) ?? []),
+  );
+  if (grouped.unassigned.length > 0) {
+    chat.push({
+      id: "unassigned-tools",
+      role: "assistant",
+      content: "",
+      created_at_ms: messages[messages.length - 1]?.created_at_ms ?? 0,
+      status: "done",
+      toolCalls: grouped.unassigned,
+      approvals: [],
+      questions: [],
+      error: null,
+      degraded: true,
+    });
+  }
+  return chat;
 }
 
 function bumpConversation(
@@ -212,20 +236,26 @@ function updateStreamingMessage(
   return { ...state, messages };
 }
 
-function applyToolFinished(message: ChatMessage, name: string, result: string): ChatMessage {
+function applyToolFinished(
+  message: ChatMessage,
+  name: string,
+  result: string,
+  args: string,
+  status: ToolCallView["status"],
+): ChatMessage {
   const runningIndex = message.toolCalls.findIndex((tool) => tool.name === name && tool.status === "running");
   if (runningIndex >= 0) {
     const toolCalls = message.toolCalls.map((tool, index) =>
-      index === runningIndex ? { ...tool, result, status: "done" as const } : tool,
+      index === runningIndex ? { ...tool, result, args: args === "" ? tool.args : args, status } : tool,
     );
     return { ...message, toolCalls };
   }
   const fallback: ToolCallView = {
     id: `${message.id}-tool-${String(message.toolCalls.length)}`,
     name,
-    args: "",
+    args,
     result,
-    status: "done",
+    status,
   };
   return { ...message, toolCalls: [...message.toolCalls, fallback] };
 }
@@ -246,7 +276,7 @@ function applyAgentEvent(state: AppState, event: AgentEvent): AppState {
               name: tool.name,
               args: tool.args,
               result: tool.result,
-              status: "done" as const,
+              status: "success" as const,
             })),
       status: "done",
       error: null,
@@ -286,8 +316,11 @@ function applyAgentEvent(state: AppState, event: AgentEvent): AppState {
   }
   if (event.type === "tool_call_finished") {
     return updateStreamingMessage(state, (message) =>
-      applyToolFinished(message, event.name, event.result),
+      applyToolFinished(message, event.name, event.result, event.args ?? "", event.status ?? "success"),
     );
+  }
+  if (event.type === "usage") {
+    return updateStreamingMessage(state, (message) => ({ ...message, usage: event.usage }));
   }
   if (event.type === "question_asked") {
     const question: QuestionView = { id: event.question_id, questions: event.questions, answers: null };
@@ -302,11 +335,12 @@ function applyAgentEvent(state: AppState, event: AgentEvent): AppState {
     }));
   }
   if (event.type === "approval_resolved") {
-    const decision = event.decision === "allow_once" ? "approved" : "rejected";
     return updateStreamingMessage(state, (message) => ({
       ...message,
       approvals: message.approvals.map((approval) =>
-        approval.id === event.approval_id ? { ...approval, decision } : approval,
+        approval.id === event.approval_id
+          ? { ...approval, decision: event.decision, timed_out: event.timed_out === true }
+          : approval,
       ),
     }));
   }
@@ -316,6 +350,9 @@ function applyAgentEvent(state: AppState, event: AgentEvent): AppState {
     tool: event.tool,
     args: event.args,
     reason: event.reason,
+    auto: event.auto === true,
+    deadline_ms: event.deadline_ms ?? 0,
+    metadata: event.metadata ?? null,
     decision: "pending",
   };
   return updateStreamingMessage(state, (message) => ({
@@ -516,8 +553,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         messages: state.streaming
-          ? [...action.messages.map(toChatMessage), ...state.messages]
-          : action.messages.map(toChatMessage),
+          ? [...storeMessagesToChat(action.messages), ...state.messages]
+          : storeMessagesToChat(action.messages),
         messagesState: "idle",
         messagesError: null,
         retryAction: null,

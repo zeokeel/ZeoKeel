@@ -1,6 +1,6 @@
 //! Workspace bash tool.
 #![forbid(unsafe_code)]
-use zk_contract_tool::{Tool, ToolError, ToolSpec, TurnContext};
+use zk_contract_tool::{ApprovalMetadata, ApprovalRisk, Tool, ToolError, ToolSpec, TurnContext};
 
 pub struct BashTool;
 #[must_use]
@@ -18,6 +18,24 @@ impl Tool for BashTool {
             mutating: true,
             requires_approval: true,
         }
+    }
+    fn approval_metadata(
+        &self,
+        args: &serde_json::Value,
+        context: &TurnContext,
+    ) -> Option<ApprovalMetadata> {
+        let command = args.get("command")?.as_str()?;
+        let summary = command.lines().next().unwrap_or_default().trim().to_owned();
+        Some(ApprovalMetadata {
+            summary: format!("run command: {summary}"),
+            cwd: args
+                .get("cwd")
+                .and_then(serde_json::Value::as_str)
+                .map_or_else(|| context.workspace_root.clone(), ToOwned::to_owned),
+            risk: ApprovalRisk::High,
+            network_undetermined: true,
+            ..ApprovalMetadata::default()
+        })
     }
     fn call(&self, _args: &str) -> Result<String, ToolError> {
         Err(ToolError::InvalidArgs(

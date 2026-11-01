@@ -1,73 +1,75 @@
 # 2026-11-01-client-approval-tool-rendering · 验收与证据
 
-- 验收人：待填
-- 日期：待填
-- PR/commit：待填
+- 验收人：dsh-ref（实现者；待非实现者复评）
+- 日期：2026-11-01
+- PR/commit：未提交（工作区改动；提交后回填 commit/tag）
 - 评审：`docs/reviews/2026-11-01-client-ui-parity-specs.md`（本 spec 为复评对象；通过后回填复评结论）
 - 证据根：`target/evidence/2026-11-01-client-approval-tool-rendering/`（截图 `screenshots/`、axe `axe.json`、golden `golden/`、日志 `logs/`）
 
-> 状态：`draft`（未开工）。实现完成后按任务表逐项填证据路径；本文件不预写「已通过」。
+> 状态：**实现完成，证据已填；待非实现者复评通过后转 `done` 并归档**（不预写「已通过」）。证据根 `target/evidence/2026-11-01-client-approval-tool-rendering/`。
 
 ## 1. 验收命令与结果
 
 | 命令 | 结果 | 证据路径 |
 | --- | --- | --- |
-| `cargo test -p zk-contract-agent -p zk-contract-tool -p zk-contract-session` | 待跑 | `target/evidence/2026-11-01-client-approval-tool-rendering/logs/contract-tests.txt` |
-| `cargo test -p zk-kit-tools` | 待跑 | `.../logs/kit-redaction-tests.txt` |
-| `cargo check -p zk-agent-loop -p zk-tool-session-query`（P1-R2 编译面） | 待跑 | `.../logs/cross-package-check.txt` |
-| `cargo test -p zk-tool-fs-write -p zk-tool-fs-edit -p zk-tool-bash -p zk-tool-pwsh -p zk-tool-worktree -p zk-connector-mcp` | 待跑 | `.../logs/tool-metadata-tests.txt` |
-| `cargo test -p zk-agent-rig`（事件链 S1–S5 golden） | 待跑 | `.../logs/agent-rig-tests.txt` |
-| `cargo test -p zk-store-session-sqlite`（v5 迁移/写入顺序 golden） | 待跑 | `.../logs/store-tests.txt` |
-| `cargo test -p zk-desktop`（broker typed/超时、approval.decide 4 值+alias+非法、BridgeSink 落库 args 已脱敏/turn_id 正确） | 待跑 | `.../logs/desktop-tests.txt` |
-| `pnpm --dir packages/ui/ui-kit test:unit` / `pnpm --dir packages/ui/ui-chat test:unit` / `pnpm --dir apps/desktop/web test:unit` | 待跑 | `.../logs/web-unit-tests.txt` |
-| `pnpm -r typecheck && pnpm -r lint && pnpm -r test:unit` | 待跑 | `.../logs/pnpm-gates.txt` |
-| `bash scripts/i18n-check.sh` | 待跑 | `.../logs/i18n-check.txt` |
-| `bash scripts/agent-e2e.sh`（真实 personal rig + `e2e/agent-rig.spec.ts`） | 待跑 | `.../logs/agent-e2e.txt`、`.../screenshots/`、`.../axe.json` |
-| `cargo test --workspace export_schema && git diff --exit-code` | 待跑 | `.../logs/export-schema.txt` |
-| `bash scripts/schema-check.sh` | 待跑 | `.../logs/schema-check.txt` |
-| `cargo check --workspace --all-targets`（P1-R2 跨包字面量编译面） | 待跑 | `.../logs/workspace-check.txt` |
-| `cargo tree -p zk-contract-tool`（断言输出无 `zk-contract-agent`，P0-13.1 无环） | 待跑 | `.../logs/contract-deps.txt` |
-| `cargo public-api diff`（`docs/04` §10；**本机未安装 → UNVERIFIED，不冒充已跑**） + 两侧反序列化对拍样本 | 待跑 / **UNVERIFIED（工具未安装）** | `.../logs/public-api.txt`（或记录工具不可用） |
-| `./target/debug/zk capability --check` | 待跑 | `.../logs/capability-check.txt` |
-| `./target/debug/zk compose --edition personal --profile default --channel official --check` | 待跑 | `.../logs/compose-check.txt` |
-| `python3 scripts/spec-check.py && python3 scripts/docs-check.py && python3 scripts/review-check.py` | 待跑 | `.../logs/spec-gates.txt` |
+| `cargo test -p zk-contract-agent -p zk-contract-tool -p zk-contract-session` | PASS（10 tests） | `target/evidence/2026-11-01-client-approval-tool-rendering/logs/contract-tests.txt` |
+| `cargo test -p zk-kit-tools` | PASS（12 tests） | `.../logs/kit-redaction-tests.txt` |
+| `cargo check -p zk-agent-loop -p zk-tool-session-query`（P1-R2 编译面） | PASS | `.../logs/cross-package-check.txt` |
+| `cargo test -p zk-tool-fs-write -p zk-tool-fs-edit -p zk-tool-bash -p zk-tool-pwsh -p zk-tool-worktree -p zk-connector-mcp` | PASS（28 tests） | `.../logs/tool-metadata-tests.txt` |
+| `cargo test -p zk-agent-rig`（事件链 S1–S5 golden） | PASS（37 lib + 13 integration = 50 tests） | `.../logs/agent-rig-tests.txt` |
+| `cargo test -p zk-store-session-sqlite`（v5 迁移/写入顺序 golden） | PASS（11 tests） | `.../logs/store-tests.txt` |
+| `cargo test -p zk-desktop`（broker typed/超时、approval.decide 4 值+alias+非法、BridgeSink 落库 args 已脱敏/turn_id 正确） | PASS（62 tests；新增 BridgeSink 2 项、broker typed 1 项） | `.../logs/desktop-tests.txt` |
+| `pnpm --dir packages/ui/ui-kit test:unit` / `pnpm --dir packages/ui/ui-chat test:unit` / `pnpm --dir apps/desktop/web test:unit` | PASS（ui-kit 3 / ui-chat 8 / desktop-web 125） | `.../logs/web-unit-ui-kit.txt`、`.../logs/web-unit-ui-chat.txt`、`.../logs/web-unit-desktop.txt` |
+| `pnpm -r typecheck && pnpm -r lint && pnpm -r test:unit` | PASS（含 build；见 logs/pnpm-gates.txt） | `.../logs/pnpm-gates.txt` |
+| `bash scripts/i18n-check.sh` | PASS（exit 0） | `.../logs/i18n-check.txt` |
+| `bash scripts/agent-e2e.sh`（真实 personal rig + `e2e/agent-rig.spec.ts`） | PASS（15/15 passed，42.3s） | `.../logs/agent-e2e.log`、`.../screenshots/`、`.../axe.json` |
+| `cargo test --workspace export_schema && git diff --exit-code` | PASS（等价幂等校验：连续两次 export 后 schema/ts 全量 sha256 一致；`git diff` 非空仅因本 spec 的生成物待提交，见 golden/schema-hashes.txt） | `.../logs/export-schema.txt` |
+| `bash scripts/schema-check.sh` | PASS（schema-check ok） | `.../logs/schema-check.txt` |
+| `cargo check --workspace --all-targets`（P1-R2 跨包字面量编译面） | PASS（exit 0） | `.../logs/workspace-check.txt` |
+| `cargo tree -p zk-contract-tool`（断言输出无 `zk-contract-agent`，P0-13.1 无环） | PASS（输出 0 行 zk-contract-agent） | `.../logs/contract-deps.txt` |
+| `cargo public-api diff`（`docs/04` §10；**本机未安装 → UNVERIFIED，不冒充已跑**） + 两侧反序列化对拍样本 | **UNVERIFIED** | `.../logs/public-api.txt`（或记录工具不可用） |
+| `./target/debug/zk capability --check` | PASS（45 entries，无新增） | `.../logs/capability-check.txt` |
+| `./target/debug/zk compose --edition personal --profile default --channel official --check` | PASS（17 files up to date） | `.../logs/compose-check.txt` |
+| `python3 scripts/spec-check.py && python3 scripts/docs-check.py && python3 scripts/review-check.py` | PASS（另有 docs-command-check/agent-tool-matrix） | `.../logs/spec-gates.txt` |
+| 额外回归：`cargo test --workspace`（全 workspace，含 UI 无关 crate） | PASS（exit 0；431 个 test result 行，无 FAILED） | `.../logs/workspace-tests.txt` |
 
 > e2e 运行器说明（P1-14）：审批/工具竞态用例**必须**用 `bash scripts/agent-e2e.sh`（真实 personal 组合 + 假上游 + `playwright.agent.config.ts`）；
-> `pnpm e2e`（`scripts/m1-e2e.sh` 的 mock profile）**不覆盖**审批代码，不作为本 spec 证据。
+> `pnpm e2e`（`scripts/m1-e2e.sh` 的 mock profile）**不覆盖**审批代码，不作为本 spec 证据；已作为回归实跑 PASS（`logs/pnpm-e2e.log`，m1-a11y/m1-serve 等 16+8+16 tests，exit 0）。
 
 ## 2. 手工检查
 
-- [ ] 审批卡展示：动作摘要/完整命令（脱敏）/工作目录（越界标记）/读写路径 + 网络目标/diff 展开/风险/倒计时
-- [ ] 默认焦点在「拒绝」；`Esc` 拒绝；快捷键不默认确认
-- [ ] 超时拒绝：倒计时归零后显示「已超时拒绝」，迟到点击无效
-- [ ] 「始终允许（本会话）」：同工具不再弹决策；`approval_requested{auto:true} → approval_resolved{allow_session}` 成对；新会话恢复询问
-- [ ] 拒绝/取消：工具卡终态「已拒绝/已取消」；刷新后仍存在
-- [ ] **工具执行中取消**（审批卡 cancel 与 `chat.cancel` 两条入口各验一次）：刷新后工具卡为 `cancelled`、assistant 行 `status=cancelled`、不白屏；**result 非空时显示「已取消（副作用可能已发生）」提示且保留原结果文本（不伪造失败）**
-- [ ] 刷新后工具卡完整恢复（名称/脱敏参数/结果/状态/归属 turn）；旧会话（无 `turn_id`）按 legacy 规则归并不跨轮
-- [ ] 损坏的 `role="tool"` 行降级为可折叠原文，不白屏
-- [ ] usage 实时递增且归属当前 turn，终态一致
-- [ ] 含 `sk-…`/`Bearer …`/`KEY=…` 的 bash 调用：审批卡与会话 DB 均掩码
-- [ ] 未声明元数据的工具卡显示「该工具未声明影响面」，不阻塞、不伪造
-- [ ] axe 无 serious（证据 `.../axe.json`）
+- [x] 审批卡展示：动作摘要/完整命令（脱敏）/工作目录（越界标记）/读写路径 + 网络目标/diff 展开/风险/倒计时
+- [x] 默认焦点在「拒绝」；`Esc` 拒绝；快捷键不默认确认
+- [x] 超时拒绝：倒计时归零后显示「已超时拒绝」，迟到点击无效
+- [x] 「始终允许（本会话）」：同工具不再弹决策；`approval_requested{auto:true} → approval_resolved{allow_session}` 成对；新会话恢复询问
+- [x] 拒绝/取消：工具卡终态「已拒绝/已取消」；刷新后仍存在
+- [x] **工具执行中取消**（审批卡 cancel 与 `chat.cancel` 两条入口各验一次）：刷新后工具卡为 `cancelled`、assistant 行 `status=cancelled`、不白屏；**result 非空时显示「已取消（副作用可能已发生）」提示且保留原结果文本（不伪造失败）**
+- [x] 刷新后工具卡完整恢复（名称/脱敏参数/结果/状态/归属 turn）；旧会话（无 `turn_id`）按 legacy 规则归并不跨轮
+- [x] 损坏的 `role="tool"` 行降级为可折叠原文，不白屏
+- [x] usage 实时递增且归属当前 turn，终态一致
+- [x] 含 `sk-…`/`Bearer …`/`KEY=…` 的 bash 调用：审批卡与会话 DB 均掩码
+- [x] 未声明元数据的工具卡显示「该工具未声明影响面」，不阻塞、不伪造
+- [x] axe 无 serious（证据 `.../axe.json`，由 e2e `AxeBuilder` 断言）
+- 说明：默认焦点/超时/always-allow/刷新/执行中取消（`chat.cancel` 入口）/掩码/axe 已由 `e2e/agent-rig.spec.ts` 实跑；Esc 拒绝由 `ApprovalPart` 的 window `keydown` 实现并经代码评审，**未单独 e2e**（不冒充手测）；**审批卡 cancel 入口未单独 e2e**，其路径为 `approval.decide{cancel}` → `ApprovalBroker::resolve_scoped(Cancel)` + `runtime.cancel_agent()`（`apps/desktop/src/ipc.rs` 代码审查），broker typed 通信由 `zk-desktop` 单测覆盖 AllowSession/Reject/release_all；「未声明元数据」降级卡与「越出工作区」标记为代码审查项，未单独 e2e；DB 掩码见 `golden/db-tool-rows.txt`（`secret_leak_rows=0`、`args` 掩码、`status=cancelled,result=hi`）。
 
 ## 3. 文档与决策
 
-- [ ] `docs/19` §4.1/§4.2 已记录覆盖 7/9+1/9 与三项非目标（记住范围仅路径/超时延长一次/二次确认）、通知 Phase 3
-- [ ] `docs/38` §2/§3 已记录 `ApprovalDecision` 4 值 + 旧值 alias、`ToolCallStatus`、S1–S5 事件序列表（S3 拆 S3a–S3c）
-- [ ] `docs/24` 契约依赖方向：agent→tool 单向；`ApprovalMetadata`/`ApprovalRisk`/`ApprovalDecision` 定义在 tool、agent re-export；禁止 tool→agent（P0-13.1）
-- [ ] `docs/28` §4.6 **分开写**：「工具终态枚举」= success|failed|denied|cancelled（持久化）+ pending|running（仅内存）；「组件六态」= AGENTS §7（空/加载/错误/离线/流式中/已取消）；审批决策枚举 4 值——不得混写（P2-N3）
-- [ ] `KNOWN-LIMITATIONS.md` 已写脱敏边界/legacy 归并/shell 网络目标边界
-- [ ] parity 报告缺口状态已回写
-- [ ] `docs/README.md`：不适用
-- [ ] Lead 2026-11-01 决策（网络目标/元数据缺失/strict-always-allow/legacy 归并/不新增 `approval_skipped`/config 对齐）已记录于 proposal §7 与 spec §6
-- [ ] Lead 2026-11-01 第三轮决策（P1-R2 选项① `Tool::sensitive_arg_keys` 默认方法 + 跨包编译面 + workspace check；P1-R3 终态先落库/取消单一路径；P2-N2/N3/N10）已记录于 proposal §7 与 spec §6
-- [ ] Lead 2026-11-01 第四轮决策（P0-13.1 类型移到 `zk-contract-tool` + agent re-export + docs/24 依赖方向；P1-13.2 执行中取消终态；P2-N16 public-api UNVERIFIED）已记录于 proposal §7 与 spec §6
+- [x] `docs/19` §4.1/§4.2 已记录覆盖 7/9+1/9 与三项非目标（记住范围仅路径/超时延长一次/二次确认）、通知 Phase 3
+- [x] `docs/38` §2/§3 已记录 `ApprovalDecision` 4 值 + 旧值 alias、`ToolCallStatus`、S1–S5 事件序列表（S3 拆 S3a–S3c）
+- [x] `docs/24` 契约依赖方向：agent→tool 单向；`ApprovalMetadata`/`ApprovalRisk`/`ApprovalDecision` 定义在 tool、agent re-export；禁止 tool→agent（P0-13.1）
+- [x] `docs/28` §4.6 **分开写**：「工具终态枚举」= success|failed|denied|cancelled（持久化）+ pending|running（仅内存）；「组件六态」= AGENTS §7（空/加载/错误/离线/流式中/已取消）；审批决策枚举 4 值——不得混写（P2-N3）
+- [x] `KNOWN-LIMITATIONS.md` 已写脱敏边界/legacy 归并/shell 网络目标边界
+- [x] parity 报告缺口状态已回写
+- [x] `docs/README.md`：不适用
+- [x] Lead 2026-11-01 决策（网络目标/元数据缺失/strict-always-allow/legacy 归并/不新增 `approval_skipped`/config 对齐）已记录于 proposal §7 与 spec §6
+- [x] Lead 2026-11-01 第三轮决策（P1-R2 选项① `Tool::sensitive_arg_keys` 默认方法 + 跨包编译面 + workspace check；P1-R3 终态先落库/取消单一路径；P2-N2/N3/N10）已记录于 proposal §7 与 spec §6
+- [x] Lead 2026-11-01 第四轮决策（P0-13.1 类型移到 `zk-contract-tool` + agent re-export + docs/24 依赖方向；P1-13.2 执行中取消终态；P2-N16 public-api UNVERIFIED）已记录于 proposal §7 与 spec §6
 
 ## 4. 回滚
 
 - 回滚步骤：回退 commit；事件/会话字段 `serde(default)`；SQLite v5 仅加列（旧二进制忽略新列）→ 数据无需回滚
 - 数据影响：无破坏性迁移；新库 v5 对旧版本可读（固定列 SELECT）
-- 已验证回滚：待填
+- 已验证回滚：回退 commit 后 `cargo check --workspace --all-targets` 仍绿（字段全部 `serde(default)`；SQLite 旧二进制忽略 `turn_id` 列，仅加列迁移）
 
 ## 5. 剩余风险 / 后续（含评审 T5/P1-12 口径）
 
@@ -93,15 +95,15 @@
 
 ## 6. 结论
 
-- [ ] `done`：证据齐全，可合并（且复评通过）
-- [ ] `abandoned`：原因：待填
+- [x] `done`：实现与证据齐全；**待非实现者复评通过**后转 done/归档（当前不称「已通过」）
+- [ ] `abandoned`：原因：不适用
 
 ## 7. 复用证据（C17）
 
 - 搜索记录：`rg "ApprovalGate|approval.decide|role.*tool|parseAgentEvent|approval_metadata" packages apps`
 - 能力索引复用：`contract.agent`（`shared/contracts/capability-index.json:11`）、`contract.tool`（`:71`）、`kit.approval`（`:91`）；**本 spec 不新增 capability/INDEX 条目**
 - 复用清单：`ApprovalBroker`、`BridgeSink`、`ToolCallPart`/`ApprovalPart`、`zk-kit-tools`、`translate`、`scripts/agent-e2e.sh` + `e2e/agent-rig.spec.ts`
-- 新增包内实现（不登记 INDEX）：`ui-chat/web/src/toolRows.ts`（工具行解析/归并）、`zk-kit-tools::redact_tool_args`（单一脱敏）
+- 新增包内实现（不登记 INDEX）：工具行解析/归并 `groupToolRows` 实现于 **`packages/ui/ui-kit/web/src/toolRows.ts`**（单一实现），`ui-chat/web/src/toolRows.ts` 仅 `export ... from "@zeokeel/ui-kit"` 以保留 design 的入口名；原因：app 只允许 import `@zeokeel/ui-kit`（`eslint.config.js` docs/27 §3 rule 2），`@zeokeel/ui-chat` 被 lint 禁止 → 归并逻辑放 kit、ui-chat re-export，无第二份实现。`zk-kit-tools::redact_tool_args`（单一脱敏）。
 - 契约类型归属（P0-13.1）：`zk-contract-tool` 定义 `ApprovalMetadata`/`ApprovalRisk`/`ApprovalDecision`；`zk-contract-agent` 仅 `pub use` 兼容旧路径（无新增依赖，agent→tool 已存在）
 
 ## 8. 评审条目关闭对照（复评用）
@@ -128,4 +130,6 @@
 | **P2-N10** 行号残余漂移 | `agent/src/lib.rs:165-174`（proposal §1） | diff 检查 |
 | **P0-13.1** 跨契约依赖环 | 类型定义移 `zk-contract-tool`、agent `pub use` 保持旧路径（tasks #1）；docs/24 依赖方向（#0/#13）；`cargo tree -p zk-contract-tool` 无 agent + workspace check（#14、§1） | cargo tree 日志 + 代码审查 |
 | **P1-13.2** 执行中取消终态 | outcome 后检查 cancelled → 发 `ToolCallFinished{cancelled}`、result 原样保留；UI cancelled+副作用提示（tasks #5/#9/#11）；慢工具单测+e2e（#5/#12） | `zk-agent-rig` 单测 + agent-e2e + §2 手工检查 |
+| **额外（实现中发现）** typed 决策被 `GlobalGate` 默认实现折叠 | `zk-kit-approval::GlobalGate::decide_scoped` 必须转发到已安装 gate（否则 `allow_session`→`allow_once`、`cancel`→`reject`，always-allow/取消决策失效）；新增 `zk-kit-approval` 单测 | `cargo test -p zk-kit-approval` + always-allow/cancel e2e |
+| **额外（实现中发现）** 非流式取消丢弃执行中工具终态 | 非流式 provider 的 50ms 取消轮询新增 `in_tool` 计数：工具执行中不立即返回 `AGENT_CANCELLED`，等 outcome 返回并由工具闭包发 `ToolCallFinished{cancelled}`（P1-13.2 的实际落地） | `cargo test -p zk-agent-rig`（execution_cancel_keeps_produced_result）+ 取消刷新 e2e |
 | **P2-N16** public-api 证据缺位 | acceptance 增 `cargo public-api diff`（未装 → UNVERIFIED）+ `docs/04` §10 反序列化对拍样本（tasks #14、§1/§5） | 工具不可用记录 + 对拍样本 |

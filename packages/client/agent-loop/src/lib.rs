@@ -101,6 +101,8 @@ impl AgentLoop {
                 sink.emit(AgentEvent::ToolCallFinished {
                     name: FS_READ.to_owned(),
                     result: result.clone(),
+                    args: args.to_owned(),
+                    status: zk_contract_agent::ToolCallStatus::Success,
                 });
                 let text = format!("{FS_READ} 返回:\n{result}");
                 (
@@ -117,6 +119,8 @@ impl AgentLoop {
                 sink.emit(AgentEvent::ToolCallFinished {
                     name: FS_READ.to_owned(),
                     result: result.clone(),
+                    args: args.to_owned(),
+                    status: zk_contract_agent::ToolCallStatus::Failed,
                 });
                 let text = format!("调用 {FS_READ} 失败: {result}");
                 (

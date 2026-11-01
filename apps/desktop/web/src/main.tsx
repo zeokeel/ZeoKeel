@@ -6,6 +6,7 @@ import "@fontsource/jetbrains-mono/500.css";
 import { Component, StrictMode, useEffect, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { translate } from "./i18n";
 import "./app.css";
 import { createTransport } from "./transport";
 
@@ -44,9 +45,9 @@ class StartupErrorBoundary extends Component<{ children: ReactNode }, { message:
     if (this.state.message !== null) {
       return (
         <div style={{ padding: 24 }}>
-          <h1 style={{ fontSize: 16 }}>ZeoKeel 启动失败</h1>
+          <h1 style={{ fontSize: 16 }}>{translate("zh-CN", "bootErrorTitle")}</h1>
           <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 12 }}>{this.state.message}</pre>
-          <p style={{ fontSize: 12 }}>请截图此页面并反馈问题。</p>
+          <p style={{ fontSize: 12 }}>{translate("zh-CN", "bootErrorFeedback")}</p>
         </div>
       );
     }

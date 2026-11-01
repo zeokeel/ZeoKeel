@@ -235,6 +235,11 @@ protected = false
 "zk.contract.llm" = "zk-contract-llm"
 ```
 
+**契约依赖方向（P0-13.1）**：契约 crate 只允许单向依赖（`04` §1「只能向下依赖」）。当前 `zk-contract-agent → zk-contract-tool` 为唯一方向；
+审批类型（`ApprovalMetadata`/`ApprovalRisk`/`ApprovalDecision`）定义在**底层 `zk-contract-tool`**，`zk-contract-agent` 仅 `pub use` 保持
+`zk_contract_agent::*` 旧路径兼容；**禁止** `zk-contract-tool → zk-contract-agent`（否则 Cargo 环、不可编译）。证据：`cargo tree -p zk-contract-tool`
+输出无 `zk-contract-agent`；`cargo check --workspace --all-targets`。
+
 规则：`[roles]` 全量表见 §1.5；`[contracts]` 是契约 id ↔ crate 名的唯一映射，双向校验（`02` §5）；
 `editions/personal-only.toml` 只列包 id；未知键/未登记角色/未登记契约 = error。
 

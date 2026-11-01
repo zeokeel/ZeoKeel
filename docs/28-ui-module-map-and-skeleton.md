@@ -96,7 +96,12 @@
 
 1. **Plan**：M1 不做 plan mode；步骤卡降级为 “Todo · M2” 占位（DSH 的 plan 是文档审阅，不是步骤数组）。
 2. **Approval**：M1 inline 占位（允许一次/拒绝），post-M1 再谈 composer takeover/持久策略/超时。
-3. **工具/审批 DTO**：以 `docs/19` 为准 `pending/running/success/failed/cancelled`；审批决策后续 `allowed-once/rejected`，M1 API 保持 `approved` 并映射。
+3. **工具/审批 DTO（2026-11-01 approval spec 后）**——两个概念分开写，不得混用：
+   - **工具终态枚举**（持久化 `ToolCallFinished.status`）：`success | failed | denied | cancelled`；`pending | running` **只在流式内存态**存在，不落库。
+     会话 `Message.turn_id` 记录归属 turn（SQLite v5），工具行刷新后按 turn 归并；legacy 空 `turn_id` 行归入下一 assistant（见 KNOWN-LIMITATIONS）。
+   - **组件六态**（`AGENTS.md` §7 / `docs/18`）：空/加载/错误/离线/流式中/已取消——这是 UI 屏幕状态机，与工具终态枚举不是同一维度。
+   - **审批决策枚举**：`allow_once | allow_session | reject | cancel`（宿主兼容旧 `approved/rejected`）；映射与事件序列表唯一真源 =
+     `specs/changes/2026-11-01-client-approval-tool-rendering/design.md` §2.0。M1 起 API 不再要求 `approved` 字符串。
 4. **Jobs/Subagent/Deliverables**：骨架入口灰显/隐藏，不实现；不建包。
 5. **Composer**：M1 不做 deliveryMode/queue/attachments 完整状态，类型只预留。
 6. **Slot/M1 范围**：M1 仍只有 `ui.sessions/ui.chat/ui.settings` 三个 active slot；`ui.shell/ui.inspector/ui.commands` 是骨架，不接入 M1。

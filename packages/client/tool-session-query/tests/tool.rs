@@ -27,6 +27,7 @@ fn searches_session_history() {
             created_at_ms: 1,
             status: "done".to_owned(),
             usage: None,
+            turn_id: "turn-1".to_owned(),
         })
         .unwrap();
     zk_kit_session::set_global(Arc::new(store));

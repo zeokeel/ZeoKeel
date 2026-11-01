@@ -21,6 +21,7 @@ import {
 } from "../protocol";
 import type {
   AppSettings,
+  ApprovalDecision,
   Conversation,
   SettingsSaveOutcome,
   Transport,
@@ -100,7 +101,7 @@ export interface AppController {
   saveSettings: (settings: AppSettings) => Promise<SettingsSaveOutcome>;
   reloadSettings: () => Promise<AppSettings>;
   applyServerUrl: (serverUrl: string) => void;
-  decideApproval: (approvalId: string, decision: "approved" | "rejected") => void;
+  decideApproval: (approvalId: string, decision: ApprovalDecision) => void;
   answerQuestion: (questionId: string, answers: unknown) => void;
   setSettingsOpen: (open: boolean) => void;
   toggleSidebar: () => void;
@@ -704,7 +705,7 @@ export function useAppController(transport: Transport): AppController {
   );
 
   const decideApproval = useCallback(
-    (approvalId: string, decision: "approved" | "rejected") => {
+    (approvalId: string, decision: ApprovalDecision) => {
       void (async () => {
         try {
           await transport.call("approval.decide", {

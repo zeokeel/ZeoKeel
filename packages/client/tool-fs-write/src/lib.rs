@@ -1,6 +1,6 @@
 //! Workspace file write tool.
 #![forbid(unsafe_code)]
-use zk_contract_tool::{Tool, ToolError, ToolSpec, TurnContext};
+use zk_contract_tool::{ApprovalMetadata, ApprovalRisk, Tool, ToolError, ToolSpec, TurnContext};
 
 pub struct FsWriteTool;
 #[must_use]
@@ -17,6 +17,25 @@ impl Tool for FsWriteTool {
             mutating: true,
             requires_approval: true,
         }
+    }
+    fn approval_metadata(
+        &self,
+        args: &serde_json::Value,
+        context: &TurnContext,
+    ) -> Option<ApprovalMetadata> {
+        let path = args.get("path")?.as_str()?;
+        let content = args.get("content")?.as_str()?;
+        let target = zk_kit_tools::safe_path(context, path).ok()?;
+        let relative = zk_kit_tools::workspace_relative(context, &target);
+        let previous = zk_kit_tools::read_for_diff(&target);
+        Some(ApprovalMetadata {
+            summary: format!("write {relative}"),
+            cwd: context.workspace_root.clone(),
+            write_paths: vec![relative],
+            risk: ApprovalRisk::Medium,
+            diff: zk_kit_tools::approval_diff(previous.as_deref(), content),
+            ..ApprovalMetadata::default()
+        })
     }
     fn call(&self, _args: &str) -> Result<String, ToolError> {
         Err(ToolError::InvalidArgs(

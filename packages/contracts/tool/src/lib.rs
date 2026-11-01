@@ -24,6 +24,82 @@ pub struct ToolSpec {
     pub requires_approval: bool,
 }
 
+/// One approval request's declared impact surface (tool-side only).
+///
+/// The tool that requires approval declares this via
+/// [`Tool::approval_metadata`]; the agent runtime only aggregates it. All
+/// fields are `#[serde(default)]` so older consumers can ignore the struct.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ApprovalMetadata {
+    /// One-line action summary, e.g. `"write notes.txt"`.
+    #[serde(default)]
+    pub summary: String,
+    /// Absolute working directory of the call.
+    #[serde(default)]
+    pub cwd: String,
+    /// Paths the call will read (workspace-relative when possible).
+    #[serde(default)]
+    pub read_paths: Vec<String>,
+    /// Paths the call will write (workspace-relative when possible).
+    #[serde(default)]
+    pub write_paths: Vec<String>,
+    /// Network targets as `host[:port]` or `<mcp:server-id>`.
+    #[serde(default)]
+    pub network_targets: Vec<String>,
+    /// `true` when the tool cannot statically determine its network targets
+    /// (e.g. a free-form shell command).
+    #[serde(default)]
+    pub network_undetermined: bool,
+    /// Risk level declared by the tool.
+    #[serde(default)]
+    pub risk: ApprovalRisk,
+    /// Optional unified diff for write tools (tool-side, bounded by the tool).
+    #[serde(default)]
+    pub diff: Option<String>,
+}
+
+/// Closed risk level for one approval card.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalRisk {
+    /// Read-only or trivially reversible action.
+    Low,
+    /// Mutates workspace state.
+    #[default]
+    Medium,
+    /// Shell / network / external side effects.
+    High,
+}
+
+/// User decision for one approval request.
+///
+/// Defined in the tool contract because [`ApprovalGate`] returns it; the agent
+/// contract re-exports it to keep `zk_contract_agent::ApprovalDecision` working.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalDecision {
+    /// Allow exactly this call.
+    #[serde(alias = "approved")]
+    AllowOnce,
+    /// Allow this tool for the rest of the conversation (memory only).
+    AllowSession,
+    /// Reject this call (fail-closed default).
+    #[serde(alias = "rejected")]
+    Reject,
+    /// Cancel the whole turn.
+    Cancel,
+}
+
+impl ApprovalDecision {
+    /// Whether this decision lets the tool run.
+    #[must_use]
+    pub fn is_allowed(self) -> bool {
+        matches!(self, Self::AllowOnce | Self::AllowSession)
+    }
+}
+
 /// Per-turn workspace context passed to tools.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TurnContext {
@@ -57,6 +133,24 @@ pub trait ApprovalGate: Send + Sync {
     /// Ask the user; implementations may block. Fail closed on timeout/error.
     fn decide(&self, approval_id: &str, tool: &str, args: &serde_json::Value, reason: &str)
         -> bool;
+
+    /// Typed variant of [`ApprovalGate::decide`] used by the agent runtime.
+    ///
+    /// Defaults to mapping the legacy boolean onto `AllowOnce`/`Reject`, so
+    /// existing third-party gates keep working unchanged.
+    fn decide_scoped(
+        &self,
+        approval_id: &str,
+        tool: &str,
+        args: &serde_json::Value,
+        reason: &str,
+    ) -> ApprovalDecision {
+        if self.decide(approval_id, tool, args, reason) {
+            ApprovalDecision::AllowOnce
+        } else {
+            ApprovalDecision::Reject
+        }
+    }
 }
 
 /// Deny everything (safe default).
@@ -78,6 +172,20 @@ impl ApprovalGate for DenyAll {
 pub trait Tool: Send + Sync {
     /// Static description.
     fn spec(&self) -> ToolSpec;
+    /// Argument keys whose values must be masked in approval cards and persisted
+    /// tool rows (recursively matched by key name). Defaults to none.
+    fn sensitive_arg_keys(&self) -> &'static [&'static str] {
+        &[]
+    }
+    /// Declared impact surface for an approval card. Defaults to `None` (the UI
+    /// then shows "no declared impact" instead of guessing).
+    fn approval_metadata(
+        &self,
+        _args: &serde_json::Value,
+        _context: &TurnContext,
+    ) -> Option<ApprovalMetadata> {
+        None
+    }
     /// Execute with a raw argument string; implementations validate and parse.
     fn call(&self, args: &str) -> Result<String, ToolError>;
 

@@ -1,7 +1,7 @@
 //! Git worktree helper (argv-only, workspace-confined).
 #![forbid(unsafe_code)]
 use std::process::Command;
-use zk_contract_tool::{Tool, ToolError, ToolSpec, TurnContext};
+use zk_contract_tool::{ApprovalMetadata, ApprovalRisk, Tool, ToolError, ToolSpec, TurnContext};
 
 pub struct WorktreeTool;
 #[must_use]
@@ -50,6 +50,36 @@ impl Tool for WorktreeTool {
             mutating: true,
             requires_approval: true,
         }
+    }
+    fn approval_metadata(
+        &self,
+        args: &serde_json::Value,
+        context: &TurnContext,
+    ) -> Option<ApprovalMetadata> {
+        let action = args.get("action")?.as_str()?;
+        let path = args.get("path").and_then(serde_json::Value::as_str);
+        let target = path.map_or_else(
+            || context.workspace_root.clone(),
+            |relative| {
+                format!(
+                    "{}/{}",
+                    context.workspace_root.trim_end_matches('/'),
+                    relative
+                )
+            },
+        );
+        let (read_paths, write_paths) = match action {
+            "list" => (vec![target.clone()], Vec::new()),
+            _ => (Vec::new(), vec![target.clone()]),
+        };
+        Some(ApprovalMetadata {
+            summary: format!("worktree {action} {target}"),
+            cwd: context.workspace_root.clone(),
+            read_paths,
+            write_paths,
+            risk: ApprovalRisk::High,
+            ..ApprovalMetadata::default()
+        })
     }
     fn call(&self, _args: &str) -> Result<String, ToolError> {
         Err(ToolError::InvalidArgs(

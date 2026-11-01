@@ -1,6 +1,6 @@
 //! Workspace string-replace editor.
 #![forbid(unsafe_code)]
-use zk_contract_tool::{Tool, ToolError, ToolSpec, TurnContext};
+use zk_contract_tool::{ApprovalMetadata, ApprovalRisk, Tool, ToolError, ToolSpec, TurnContext};
 
 pub struct FsEditTool;
 #[must_use]
@@ -18,6 +18,25 @@ impl Tool for FsEditTool {
             mutating: true,
             requires_approval: true,
         }
+    }
+    fn approval_metadata(
+        &self,
+        args: &serde_json::Value,
+        context: &TurnContext,
+    ) -> Option<ApprovalMetadata> {
+        let path = args.get("path")?.as_str()?;
+        let old_string = args.get("old_string")?.as_str()?;
+        let new_string = args.get("new_string")?.as_str()?;
+        let target = zk_kit_tools::safe_path(context, path).ok()?;
+        let relative = zk_kit_tools::workspace_relative(context, &target);
+        Some(ApprovalMetadata {
+            summary: format!("edit {relative}"),
+            cwd: context.workspace_root.clone(),
+            write_paths: vec![relative],
+            risk: ApprovalRisk::Medium,
+            diff: zk_kit_tools::approval_diff(Some(old_string), new_string),
+            ..ApprovalMetadata::default()
+        })
     }
     fn call(&self, _args: &str) -> Result<String, ToolError> {
         Err(ToolError::InvalidArgs(

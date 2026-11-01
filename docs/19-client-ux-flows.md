@@ -123,11 +123,21 @@ Boot
 | 决策 | 允许一次 / 始终允许（本会话）/ 拒绝；默认焦点在"拒绝" |
 | 记住范围 | 仅本会话、仅该工具、仅该路径；不提供全局永久允许 |
 
+> 状态：**Phase 1 已实现子集**（`specs/changes/2026-11-01-client-approval-tool-rendering`，2026-11-01；
+> 证据 `target/evidence/2026-11-01-client-approval-tool-rendering/`）。覆盖 = **7/9 行完整**（动作摘要、工具/命令、工作目录、
+> 读写范围含网络目标、diff 预览、风险级别、决策）+ **1/9 行部分**（超时：剩余时间 + 超时默认拒绝；「延长一次」未做）+
+> **1/9 行非目标**（记住范围选择器，含「仅该路径」scope）。**非目标（Phase 2/3）**：§4.2「危险操作二次确认」、
+> §4.2「失焦通知/托盘红点/超时前 60s 通知」、「超时延长一次」、「记住范围选择器」；不提供跨重启/全局永久允许。
+> 决策 wire：`allow_once | allow_session | reject | cancel`（宿主兼容旧 `approved/rejected`）；默认焦点「拒绝」、Esc=拒绝；
+> 超时=`reject+timed_out`、显式取消=`cancel`、断线/窗口关闭=`reject`（唯一映射见 approval design §2.0）。
+> 「始终允许（本会话）」按 `(conversation, tool)` 进程内记忆，命中时成对发 `approval_requested{auto:true} → approval_resolved{allow_session}`。
+
 ### 4.2 行为
 
 - 审批挂起时窗口失焦 → 系统通知 + 托盘红点；10 min 超时前 60s 再通知。
 - 危险操作（删除、写入工作区外、shell 网络）二次确认；快捷键不可默认确认。
-- 审批决策写入 golden trace：`approval.requested → approved/rejected/timeout → tool.result`。
+- 审批决策写入 golden trace：`approval.requested → approval.resolved{decision, timed_out} → tool_call.started(可选) → tool_call.finished{status}`；
+  always-allow 命中为成对 `requested{auto:true} → resolved{allow_session}`、不阻塞；策略短路（config R2）不发任何审批事件。
 - 读屏：dialog role、aria-labelledby、焦点陷阱、Esc=拒绝；axe 无 serious。
 
 ## 5. 更新 UX 状态机（按 edition 分）

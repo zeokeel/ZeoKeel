@@ -197,3 +197,38 @@ fn glob_and_grep_find_workspace_files() {
     let grepped = zk_kit_tools::grep_files(&context, "secret", None, Some("*.rs")).unwrap();
     assert!(grepped.contains("src/main.rs:2"));
 }
+
+#[test]
+fn redacts_declared_keys_and_token_shapes() {
+    let args = serde_json::json!({
+        "command": "DEEPSEEK_API_KEY=sk-abcdefgh12345678 printf hi && curl -H 'Authorization: Bearer abcdefgh12345678'",
+        "token": "plain-secret",
+        "nested": {"api_key": "another-secret", "note": "keep me"},
+    });
+    let redacted = zk_kit_tools::redact_tool_args(&["my_extra_key"], &args);
+    let serialized = serde_json::to_string(&redacted).unwrap();
+    assert!(!serialized.contains("abcdefgh12345678"));
+    assert!(!serialized.contains("plain-secret"));
+    assert!(!serialized.contains("another-secret"));
+    assert!(serialized.contains("keep me"));
+    assert!(serialized.contains("***"));
+    assert!(serialized.contains("DEEPSEEK_API_KEY=***"));
+}
+
+#[test]
+fn builds_bounded_diff_and_relative_paths() {
+    let (dir, context) = ctx();
+    let target = zk_kit_tools::safe_path(&context, "a/b.txt").unwrap();
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    std::fs::write(&target, "one\ntwo\n").unwrap();
+    assert_eq!(
+        zk_kit_tools::workspace_relative(&context, &target),
+        "a/b.txt"
+    );
+    let diff = zk_kit_tools::approval_diff(Some("one\ntwo\n"), "one\nthree\n");
+    let diff = diff.unwrap();
+    assert!(diff.contains("-two"));
+    assert!(diff.contains("+three"));
+    assert!(zk_kit_tools::approval_diff(None, "x").is_none());
+    assert!(dir.exists());
+}

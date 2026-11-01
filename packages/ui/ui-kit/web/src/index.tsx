@@ -11,6 +11,7 @@ export * from "./primitives";
 export * from "./guards";
 export * from "./boundary";
 export * from "./focus";
+export * from "./toolRows";
 
 /** ui-kit is a non-slot library (`ui.kit` role); it contributes no components. */
 export const components = {} as const;

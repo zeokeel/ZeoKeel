@@ -4,6 +4,8 @@
 #![forbid(unsafe_code)]
 
 use std::path::{Component, Path, PathBuf};
+
+use regex::Regex;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -15,6 +17,23 @@ pub const MAX_OUTPUT_BYTES: usize = 64 * 1024;
 pub const MAX_WRITE_BYTES: usize = 512 * 1024;
 /// Default command timeout.
 pub const DEFAULT_TIMEOUT_MS: u64 = 30_000;
+/// Bounded approval diff size (bytes).
+pub const MAX_APPROVAL_DIFF_BYTES: u64 = 256 * 1024;
+
+/// Argument keys always masked in approval cards and persisted tool rows, in
+/// addition to the keys a tool declares via `Tool::sensitive_arg_keys`.
+const BUILTIN_SENSITIVE_KEYS: &[&str] = &[
+    "api_key",
+    "apikey",
+    "api-key",
+    "access_token",
+    "token",
+    "secret",
+    "client_secret",
+    "password",
+    "authorization",
+    "credential",
+];
 
 /// Resolve the workspace root from a turn context.
 pub fn workspace_root(context: &TurnContext) -> Result<PathBuf, ToolError> {
@@ -383,4 +402,162 @@ pub fn grep_files(
     } else {
         Ok(truncate(out.join("\n")))
     }
+}
+
+/// Mask sensitive argument values for display and persistence.
+///
+/// `sensitive_keys` comes from [`zk_contract_tool::Tool::sensitive_arg_keys`];
+/// the built-in key list above is always applied. Object keys are matched
+/// case-insensitively and recursively, then common token shapes are masked
+/// inside every remaining string (the rest of the text stays readable).
+#[must_use]
+pub fn redact_tool_args(sensitive_keys: &[&str], args: &serde_json::Value) -> serde_json::Value {
+    static KEY_VALUE: std::sync::OnceLock<Option<Regex>> = std::sync::OnceLock::new();
+    static BEARER: std::sync::OnceLock<Option<Regex>> = std::sync::OnceLock::new();
+    static SK: std::sync::OnceLock<Option<Regex>> = std::sync::OnceLock::new();
+    let kv = KEY_VALUE.get_or_init(|| {
+        Regex::new(r"(?i)(api[_-]?key|access[_-]?token|token|secret|password)\s*[=:]\s*\S+").ok()
+    });
+    let bearer = BEARER.get_or_init(|| Regex::new(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]{8,}").ok());
+    let sk = SK.get_or_init(|| Regex::new(r"sk-[A-Za-z0-9_-]{8,}").ok());
+    fn mask_string(
+        value: &str,
+        kv: Option<&Regex>,
+        bearer: Option<&Regex>,
+        sk: Option<&Regex>,
+    ) -> String {
+        let mut masked = value.to_owned();
+        if let Some(regex) = kv {
+            masked = regex.replace_all(&masked, "$1=***").into_owned();
+        }
+        if let Some(regex) = bearer {
+            masked = regex.replace_all(&masked, "Bearer ***").into_owned();
+        }
+        if let Some(regex) = sk {
+            masked = regex.replace_all(&masked, "sk-***").into_owned();
+        }
+        masked
+    }
+    fn walk(
+        value: &serde_json::Value,
+        keys: &[&str],
+        kv: Option<&Regex>,
+        bearer: Option<&Regex>,
+        sk: Option<&Regex>,
+    ) -> serde_json::Value {
+        match value {
+            serde_json::Value::Object(map) => {
+                let mut out = serde_json::Map::with_capacity(map.len());
+                for (key, item) in map {
+                    let lower = key.to_ascii_lowercase();
+                    let sensitive = keys.iter().any(|k| k.eq_ignore_ascii_case(&lower));
+                    let next = if sensitive {
+                        match item {
+                            serde_json::Value::String(_) => {
+                                serde_json::Value::String("***".to_owned())
+                            }
+                            serde_json::Value::Null => serde_json::Value::Null,
+                            other => serde_json::Value::String(mask_string(
+                                &other.to_string(),
+                                kv,
+                                bearer,
+                                sk,
+                            )),
+                        }
+                    } else {
+                        walk(item, keys, kv, bearer, sk)
+                    };
+                    out.insert(key.clone(), next);
+                }
+                serde_json::Value::Object(out)
+            }
+            serde_json::Value::Array(items) => serde_json::Value::Array(
+                items
+                    .iter()
+                    .map(|item| walk(item, keys, kv, bearer, sk))
+                    .collect(),
+            ),
+            serde_json::Value::String(text) => {
+                serde_json::Value::String(mask_string(text, kv, bearer, sk))
+            }
+            other => other.clone(),
+        }
+    }
+    let mut keys: Vec<&str> = BUILTIN_SENSITIVE_KEYS.to_vec();
+    for key in sensitive_keys {
+        if !keys
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(key))
+        {
+            keys.push(key);
+        }
+    }
+    walk(args, &keys, kv.as_ref(), bearer.as_ref(), sk.as_ref())
+}
+
+/// Render `path` relative to the workspace root when it is inside it.
+#[must_use]
+pub fn workspace_relative(context: &TurnContext, path: &Path) -> String {
+    let root = Path::new(&context.workspace_root);
+    if let Ok(relative) = path.strip_prefix(root) {
+        return relative
+            .components()
+            .filter_map(|component| match component {
+                Component::Normal(part) => Some(part.to_string_lossy().into_owned()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("/");
+    }
+    path.display().to_string()
+}
+
+/// Build a bounded, human-readable diff for an approval card.
+///
+/// Returns `None` when the previous content is too large or unreadable; the
+/// tool then omits the preview instead of blocking the approval.
+#[must_use]
+pub fn approval_diff(previous: Option<&str>, next: &str) -> Option<String> {
+    let previous = previous?;
+    if u64::try_from(previous.len()).unwrap_or(u64::MAX) > MAX_APPROVAL_DIFF_BYTES
+        || u64::try_from(next.len()).unwrap_or(u64::MAX) > MAX_APPROVAL_DIFF_BYTES
+    {
+        return None;
+    }
+    let old_lines: Vec<&str> = previous.lines().collect();
+    let new_lines: Vec<&str> = next.lines().collect();
+    let mut diff = String::new();
+    let mut index = 0_usize;
+    while index < old_lines.len() || index < new_lines.len() {
+        let old_line = old_lines.get(index).copied().unwrap_or("");
+        let new_line = new_lines.get(index).copied().unwrap_or("");
+        if old_line != new_line {
+            if !old_line.is_empty() || index < old_lines.len() {
+                diff.push('-');
+                diff.push_str(old_line);
+                diff.push('\n');
+            }
+            if !new_line.is_empty() || index < new_lines.len() {
+                diff.push('+');
+                diff.push_str(new_line);
+                diff.push('\n');
+            }
+        }
+        index = index.saturating_add(1);
+    }
+    if diff.is_empty() {
+        Some("(no changes)".to_owned())
+    } else {
+        Some(truncate(diff))
+    }
+}
+
+/// Read an existing UTF-8 file for approval-diff previews (bounded).
+#[must_use]
+pub fn read_for_diff(path: &Path) -> Option<String> {
+    let metadata = std::fs::metadata(path).ok()?;
+    if metadata.len() > MAX_APPROVAL_DIFF_BYTES {
+        return None;
+    }
+    std::fs::read_to_string(path).ok()
 }

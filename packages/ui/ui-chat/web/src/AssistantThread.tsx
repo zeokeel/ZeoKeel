@@ -12,7 +12,7 @@ import { QuestionAnswerContext, QuestionDataPart } from "./QuestionPart";
 import { AssistantComposer } from "./AssistantComposer";
 import { EmptyThread } from "./EmptyThread";
 import { MarkdownText } from "./MarkdownText";
-import { ToolCallPart } from "./ToolCallPart";
+import { ToolDataPart } from "./ToolCallPart";
 import { UsageDataPart } from "./UsagePart";
 
 const actionButton =
@@ -141,8 +141,14 @@ function AssistantMessage() {
         <MessagePrimitive.Content
           components={{
             Text: MarkdownText,
-            tools: { Fallback: ToolCallPart },
-            data: { by_name: { approval: ApprovalDataPart, question: QuestionDataPart, usage: UsageDataPart } },
+            data: {
+              by_name: {
+                approval: ApprovalDataPart,
+                tool: ToolDataPart,
+                question: QuestionDataPart,
+                usage: UsageDataPart,
+              },
+            },
           }}
         />
         <ErrorNote />

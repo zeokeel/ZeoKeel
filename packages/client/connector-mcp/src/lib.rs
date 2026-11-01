@@ -23,7 +23,7 @@ use serde_json::{json, Value};
 use zk_contract_connector::{
     ConnectorCatalogItem, ConnectorTransport, McpServerConfig, MCP_PROTOCOL_VERSION,
 };
-use zk_contract_tool::{Tool, ToolError, ToolSpec, TurnContext};
+use zk_contract_tool::{ApprovalMetadata, ApprovalRisk, Tool, ToolError, ToolSpec, TurnContext};
 
 /// Environment variable holding a JSON array of [`McpServerConfig`] (local fallback).
 pub const SERVERS_ENV: &str = "ZEOKEEL_MCP_SERVERS";
@@ -856,6 +856,21 @@ pub fn extra_tools() -> Vec<Arc<dyn Tool>> {
 }
 
 impl Tool for McpCallTool {
+    fn approval_metadata(
+        &self,
+        args: &serde_json::Value,
+        context: &TurnContext,
+    ) -> Option<ApprovalMetadata> {
+        let server = args.get("server")?.as_str()?;
+        let tool = args.get("tool")?.as_str()?;
+        Some(ApprovalMetadata {
+            summary: format!("call MCP tool {server}.{tool}"),
+            cwd: context.workspace_root.clone(),
+            network_targets: vec![format!("<mcp:{server}>")],
+            risk: ApprovalRisk::High,
+            ..ApprovalMetadata::default()
+        })
+    }
     fn spec(&self) -> ToolSpec {
         ToolSpec {
             name: "mcp_call".to_owned(),

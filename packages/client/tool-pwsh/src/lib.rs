@@ -1,7 +1,7 @@
 //! PowerShell (platform gated).
 #![forbid(unsafe_code)]
 use std::process::Command;
-use zk_contract_tool::{Tool, ToolError, ToolSpec, TurnContext};
+use zk_contract_tool::{ApprovalMetadata, ApprovalRisk, Tool, ToolError, ToolSpec, TurnContext};
 pub struct PwshTool;
 #[must_use]
 pub fn tool() -> PwshTool {
@@ -10,6 +10,24 @@ pub fn tool() -> PwshTool {
 impl Tool for PwshTool {
     fn spec(&self) -> ToolSpec {
         ToolSpec { name: "pwsh".to_owned(), description: "Execute a PowerShell command (Windows; returns TOOL_UNSUPPORTED_PLATFORM without pwsh).".to_owned(), parameters: serde_json::json!({"type":"object","properties":{"command":{"type":"string"},"cwd":{"type":"string"},"timeout_ms":{"type":"integer"}},"required":["command"],"additionalProperties":false}), mutating: true, requires_approval: true }
+    }
+    fn approval_metadata(
+        &self,
+        args: &serde_json::Value,
+        context: &TurnContext,
+    ) -> Option<ApprovalMetadata> {
+        let command = args.get("command")?.as_str()?;
+        let summary = command.lines().next().unwrap_or_default().trim().to_owned();
+        Some(ApprovalMetadata {
+            summary: format!("run PowerShell command: {summary}"),
+            cwd: args
+                .get("cwd")
+                .and_then(serde_json::Value::as_str)
+                .map_or_else(|| context.workspace_root.clone(), ToOwned::to_owned),
+            risk: ApprovalRisk::High,
+            network_undetermined: true,
+            ..ApprovalMetadata::default()
+        })
     }
     fn call(&self, _args: &str) -> Result<String, ToolError> {
         Err(ToolError::InvalidArgs("pwsh requires JSON".to_owned()))

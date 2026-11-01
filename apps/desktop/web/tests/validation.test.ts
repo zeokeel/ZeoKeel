@@ -158,7 +158,12 @@ describe("protocol boundary rejects invalid data after schema validation", () =>
     }
 
     const resolved = parseAgentEvent({ type: "approval_resolved", approval_id: "a1", decision: "reject" });
-    expect(resolved).toEqual({ type: "approval_resolved", approval_id: "a1", decision: "reject" });
+    expect(resolved).toEqual({
+      type: "approval_resolved",
+      approval_id: "a1",
+      decision: "reject",
+      timed_out: false,
+    });
   });
   it("rejects a turn_completed reply whose usage is missing required counters", () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);

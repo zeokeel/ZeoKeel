@@ -23,7 +23,7 @@
   },
   "definitions": {
     "ApprovalDecision": {
-      "description": "Result of an approval request.",
+      "description": "User decision for one approval request.\n\nDefined in the tool contract because [`ApprovalGate`] returns it; the agent contract re-exports it to keep `zk_contract_agent::ApprovalDecision` working.",
       "oneOf": [
         {
           "description": "Allow exactly this call.",
@@ -33,14 +33,21 @@
           ]
         },
         {
-          "description": "Reject this call.",
+          "description": "Allow this tool for the rest of the conversation (memory only).",
+          "type": "string",
+          "enum": [
+            "allow_session"
+          ]
+        },
+        {
+          "description": "Reject this call (fail-closed default).",
           "type": "string",
           "enum": [
             "reject"
           ]
         },
         {
-          "description": "Cancel the turn.",
+          "description": "Cancel the whole turn.",
           "type": "string",
           "enum": [
             "cancel"

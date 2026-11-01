@@ -148,13 +148,23 @@
 | 8 | `connector-mcp/README.md` HTTPS/TLS UNVERIFIED | `KNOWN-LIMITATIONS.md:93-95` 称已实现 rustls | 两文档互相冲突（非 UI 项） |
 | 9 | `docs/19:34` 审批是占位卡 | 审批卡已可决策，但缺 §4.1 字段 | `ApprovalPart.tsx` |
 
+### 4.1 实现状态（2026-11-01，`2026-11-01-client-approval-tool-rendering`）
+
+- **P0-1 已修**：审批卡覆盖 `docs/19` §4.1 的 7/9 完整 + 1/9 部分（超时缺「延长一次」）；「记住范围选择器」为 Phase 2/3 非目标；
+  `Cancel`/`allow_session` 可达、默认焦点拒绝；契约类型按 P0-13.1 移到 `zk-contract-tool` 并由 agent re-export。
+- **P0-2 已修**：`Message.turn_id` + SQLite v5、`ToolCallFinished{args,status}`、`BridgeSink` 终态先落库再判 cancelled；刷新后工具卡按 turn 归并（legacy 回退后一条 assistant）。
+- **P0-3 已修**：`bash scripts/i18n-check.sh` exit 0（启动错误边界进 zh/en 字典）。
+- **P1-9 已修**：`usage` 事件进协议/reducer（流式 token 归属当前 turn）。
+- **P2-5 部分修**：工具卡已有 `pending/running/success/failed/denied/cancelled` 与副作用提示；**耗时显示、Shift 全展开仍待 Phase 2**。
+- 证据：`target/evidence/2026-11-01-client-approval-tool-rendering/`；验收见该 spec `acceptance.md`。
+
 ## 7. 建议的施工拆分（供拍板；每项一个 spec）
 
 | 阶段 | spec 建议 | 范围 | 估算文件 |
 | --- | --- | --- | --- |
 | Phase 1 | `client-settings-ia` | 设置信息架构：左侧分区导航（通用/模型/Agent/工具与审批/连接器/自动化/外观/关于）+ pane 扩展点（`ui.settings.pane` 贡献）+ 分节保存 + revision 栅栏；现有 40 字段搬迁，不新增配置语义 | ~15 |
 | Phase 1 | `client-config-approval-mcp` | 修复 `auto_approve_read_only` 消费链（审批策略）；MCP server 本地配置（契约 `AppSettings.mcp` + UI CRUD + 测试连接）；`connectors.*` 进契约并接线 | ~25 |
-| Phase 1.5 | `client-approval-tool-rendering` | P0：审批卡 §4.1 全字段、工具行持久化投影 + `role=tool` 渲染、`usage` 事件、i18n 门禁 | ~15 |
+| Phase 1.5 | `client-approval-tool-rendering`（**已实现**，2026-11-01） | P0：审批卡 §4.1 子集（7/9+1/9）、工具行持久化投影 + turn 归并/取消终态、`usage` 事件、i18n 门禁 | ~42 |
 | Phase 2 | `client-capability-surfaces` | composer `/`+`@`+附件+模型选择+上下文；右栏真实终端/文件树/预览；jobs/subagent/goal/todo/schedule/present 面板；会话 rename/fork/archive + 全文检索入口 | ~40 |
 | Phase 3 | `client-settings-agent-tools` | 子代理/团队/终端/Shell/jobs 配置段（契约 + 设置 pane + 运行时接线）；个人版更新链路；诊断页/门禁/快捷键/主题字体 | ~30 |
 

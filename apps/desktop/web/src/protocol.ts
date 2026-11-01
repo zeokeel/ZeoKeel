@@ -14,6 +14,8 @@ import {
   defaultWebSearchSettings,
   type AgentEvent,
   type AgentSettings,
+  type ApprovalMetadata,
+  type ApprovalRisk,
   type AgentUsage,
   type AppSettings,
   type CommandResult,
@@ -270,7 +272,17 @@ function parseMessageRecord(value: Record<string, unknown>): Message | null {
     return null;
   }
   const status = readString(record, "status") ?? "done";
-  return { id, conversation_id: conversationId, role, content, created_at_ms: createdAt, status, usage };
+  const turnId = readString(record, "turn_id") ?? "";
+  return {
+    id,
+    conversation_id: conversationId,
+    role,
+    content,
+    created_at_ms: createdAt,
+    status,
+    usage,
+    turn_id: turnId,
+  };
 }
 
 export function parseMessages(value: unknown): Message[] | null {
@@ -615,6 +627,44 @@ function parseQuestions(value: unknown): QuestionDef[] | null {
   return questions;
 }
 
+function parseApprovalMetadata(value: unknown): ApprovalMetadata | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const textArray = (key: string): string[] => {
+    const raw = value[key];
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    const items: string[] = [];
+    for (const item of raw) {
+      if (typeof item === "string") {
+        items.push(item);
+      }
+    }
+    return items;
+  };
+  const riskRaw = readString(value, "risk");
+  const risk: ApprovalRisk | undefined =
+    riskRaw === "low" || riskRaw === "medium" || riskRaw === "high" ? riskRaw : undefined;
+  const metadata: ApprovalMetadata = {
+    summary: readString(value, "summary") ?? "",
+    cwd: readString(value, "cwd") ?? "",
+    read_paths: textArray("read_paths"),
+    write_paths: textArray("write_paths"),
+    network_targets: textArray("network_targets"),
+    network_undetermined: value["network_undetermined"] === true,
+  };
+  if (risk !== undefined) {
+    metadata.risk = risk;
+  }
+  const diff = readString(value, "diff");
+  if (diff !== null) {
+    metadata.diff = diff;
+  }
+  return metadata;
+}
+
 export function parseAgentEvent(value: unknown): AgentEvent | null {
   if (!isRecord(value) || !validateAgentEvent(value)) {
     return null;
@@ -640,7 +690,16 @@ export function parseAgentEvent(value: unknown): AgentEvent | null {
     case "tool_call_finished": {
       const name = readString(value, "name");
       const result = readString(value, "result");
-      return name === null || result === null ? null : { type, name, result };
+      if (name === null || result === null) {
+        return null;
+      }
+      const args = readString(value, "args") ?? "";
+      const rawStatus = readString(value, "status");
+      const status =
+        rawStatus === "failed" || rawStatus === "denied" || rawStatus === "cancelled"
+          ? rawStatus
+          : "success";
+      return { type, name, result, args, status };
     }
     case "question_asked": {
       const questionId = readString(value, "question_id");
@@ -667,18 +726,34 @@ export function parseAgentEvent(value: unknown): AgentEvent | null {
       if (approvalId === null || tool === null || args === null || reason === null) {
         return null;
       }
-      return { type, approval_id: approvalId, tool, args, reason };
+      return {
+        type,
+        approval_id: approvalId,
+        tool,
+        args,
+        reason,
+        auto: value["auto"] === true,
+        deadline_ms: readNumber(value, "deadline_ms") ?? 0,
+        metadata: parseApprovalMetadata(value["metadata"]),
+      };
     }
     case "approval_resolved": {
       const approvalId = readString(value, "approval_id");
       const decision = readString(value, "decision");
       if (
         approvalId === null ||
-        (decision !== "allow_once" && decision !== "reject" && decision !== "cancel")
+        (decision !== "allow_once" &&
+          decision !== "allow_session" &&
+          decision !== "reject" &&
+          decision !== "cancel")
       ) {
         return null;
       }
-      return { type, approval_id: approvalId, decision };
+      return { type, approval_id: approvalId, decision, timed_out: value["timed_out"] === true };
+    }
+    case "usage": {
+      const usage = parseUsage(value["usage"]);
+      return usage === null ? null : { type, usage };
     }
     case "turn_completed": {
       const reply = parseCompletedReply(value["reply"]);

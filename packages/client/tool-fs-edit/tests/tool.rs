@@ -24,3 +24,20 @@ fn edit_requires_single_match() {
         )
         .is_err());
 }
+
+#[test]
+fn approval_metadata_reports_edit_diff() {
+    let context = TurnContext {
+        conversation_id: "c".to_owned(),
+        workspace_id: "w".to_owned(),
+        workspace_root: std::env::temp_dir().display().to_string(),
+    };
+    let metadata = zk_tool_fs_edit::tool()
+        .approval_metadata(
+            &serde_json::json!({"path":"a.txt","old_string":"old","new_string":"new"}),
+            &context,
+        )
+        .expect("metadata");
+    assert_eq!(metadata.write_paths, vec!["a.txt".to_owned()]);
+    assert!(metadata.diff.unwrap().contains("+new"));
+}

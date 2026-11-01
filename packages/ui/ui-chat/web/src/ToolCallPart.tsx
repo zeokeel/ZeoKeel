@@ -1,9 +1,10 @@
+import type { DataMessagePartProps } from "@assistant-ui/react";
 import { useState } from "react";
-import type { ToolCallMessagePartProps } from "@assistant-ui/react";
-import { IconChevron, useUi } from "@zeokeel/ui-kit";
+import { isRecord, readString, useUi } from "@zeokeel/ui-kit";
 
 const PREVIEW_LIMIT = 120;
-type ToolStatus = "running" | "done" | "error";
+
+type ToolStatus = "pending" | "running" | "success" | "failed" | "denied" | "cancelled";
 
 function preview(text: string): string {
   const singleLine = text.replace(/\s+/g, " ").trim();
@@ -13,82 +14,119 @@ function preview(text: string): string {
   return `${singleLine.slice(0, PREVIEW_LIMIT)}…`;
 }
 
-function stringifyResult(value: unknown): string | null {
-  if (value === undefined) {
+function statusOf(raw: unknown): ToolStatus {
+  switch (raw) {
+    case "pending":
+    case "running":
+    case "success":
+    case "failed":
+    case "denied":
+    case "cancelled":
+      return raw;
+    case "done":
+      return "success";
+    case "error":
+      return "failed";
+    default:
+      return "success";
+  }
+}
+
+function statusLabel(t: (key: string) => string, status: ToolStatus): string {
+  switch (status) {
+    case "pending":
+      return t("toolPending");
+    case "running":
+      return t("toolRunning");
+    case "success":
+      return t("toolDone");
+    case "failed":
+      return t("toolFailed");
+    case "denied":
+      return t("toolDenied");
+    case "cancelled":
+      return t("toolCancelled");
+    default:
+      return status;
+  }
+}
+
+interface ToolData {
+  name: string;
+  args: string;
+  result: string;
+  status: ToolStatus;
+  unparsed: boolean;
+}
+
+function readTool(data: unknown): ToolData | null {
+  if (!isRecord(data)) {
     return null;
   }
-  if (typeof value === "string") {
-    return value;
-  }
-  try {
-    const encoded: unknown = JSON.stringify(value);
-    return typeof encoded === "string" ? encoded : null;
-  } catch {
-    return "unserializable";
-  }
+  return {
+    name: readString(data, "name") ?? "tool",
+    args: readString(data, "args") ?? "",
+    result: readString(data, "result") ?? "",
+    status: statusOf(data["status"]),
+    unparsed: data["unparsed"] === true,
+  };
 }
 
-function statusOf(type: string): ToolStatus {
-  if (type === "incomplete") {
-    return "error";
-  }
-  if (type === "complete") {
-    return "done";
-  }
-  return "running";
-}
-
-/** Dense single-line tool row; expand to inspect args/result. */
-export function ToolCallPart(props: ToolCallMessagePartProps) {
+/** Dense tool row; expand to inspect args/result (persisted and live states). */
+export function ToolDataPart(props: DataMessagePartProps) {
   const { t } = useUi();
   const [expanded, setExpanded] = useState(false);
-  const status = statusOf(props.status.type);
-  const statusLabel =
-    status === "running" ? t("toolRunning") : status === "error" ? t("toolFailed") : t("toolDone");
-  const result = stringifyResult(props.result);
-  const summary = result ?? props.argsText;
+  const tool = readTool(props.data);
+  if (tool === null) {
+    return null;
+  }
+  const summary = tool.result === "" ? tool.args : tool.result;
   const dotClass =
-    status === "error"
+    tool.status === "failed"
       ? "bg-destructive"
-      : status === "running"
-        ? "bg-live zk-pulse-dot"
-        : "bg-muted-foreground";
-
+      : tool.status === "cancelled" || tool.status === "denied"
+        ? "bg-muted-foreground"
+        : tool.status === "running" || tool.status === "pending"
+          ? "bg-state-business-primary"
+          : "bg-success";
   return (
-    <div className="zk-tool px-2 py-1">
+    <div className="mt-2 rounded-document border border-border/60" data-tool-status={tool.status}>
       <button
         type="button"
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left"
         aria-expanded={expanded}
         onClick={() => {
-          setExpanded((value) => !value);
+          setExpanded((open) => !open);
         }}
-        className="flex w-full items-center gap-2 text-start"
       >
-        <span className={`h-1.5 w-1.5 shrink-0 rounded-capsule ${dotClass}`} aria-hidden="true" />
-        <span className="shrink-0 font-mono text-[11.5px] font-medium text-foreground">
-          {props.toolName}
+        <span className={`h-1.5 w-1.5 flex-none rounded-capsule ${dotClass}`} aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-foreground">
+          {tool.name}
         </span>
-        <span className="min-w-0 flex-1 truncate text-[11.5px] text-muted-foreground">
-          {preview(summary)}
-        </span>
-        <span className="shrink-0 text-[11px] text-muted-foreground">{statusLabel}</span>
-        <IconChevron
-          className={`shrink-0 text-muted-foreground ${
-            expanded ? "rotate-180 transition-transform" : "transition-transform"
-          }`}
-        />
+        <span className="text-[11px] text-muted-foreground">{statusLabel(t, tool.status)}</span>
       </button>
+      {tool.unparsed ? (
+        <p className="px-3 pb-1 text-[12px] text-destructive">{t("toolUnparsed")}</p>
+      ) : null}
+      {tool.status === "cancelled" && tool.result !== "" ? (
+        <p className="px-3 pb-1 text-[12px] text-muted-foreground">{t("toolCancelledSideEffects")}</p>
+      ) : null}
+      {!expanded && summary !== "" ? (
+        <p className="truncate px-3 pb-1.5 text-[12px] text-muted-foreground">{preview(summary)}</p>
+      ) : null}
       {expanded ? (
-        <div className="mt-1.5 flex flex-col gap-1.5 ps-[22px]">
-          <div>
-            <div className="text-[11px] text-muted-foreground">{t("toolArgs")}</div>
-            <pre className="zk-tool-pre mt-0.5">{props.argsText}</pre>
-          </div>
-          {result !== null ? (
-            <div>
-              <div className="text-[11px] text-muted-foreground">{t("toolResult")}</div>
-              <pre className="zk-tool-pre mt-0.5">{result}</pre>
-            </div>
+        <div className="px-3 pb-2">
+          {tool.args !== "" ? (
+            <>
+              <p className="mt-1 text-[11px] font-medium text-muted-foreground">{t("toolArgs")}</p>
+              <pre className="zk-tool-pre mt-0.5">{tool.args}</pre>
+            </>
+          ) : null}
+          {tool.result !== "" ? (
+            <>
+              <p className="mt-2 text-[11px] font-medium text-muted-foreground">{t("toolResult")}</p>
+              <pre className="zk-tool-pre mt-0.5">{tool.result}</pre>
+            </>
           ) : null}
         </div>
       ) : null}

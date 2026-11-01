@@ -11,7 +11,7 @@ pub use config::{
 };
 pub use hooks::{HookEvent, HookSink, UsageSnapshot};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -45,6 +45,25 @@ pub type ModelFactory =
 static APPROVAL_SEQ: AtomicU64 = AtomicU64::new(1);
 static GLOBAL_HOOK_SINK: OnceLock<Mutex<Option<Arc<dyn HookSink>>>> = OnceLock::new();
 
+/// Where the runtime asks "should this tool call prompt the user?".
+///
+/// The agent runtime is the single owner of policy + always-allow evaluation
+/// (design §2.0); the config spec injects an implementation later. Without an
+/// injected source the default is `ToolSpec.requires_approval`.
+pub trait ApprovalPolicySource: Send + Sync {
+    /// Whether the call must ask the user before running.
+    fn should_ask(&self, requires_approval: bool, mutating: bool) -> bool;
+}
+
+/// Milliseconds since the UNIX epoch.
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| {
+            u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+        })
+}
+
 fn global_hook_slot() -> &'static Mutex<Option<Arc<dyn HookSink>>> {
     GLOBAL_HOOK_SINK.get_or_init(|| Mutex::new(None))
 }
@@ -73,6 +92,9 @@ struct ToolRunContext<'a> {
     hooks_config: &'a HooksConfig,
     hook_sink: Option<&'a Arc<dyn HookSink>>,
     tool_timeout_ms: u64,
+    approval_timeout_ms: u64,
+    /// Number of tool callbacks currently executing (cancel waits for a boundary).
+    in_tool: Arc<AtomicUsize>,
 }
 
 /// rig-backed agent.
@@ -87,6 +109,10 @@ pub struct RigAgent {
     hook_sink: Option<Arc<dyn HookSink>>,
     last_usage: Arc<Mutex<Option<UsageSnapshot>>>,
     cancelled: Arc<AtomicBool>,
+    /// Session-scoped always-allow memory: `(conversation_id, tool_name)`.
+    always_allow: Arc<Mutex<HashSet<(String, String)>>>,
+    /// Optional admission policy injected by the config layer (design §2.0).
+    approval_policy: Arc<Mutex<Option<Arc<dyn ApprovalPolicySource>>>>,
     /// True when the flag is shared with an async runner: a new turn must not
     /// clear an interrupt that was raised before the child started running.
     external_cancel: bool,
@@ -114,6 +140,8 @@ impl RigAgent {
             hook_sink: global_hook_sink(),
             last_usage: Arc::new(Mutex::new(None)),
             cancelled: Arc::new(AtomicBool::new(false)),
+            always_allow: Arc::new(Mutex::new(HashSet::new())),
+            approval_policy: Arc::new(Mutex::new(None)),
             external_cancel: false,
             runtime,
         })
@@ -236,6 +264,20 @@ impl RigAgent {
         self
     }
 
+    /// Inject the admission policy (config spec wires `ApprovalPolicy` here).
+    pub fn set_approval_policy(&self, policy: Option<Arc<dyn ApprovalPolicySource>>) {
+        if let Ok(mut guard) = self.approval_policy.lock() {
+            *guard = policy;
+        }
+    }
+
+    /// Drop all session-scoped always-allow decisions (logout / reset).
+    pub fn clear_always_allow(&self) {
+        if let Ok(mut guard) = self.always_allow.lock() {
+            guard.clear();
+        }
+    }
+
     /// Override the DSH-style system prompt.
     #[must_use]
     pub fn with_preamble(mut self, preamble: String) -> Self {
@@ -255,6 +297,14 @@ impl RigAgent {
         let hooks_config = runtime.hooks_config.clone();
         let hook_sink = runtime.hook_sink.cloned();
         let tool_timeout_ms = runtime.tool_timeout_ms;
+        let approval_timeout_ms = runtime.approval_timeout_ms;
+        let always_allow = Arc::clone(&self.always_allow);
+        let in_tool = Arc::clone(&runtime.in_tool);
+        let policy = self
+            .approval_policy
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone());
         let mut out = Vec::with_capacity(self.tools.len());
         for tool in &self.tools {
             let spec = tool.spec();
@@ -269,12 +319,17 @@ impl RigAgent {
             } else {
                 spec.parameters
             };
-            let requires_approval = spec.requires_approval;
+            let should_ask = policy.as_ref().map_or(spec.requires_approval, |policy| {
+                policy.should_ask(spec.requires_approval, spec.mutating)
+            });
             let approval = Arc::clone(&self.approval);
             let approval_name = spec.name.clone();
+            let sensitive_keys = tool.sensitive_arg_keys();
             let records_for_tool = Arc::clone(records);
             let sink_for_tool = Arc::clone(sink);
             let cancelled_for_tool = Arc::clone(&cancelled);
+            let always_allow_for_tool = Arc::clone(&always_allow);
+            let in_tool_for_tool = Arc::clone(&in_tool);
             let turn_id_for_tool = turn_id.clone();
             let hooks_for_tool = hooks_config.clone();
             let hook_sink_for_tool = hook_sink.clone();
@@ -290,6 +345,8 @@ impl RigAgent {
                     let records_for_tool = Arc::clone(&records_for_tool);
                     let sink_for_tool = Arc::clone(&sink_for_tool);
                     let cancelled_for_tool = Arc::clone(&cancelled_for_tool);
+                    let always_allow_for_tool = Arc::clone(&always_allow_for_tool);
+                    let in_tool_for_tool = Arc::clone(&in_tool_for_tool);
                     let turn_id_for_tool = turn_id_for_tool.clone();
                     let hooks_for_tool = hooks_for_tool.clone();
                     let hook_sink_for_tool = hook_sink_for_tool.clone();
@@ -300,15 +357,65 @@ impl RigAgent {
                     let depth = tool_depth;
                     Box::pin(async move {
                         let records = Arc::clone(&records_for_tool);
-                        if requires_approval {
+                        let redacted = zk_kit_tools::redact_tool_args(sensitive_keys, &args);
+                        let args_text = serde_json::to_string(&redacted).unwrap_or_default();
+                        let emit_finished =
+                            |status: zk_contract_agent::ToolCallStatus,
+                             result: String,
+                             args_text: &str| {
+                                sink_for_tool.emit(AgentEvent::ToolCallFinished {
+                                    name: approval_name.clone(),
+                                    result: result.clone(),
+                                    args: args_text.to_owned(),
+                                    status,
+                                });
+                                hooks::emit_hook(
+                                    &hooks_for_tool,
+                                    hook_sink_for_tool.as_ref(),
+                                    &HookEvent::ToolFinished {
+                                        turn_id: turn_id_for_tool.clone(),
+                                        tool: approval_name.clone(),
+                                        is_error: matches!(
+                                            status,
+                                            zk_contract_agent::ToolCallStatus::Failed
+                                        ),
+                                        result_chars: result.chars().count(),
+                                    },
+                                );
+                                if let Ok(mut guard) = records.lock() {
+                                    guard.push(ToolCallRecord {
+                                        name: approval_name.clone(),
+                                        args: args_text.to_owned(),
+                                        result,
+                                    });
+                                }
+                            };
+                        if should_ask {
+                            let conversation = context.conversation_id.clone();
+                            let auto = always_allow_for_tool.lock().ok().is_some_and(|set| {
+                                set.contains(&(conversation.clone(), approval_name.clone()))
+                            });
                             let approval_id =
                                 format!("approval-{}", APPROVAL_SEQ.fetch_add(1, Ordering::SeqCst));
-                            let args_text = serde_json::to_string(&args).unwrap_or_default();
+                            let deadline_ms = now_ms().saturating_add(approval_timeout_ms);
+                            // Redact the raw args before the tool derives its impact
+                            // surface, then redact metadata strings (summary/diff) too:
+                            // one redaction path for event args and metadata.
+                            let metadata =
+                                tool.approval_metadata(&redacted, &context)
+                                    .and_then(|metadata| {
+                                        let value = serde_json::to_value(&metadata).ok()?;
+                                        let masked = zk_kit_tools::redact_tool_args(&[], &value);
+                                        serde_json::from_value(masked).ok()
+                                    });
                             sink_for_tool.emit(AgentEvent::ApprovalRequested {
                                 approval_id: approval_id.clone(),
                                 tool: approval_name.clone(),
                                 args: args_text.clone(),
                                 reason: "mutating tool".to_owned(),
+                                auto,
+                                deadline_ms,
+                                metadata,
                             });
                             hooks::emit_hook(
                                 &hooks_for_tool,
@@ -319,19 +426,29 @@ impl RigAgent {
                                     tool: approval_name.clone(),
                                 },
                             );
-                            let allowed = approval.decide(
-                                &approval_id,
-                                &approval_name,
-                                &args,
-                                "mutating tool",
-                            );
+                            let decision = if auto {
+                                ApprovalDecision::AllowSession
+                            } else {
+                                let decision = approval.decide_scoped(
+                                    &approval_id,
+                                    &approval_name,
+                                    &args,
+                                    "mutating tool",
+                                );
+                                if matches!(decision, ApprovalDecision::AllowSession) {
+                                    if let Ok(mut guard) = always_allow_for_tool.lock() {
+                                        guard.insert((conversation, approval_name.clone()));
+                                    }
+                                }
+                                decision
+                            };
+                            let timed_out = matches!(decision, ApprovalDecision::Reject)
+                                && deadline_ms > 0
+                                && now_ms() >= deadline_ms;
                             sink_for_tool.emit(AgentEvent::ApprovalResolved {
                                 approval_id: approval_id.clone(),
-                                decision: if allowed {
-                                    ApprovalDecision::AllowOnce
-                                } else {
-                                    ApprovalDecision::Reject
-                                },
+                                decision,
+                                timed_out,
                             });
                             hooks::emit_hook(
                                 &hooks_for_tool,
@@ -339,25 +456,38 @@ impl RigAgent {
                                 &HookEvent::ApprovalResolved {
                                     turn_id: turn_id_for_tool.clone(),
                                     approval_id,
-                                    allowed,
+                                    allowed: decision.is_allowed(),
                                 },
                             );
-                            if !allowed {
+                            if matches!(decision, ApprovalDecision::Cancel) {
+                                cancelled_for_tool.store(true, Ordering::SeqCst);
+                                let result = "tool call cancelled".to_owned();
+                                emit_finished(
+                                    zk_contract_agent::ToolCallStatus::Cancelled,
+                                    result.clone(),
+                                    &args_text,
+                                );
+                                return Ok(ToolOutput::text(result));
+                            }
+                            if !decision.is_allowed() {
                                 let result = "denied by approval policy".to_owned();
-                                if let Ok(mut guard) = records.lock() {
-                                    guard.push(ToolCallRecord {
-                                        name: approval_name.clone(),
-                                        args: args_text,
-                                        result: result.clone(),
-                                    });
-                                }
+                                emit_finished(
+                                    zk_contract_agent::ToolCallStatus::Denied,
+                                    result.clone(),
+                                    &args_text,
+                                );
                                 return Ok(ToolOutput::text(result));
                             }
                         }
                         if cancelled_for_tool.load(Ordering::SeqCst) {
-                            return Ok(ToolOutput::text("tool call cancelled".to_owned()));
+                            let result = "tool call cancelled".to_owned();
+                            emit_finished(
+                                zk_contract_agent::ToolCallStatus::Cancelled,
+                                String::new(),
+                                &args_text,
+                            );
+                            return Ok(ToolOutput::text(result));
                         }
-                        let args_text = serde_json::to_string(&args).unwrap_or_default();
                         sink_for_tool.emit(AgentEvent::ToolCallStarted {
                             name: approval_name.clone(),
                             args: args_text.clone(),
@@ -374,6 +504,7 @@ impl RigAgent {
                         let tool_for_call = Arc::clone(&tool);
                         let context_for_call = context.clone();
                         let timeout_ms = tool_timeout_ms;
+                        in_tool_for_tool.fetch_add(1, Ordering::SeqCst);
                         let outcome = tokio::time::timeout(
                             std::time::Duration::from_millis(timeout_ms),
                             tokio::task::spawn_blocking(move || {
@@ -392,55 +523,30 @@ impl RigAgent {
                                 "tool call timed out after {timeout_ms}ms"
                             ))),
                         };
+                        in_tool_for_tool.fetch_sub(1, Ordering::SeqCst);
                         match outcome {
                             Ok(text) => {
-                                sink_for_tool.emit(AgentEvent::ToolCallFinished {
-                                    name: approval_name.clone(),
-                                    result: text.clone(),
-                                });
-                                hooks::emit_hook(
-                                    &hooks_for_tool,
-                                    hook_sink_for_tool.as_ref(),
-                                    &HookEvent::ToolFinished {
-                                        turn_id: turn_id_for_tool.clone(),
-                                        tool: approval_name.clone(),
-                                        is_error: false,
-                                        result_chars: text.chars().count(),
-                                    },
-                                );
-                                if let Ok(mut guard) = records.lock() {
-                                    guard.push(ToolCallRecord {
-                                        name: approval_name.clone(),
-                                        args: args_text,
-                                        result: text.clone(),
-                                    });
-                                }
+                                let status = if cancelled_for_tool.load(Ordering::SeqCst) {
+                                    zk_contract_agent::ToolCallStatus::Cancelled
+                                } else {
+                                    zk_contract_agent::ToolCallStatus::Success
+                                };
+                                emit_finished(status, text.clone(), &args_text);
                                 Ok(ToolOutput::text(text))
                             }
                             Err(error) => {
                                 let result = error.to_string();
-                                sink_for_tool.emit(AgentEvent::ToolCallFinished {
-                                    name: approval_name.clone(),
-                                    result: result.clone(),
-                                });
-                                hooks::emit_hook(
-                                    &hooks_for_tool,
-                                    hook_sink_for_tool.as_ref(),
-                                    &HookEvent::ToolFinished {
-                                        turn_id: turn_id_for_tool.clone(),
-                                        tool: approval_name.clone(),
-                                        is_error: true,
-                                        result_chars: result.chars().count(),
-                                    },
-                                );
-                                if let Ok(mut guard) = records.lock() {
-                                    guard.push(ToolCallRecord {
-                                        name: approval_name.clone(),
-                                        args: args_text,
-                                        result: result.clone(),
-                                    });
+                                let status = if cancelled_for_tool.load(Ordering::SeqCst) {
+                                    zk_contract_agent::ToolCallStatus::Cancelled
+                                } else {
+                                    zk_contract_agent::ToolCallStatus::Failed
+                                };
+                                emit_finished(status, result.clone(), &args_text);
+                                if matches!(status, zk_contract_agent::ToolCallStatus::Cancelled) {
+                                    Ok(ToolOutput::text(result))
+                                } else {
+                                    Err(ToolExecutionError::invalid_args(result))
                                 }
-                                Err(ToolExecutionError::invalid_args(result))
                             }
                         }
                     })
@@ -462,10 +568,12 @@ impl RigAgent {
         let hooks_config = config.hooks.clone();
         let hook_sink = self.hook_sink.clone();
         let tool_timeout_ms = config.tools.tool_timeout();
+        let approval_timeout_ms = config.tools.approval_timeout();
         if let Ok(mut usage) = self.last_usage.lock() {
             *usage = None;
         }
         let records = Arc::new(Mutex::new(Vec::<ToolCallRecord>::new()));
+        let in_tool = Arc::new(AtomicUsize::new(0));
         let tools = self.dynamic_tools(
             context,
             &ToolRunContext {
@@ -475,6 +583,8 @@ impl RigAgent {
                 hooks_config: &hooks_config,
                 hook_sink: hook_sink.as_ref(),
                 tool_timeout_ms,
+                approval_timeout_ms,
+                in_tool: Arc::clone(&in_tool),
             },
         );
         if !self.external_cancel {
@@ -621,9 +731,11 @@ impl RigAgent {
                         tokio::select! {
                             result = &mut future => return result.map_err(|error| map_provider_error(error.to_string())),
                             () = tokio::time::sleep(std::time::Duration::from_millis(50)) => {
-                                if cancelled.load(Ordering::SeqCst) {
+                                if cancelled.load(Ordering::SeqCst) && in_tool.load(Ordering::SeqCst) == 0 {
                                     return Err(AgentError::Invalid("AGENT_CANCELLED".to_owned()));
                                 }
+                                // A tool is executing: wait for its boundary so the
+                                // cancelled `ToolCallFinished` terminal is emitted.
                             }
                         }
                     }
@@ -1542,7 +1654,7 @@ pub fn text_from_content(content: &[AssistantContent]) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)] // test-only
     use super::*;
     use rig_core::completion::Usage;
     use rig_core::test_utils::{MockCompletionModel, MockStreamEvent, MockTurn};
@@ -2484,6 +2596,364 @@ mod tests {
             }
         }
         assert_eq!(runner.live_threads(), 0);
+    }
+
+    struct FixedGate {
+        decisions: StdMutex<Vec<ApprovalDecision>>,
+        calls: AtomicUsize,
+    }
+
+    impl FixedGate {
+        fn new(decisions: Vec<ApprovalDecision>) -> Arc<Self> {
+            Arc::new(Self {
+                decisions: StdMutex::new(decisions),
+                calls: AtomicUsize::new(0),
+            })
+        }
+    }
+
+    impl ApprovalGate for FixedGate {
+        fn decide(
+            &self,
+            approval_id: &str,
+            tool: &str,
+            args: &serde_json::Value,
+            reason: &str,
+        ) -> bool {
+            self.decide_scoped(approval_id, tool, args, reason)
+                .is_allowed()
+        }
+
+        fn decide_scoped(
+            &self,
+            _approval_id: &str,
+            _tool: &str,
+            _args: &serde_json::Value,
+            _reason: &str,
+        ) -> ApprovalDecision {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.decisions
+                .lock()
+                .ok()
+                .and_then(|mut guard| guard.pop())
+                .unwrap_or(ApprovalDecision::Reject)
+        }
+    }
+
+    struct MetadataTool {
+        name: &'static str,
+        flag: Option<Arc<AtomicBool>>,
+    }
+
+    impl Tool for MetadataTool {
+        fn spec(&self) -> zk_contract_tool::ToolSpec {
+            zk_contract_tool::ToolSpec {
+                name: self.name.to_owned(),
+                description: "approval metadata tool".to_owned(),
+                parameters: serde_json::json!({"type":"object"}),
+                mutating: true,
+                requires_approval: true,
+            }
+        }
+        fn sensitive_arg_keys(&self) -> &'static [&'static str] {
+            &["token"]
+        }
+        fn approval_metadata(
+            &self,
+            args: &serde_json::Value,
+            context: &TurnContext,
+        ) -> Option<zk_contract_tool::ApprovalMetadata> {
+            Some(zk_contract_tool::ApprovalMetadata {
+                summary: "write a.txt".to_owned(),
+                cwd: context.workspace_root.clone(),
+                write_paths: vec![args
+                    .get("path")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned()],
+                risk: zk_contract_tool::ApprovalRisk::Medium,
+                ..zk_contract_tool::ApprovalMetadata::default()
+            })
+        }
+        fn call(&self, _args: &str) -> Result<String, zk_contract_tool::ToolError> {
+            Ok("produced".to_owned())
+        }
+        fn call_json(
+            &self,
+            _context: &TurnContext,
+            args: serde_json::Value,
+        ) -> Result<String, zk_contract_tool::ToolError> {
+            if let Some(flag) = &self.flag {
+                flag.store(true, Ordering::SeqCst);
+            }
+            let _ = args;
+            Ok("produced".to_owned())
+        }
+    }
+
+    fn metadata_tool(name: &'static str, flag: Option<Arc<AtomicBool>>) -> Arc<dyn Tool> {
+        Arc::new(MetadataTool { name, flag })
+    }
+
+    fn tool_context() -> TurnContext {
+        TurnContext {
+            conversation_id: "c".to_owned(),
+            workspace_id: "w".to_owned(),
+            workspace_root: ".".to_owned(),
+        }
+    }
+
+    #[test]
+    fn approval_event_chain_allow_once_carries_metadata_and_redacts_args() {
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call(
+                "call-1",
+                "fs.write",
+                serde_json::json!({"path":"a.txt","token":"secret"}),
+            ),
+            MockTurn::text("done"),
+        ]);
+        let gate = FixedGate::new(vec![ApprovalDecision::AllowOnce]);
+        let agent = RigAgent::new(model.into(), vec![metadata_tool("fs.write", None)])
+            .unwrap()
+            .with_streaming(false)
+            .with_approval(gate.clone());
+        let sink = Arc::new(VecSink(StdMutex::new(Vec::new())));
+        agent
+            .run_stream_in_shared(&tool_context(), "t", "write", sink.clone())
+            .unwrap();
+        let events = sink.0.lock().unwrap();
+        let kinds: Vec<&str> = events
+            .iter()
+            .filter_map(|event| match event {
+                AgentEvent::ApprovalRequested { .. } => Some("approval_requested"),
+                AgentEvent::ApprovalResolved { .. } => Some("approval_resolved"),
+                AgentEvent::ToolCallStarted { .. } => Some("tool_call_started"),
+                AgentEvent::ToolCallFinished { .. } => Some("tool_call_finished"),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                "approval_requested",
+                "approval_resolved",
+                "tool_call_started",
+                "tool_call_finished"
+            ]
+        );
+        let requested = events
+            .iter()
+            .find(|event| matches!(event, AgentEvent::ApprovalRequested { .. }))
+            .expect("approval_requested");
+        match requested {
+            AgentEvent::ApprovalRequested {
+                auto,
+                metadata,
+                args,
+                deadline_ms,
+                ..
+            } => {
+                assert!(!auto);
+                assert!(*deadline_ms > 0);
+                let metadata = metadata.as_ref().expect("metadata");
+                assert_eq!(metadata.summary, "write a.txt");
+                assert!(args.contains("\"token\":\"***\""), "{args}");
+            }
+            _ => panic!("expected approval_requested"),
+        }
+        assert_eq!(gate.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn always_allow_pairs_auto_events_without_calling_the_gate() {
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("call-1", "fs.write", serde_json::json!({"path":"a.txt"})),
+            MockTurn::tool_call("call-2", "fs.write", serde_json::json!({"path":"a.txt"})),
+            MockTurn::text("done"),
+        ]);
+        let gate = FixedGate::new(vec![ApprovalDecision::AllowSession]);
+        let agent = RigAgent::new(model.into(), vec![metadata_tool("fs.write", None)])
+            .unwrap()
+            .with_streaming(false)
+            .with_approval(gate.clone());
+        let sink = Arc::new(VecSink(StdMutex::new(Vec::new())));
+        agent
+            .run_stream_in_shared(&tool_context(), "t", "write twice", sink.clone())
+            .unwrap();
+        assert_eq!(
+            gate.calls.load(Ordering::SeqCst),
+            1,
+            "gate must be asked once"
+        );
+        let events = sink.0.lock().unwrap();
+        let auto_pairs: Vec<bool> = events
+            .iter()
+            .filter_map(|event| match event {
+                AgentEvent::ApprovalRequested { auto, .. } => Some(*auto),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(auto_pairs, vec![false, true]);
+        let session_allows = events
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event,
+                    AgentEvent::ApprovalResolved {
+                        decision: ApprovalDecision::AllowSession,
+                        ..
+                    }
+                )
+            })
+            .count();
+        assert_eq!(
+            session_allows, 2,
+            "both resolutions are allow_session pairs"
+        );
+    }
+
+    struct DeferredGate {
+        decisions: StdMutex<Vec<ApprovalDecision>>,
+        calls: AtomicUsize,
+    }
+    impl ApprovalGate for DeferredGate {
+        fn decide(
+            &self,
+            approval_id: &str,
+            tool: &str,
+            args: &serde_json::Value,
+            reason: &str,
+        ) -> bool {
+            self.decide_scoped(approval_id, tool, args, reason)
+                .is_allowed()
+        }
+        fn decide_scoped(
+            &self,
+            _approval_id: &str,
+            _tool: &str,
+            _args: &serde_json::Value,
+            _reason: &str,
+        ) -> ApprovalDecision {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            self.decisions
+                .lock()
+                .ok()
+                .and_then(|mut guard| guard.pop())
+                .unwrap_or(ApprovalDecision::Reject)
+        }
+    }
+
+    #[test]
+    fn deferred_gate_allow_session_then_auto_pairs_in_same_turn() {
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("call-1", "fs.write", serde_json::json!({"path":"a.txt"})),
+            MockTurn::tool_call("call-2", "fs.write", serde_json::json!({"path":"b.txt"})),
+            MockTurn::text("done"),
+        ]);
+        let gate = Arc::new(DeferredGate {
+            decisions: StdMutex::new(vec![ApprovalDecision::AllowSession]),
+            calls: AtomicUsize::new(0),
+        });
+        let agent = RigAgent::new(model.into(), vec![metadata_tool("fs.write", None)])
+            .unwrap()
+            .with_streaming(false)
+            .with_approval(gate.clone());
+        let sink = Arc::new(VecSink(StdMutex::new(Vec::new())));
+        agent
+            .run_stream_in_shared(&tool_context(), "t", "write twice", sink.clone())
+            .unwrap();
+        assert_eq!(gate.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn policy_skip_emits_no_approval_events() {
+        struct SkipPolicy;
+        impl ApprovalPolicySource for SkipPolicy {
+            fn should_ask(&self, _requires_approval: bool, _mutating: bool) -> bool {
+                false
+            }
+        }
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("call-1", "fs.write", serde_json::json!({"path":"a.txt"})),
+            MockTurn::text("done"),
+        ]);
+        let agent = RigAgent::new(model.into(), vec![metadata_tool("fs.write", None)])
+            .unwrap()
+            .with_streaming(false);
+        agent.set_approval_policy(Some(Arc::new(SkipPolicy)));
+        let sink = Arc::new(VecSink(StdMutex::new(Vec::new())));
+        agent
+            .run_stream_in_shared(&tool_context(), "t", "write", sink.clone())
+            .unwrap();
+        let events = sink.0.lock().unwrap();
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            AgentEvent::ApprovalRequested { .. } | AgentEvent::ApprovalResolved { .. }
+        )));
+    }
+
+    #[test]
+    fn cancel_decision_emits_cancelled_terminal_and_turn_cancelled() {
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("call-1", "fs.write", serde_json::json!({"path":"a.txt"})),
+            MockTurn::text("done"),
+        ]);
+        let gate = FixedGate::new(vec![ApprovalDecision::Cancel]);
+        let agent = RigAgent::new(model.into(), vec![metadata_tool("fs.write", None)])
+            .unwrap()
+            .with_streaming(false)
+            .with_approval(gate);
+        let sink = Arc::new(VecSink(StdMutex::new(Vec::new())));
+        agent
+            .run_stream_in_shared(&tool_context(), "t", "write", sink.clone())
+            .unwrap();
+        let events = sink.0.lock().unwrap();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            AgentEvent::ToolCallFinished {
+                status: zk_contract_agent::ToolCallStatus::Cancelled,
+                ..
+            }
+        )));
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, AgentEvent::TurnCancelled)));
+    }
+
+    #[test]
+    fn execution_cancel_keeps_produced_result() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("call-1", "fs.write", serde_json::json!({"path":"a.txt"})),
+            MockTurn::text("done"),
+        ]);
+        let gate = FixedGate::new(vec![ApprovalDecision::AllowOnce]);
+        let agent = RigAgent::new(
+            model.into(),
+            vec![metadata_tool("fs.write", Some(Arc::clone(&flag)))],
+        )
+        .unwrap()
+        .with_streaming(false)
+        .with_cancel_flag(Arc::clone(&flag))
+        .with_approval(gate);
+        let sink = Arc::new(VecSink(StdMutex::new(Vec::new())));
+        agent
+            .run_stream_in_shared(&tool_context(), "t", "write", sink.clone())
+            .unwrap();
+        let events = sink.0.lock().unwrap();
+        let cancelled = events
+            .iter()
+            .find_map(|event| match event {
+                AgentEvent::ToolCallFinished { status, result, .. } => {
+                    matches!(status, zk_contract_agent::ToolCallStatus::Cancelled)
+                        .then(|| result.clone())
+                }
+                _ => None,
+            })
+            .expect("cancelled terminal");
+        assert_eq!(cancelled, "produced", "produced result is kept verbatim");
     }
 
     #[test]

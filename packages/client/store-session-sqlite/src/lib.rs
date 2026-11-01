@@ -175,7 +175,8 @@ fn create_schema_v2(conn: &Connection) -> Result<(), SessionError> {
             content TEXT NOT NULL,
             created_at_ms INTEGER NOT NULL,
             status TEXT NOT NULL DEFAULT 'done',
-            usage_json TEXT
+            usage_json TEXT,
+            turn_id TEXT NOT NULL DEFAULT ''
         );
         CREATE INDEX IF NOT EXISTS idx_messages_conversation
             ON messages(conversation_id, created_at_ms);",
@@ -205,8 +206,8 @@ fn migrate(conn: &mut Connection, workspace_root: &Path) -> Result<(), SessionEr
             params![default_id, default_path.to_string_lossy(), "默认工作区", now],
         )
         .map_err(storage)?;
-        // Fresh installs start at the current schema (v4) with usage_json.
-        conn.pragma_update(None, "user_version", 4)
+        // Fresh installs start at the current schema (v5) with usage_json + turn_id.
+        conn.pragma_update(None, "user_version", 5)
             .map_err(storage)?;
         return Ok(());
     }
@@ -301,6 +302,18 @@ fn migrate(conn: &mut Connection, workspace_root: &Path) -> Result<(), SessionEr
     }
     if schema_version(conn)? < 4 {
         conn.pragma_update(None, "user_version", 4)
+            .map_err(storage)?;
+    }
+    // v4 -> v5: nullable turn-owner column; legacy rows read back as ''.
+    if !has_column(conn, "messages", "turn_id")? {
+        conn.execute(
+            "ALTER TABLE messages ADD COLUMN turn_id TEXT NOT NULL DEFAULT ''",
+            [],
+        )
+        .map_err(storage)?;
+    }
+    if schema_version(conn)? < 5 {
+        conn.pragma_update(None, "user_version", 5)
             .map_err(storage)?;
     }
     // Normalize any pre-v4 database that already has both columns (e.g. a
@@ -616,8 +629,8 @@ impl SessionStore for SqliteSessionStore {
             .map_err(storage)?;
         self.with_conn(|conn| {
             conn.execute(
-                "INSERT INTO messages (id, conversation_id, role, content, created_at_ms, status, usage_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                params![message.id, message.conversation_id, message.role, message.content, i64::try_from(message.created_at_ms).unwrap_or(i64::MAX), message.status, usage_json],
+                "INSERT INTO messages (id, conversation_id, role, content, created_at_ms, status, usage_json, turn_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![message.id, message.conversation_id, message.role, message.content, i64::try_from(message.created_at_ms).unwrap_or(i64::MAX), message.status, usage_json, message.turn_id],
             )
             .map_err(storage)?;
             conn.execute(
@@ -648,7 +661,7 @@ impl SessionStore for SqliteSessionStore {
                 });
             }
             let mut stmt = conn
-                .prepare("SELECT id, conversation_id, role, content, created_at_ms, status, usage_json FROM messages WHERE conversation_id=?1 ORDER BY created_at_ms ASC, id ASC")
+                .prepare("SELECT id, conversation_id, role, content, created_at_ms, status, usage_json, turn_id FROM messages WHERE conversation_id=?1 ORDER BY created_at_ms ASC, id ASC")
                 .map_err(storage)?;
             let rows = stmt.query_map(params![conversation_id], |row| {
                 let usage_json: Option<String> = row.get(6)?;
@@ -660,6 +673,7 @@ impl SessionStore for SqliteSessionStore {
                     created_at_ms: row.get::<_, i64>(4)?.max(0).try_into().unwrap_or(0),
                     status: row.get(5)?,
                     usage: parse_usage(usage_json.as_deref()),
+                    turn_id: row.get(7)?,
                 })
             })
             .map_err(storage)?;

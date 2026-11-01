@@ -38,6 +38,11 @@
       "default": "done",
       "type": "string"
     },
+    "turn_id": {
+      "description": "Owning agent turn; tool rows and the closing assistant row share it.\n\nLegacy rows parse as an empty string and are grouped by the legacy fallback rule (next assistant in the conversation).",
+      "default": "",
+      "type": "string"
+    },
     "usage": {
       "description": "Provider token usage for an assistant turn, when reported.\n\nPersisted so usage survives restarts (round-4); legacy rows parse as `None`.",
       "default": null,

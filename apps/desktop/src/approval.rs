@@ -5,11 +5,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
-use zk_contract_tool::ApprovalGate;
+use zk_contract_tool::{ApprovalDecision, ApprovalGate};
 
 /// Routes approval decisions from IPC to waiting agent tool calls.
 pub struct ApprovalBroker {
-    waiters: Mutex<HashMap<String, mpsc::Sender<bool>>>,
+    waiters: Mutex<HashMap<String, mpsc::Sender<ApprovalDecision>>>,
     seq: AtomicU64,
     /// Current approval wait timeout in milliseconds (settings hot-reloadable).
     timeout_ms: AtomicU64,
@@ -63,13 +63,28 @@ impl ApprovalBroker {
         self.timeout_ms.load(Ordering::SeqCst)
     }
 
-    /// Resolve a pending request; returns false if unknown/expired.
-    pub fn resolve(&self, approval_id: &str, allow: bool) -> bool {
+    /// Resolve a pending request with a typed decision; returns false if
+    /// unknown/expired (late decisions are ignored, fail-closed).
+    pub fn resolve_scoped(&self, approval_id: &str, decision: ApprovalDecision) -> bool {
         self.waiters
             .lock()
             .ok()
             .and_then(|mut guard| guard.remove(approval_id))
-            .is_some_and(|sender| sender.send(allow).is_ok())
+            .is_some_and(|sender| sender.send(decision).is_ok())
+    }
+
+    /// Release every pending request with one decision (cancel / shutdown).
+    pub fn release_all(&self, decision: ApprovalDecision) -> usize {
+        let waiters = self
+            .waiters
+            .lock()
+            .map(|mut guard| std::mem::take(&mut *guard))
+            .unwrap_or_default();
+        let count = waiters.len();
+        for (_id, sender) in waiters {
+            let _ = sender.send(decision);
+        }
+        count
     }
 
     /// Number of pending requests (tests).
@@ -84,10 +99,21 @@ impl ApprovalGate for ApprovalBroker {
     fn decide(
         &self,
         approval_id: &str,
+        tool: &str,
+        args: &serde_json::Value,
+        reason: &str,
+    ) -> bool {
+        self.decide_scoped(approval_id, tool, args, reason)
+            .is_allowed()
+    }
+
+    fn decide_scoped(
+        &self,
+        approval_id: &str,
         _tool: &str,
         _args: &serde_json::Value,
         _reason: &str,
-    ) -> bool {
+    ) -> ApprovalDecision {
         let (tx, rx) = mpsc::channel();
         if let Ok(mut guard) = self.waiters.lock() {
             guard.insert(approval_id.to_owned(), tx);
@@ -96,7 +122,8 @@ impl ApprovalGate for ApprovalBroker {
         rx.recv_timeout(Duration::from_millis(
             self.timeout_ms.load(Ordering::SeqCst),
         ))
-        .unwrap_or(false)
+        // Timeout / dropped channel is the fail-closed rejection.
+        .unwrap_or(ApprovalDecision::Reject)
     }
 }
 
@@ -137,8 +164,29 @@ mod tests {
             wait.decide("a1", "bash", &serde_json::json!({}), "mutating")
         });
         std::thread::sleep(Duration::from_millis(20));
-        assert!(broker.resolve("a1", true));
+        assert!(broker.resolve_scoped("a1", ApprovalDecision::AllowOnce));
         assert!(handle.join().unwrap());
+        assert_eq!(broker.pending(), 0);
+    }
+
+    #[test]
+    fn broker_returns_typed_decisions_and_releases_all() {
+        let broker = ApprovalBroker::new();
+        let wait = Arc::clone(&broker);
+        let handle = std::thread::spawn(move || {
+            wait.decide_scoped("a2", "fs.write", &serde_json::json!({}), "mutating")
+        });
+        std::thread::sleep(Duration::from_millis(20));
+        assert!(broker.resolve_scoped("a2", ApprovalDecision::AllowSession));
+        assert_eq!(handle.join().unwrap(), ApprovalDecision::AllowSession);
+
+        let wait = Arc::clone(&broker);
+        let handle = std::thread::spawn(move || {
+            wait.decide_scoped("a3", "bash", &serde_json::json!({}), "mutating")
+        });
+        std::thread::sleep(Duration::from_millis(20));
+        assert_eq!(broker.release_all(ApprovalDecision::Reject), 1);
+        assert_eq!(handle.join().unwrap(), ApprovalDecision::Reject);
         assert_eq!(broker.pending(), 0);
     }
 }

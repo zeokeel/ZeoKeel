@@ -105,6 +105,16 @@
 - **剩余/UNVERIFIED**：远端 connector 生命周期管理（长驻进程守护/健康检查/崩溃重连）未实现（当前按需会话 +
   配置变更重启）。详见 `docs/07` §6.1/§6.2。
 
+- **审批/工具行（2026-11-01 approval spec）的诚实边界**：
+  - 脱敏只覆盖参数**键名**（工具声明 `Tool::sensitive_arg_keys` + 内置键名）与常见 token 形状（`sk-…`/`Bearer …`/`KEY=…`）；
+    自造格式密钥、base64/多层编码内嵌密钥、无 key/value 模式的随机串**无法保证**掩码（不宣称零泄漏）。
+  - 工具行 legacy 数据（`Message.turn_id` 为空，2026-11-01 之前的会话）按「归入后一条同会话 assistant」启发式恢复；无后继 assistant 时显示独立「未归属工具记录」组。
+  - shell/自由文本命令的网络目标无法静态判定：卡片显示「网络目标无法静态判定」并置 `network_undetermined=true`（不做流量拦截）。
+  - 未实现 `Tool::approval_metadata` 的工具（含第三方）卡片显示「该工具未声明影响面」，不伪造 risk/paths/diff。
+  - `docs/19` §4.1「记住范围选择器（含仅该路径）」、「超时延长一次」、§4.2「危险操作二次确认/失焦通知/托盘红点」为 Phase 2/3 非目标。
+  - **`cargo public-api` 本机未安装**：契约 API diff（`docs/04` §10）为 **UNVERIFIED**；本 spec 以 `cargo tree -p zk-contract-tool`（无 agent 反向依赖）
+    与 `cargo check --workspace --all-targets` 作为替代证据（不冒充 public-api 已跑）。
+
 ## 4. 安全/合规残余
 
 - 安全门禁（`docs/21` §10；审计 JSON id 1–14，其中 id 14 为拆分自 gate 5 的 `mcp-stdio-transport`）由

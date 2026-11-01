@@ -166,6 +166,8 @@ export interface Message {
   status?: string;
   /** Persisted provider usage (round-4); absent/null for legacy rows or turns without usage. */
   usage?: AgentUsage | null;
+  /** Owning agent turn (tool rows and the closing assistant row share it; legacy rows empty). */
+  turn_id?: string;
 }
 
 /** Payload subset used by the shell header. */
@@ -177,22 +179,60 @@ export interface Meta {
   agentConfigError?: string | null;
 }
 
+/** Terminal status of one persisted tool row. */
+export type ToolCallStatus = "success" | "failed" | "denied" | "cancelled";
+
 /** One tool call as rendered inside an assistant message. */
 export interface ToolCallView {
   id: string;
   name: string;
   args: string;
   result: string | null;
-  status: "running" | "done" | "error";
+  /** `pending|running` are streaming-only; persisted rows use the terminal set. */
+  status: "pending" | "running" | ToolCallStatus;
+  /** True when a persisted tool row could not be parsed (raw text fallback). */
+  unparsed?: boolean;
 }
 
-/** One approval request attached to an assistant message (M1 placeholder). */
+/** Typed user decision for one approval request (canonical wire values). */
+export type ApprovalDecision = "allow_once" | "allow_session" | "reject" | "cancel";
+
+/** Closed risk level declared by the tool for one approval card. */
+export type ApprovalRisk = "low" | "medium" | "high";
+
+/** Tool-declared impact surface for an approval card (tool-side only). */
+export interface ApprovalMetadata {
+  summary?: string;
+  cwd?: string;
+  read_paths?: string[];
+  write_paths?: string[];
+  network_targets?: string[];
+  network_undetermined?: boolean;
+  risk?: ApprovalRisk;
+  diff?: string | null;
+}
+
+/** One approval request attached to an assistant message. */
 export interface ApprovalView {
   id: string;
   tool: string;
   args: string;
   reason: string;
-  decision: "pending" | "approved" | "rejected";
+  /** Always-allow auto pair (`approval_requested.auto`): never waits for input. */
+  auto?: boolean;
+  /** Absolute deadline (ms since epoch); `0`/absent for legacy events. */
+  deadline_ms?: number;
+  metadata?: ApprovalMetadata | null;
+  decision:
+    | "pending"
+    | "allow_once"
+    | "allow_session"
+    | "reject"
+    | "cancel"
+    | "approved"
+    | "rejected";
+  /** Fail-closed deadline resolution. */
+  timed_out?: boolean;
 }
 
 export type MessageStatus = "done" | "streaming" | "cancelled" | "error";
@@ -217,6 +257,10 @@ export interface ChatMessage {
   error: string | null;
   /** Provider token usage for a completed assistant turn, when reported. */
   usage?: AgentUsage | null;
+  /** Owning agent turn, used to group persisted tool rows. */
+  turnId?: string;
+  /** True for the synthetic group of tool rows with no owning assistant. */
+  degraded?: boolean;
 }
 
 /** Mirrors `zk_contract_agent::AgentEvent` (`serde(tag = "type", rename_all = "snake_case")`). */
@@ -224,18 +268,28 @@ export type AgentEvent =
   | { type: "turn_started"; turn_id: string }
   | { type: "text_delta"; delta: string }
   | { type: "tool_call_started"; name: string; args: string }
-  | { type: "tool_call_finished"; name: string; result: string }
+  | {
+      type: "tool_call_finished";
+      name: string;
+      result: string;
+      args?: string;
+      status?: ToolCallStatus;
+    }
   | {
       type: "approval_requested";
       approval_id: string;
       tool: string;
       args: string;
       reason: string;
+      auto?: boolean;
+      deadline_ms?: number;
+      metadata?: ApprovalMetadata | null;
     }
   | {
       type: "approval_resolved";
       approval_id: string;
-      decision: "allow_once" | "reject" | "cancel";
+      decision: "allow_once" | "allow_session" | "reject" | "cancel";
+      timed_out?: boolean;
     }
   | {
       type: "question_asked";
@@ -247,6 +301,7 @@ export type AgentEvent =
       question_id: string;
       answers: unknown;
     }
+  | { type: "usage"; usage: AgentUsage }
   | {
       type: "turn_completed";
       reply: { text: string; tool_calls: ReplyToolCall[]; usage: AgentUsage | null };

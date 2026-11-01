@@ -39,6 +39,7 @@ fn message(id: &str, conversation_id: &str, role: &str, content: &str) -> Messag
         created_at_ms: 1,
         status: "done".to_owned(),
         usage: None,
+        turn_id: "turn-1".to_owned(),
     }
 }
 
@@ -239,12 +240,12 @@ fn persists_message_usage_across_reopen() {
     assert_eq!(messages[0].usage, Some(usage));
     assert!(messages[1].usage.is_none());
 
-    // Schema is v4 and legacy NULL rows read back as None.
+    // Schema is v5 and legacy NULL rows read back as None.
     let conn = rusqlite::Connection::open(base.join("sessions.db")).unwrap();
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 4);
+    assert_eq!(version, 5);
     drop(conn);
     drop(reopened);
 }
@@ -306,5 +307,79 @@ fn legacy_v3_database_upgrades_to_v4_with_usage_null() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 4, "v3 -> v4 upgrade path");
+    assert_eq!(version, 5, "v3 -> v5 upgrade path");
+}
+
+#[test]
+fn turn_id_round_trips_and_preserves_write_order() {
+    let (store, _) = open_store("turn-id");
+    let workspace = store.list_workspaces().unwrap().first().cloned().unwrap();
+    let conversation = store.create_conversation_in(&workspace.id, "t").unwrap();
+    let rows = vec![
+        ("user", "u1", "user", "", 1),
+        ("tool", "t1", "tool", "{\"name\":\"fs.write\"}", 2),
+        ("tool", "t2", "tool", "{\"name\":\"bash\"}", 3),
+        ("assistant", "a1", "assistant", "done", 4),
+    ];
+    for (turn, id, role, content, created) in rows {
+        let mut row = message(id, &conversation.id, role, content);
+        row.created_at_ms = created;
+        row.turn_id = turn.to_owned();
+        store.append_message(&row).unwrap();
+    }
+    let read = store.messages_in(&workspace.id, &conversation.id).unwrap();
+    assert_eq!(
+        read.iter().map(|row| row.id.as_str()).collect::<Vec<_>>(),
+        vec!["u1", "t1", "t2", "a1"]
+    );
+    assert_eq!(read[1].turn_id, "tool");
+    assert_eq!(read[3].turn_id, "assistant");
+    assert_eq!(read[0].turn_id, "user");
+}
+
+#[test]
+fn v4_database_is_migrated_to_v5_with_empty_turn_ids() {
+    let base = std::env::temp_dir().join(format!("zeokeel-ws-v4-{}", unique("v4")));
+    std::fs::create_dir_all(&base).unwrap();
+    let db = base.join("sessions.db");
+    let root = base.join("default-workspace");
+    std::fs::create_dir_all(&root).unwrap();
+    {
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE workspaces (
+                id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, title TEXT NOT NULL,
+                is_default INTEGER NOT NULL DEFAULT 0, created_at_ms INTEGER NOT NULL,
+                updated_at_ms INTEGER NOT NULL
+            );
+            CREATE TABLE conversations (
+                id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+                title TEXT NOT NULL, created_at_ms INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL
+            );
+            CREATE TABLE messages (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+                role TEXT NOT NULL, content TEXT NOT NULL, created_at_ms INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'done', usage_json TEXT
+            );
+            INSERT INTO workspaces VALUES ('w1', 'ROOT', 't', 1, 1, 1);
+            INSERT INTO conversations VALUES ('c1', 'w1', 't', 1, 1);
+            INSERT INTO messages (id, conversation_id, role, content, created_at_ms, status)
+                VALUES ('legacy-1', 'c1', 'user', 'hi', 1, 'done');
+            PRAGMA user_version=4;"
+                .replace("ROOT", &root.display().to_string())
+                .as_str(),
+        )
+        .unwrap();
+    }
+    let store = open_with_root(db.clone(), root).unwrap();
+    let version: i64 = {
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap()
+    };
+    assert_eq!(version, 5);
+    let read = store.messages_in("w1", "c1").unwrap();
+    assert_eq!(read.len(), 1);
+    assert_eq!(read[0].turn_id, "");
 }

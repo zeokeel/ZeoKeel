@@ -8,15 +8,16 @@ use std::sync::{mpsc, Arc, Mutex};
 
 use serde_json::{json, Value};
 use tokio::sync::broadcast;
+use zk_contract_agent::ApprovalDecision;
 use zk_contract_agent::{AgentHookSink, HistoryMessage, HistoryRole};
 use zk_contract_config::{AppSettings, ProviderKind, ToolSettings, WebSearchSettings};
 use zk_contract_ipc::results::{ChatSendResult, MetaInfo};
-use zk_contract_ipc::{commands, CommandResponse, UiEvent};
+use zk_contract_ipc::{commands, payloads::ApprovalDecidePayload, CommandResponse, UiEvent};
 use zk_contract_session::{FileEntry, FileKind, Message, WorkspaceFilesResult};
 use zk_contract_tool::TurnContext;
 
 use crate::approval::ApprovalBroker;
-use crate::events::{emit_kind, now_ms, BridgeSink, EVENT_BUFFER};
+use crate::events::{now_ms, BridgeSink, EVENT_BUFFER};
 use zk_kit_questions::QuestionBroker;
 
 /// One queued turn for a conversation worker.
@@ -36,7 +37,6 @@ struct TurnJob {
 pub struct AppState {
     runtime: Arc<zk_composed::Runtime>,
     pub bus: broadcast::Sender<UiEvent>,
-    seq: AtomicU64,
     streams: Mutex<HashMap<String, Arc<AtomicBool>>>,
     turns: Mutex<HashMap<String, mpsc::Sender<TurnJob>>>,
     approvals: Arc<ApprovalBroker>,
@@ -72,7 +72,6 @@ impl AppState {
         Arc::new(Self {
             runtime: Arc::new(runtime),
             bus,
-            seq: AtomicU64::new(1),
             streams: Mutex::new(HashMap::new()),
             turns: Mutex::new(HashMap::new()),
             approvals,
@@ -85,10 +84,6 @@ impl AppState {
     /// Runtime accessor (tests).
     pub fn runtime(&self) -> &Arc<zk_composed::Runtime> {
         &self.runtime
-    }
-
-    fn seq(&self) -> &AtomicU64 {
-        &self.seq
     }
 
     /// Record a non-fatal agent-settings startup error for the UI (`meta.get`).
@@ -768,13 +763,21 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
         commands::CHAT_SEND => chat_send(state, payload),
         commands::CHAT_CANCEL => chat_cancel(state, payload),
         commands::APPROVAL_DECIDE => {
-            let (Some(approval_id), Some(decision)) = (
-                payload.get("approval_id").and_then(Value::as_str),
-                payload.get("decision").and_then(Value::as_str),
-            ) else {
-                return CommandResponse::err("missing approval_id/decision");
+            let decide: ApprovalDecidePayload = match serde_json::from_value(payload.clone()) {
+                Ok(decide) => decide,
+                Err(error) => {
+                    return CommandResponse::err(format!("approval/invalid-decision: {error}"));
+                }
             };
-            if state.approvals.resolve(approval_id, decision == "approved") {
+            let resolved = state
+                .approvals
+                .resolve_scoped(&decide.approval_id, decide.decision);
+            if resolved && matches!(decide.decision, ApprovalDecision::Cancel) {
+                // Single cancel path: the agent runtime observes the inherited
+                // cancelled flag and emits TurnCancelled once (no host-side emit).
+                state.runtime.cancel_agent();
+            }
+            if resolved {
                 CommandResponse::ok(json!({ "resolved": true }))
             } else {
                 CommandResponse::err("approval/pending-not-found")
@@ -1726,6 +1729,7 @@ fn chat_send(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
         created_at_ms: now_ms(),
         status: "done".to_owned(),
         usage: None,
+        turn_id: String::new(),
     };
     if let Err(error) = sessions.append_message(&user_message) {
         return session_err(error);
@@ -1790,14 +1794,15 @@ fn run_turn(state: &Arc<AppState>, job: &TurnJob) {
         return;
     }
     let seq = Arc::new(AtomicU64::new(1));
-    let sink: Arc<dyn zk_contract_agent::EventSink> = Arc::new(BridgeSink {
-        bus: state.bus.clone(),
-        stream_id: job.stream_id.clone(),
-        seq: Arc::clone(&seq),
-        cancelled: Arc::clone(&job.cancelled),
-        sessions: state.runtime.sessions(),
-        conversation_id: job.conversation_id.clone(),
-    });
+    let bridge = Arc::new(BridgeSink::new(
+        state.bus.clone(),
+        job.stream_id.clone(),
+        Arc::clone(&seq),
+        Arc::clone(&job.cancelled),
+        state.runtime.sessions(),
+        job.conversation_id.clone(),
+    ));
+    let sink: Arc<dyn zk_contract_agent::EventSink> = bridge.clone();
     let context = TurnContext {
         conversation_id: job.conversation_id.clone(),
         workspace_id: job.workspace_id.clone(),
@@ -1821,12 +1826,18 @@ fn run_turn(state: &Arc<AppState>, job: &TurnJob) {
     );
     match result {
         Ok(reply) => {
-            let status = if job.cancelled.load(Ordering::SeqCst) {
+            let status = if bridge.turn_cancelled() {
                 "cancelled"
             } else {
                 "done"
             };
-            let message = assistant_message(&job.conversation_id, reply.text, reply.usage, status);
+            let message = assistant_message(
+                &job.conversation_id,
+                reply.text,
+                reply.usage,
+                status,
+                &bridge.turn_id(),
+            );
             let _ = state.runtime.sessions().append_message(&message);
         }
         Err(error) => {
@@ -1838,6 +1849,7 @@ fn run_turn(state: &Arc<AppState>, job: &TurnJob) {
                 created_at_ms: now_ms(),
                 status: "error".to_owned(),
                 usage: None,
+                turn_id: bridge.turn_id(),
             };
             let _ = state.runtime.sessions().append_message(&message);
         }
@@ -1892,6 +1904,7 @@ fn assistant_message(
     text: String,
     usage: Option<zk_contract_agent::AgentUsage>,
     status: &str,
+    turn_id: &str,
 ) -> Message {
     Message {
         id: uuid::Uuid::new_v4().to_string(),
@@ -1901,6 +1914,7 @@ fn assistant_message(
         created_at_ms: now_ms(),
         status: status.to_owned(),
         usage,
+        turn_id: turn_id.to_owned(),
     }
 }
 
@@ -1916,15 +1930,12 @@ fn chat_cancel(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
     let Some(flag) = flag else {
         return CommandResponse::err(format!("unknown stream: {stream_id}"));
     };
+    // Release any pending approval waiters so the tool closure can observe the
+    // cancel flag instead of blocking until the approval timeout, then flip the
+    // shared flags. The agent runtime is the single TurnCancelled emitter.
+    state.approvals.release_all(ApprovalDecision::Reject);
     flag.store(true, Ordering::SeqCst);
     state.runtime.cancel_agent();
-    emit_kind(
-        &state.bus,
-        stream_id,
-        state.seq(),
-        "agent",
-        json!({ "type": "turn_cancelled" }),
-    );
     CommandResponse::ok(json!({ "cancelled": true }))
 }
 
@@ -2121,11 +2132,13 @@ mod tests {
             reasoning_tokens: 1,
             cost_micros: None,
         };
-        let with_usage = super::assistant_message("c1", "answer".to_owned(), Some(usage), "done");
+        let with_usage =
+            super::assistant_message("c1", "answer".to_owned(), Some(usage), "done", "turn-1");
         assert_eq!(with_usage.usage, Some(usage));
         assert_eq!(with_usage.status, "done");
         assert_eq!(with_usage.role, "assistant");
-        let without = super::assistant_message("c1", "answer".to_owned(), None, "cancelled");
+        let without =
+            super::assistant_message("c1", "answer".to_owned(), None, "cancelled", "turn-2");
         assert!(without.usage.is_none());
         assert_eq!(without.status, "cancelled");
     }
@@ -2781,6 +2794,7 @@ mod tests {
             created_at_ms: 1,
             status: status.to_owned(),
             usage: None,
+            turn_id: String::new(),
         }
     }
 

@@ -12,5 +12,8 @@ serde_json = { workspace = true }
 uuid = { workspace = true }
 dirs = { workspace = true }
 
+[dev-dependencies]
+rusqlite = { workspace = true }
+
 [lints]
 workspace = true

@@ -8415,6 +8415,7 @@ dependencies = [
  "zk-kit-events",
  "zk-kit-extractor",
  "zk-kit-subagent",
+ "zk-kit-tools",
  "zk-tool-subagent",
  "zk-tool-subagent-control",
 ]

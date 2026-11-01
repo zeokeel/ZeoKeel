@@ -66,6 +66,8 @@ export function ChatView() {
 }
 
 export { readUsage, usageFromReply } from "./UsagePart";
+export { groupToolRows } from "./toolRows";
+export type { ToolGrouping } from "./toolRows";
 export type { UsageSummary } from "./UsagePart";
 
 export const components = {

@@ -69,6 +69,12 @@ pub struct Message {
     /// `None`.
     #[serde(default)]
     pub usage: Option<zk_contract_agent::AgentUsage>,
+    /// Owning agent turn; tool rows and the closing assistant row share it.
+    ///
+    /// Legacy rows parse as an empty string and are grouped by the legacy
+    /// fallback rule (next assistant in the conversation).
+    #[serde(default)]
+    pub turn_id: String,
 }
 
 fn done_status() -> String {

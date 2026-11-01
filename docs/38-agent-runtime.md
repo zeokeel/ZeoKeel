@@ -16,14 +16,29 @@
 
 ## 2. 审批
 
-- `ToolSpec.requires_approval` 的工具在 rig DynamicTool 回调内暂停：发 `ApprovalRequested` → `ApprovalGate.decide` 阻塞 → 发 `ApprovalResolved` → 继续/拒绝。
-- 默认 `DenyAll`（fail-closed）；桌面在 `AppState` 安装 `ApprovalBroker`，UI `approval.decide` 解除等待；超时/无通道 = 拒绝。
-- 这是 DSH `ask` 的等价语义；sandbox 升级不在弱管控范围。
+- **单 owner = agent-rig**：策略求值（`ApprovalPolicySource::should_ask`，默认 `requires_approval`；config spec 后续注入 `ApprovalPolicy`）与
+  always-allow 会话记忆都只在 `packages/client/agent-rig` 求值；宿主 `ApprovalBroker` 只做 IPC 阻塞与超时，**不持有**会话允许集合。
+- 契约：`zk-contract-tool` 定义 `ApprovalMetadata`/`ApprovalRisk`/`ApprovalDecision`（agent 用 `pub use` 保持旧路径）；`ApprovalGate::decide_scoped`
+  返回 typed 决策（默认实现转调旧 `decide -> bool`，第三方实现不破）。
+- 事件序列表（唯一真源 = `specs/changes/2026-11-01-client-approval-tool-rendering/design.md` §2.0）：
+  S1 ask→allow_once（`requested → resolved{allow_once} → started → finished{success}`）；S2 ask→reject（`resolved{reject}` → `finished{denied}`，无 started）；
+  S3a 显式 cancel（`resolved{cancel}` → `finished{cancelled}` → `TurnCancelled`）；S3b 超时（`resolved{reject,timed_out:true}` → `finished{denied}`）；
+  S3c 断线/窗口关闭（`resolved{reject,timed_out:false}` → `finished{denied}`）；S4 always-allow 命中（成对 `requested{auto:true} → resolved{allow_session}`，不阻塞、不弹决策）；
+  S5 策略短路（不发任何 `approval_*`，直接执行）。
+- 决策 wire：`allow_once | allow_session | reject | cancel`（canonical），宿主反序列化兼容旧值 `approved`→`allow_once`、`rejected`→`reject`。
+- 拒绝/取消也发终态 `ToolCallFinished{status}` 并落库；`cancel` 与 `chat.cancel` 共用单一取消路径：broker 释放等待者(Reject) + `cancel_agent()`，
+  由 agent-rig 统一发一次 `TurnCancelled`（宿主不再手发）。
+- **执行中取消**（P1-13.2）：取消置位后，无论 gate 前还是工具 outcome 返回后都发 `ToolCallFinished{cancelled}`；result 原样保留工具已产生文本（不伪造失败），
+  UI 据此显示「已取消（副作用可能已发生）」；无已产生结果时 result 为空。
+- 默认 `DenyAll`（fail-closed）；超时/无通道 = 拒绝。这是 DSH `ask` 的等价语义；sandbox 升级不在弱管控范围。
 
 ## 3. 事件/取消/上下文
 
 - `EventSink` 通过 `run_stream_in_shared(Arc<dyn EventSink>)` 传入，工具与审批可在执行中发事件；旧 `&dyn` 路径用缓冲 sink 兼容。
-- 每轮事件：TurnStarted → ApprovalRequested/Resolved → ToolCallStarted/Finished → TextDelta → TurnCompleted/Cancelled/Error。
+- 每轮事件：TurnStarted → ApprovalRequested/Resolved → ToolCallStarted/Finished → TextDelta → Usage(可选) → TurnCompleted/Cancelled/Error。
+- 工具终态：`ToolCallStatus = success|failed|denied|cancelled`；终态事件携带已脱敏 `args` 与 `status`，`BridgeSink` **先落库再判断 cancelled 短路**
+  （bus 只抑制非终态事件；`TurnCancelled` 与终态 `ToolCallFinished` 仍发）；会话 `Message.turn_id` 记录归属 turn（SQLite v5 仅加列），
+  assistant 行 status(`done|cancelled`) 由 BridgeSink 观察到的 `TurnCancelled` 决定；取消/失败/拒绝的工具卡刷新后仍可恢复。
 - 取消：rig 流式循环每项检查 `RigAgent.cancel()`；工具执行前检查取消；桌面 `chat.cancel` 调用 `Runtime::cancel_agent()`。工具超时优先取设置 `AppSettings.tools.tool_timeout_ms`（默认 120s、范围 1000..600000），未保存设置时回退 `ZEOKEEL_TOOL_TIMEOUT_MS`。非流式 provider 通过 50ms 轮询取消标志也可中断；审批超时优先取设置 `AppSettings.tools.approval_timeout_ms`（默认 300s、范围 1000..1800000），未保存设置时回退 `ZEOKEEL_APPROVAL_TIMEOUT_MS`。
 - 委派：subagent/workflow/ralph 复用同一 model/tools，但子会话 id 隔离为 `<conversation>-sub-<depth>`（异步子代理追加 `-<id>` 保证唯一）；最大深度 3。深度按会话 id 传递（子代理在新线程执行，不能只依赖线程本地状态），工具执行闭包内恢复深度后 `MAX_DEPTH` 才真正生效。异步子代理（`subagent_start`/`subagent_status`/`subagent_interrupt`）在后台线程运行同一套 run 逻辑，进程内**存活线程**并发上限 8（RAII 计数，取消后线程未退出仍占槽；线程 panic 由 `catch_unwind` 捕获为 failed 并释放槽）；取消通过父/子共享的 `Arc<AtomicBool>` 传递（`RigAgent::with_cancel_flag`/`cancel_flag`），状态机为 `running→done|failed|cancelled`（cancelled 胜出且不被完成路径覆盖），完成/失败/取消的状态与结果保存在 runner 注册表，list_agents 可枚举 async 子代理。**保留策略**：runner children 与 kit 子代理注册表各上限 64 条；超出时淘汰最旧**已完成**记录（evicted id 的 `subagent_status`/结果视为 unknown→NotFound），`running` 记录永不淘汰，避免长会话无界增长。
 - agent team：`agent_team {objective, tasks[], max_workers?, timeout_ms?}` 让父 agent 作为 coordinator，经同一 runner 的 `start/status/result/interrupt` **有界扇出** ≤8 个 worker（`max_workers` 1..=8，与 `subagent_start` 共享存活线程上限 8、深度上限 3）。同步聚合：50ms 轮询直至全部终态或超时（默认 60s，范围 100..300000ms；到时中断仍在运行的 worker），返回 `{status ∈ done|partial|failed|timeout, workers[{id,task,status,result|error}], completed/failed/cancelled/total, elapsed_ms}`；单 worker 失败为 `partial`、全失败为 `failed`，runner 缺失/深度/并发上限为明确 `Denied` 错误，启动失败会中断已启动 worker 并返回 `Io`。不做动态团队 UI、不做 LLM 综述（父 agent 从 per-worker 结果综合）；父轮次取消仍在工具边界生效（ADR-070）。

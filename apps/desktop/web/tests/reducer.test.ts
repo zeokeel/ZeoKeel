@@ -111,7 +111,7 @@ describe("chat reducer", () => {
     });
     const tool = state.messages[1]?.toolCalls[0];
     expect(tool?.name).toBe("fs.read");
-    expect(tool?.status).toBe("done");
+    expect(tool?.status).toBe("success");
     expect(tool?.result).toBe("hello");
     expect(state.messages[1]?.toolCalls).toHaveLength(1);
   });
@@ -188,5 +188,118 @@ describe("chat reducer", () => {
     });
     expect(state.boot).toBe("ready");
     expect(state.messagesState).toBe("loading");
+  });
+
+  it("applies terminal tool statuses from finish events", () => {
+    let state = startSend(loadedState());
+    state = appReducer(state, {
+      type: "agent_event",
+      event: { type: "tool_call_started", name: "bash", args: "{}" },
+      now: 11,
+    });
+    state = appReducer(state, {
+      type: "agent_event",
+      event: {
+        type: "tool_call_finished",
+        name: "bash",
+        result: "denied by approval policy",
+        args: '{"command":"rm"}',
+        status: "denied",
+      },
+      now: 12,
+    });
+    expect(state.messages[1]?.toolCalls[0]?.status).toBe("denied");
+    expect(state.messages[1]?.toolCalls[0]?.args).toBe('{"command":"rm"}');
+  });
+
+  it("groups persisted tool rows by turn and keeps degraded leftovers", () => {
+    let state = loadedState();
+    state = appReducer(state, {
+      type: "messages_loaded",
+      conversationId: CONVERSATION.id,
+      messages: [
+        {
+          id: "u1",
+          conversation_id: CONVERSATION.id,
+          role: "user",
+          content: "go",
+          created_at_ms: 1,
+          status: "done",
+          usage: null,
+          turn_id: "turn-1",
+        },
+        {
+          id: "t1",
+          conversation_id: CONVERSATION.id,
+          role: "tool",
+          content: JSON.stringify({ name: "fs.write", args: "{}", status: "cancelled", result: "wrote" }),
+          created_at_ms: 2,
+          status: "done",
+          usage: null,
+          turn_id: "turn-1",
+        },
+        {
+          id: "a1",
+          conversation_id: CONVERSATION.id,
+          role: "assistant",
+          content: "done",
+          created_at_ms: 3,
+          status: "done",
+          usage: null,
+          turn_id: "turn-1",
+        },
+      ],
+    });
+    expect(state.messages.map((message) => message.id)).toEqual(["u1", "a1"]);
+    expect(state.messages[1]?.toolCalls[0]?.status).toBe("cancelled");
+    expect(state.messages[1]?.turnId).toBe("turn-1");
+  });
+
+  it("records approval metadata and typed decisions", () => {
+    let state = startSend(loadedState());
+    state = appReducer(state, {
+      type: "agent_event",
+      event: {
+        type: "approval_requested",
+        approval_id: "approval-1",
+        tool: "fs.write",
+        args: '{"path":"a.txt"}',
+        reason: "mutating tool",
+        auto: false,
+        deadline_ms: 1234,
+        metadata: { summary: "write a.txt", risk: "medium", write_paths: ["a.txt"] },
+      },
+      now: 11,
+    });
+    const pending = state.messages[1]?.approvals[0];
+    expect(pending?.decision).toBe("pending");
+    expect(pending?.metadata?.summary).toBe("write a.txt");
+    expect(pending?.deadline_ms).toBe(1234);
+    state = appReducer(state, {
+      type: "agent_event",
+      event: { type: "approval_resolved", approval_id: "approval-1", decision: "allow_session", timed_out: false },
+      now: 12,
+    });
+    expect(state.messages[1]?.approvals[0]?.decision).toBe("allow_session");
+  });
+
+  it("applies live usage events to the streaming turn", () => {
+    let state = startSend(loadedState());
+    state = appReducer(state, {
+      type: "agent_event",
+      event: {
+        type: "usage",
+        usage: {
+          input_tokens: 3,
+          output_tokens: 2,
+          total_tokens: 5,
+          cached_tokens: 0,
+          reasoning_tokens: 0,
+          cost_micros: null,
+        },
+      },
+      now: 12,
+    });
+    expect(state.messages[1]?.usage?.total_tokens).toBe(5);
   });
 });
