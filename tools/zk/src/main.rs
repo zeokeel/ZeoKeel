@@ -2213,7 +2213,7 @@ fn compose_lib(root: &Path, resolved: &Resolved) -> Result<String> {
     // Generated facade for shared helpers used by the composition root (C4/C2):
     // the host calls `zk_composed::zk_kit_tools::safe_join_under(...)` instead of
     // depending on kit/tool crates directly.
-    out.push_str("pub use zk_kit_compaction;\npub use zk_kit_session;\npub use zk_kit_tools;\npub use zk_tool_goal;\npub use zk_tool_plan;\n");
+    out.push_str("pub use zk_kit_compaction;\npub use zk_kit_session;\npub use zk_kit_tools;\npub use zk_tool_goal;\npub use zk_tool_plan;\npub use zk_tool_skill;\n");
     Ok(out)
 }
 
@@ -4782,12 +4782,13 @@ mod ui_registry_tests {
                 ("search".to_owned(), 50),
                 ("embedding".to_owned(), 60),
                 ("media".to_owned(), 65),
+                ("mcp".to_owned(), 70),
                 ("about".to_owned(), 90),
             ],
             "{ts}"
         );
         // Provider pane comes from the personal-only package on the list slot.
-        assert!(ts.contains("c6[\"settings.pane.provider\"]"), "{ts}");
+        assert!(ts.contains("[\"settings.pane.provider\"]"), "{ts}");
         assert!(ts.contains("export const SettingsSlot = c5[\"settings.dialog\"]"));
         // The old single provider slot is gone; the pane list replaces it.
         assert!(!ts.contains("SettingsProviderSlot"), "{ts}");

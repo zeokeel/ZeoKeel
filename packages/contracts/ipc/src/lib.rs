@@ -190,6 +190,10 @@ pub mod commands {
     pub const PLAN_GET: &str = "plan.get";
     /// Enter/leave plan mode or review the submitted plan (approve/reject/continue/off).
     pub const PLAN_UPDATE: &str = "plan.update";
+    /// List user-invocable skills of the current workspace/installed set (`/<skill>`).
+    pub const SKILL_LIST: &str = "skill.list";
+    /// Read one skill's `SKILL.md` for a composer Instructions chip (≤8 KiB).
+    pub const SKILL_READ: &str = "skill.read";
 }
 
 /// Typed command payloads (single source for `schemars` JSON Schema).
@@ -604,6 +608,30 @@ pub mod payloads {
         pub feedback: Option<String>,
     }
 
+    /// `skill.list` payload (`/<skill>` candidates; current workspace only, C18).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct SkillListPayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Optional conversation context (ownership verified when present).
+        #[serde(default)]
+        pub conversation_id: Option<String>,
+    }
+
+    /// `skill.read` payload (Instructions content; host enforces the 8 KiB bound).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct SkillReadPayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Conversation context (ownership verified).
+        pub conversation_id: String,
+        /// Skill name (directory name / frontmatter `name`).
+        pub name: String,
+        /// Installed version (enterprise); absent selects the installed latest.
+        #[serde(default)]
+        pub version: Option<String>,
+    }
+
     /// `session.search` payload (current workspace only, C18).
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
     pub struct SessionSearchPayload {
@@ -820,6 +848,44 @@ pub mod results {
     pub struct PlanUpdateResult {
         /// Conversation plan state after the update.
         pub plan: PlanView,
+    }
+
+    /// One `/<skill>` candidate (user-invocable only; frontmatter metadata).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct SkillEntryView {
+        /// Skill name (frontmatter `name`, falling back to the directory name).
+        pub name: String,
+        /// Frontmatter description (empty when absent); UI falls back to the name.
+        #[serde(default)]
+        pub description: String,
+        /// Frontmatter `user-invocable` (true unless explicitly false).
+        pub user_invocable: bool,
+        /// Installed version (enterprise); absent for workspace skills.
+        #[serde(default)]
+        pub version: Option<String>,
+        /// `workspace` (personal `.agents/skills`) | `installed` (enterprise store).
+        pub source: String,
+    }
+
+    /// `skill.list` result (current workspace/edition; no second scanner).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct SkillListResult {
+        /// User-invocable candidates, sorted by name.
+        pub skills: Vec<SkillEntryView>,
+    }
+
+    /// `skill.read` result: the Instructions body (≤8 KiB) and provenance.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct SkillReadResult {
+        /// Skill name.
+        pub name: String,
+        /// Installed version (enterprise); absent for workspace skills.
+        #[serde(default)]
+        pub version: Option<String>,
+        /// `SKILL.md` content (host-enforced ≤8 KiB).
+        pub content: String,
+        /// `workspace` | `installed`.
+        pub source: String,
     }
 
     /// `terminal` result: live shells + one output snapshot.

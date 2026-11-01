@@ -31,6 +31,8 @@ import {
   compaction_get_resultSchema,
   plan_get_resultSchema,
   plan_update_resultSchema,
+  skill_list_resultSchema,
+  skill_read_resultSchema,
   conversation_override_resultSchema,
   feedback_submit_resultSchema,
   goal_resultSchema,
@@ -98,6 +100,8 @@ export type BoundaryName =
   | "compactionGetResult"
   | "planGetResult"
   | "planUpdateResult"
+  | "skillListResult"
+  | "skillReadResult"
   | "feedbackSubmitResult"
   | "questionAsked";
 
@@ -125,6 +129,8 @@ const checks: Record<BoundaryName, ValidateFunction> = {
   compactionGetResult: ajv.compile(compaction_get_resultSchema),
   planGetResult: ajv.compile(plan_get_resultSchema),
   planUpdateResult: ajv.compile(plan_update_resultSchema),
+  skillListResult: ajv.compile(skill_list_resultSchema),
+  skillReadResult: ajv.compile(skill_read_resultSchema),
   questionAsked: ajv.compile(agent_question_askedSchema),
 };
 
@@ -242,4 +248,12 @@ export function validatePlanResult(value: unknown): boolean {
 
 export function validatePlanGetResult(value: unknown): boolean {
   return validateBoundary("planGetResult", value);
+}
+
+export function validateSkillListResult(value: unknown): boolean {
+  return validateBoundary("skillListResult", value);
+}
+
+export function validateSkillReadResult(value: unknown): boolean {
+  return validateBoundary("skillReadResult", value);
 }

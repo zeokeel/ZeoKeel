@@ -349,3 +349,84 @@ fn compaction_payloads_round_trip() {
         serde_json::from_str(&serde_json::to_string(&get).unwrap()).unwrap()
     );
 }
+
+#[test]
+fn skill_payloads_round_trip() {
+    use zk_contract_ipc::payloads::{SkillListPayload, SkillReadPayload};
+    let list = SkillListPayload {
+        workspace_id: "w".to_owned(),
+        conversation_id: Some("c".to_owned()),
+    };
+    let text = serde_json::to_string(&list).unwrap();
+    assert_eq!(
+        list,
+        serde_json::from_str::<SkillListPayload>(&text).unwrap()
+    );
+    // Optional conversation context stays additive (old callers omit it).
+    let bare: SkillListPayload = serde_json::from_str(r#"{"workspace_id":"w"}"#).unwrap();
+    assert_eq!(bare.conversation_id, None);
+    let read = SkillReadPayload {
+        workspace_id: "w".to_owned(),
+        conversation_id: "c".to_owned(),
+        name: "demo".to_owned(),
+        version: Some("1.0.0".to_owned()),
+    };
+    assert_eq!(
+        read,
+        serde_json::from_str(&serde_json::to_string(&read).unwrap()).unwrap()
+    );
+}
+
+#[test]
+fn skill_results_round_trip_the_documented_shape() {
+    use zk_contract_ipc::results::{SkillEntryView, SkillListResult, SkillReadResult};
+
+    let list = SkillListResult {
+        skills: vec![
+            SkillEntryView {
+                name: "demo".to_owned(),
+                description: "demo skill".to_owned(),
+                user_invocable: true,
+                version: None,
+                source: "workspace".to_owned(),
+            },
+            SkillEntryView {
+                name: "installed".to_owned(),
+                description: String::new(),
+                user_invocable: true,
+                version: Some("1.2.3".to_owned()),
+                source: "installed".to_owned(),
+            },
+        ],
+    };
+    let value = serde_json::to_value(&list).unwrap();
+    let skills = value
+        .get("skills")
+        .and_then(serde_json::Value::as_array)
+        .unwrap();
+    assert_eq!(
+        skills.first().and_then(|skill| skill.get("source")),
+        Some(&json!("workspace"))
+    );
+    assert_eq!(
+        skills.get(1).and_then(|skill| skill.get("version")),
+        Some(&json!("1.2.3"))
+    );
+    assert_eq!(
+        list,
+        serde_json::from_value::<SkillListResult>(value).unwrap()
+    );
+
+    let read = SkillReadResult {
+        name: "demo".to_owned(),
+        version: None,
+        content: "# Demo\n".to_owned(),
+        source: "workspace".to_owned(),
+    };
+    let value = serde_json::to_value(&read).unwrap();
+    assert_eq!(value.get("content"), Some(&json!("# Demo\n")));
+    assert_eq!(
+        read,
+        serde_json::from_value::<SkillReadResult>(value).unwrap()
+    );
+}

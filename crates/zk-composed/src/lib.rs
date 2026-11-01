@@ -190,3 +190,4 @@ pub use zk_kit_session;
 pub use zk_kit_tools;
 pub use zk_tool_goal;
 pub use zk_tool_plan;
+pub use zk_tool_skill;

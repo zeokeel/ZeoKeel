@@ -65,9 +65,11 @@ test.describe("command surface Batch 1 interaction contract", () => {
     await page.keyboard.type("/");
     const list = page.getByRole("listbox", { name: "命令" });
     await expect(list).toBeVisible();
-    for (const label of ["添加文件", "设置会话目标", "计划", "发送反馈", "压缩上下文", "权限策略", "选择模型", "导出对话", "技能"]) {
+    for (const label of ["添加文件", "设置会话目标", "计划", "发送反馈", "压缩上下文", "权限策略", "选择模型", "导出对话"]) {
       await expect(page.getByRole("option", { name: new RegExp(label) })).toBeVisible();
     }
+    // The「技能」row is stable; seeded skill candidates are asserted by command-skill.
+    await expect(page.locator("#zk-composer-command-skill")).toBeVisible();
     // UI actions are palette-only now.
     await expect(page.getByRole("option", { name: /新建会话/ })).toHaveCount(0);
     await composer(page).fill("/mod");
@@ -87,7 +89,7 @@ test.describe("command surface Batch 1 interaction contract", () => {
     record("CMD2-MENU-01", "two DSH sections, filtering, accept/close keys, no UI actions");
   });
 
-  test("CMD2-MENU-02: unknown commands and Batch 2 placeholders never execute/send", { tag: ["@interaction:CMD2-MENU-02"] }, async ({ page }) => {
+  test("CMD2-MENU-02: unknown commands and the real /skill never execute/send", { tag: ["@interaction:CMD2-MENU-02"] }, async ({ page }) => {
     await openClient(page);
     const before = await page.getByTestId("user-text").count();
     await composer(page).fill("/not-a-command");
@@ -95,13 +97,14 @@ test.describe("command surface Batch 1 interaction contract", () => {
     await expect(page.getByText("不支持的命令")).toBeVisible();
     await expect(page.getByTestId("user-text")).toHaveCount(before);
     await composer(page).fill("/skill");
-    const placeholder = page.getByRole("option", { name: /技能/ });
-    await expect(placeholder).toBeVisible();
-    expect(await placeholder.isDisabled()).toBe(true);
+    const skillCommand = page.locator("#zk-composer-command-skill");
+    await expect(skillCommand).toBeVisible();
+    expect(await skillCommand.isDisabled()).toBe(false);
     await page.keyboard.press("Enter");
-    await expect(page.getByText("未实现（Batch 2）")).toBeVisible();
+    // `/skill` explains the skill group; it is never forwarded as a prompt.
+    await expect(page.getByText("输入 / 查看可用技能")).toBeVisible();
     await expect(page.getByTestId("user-text")).toHaveCount(before);
-    record("CMD2-MENU-02", "unknown commands and Batch 2 placeholders never execute/send");
+    record("CMD2-MENU-02", "unknown commands and the real /skill never execute/send");
   });
 
   test("CMD2-FILE-01: /file opens the picker; attachments are rejected by other commands", { tag: ["@interaction:CMD2-FILE-01"] }, async ({ page }) => {

@@ -653,7 +653,7 @@ export interface CommandDescriptor {
   surface: "slash" | "palette" | "both";
   /** Slash command kind (`action`/`popupSelect`/`leadingInput`/`execute`). */
   kind?: "action" | "popupSelect" | "leadingInput" | "execute" | "disabled";
-  /** Visible reason for a disabled row (Batch 2 placeholders). */
+  /** Visible reason for a disabled row (e.g. `/compact` while streaming). */
   disabledReason?: string;
   /** Slash command name without the `/` (e.g. `model`). */
   name?: string;
@@ -668,17 +668,21 @@ export interface WorkspaceFileRef {
 }
 
 /**
- * One composer draft chip: an `@` workspace reference or a saved attachment.
+ * One composer draft chip: an `@` workspace reference, a saved attachment, or a
+ * `/<skill>` Instructions block.
  *
  * Draft state only — never serialized as a struct on the wire: on send the shell
- * merges the chips into the user message's trailing reference block (plain
- * text), so `chat.send` stays unchanged.
+ * merges the chips into plain-text blocks (Instructions + trailing references)
+ * in the user message, so `chat.send` stays unchanged.
  */
 export interface DraftRef {
   /** Client-only draft key (retry/removal); never sent. */
   id?: string;
-  /** `workspace` = `@` file/dir reference; `attachment` = host-saved workspace file. */
-  kind: "workspace" | "attachment";
+  /**
+   * `workspace` = `@` file/dir reference; `attachment` = host-saved workspace file;
+   * `skill` = `/<skill>` Instructions block (`skill.read`, ≤8 KiB).
+   */
+  kind: "workspace" | "attachment" | "skill";
   /** Workspace-relative path (directory references end with `/`; attachments only when ready). */
   path: string;
   /** Display name (basename for attachments, last path segment for references). */
@@ -693,6 +697,38 @@ export interface DraftRef {
   status?: "uploading" | "ready" | "error";
   /** i18n error key when `status === "error"`. */
   error?: string;
+  /** Skill Instructions body (`kind === "skill"`; already host-bounded to ≤8 KiB). */
+  content?: string;
+  /** Installed skill version (enterprise `kind === "skill"`; null for workspace skills). */
+  version?: string | null;
+  /** Skill source (`kind === "skill"`). */
+  source?: "workspace" | "installed";
+}
+
+/** One `/<skill>` candidate (frontmatter metadata from `skill.list`). */
+export interface SkillCandidate {
+  /** Skill name (frontmatter `name`, falling back to the directory name). */
+  name: string;
+  /** Frontmatter description (empty when absent; UI falls back to the name). */
+  description: string;
+  /** Frontmatter `user-invocable` (host lists true only). */
+  user_invocable: boolean;
+  /** Installed version (enterprise); null for workspace skills. */
+  version: string | null;
+  /** `workspace` (personal `.agents/skills`) | `installed` (enterprise store). */
+  source: "workspace" | "installed";
+}
+
+/** One read skill body for the composer Instructions chip (`skill.read`; ≤8 KiB). */
+export interface SkillInstruction {
+  /** Skill name. */
+  name: string;
+  /** Installed version (enterprise); null for workspace skills. */
+  version: string | null;
+  /** `SKILL.md` content (host-enforced ≤8 KiB). */
+  content: string;
+  /** `workspace` | `installed`. */
+  source: "workspace" | "installed";
 }
 
 /** Mirrors `zk_contract_ipc::results::AttachmentSaveResult` (host-canonical metadata). */

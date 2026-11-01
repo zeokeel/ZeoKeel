@@ -247,3 +247,11 @@
 - **delegation 不在子 agent 传播**：父层直接阻断全部 delegation（本 spec 的设计）；child 仍可持有全部工具（若后续放开传播需另行设计）。
 - 提交仅 `exit_plan_mode`（≤64 KiB Markdown）；审核状态持久化在 `.zeokeel/plans.json`（每会话一条，文件上限 64 KiB）；不自动执行计划、不自动退出 plan mode、不自动压缩。
 - mock provider 的 e2e 用内置触发关键字；真实 provider 的 plan 质量取决于模型；工具过滤的 e2e 覆盖 mutating 一项 + Rust 单测枚举六个 delegation（运行路径相同）；视觉基线 `CMD3P-VIS-01` 需人工确认（当前仅交互截图证据）；真人用户测试（≥5 人）UNVERIFIED。
+
+## Skill catalog（`/<skill>`，`2026-11-01-client-skill-commands`）
+
+- **只读目录、不自动执行**：`/skill` 只列 `.agents/skills`（personal）或 `$ZEOKEEL_HOME/skills` 已安装技能（enterprise），插入 Instructions 不发送、不执行技能、不联网；不读未安装/未版本内容，不跨 workspace。
+- **personal 只认 workspace `.agents/skills`**（`user-invocable != false`）；enterprise 只认已安装商店技能（`$ZEOKEEL_HOME/skills/<name>/<version>`），企业版不读工作区 `.agents/skills`。本机 personal 组合可测；enterprise 安装目录路径/版本/未安装禁用仅纯函数单测，真实商店安装 + 企业组合未在 e2e 覆盖 → UNVERIFIED。
+- **frontmatter 解析为受限子集**：前 4 KiB 的 `name`/`description`/`user-invocable`（支持引号与 `|`/`>` 块标量）；其它 YAML 特性/嵌套/锚点不解析，坏 frontmatter 降级为目录名 + 空描述（不白屏）。
+- **Instructions ≤8 KiB**：超限 `skill/too-large` 拒绝（不截断后伪造）；发送时以纯文本 `--- skill instructions ---` 块进入用户消息（`chat.send` 不变），不是原生 system prompt；块内控制字符清理；单条消息只允许一个 Instructions chip（重选替换）。
+- 视觉基线 `CMD3S-VIS-01`（P2）需人工确认，本实现未提交快照、未自动接受；真人用户测试（≥5 人）UNVERIFIED。

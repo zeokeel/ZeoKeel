@@ -10,6 +10,8 @@ import {
   parseUiEvent,
   parseMeta,
   parseWorkspace,
+  parseSkillListResult,
+  parseSkillReadResult,
   parseWorkspaceChanges,
   parseWorkspaceFiles,
   parseWorkspaces,
@@ -24,6 +26,8 @@ import {
   validateMessage,
   validateMetaInfo,
   validateQuestionAsked,
+  validateSkillListResult,
+  validateSkillReadResult,
   validateUiEvent,
   validateWorkspace,
   validateWorkspaceChangesResult,
@@ -379,5 +383,66 @@ describe("workspace.changes boundary (round-4)", () => {
     expect(validateWorkspaceChangesResult({ items: [{ path: "x", add: "1", del: 0 }] })).toBe(false);
     expect(validateWorkspaceChangesResult({ items: [{ path: "x", add: 1 }] })).toBe(false);
     expect(parseWorkspaceChanges({ entries: [] })).toBeNull();
+  });
+});
+
+
+describe("skill.list / skill.read boundaries (2026-11-01-client-skill-commands)", () => {
+  const SKILL_LIST = {
+    skills: [
+      {
+        name: "demo",
+        description: "Demo skill",
+        user_invocable: true,
+        version: null,
+        source: "workspace",
+      },
+      {
+        name: "release",
+        description: "",
+        user_invocable: true,
+        version: "1.2.3",
+        source: "installed",
+      },
+    ],
+  };
+  const SKILL_READ = {
+    name: "demo",
+    version: null,
+    content: "# Demo",
+    source: "workspace",
+  };
+
+  it("accepts and maps generated skill result shapes", () => {
+    expect(validateSkillListResult(SKILL_LIST)).toBe(true);
+    expect(validateSkillReadResult(SKILL_READ)).toBe(true);
+    expect(parseSkillListResult(SKILL_LIST)).toEqual([
+      {
+        name: "demo",
+        description: "Demo skill",
+        user_invocable: true,
+        version: null,
+        source: "workspace",
+      },
+      {
+        name: "release",
+        description: "",
+        user_invocable: true,
+        version: "1.2.3",
+        source: "installed",
+      },
+    ]);
+    expect(parseSkillReadResult(SKILL_READ)).toEqual({
+      name: "demo",
+      version: null,
+      content: "# Demo",
+      source: "workspace",
+    });
+    // Invalid payloads are never trusted (C10): no partial/fake candidate.
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(validateSkillListResult({ skills: [{ name: "demo" }] })).toBe(false);
+    expect(parseSkillListResult({ skills: [{ name: "demo" }] })).toBeNull();
+    expect(validateSkillReadResult({ name: "demo" })).toBe(false);
+    expect(parseSkillReadResult({ name: "demo" })).toBeNull();
   });
 });

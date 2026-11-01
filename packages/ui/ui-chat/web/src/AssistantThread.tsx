@@ -21,17 +21,18 @@ const actionButton =
   "inline-flex items-center gap-1 rounded-sm p-1 text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground";
 
 /**
- * User message body + reference chips.
+ * User message body + skill Instructions/reference chips.
  *
- * The persisted text may end with the normative reference block
- * (`--- referenced files ---`); the block is rendered as chips and never shown
- * verbatim (`2026-11-01-client-composer-surface` R7). Messages without the block
- * render exactly as before.
+ * The persisted text may carry the `--- skill instructions ---` block and/or the
+ * normative trailing reference block (`--- referenced files ---`); both are
+ * rendered as chips and never shown verbatim (`2026-11-01-client-composer-surface`
+ * R7, `2026-11-01-client-skill-commands` R2). Messages without blocks render
+ * exactly as before.
  */
 function UserText(props: TextMessagePartProps) {
   const { t } = useUi();
-  const { body, refs } = parseUserContent(props.text);
-  if (refs.length === 0) {
+  const { body, refs, instruction } = parseUserContent(props.text);
+  if (refs.length === 0 && instruction === null) {
     return (
       <p
         data-testid="user-text"
@@ -51,21 +52,35 @@ function UserText(props: TextMessagePartProps) {
           {body}
         </p>
       )}
-      <ul
-        data-testid="user-refs"
-        aria-label={t("composerRefsLabel")}
-        className="flex max-w-full flex-wrap justify-end gap-1"
-      >
-        {refs.map((ref) => (
-          <li
-            key={ref.path}
-            className="inline-flex max-w-[240px] items-center gap-1 rounded-capsule border border-border bg-background px-2 py-0.5 text-[11px] text-muted-foreground"
-          >
+      {instruction === null ? null : (
+        <ul
+          data-testid="user-skill"
+          aria-label={t("composerRefsLabel")}
+          className="flex max-w-full flex-wrap justify-end gap-1"
+        >
+          <li className="inline-flex max-w-[240px] items-center gap-1 rounded-capsule border border-border bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
             <IconFolder />
-            <span className="truncate">{ref.path}</span>
+            <span className="truncate">{t("skillChipLabel", { name: instruction.name })}</span>
           </li>
-        ))}
-      </ul>
+        </ul>
+      )}
+      {refs.length === 0 ? null : (
+        <ul
+          data-testid="user-refs"
+          aria-label={t("composerRefsLabel")}
+          className="flex max-w-full flex-wrap justify-end gap-1"
+        >
+          {refs.map((ref) => (
+            <li
+              key={ref.path}
+              className="inline-flex max-w-[240px] items-center gap-1 rounded-capsule border border-border bg-background px-2 py-0.5 text-[11px] text-muted-foreground"
+            >
+              <IconFolder />
+              <span className="truncate">{ref.path}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -71,19 +71,28 @@ export {
   ATTACHMENT_MAX_BYTES,
   ATTACHMENT_MAX_COUNT,
   REFERENCE_BLOCK_MARKER,
+  SKILL_INSTRUCTIONS_MARKER,
+  SKILL_INSTRUCTIONS_MAX_BYTES,
   attachmentExtensionOf,
   attachmentSizeLabel,
   composeOutgoingText,
   composerUsage,
   detectComposerTrigger,
   filterCommands,
+  filterSkillCandidates,
   isAttachmentAllowed,
   isImageAttachment,
   parseUserContent,
   removeComposerTrigger,
+  utf8ByteLength,
   validateAttachment,
 } from "./composerRefs";
-export type { ComposerTrigger, ComposerUsage, ParsedUserContent } from "./composerRefs";
+export type {
+  ComposerTrigger,
+  ComposerUsage,
+  ParsedSkillInstruction,
+  ParsedUserContent,
+} from "./composerRefs";
 export { groupToolRows } from "./toolRows";
 export type { ToolGrouping } from "./toolRows";
 export type { UsageSummary } from "./UsagePart";

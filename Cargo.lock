@@ -9518,7 +9518,10 @@ dependencies = [
 name = "zk-tool-skill"
 version = "1.0.0-rc.1"
 dependencies = [
+ "dirs 6.0.0",
+ "serde",
  "serde_json",
+ "thiserror 1.0.69",
  "zk-contract-tool",
  "zk-kit-tools",
 ]

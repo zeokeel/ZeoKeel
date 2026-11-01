@@ -65,6 +65,13 @@ Boot
 - 每个 `ui.gate.*` 必须有 fallback 文案与"下一步"动作；不允许白屏。
 - 登录页品牌文案来自 `channel.json` 的 `copy.login_*`，缺键即构建失败（禁止回落官方）。
 
+### 2.1e `/<skill>` 技能目录命令（`2026-11-01-client-skill-commands`）
+
+- composer `/` 的「技能」组 = `skill.list` 动态候选（与命令同一个 listbox/单一 catalog/`runCommand`；`/skill` 命令本身只提示技能组，不发送）：personal 只读当前 workspace `.agents/skills` 中 frontmatter `user-invocable != false` 的技能；enterprise 只列 `$ZEOKEEL_HOME/skills/<name>/<version>` **已安装**技能（按确定性版本序取最新；未安装/未版本不列、不读内容）。技能名/描述来自 `tool-skill` 单实现（frontmatter 前 4 KiB，缺省 name=目录名、description 空、user-invocable=true；坏 frontmatter 降级不白屏）；按名/描述过滤大小写不敏感；host 经 `zk-composed` 生成 facade 调用，不直接 import 工具包（C4）。
+- 选择 `/name`：host 读 `SKILL.md`（≤8 KiB，超限 `skill/too-large`），在 composer 插入**可移除 Instructions chip**（标技能名/来源；同一时刻最多一个，重选替换），**不立即发送**；正文/引用/附件保留；未知/不可用/超限给行内可读错误。空态 personal「暂无可用技能」、enterprise「暂无已安装技能（请先在商店安装）」；加载/错误可重试；离线显示不可用文案。
+- 发送：Instructions 作为用户消息里 `--- skill instructions ---` 块（`skill`/`source`/`version` 头 + 正文；≤8 KiB、控制字符清理），位于尾部 `--- referenced files ---` 引用块之前；`chat.send` 契约不变；UI 把该块渲染为 chip（回放/刷新同样识别，不展示原文）；移除 chip 后该消息不再包含技能；无自动执行/自动发送/网络调用。
+- 错误码：`skill/not-found`、`skill/unavailable`、`skill/too-large`、`skill/invalid`、`skill/failed`；归属仍 `workspace/not-found`/`session/workspace-mismatch`（C18）。用户测试 UNVERIFIED。
+
 ### 2.1d `/plan` 计划模式（`2026-11-01-client-plan-mode`）
 
 - `/plan` 进入计划模式（`/plan off` 退出，命令文本不发送）；plan mode **由 agent-rig 工具过滤强制执行**（不依赖提示词）：白名单=只读工具 + `exit_plan_mode`；黑名单=所有 `mutating=true`、全部 delegation（`subagent`/`subagent_start`/`subagent_fork`/`agent_team`/`workflow`/`ralph`，即使声明 `mutating=false`）+ schedule/MCP 执行；被禁工具不执行、返回可读 `plan/mutating-blocked`/`plan/delegation-blocked` 工具错误行；delegation 不在子 agent 传播（父层直接阻断）。
@@ -93,7 +100,7 @@ Boot
 
 ### 2.1b DSH `/` 命令面（Batch 1，`2026-11-01-client-command-surface`）
 
-- composer 词首 `/` 打开 DSH 1:1 命令菜单，空查询两节 + 技能：「添加」file/goal/plan/feedback；「指令」compact/permission/model/export；「技能」skill 末位。↑/↓ 移动、Enter/Tab 接受、Esc/Shift+Tab 关闭回输入框（`aria-activedescendant`，焦点留输入框）；非空查询按命令名/说明过滤（大小写不敏感）。选中后移除 `/<query>`，正文/其余草稿保留；**命令文本不会被当作普通提示词发送**；未知命令 `command/unknown`、Batch 2 占位 `command/unimplemented`（plan/compact/skill 显示「未实现（Batch 2）」不可执行）。
+- composer 词首 `/` 打开 DSH 1:1 命令菜单，空查询两节 + 技能：「添加」file/goal/plan/feedback；「指令」compact/permission/model/export；「技能」skill 末位 + `skill.list` 动态候选（`2026-11-01-client-skill-commands`）。↑/↓ 移动、Enter/Tab 接受、Esc/Shift+Tab 关闭回输入框（`aria-activedescendant`，焦点留输入框）；非空查询按命令名/说明过滤（大小写不敏感）。选中后移除 `/<query>`，正文/其余草稿保留；**命令文本不会被当作普通提示词发送**；未知命令 `command/unknown`，不可执行命令显示可读原因（如流式中 `/compact`）。Batch 2（compact/plan/skill）均已实现，无占位命令。
 - ⌘K 命令面板仍保留 UI 动作（新建会话/侧栏/设置/右栏/cancel/retry）；两 surface 共用同一 `ui.commands` 目录（`surface: palette|slash`），唯一执行器 `runCommand`（C17）。
 - `/file` 打开附件选择（复用附件 allowlist/≤1 MiB/≤5）；仅 `/file` 可带附件，其它命令带附件时拒绝并保留 chip；`/model`、`/permission` 为会话级 override（`session.override_get/set` + `.zeokeel/conversation-overrides.json`；turn 前经全局 config-mutex 应用、turn 后按 snapshot/revision 恢复；settings.set 排队同一 mutex；排队 turn 取消则获锁后跳过）；`/permission` 只映射审批语义（strict/auto_read_only/ask），不含 sandbox、不限制工具/网络/文件；`/goal` 复用 `tool.goal` 同一 `.zeokeel/goal.json`，GoalBar 显示/暂停/恢复/清除；`/export` 生成 Markdown 到 `.zeokeel/exports/`（serve 下载、Tauri 展示/复制路径，不承诺自动打开）；`/feedback` 本地 `.zeokeel/feedback/*.json`（分类+描述≤4 KiB，明示本地保存，不联网）。
 

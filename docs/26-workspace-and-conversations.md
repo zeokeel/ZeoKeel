@@ -269,3 +269,10 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_m
 - 数据：无 DB migration；`<workspace>/.zeokeel/plans.json`（按 conversation_id，原子写，≤64 KiB，由 `zk-tool-plan::plans` 唯一实现；host 经 `zk_composed::zk_tool_plan` 复用）；`mode active|off`、`status draft|pending_review|approved|rejected`；提交由 `exit_plan_mode` 工具写 `pending_review`+`through_turn`。
 - 工具过滤：agent-rig 在动态工具构造时按 plan mode 白名单/黑名单处理（静态六项 delegation 兜底 + `mutating` 派生 + schedule/MCP）；被禁工具保留可见但返回可读错误，不执行；delegation 不向 child 传播（避免绕过）。
 - UI：`session.messages` 不变；`/plan`/`/plan off` 经 Batch1 唯一 catalog/runCommand；PlanCard（turnTail）+ 右栏 plan tab（order 50）本地审核；不自动执行计划、不自动退出；C6 无 sandbox/企业策略。
+
+### 5.5 技能目录（`/<skill>`，`2026-11-01-client-skill-commands`）
+
+- IPC：`skill.list {workspace_id, conversation_id?}` → `{skills:[{name,description,user_invocable,version?,source}]}`（当前 workspace/edition，只返回 user-invocable）；`skill.read {workspace_id, conversation_id, name, version?}` → `{name,version?,content,source}`（`content` ≤8 KiB）。错误码：`skill/not-found`、`skill/unavailable`（enterprise 未安装/版本不可用）、`skill/too-large`（`SKILL.md` >8 KiB）、`skill/invalid`（名称/版本/路径非法）、`skill/failed`（IO）；归属仍 `workspace/not-found`/`session/workspace-mismatch`。
+- 来源（D5，唯一实现 `zk-tool-skill`，host 经 `zk_composed::zk_tool_skill` facade 调用，不 direct import，C4）：personal `<workspace>/.agents/skills/<name>/SKILL.md`（frontmatter 前 4 KiB 解析 `name/description/user-invocable`；缺省 name=目录名、description 空、user-invocable=true；坏 frontmatter 降级）；enterprise `$ZEOKEEL_HOME/skills/<name>/<version>/SKILL.md`，只读**已安装**版本（`skill.read` 未指定 version 时按确定性版本序取最新：数字段比较 + release > prerelease + 原串兜底），未安装版本 `skill/unavailable` 且不读取其内容。名称/版本逐组件校验（禁 `..`/绝对/控制字符），读取经 `safe_path`/`safe_resolve_under`（no-follow/canonicalize，拒绝符号链接逃逸）。
+- 工具：agent `skill` 工具 `list` 默认仍是旧换行目录名（兼容旧行为），`format:"json"` 返回 `{skills:[{name,description,user_invocable}]}`；`read` 同样受 8 KiB 上限。不新增第二套目录扫描/缓存；不写日志。
+- UI：`/`「技能」组动态候选（loading/空/错误/离线隐藏候选）+ `/skill` 帮助提示；选中插入可移除 Instructions chip，不发送；发送时 `--- skill instructions ---` 块（≤8 KiB，控制字符清理）位于尾部引用块之前，`chat.send` 不变；回放/刷新把块渲染为 chip；no DB/文件迁移，回滚移除 UI/IPC 即可。

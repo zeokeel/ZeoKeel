@@ -9,6 +9,8 @@ import {
   type ChatMessage,
   type CommandDescriptor,
   type PlanView,
+  type SkillCandidate,
+  type SkillInstruction,
   type DraftRef,
   type UiActions,
   type UiValue,
@@ -19,10 +21,14 @@ import {
   ATTACHMENT_MAX_COUNT,
   ChatView,
   REFERENCE_BLOCK_MARKER,
+  SKILL_INSTRUCTIONS_MARKER,
+  SKILL_INSTRUCTIONS_MAX_BYTES,
   composeOutgoingText,
   composerUsage,
   detectComposerTrigger,
+  filterSkillCandidates,
   parseUserContent,
+  utf8ByteLength,
   validateAttachment,
 } from "../src/index";
 import { CompactDivider } from "../src/CompactDivider";
@@ -100,6 +106,9 @@ function makeActions(overrides: Partial<UiActions> = {}): UiActions {
     closeSettings: noop,
     runCommand: noop,
     searchWorkspaceFiles: (): Promise<WorkspaceFileRef[]> => Promise.resolve([]),
+    listSkills: (): Promise<SkillCandidate[]> => Promise.resolve([]),
+    readSkill: (): Promise<SkillInstruction> =>
+      Promise.reject(new Error("skill/not-found: test")),
     saveAttachment: (): Promise<AttachmentSaveResult> =>
       Promise.resolve({ path: ".zeokeel/attachments/c/f.png", name: "f.png", bytes: 4, mime: "image/png" }),
     updateConversation: (): Promise<boolean> => Promise.resolve(true),
@@ -209,7 +218,7 @@ describe("composer reference block (compose/parse)", () => {
       `${REFERENCE_BLOCK_MARKER}\n@demo-data/hello.txt`,
     );
     expect(composeOutgoingText("plain body", [])).toBe("plain body");
-    expect(parseUserContent("plain body")).toEqual({ body: "plain body", refs: [] });
+    expect(parseUserContent("plain body")).toEqual({ body: "plain body", refs: [], instruction: null });
   });
 
   it("de-duplicates and never emits invalid/unsafe paths", () => {
@@ -313,7 +322,7 @@ describe("composer surface", () => {
     expect(screen.queryByRole("listbox", { name: "commandMenuLabel" })).toBeNull();
   });
 
-  it("shows Batch 2 placeholders as disabled (never executed) and Esc keeps the draft", async () => {
+  it("shows disabled commands as not executable (never runs) and Esc keeps the draft", async () => {
     const runCommand = vi.fn();
     renderChat(makeUi({}, { runCommand }));
     const input = composer();
@@ -462,5 +471,177 @@ describe("compact divider", () => {
       "goal: ship compaction",
     );
     expect(screen.getByText(/compactUsage/)).toBeTruthy();
+  });
+});
+
+describe("skill instructions (composer /)", () => {
+  const SKILLS: SkillCandidate[] = [
+    { name: "demo", description: "Demo skill", user_invocable: true, version: null, source: "workspace" },
+    { name: "release", description: "Release checklist", user_invocable: true, version: "1.2.3", source: "installed" },
+  ];
+
+  function insertSkillRefs(): DraftRef[] {
+    return [
+      { kind: "skill", path: "demo", name: "demo", content: "# Demo\n\nDo it.", source: "workspace", version: null },
+      { kind: "workspace", path: "demo-data/hello.txt", name: "hello.txt" },
+    ];
+  }
+
+  it("composes/parses the Instructions block before the trailing reference block", () => {
+    const refs = insertSkillRefs();
+    const skillRef = refs[0];
+    if (skillRef === undefined) throw new Error("fixture missing skill ref");
+    const text = composeOutgoingText("please", refs);
+    expect(text).toBe(
+      `please\n\n${SKILL_INSTRUCTIONS_MARKER}\nskill: demo\nsource: workspace\n\n# Demo\n\nDo it.\n\n${REFERENCE_BLOCK_MARKER}\n@demo-data/hello.txt`,
+    );
+    const parsed = parseUserContent(text);
+    expect(parsed.body).toBe("please");
+    expect(parsed.instruction).toEqual({ name: "demo", content: "# Demo\n\nDo it." });
+    expect(parsed.refs.map((ref) => ref.path)).toEqual(["demo-data/hello.txt"]);
+    // Instructions-only messages keep the block at the start.
+    expect(composeOutgoingText("", [skillRef])).toBe(
+      `${SKILL_INSTRUCTIONS_MARKER}\nskill: demo\nsource: workspace\n\n# Demo\n\nDo it.`,
+    );
+  });
+
+  it("caps Instructions at 8 KiB, sanitizes control characters and ids installed skills", () => {
+    const big: DraftRef = {
+      kind: "skill",
+      path: "big",
+      name: "big",
+      content: "a".repeat(SKILL_INSTRUCTIONS_MAX_BYTES + 100),
+      source: "workspace",
+      version: null,
+    };
+    const parsed = parseUserContent(composeOutgoingText("x", [big]));
+    expect(parsed.instruction?.name).toBe("big");
+    expect(utf8ByteLength(parsed.instruction?.content ?? "")).toBeLessThanOrEqual(
+      SKILL_INSTRUCTIONS_MAX_BYTES,
+    );
+    const control: DraftRef = {
+      kind: "skill",
+      path: "demo",
+      name: "demo",
+      content: "a\u0000b\u0007c",
+      source: "installed",
+      version: "1.2.3",
+    };
+    const controlText = composeOutgoingText("", [control]);
+    expect(controlText).toContain("source: installed");
+    expect(controlText).toContain("version: 1.2.3");
+    expect(parseUserContent(controlText).instruction?.content).toBe("abc");
+  });
+
+  it("filters skill candidates by name/description, case-insensitively", () => {
+    expect(filterSkillCandidates(SKILLS, "DEM").map((skill) => skill.name)).toEqual(["demo"]);
+    expect(filterSkillCandidates(SKILLS, "checklist").map((skill) => skill.name)).toEqual(["release"]);
+    expect(filterSkillCandidates(SKILLS, "")).toHaveLength(2);
+  });
+
+  it("inserts a removable Instructions chip and sends the block with the next message", async () => {
+    const send = vi.fn();
+    const readSkill = vi.fn(() =>
+      Promise.resolve({
+        name: "demo",
+        version: null,
+        content: "# Demo instructions",
+        source: "workspace" as const,
+      }),
+    );
+    renderChat(
+      makeUi(
+        {},
+        { send, listSkills: (): Promise<SkillCandidate[]> => Promise.resolve(SKILLS), readSkill },
+      ),
+    );
+    const input = composer();
+    await userEvent.type(input, "/demo");
+    const option = await screen.findByRole("option", { name: /demo/ });
+    expect(option).toBeTruthy();
+    await userEvent.keyboard("{Enter}");
+    const chip = await screen.findByTestId("composer-skill-chip");
+    expect(chip.textContent).toContain("skillChipLabel");
+    // Selecting never sends; the draft chip is removable.
+    expect(send).not.toHaveBeenCalled();
+    expect(input.value).toBe("");
+    expect(readSkill).toHaveBeenCalledWith("demo", undefined);
+    await userEvent.type(input, "hello");
+    await userEvent.keyboard("{Enter}");
+    expect(send).toHaveBeenCalledTimes(1);
+    const outgoing = String(send.mock.calls[0]?.[0] ?? "");
+    expect(outgoing).toContain("hello");
+    expect(outgoing).toContain(SKILL_INSTRUCTIONS_MARKER);
+    expect(outgoing).toContain("skill: demo");
+    expect(outgoing).toContain("# Demo instructions");
+    // Sent messages clear the chip so the next message starts clean.
+    expect(screen.queryByTestId("composer-skill-chip")).toBeNull();
+  });
+
+  it("removing the Instructions chip omits the block from the next message", async () => {
+    const send = vi.fn();
+    const readSkill = vi.fn(() =>
+      Promise.resolve({ name: "demo", version: null, content: "body", source: "workspace" as const }),
+    );
+    renderChat(
+      makeUi(
+        {},
+        { send, listSkills: (): Promise<SkillCandidate[]> => Promise.resolve(SKILLS), readSkill },
+      ),
+    );
+    const input = composer();
+    await userEvent.type(input, "/demo");
+    await screen.findByRole("option", { name: /demo/ });
+    await userEvent.keyboard("{Enter}");
+    await screen.findByTestId("composer-skill-chip");
+    await userEvent.click(screen.getByTestId("composer-skill-remove"));
+    expect(screen.queryByTestId("composer-skill-chip")).toBeNull();
+    await userEvent.type(input, "hello");
+    await userEvent.keyboard("{Enter}");
+    expect(send).toHaveBeenCalledWith("hello");
+  });
+
+  it("surfaces readable skill read errors and never inserts a fake chip", async () => {
+    const send = vi.fn();
+    const readSkill = vi.fn(() => Promise.reject(new Error("skill/too-large: exceeds 8 KiB")));
+    renderChat(
+      makeUi(
+        {},
+        { send, listSkills: (): Promise<SkillCandidate[]> => Promise.resolve(SKILLS), readSkill },
+      ),
+    );
+    const input = composer();
+    await userEvent.type(input, "/demo");
+    await screen.findByRole("option", { name: /demo/ });
+    await userEvent.keyboard("{Enter}");
+    await expect(screen.findByText("skillTooLarge")).resolves.toBeTruthy();
+    expect(screen.queryByTestId("composer-skill-chip")).toBeNull();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("keyboard: / filters candidates, ↑↓ reaches a skill option and Esc keeps the draft", async () => {
+    renderChat(
+      makeUi(
+        {},
+        {
+          listSkills: (): Promise<SkillCandidate[]> => Promise.resolve(SKILLS),
+          readSkill: (): Promise<SkillInstruction> =>
+            Promise.resolve({ name: "demo", version: null, content: "body", source: "workspace" }),
+        },
+      ),
+    );
+    const input = composer();
+    await userEvent.type(input, "/");
+    await screen.findByRole("option", { name: /demo/ });
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
+    await userEvent.keyboard("{Enter}");
+    await screen.findByTestId("composer-skill-chip");
+    await userEvent.clear(input);
+    await userEvent.type(input, "/");
+    await expect(screen.findByRole("listbox", { name: "commandMenuLabel" })).resolves.toBeTruthy();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox", { name: "commandMenuLabel" })).toBeNull();
+    expect(document.activeElement).toBe(input);
+    expect(input.value).toBe("/");
   });
 });

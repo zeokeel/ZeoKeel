@@ -52,3 +52,5 @@ contract ipc1；tool-skill lib1；host ipc1；`tools/zk/src/main.rs`（generated
 
 ## 10. 文档
 回写 docs/19（技能组/Instructions）、docs/26（IPC/错误码/来源）、KNOWN（enterprise 未安装禁用/不自动执行）。
+
+- 预算例外：Lead 2026-11-01 追认实际约 38 个路径（规划 10；契约/tool-skill 单实现/host/UI/e2e/docs），单目标、无第二套实现，不拆分提交。

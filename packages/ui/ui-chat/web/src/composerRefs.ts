@@ -15,10 +15,17 @@ import type {
   ChatMessage,
   CommandDescriptor,
   DraftRef,
+  SkillCandidate,
 } from "@zeokeel/ui-kit";
 
 /** Exact reference-block marker; must stay in sync with `composeOutgoingText`. */
 export const REFERENCE_BLOCK_MARKER = "--- referenced files ---";
+
+/** Exact `/<skill>` Instructions block marker (before the trailing references). */
+export const SKILL_INSTRUCTIONS_MARKER = "--- skill instructions ---";
+
+/** One skill Instructions block is ≤8 KiB (the host also enforces `skill/too-large`). */
+export const SKILL_INSTRUCTIONS_MAX_BYTES = 8 * 1024;
 
 /** One attachment must be ≤1 MiB of raw bytes (serve `/ipc` body limit stays 2 MiB). */
 export const ATTACHMENT_MAX_BYTES = 1024 * 1024;
@@ -117,18 +124,73 @@ function encodeReferencePath(path: string): string {
   return `@${path}`;
 }
 
+/** UTF-8 byte length (the Instructions cap is byte-based, not UTF-16 units). */
+export function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).length;
+}
+
+function truncateUtf8(value: string, maxBytes: number): string {
+  if (utf8ByteLength(value) <= maxBytes) {
+    return value;
+  }
+  let bytes = 0;
+  let out = "";
+  for (const character of value) {
+    const size = utf8ByteLength(character);
+    if (bytes + size > maxBytes) {
+      break;
+    }
+    bytes += size;
+    out += character;
+  }
+  return out;
+}
+
+/** Strip control characters (newline/tab allowed) from a skill body. */
+function sanitizeSkillContent(content: string): string {
+  let out = "";
+  for (const character of content) {
+    const code = character.codePointAt(0);
+    if (code === undefined) {
+      continue;
+    }
+    const control = code < 0x20 || code === 0x7f;
+    if (control && character !== "\n" && character !== "\t") {
+      continue;
+    }
+    out += character;
+  }
+  return out;
+}
+
+/** Whether a skill name can be written into the `skill:` header line safely. */
+function isValidSkillName(name: string): boolean {
+  return name.trim() !== "" && name === name.trim() && !hasControlCharacters(name);
+}
+
+/** The one Instructions chip of a draft (kind `skill`), if any. */
+function skillRefOf(refs: readonly DraftRef[]): DraftRef | undefined {
+  return refs.find((ref) => ref.kind === "skill");
+}
+
 /**
- * Compose the outgoing user text: body + normative trailing reference block.
+ * Compose the outgoing user text: body + optional skill Instructions block +
+ * normative trailing reference block.
  *
  * - ready workspace references and ready attachments only (uploading/error chips
  *   are never sent; no half-baked attachments);
  * - invalid paths and duplicates are skipped (compose never emits a fake entry);
- * - no references → the body is returned unchanged (no empty block).
+ * - at most one Instructions chip; its body is trimmed/sanitized and capped at
+ *   8 KiB (the host already rejected larger content via `skill/too-large`);
+ * - no references → the body (plus Instructions, when present) is returned.
  */
 export function composeOutgoingText(body: string, refs: readonly DraftRef[]): string {
   const seen = new Set<string>();
   const lines: string[] = [];
   for (const ref of refs) {
+    if (ref.kind === "skill") {
+      continue;
+    }
     if (ref.kind === "attachment" && ref.status !== "ready") {
       continue;
     }
@@ -142,48 +204,99 @@ export function composeOutgoingText(body: string, refs: readonly DraftRef[]): st
     seen.add(key);
     lines.push(encodeReferencePath(ref.path));
   }
-  if (lines.length === 0) {
-    return body;
+  const skill = skillRefOf(refs);
+  let text = body;
+  if (skill !== undefined) {
+    const block = skillInstructionBlock(skill);
+    if (block !== null) {
+      const trimmed = text.replace(/\s+$/, "");
+      text = trimmed === "" ? block : `${trimmed}\n\n${block}`;
+    }
   }
-  const trimmed = body.replace(/\s+$/, "");
+  if (lines.length === 0) {
+    return text;
+  }
+  const trimmed = text.replace(/\s+$/, "");
   const block = `${REFERENCE_BLOCK_MARKER}\n${lines.join("\n")}`;
   return trimmed === "" ? block : `${trimmed}\n\n${block}`;
 }
 
+function skillInstructionBlock(skill: DraftRef): string | null {
+  const name = skill.name ?? skill.path;
+  if (!isValidSkillName(name) || skill.content === undefined) {
+    return null;
+  }
+  const content = truncateUtf8(
+    sanitizeSkillContent(skill.content).replace(/\s+$/, ""),
+    SKILL_INSTRUCTIONS_MAX_BYTES,
+  );
+  if (content === "") {
+    return null;
+  }
+  const header = [`skill: ${name}`, `source: ${skill.source ?? "workspace"}`];
+  if (skill.version !== undefined && skill.version !== null && skill.version !== "") {
+    header.push(`version: ${skill.version}`);
+  }
+  return `${SKILL_INSTRUCTIONS_MARKER}\n${header.join("\n")}\n\n${content}`;
+}
+
+/** Restored `/<skill>` Instructions block of a persisted user message. */
+export interface ParsedSkillInstruction {
+  /** Skill name from the block header. */
+  name: string;
+  /** Instructions body (trimmed). */
+  content: string;
+}
+
 export interface ParsedUserContent {
-  /** User-visible body (reference block removed). */
+  /** User-visible body (Instructions/reference blocks removed). */
   body: string;
   /** References restored from the block (workspace kind; dir refs keep the `/`). */
   refs: DraftRef[];
+  /** Restored skill Instructions block (`null` when absent/malformed). */
+  instruction: ParsedSkillInstruction | null;
 }
 
 /**
- * Split a persisted user message into body + references.
+ * Split a persisted user message into body + Instructions + references.
  *
- * The marker only matches as a **trailing** block: the message starts with the
- * marker or the marker is preceded by a blank line, and every line after it is
- * an `@` reference line. Anything else is ordinary body text (no false chips);
- * invalid/duplicate reference lines are skipped inside a genuine block.
+ * Both blocks only match in their canonical trailing positions (start of the
+ * message or after a blank line). Anything else is ordinary body text (no false
+ * chips); invalid/duplicate reference lines are skipped inside a genuine block.
+ * The Instructions block (when present) precedes the reference block.
  */
 export function parseUserContent(text: string): ParsedUserContent {
   const stripped = text.replace(/\s+$/, "");
+  const references = splitReferenceBlock(stripped);
+  const skill = splitSkillBlock(references.rest);
+  if (references.refs.length === 0 && skill.instruction === null) {
+    return { body: text, refs: [], instruction: null };
+  }
+  return {
+    body: skill.rest,
+    refs: references.refs,
+    instruction: skill.instruction,
+  };
+}
+
+function splitReferenceBlock(text: string): { rest: string; refs: DraftRef[] } {
   let blockStart = -1;
-  if (stripped.startsWith(`${REFERENCE_BLOCK_MARKER}\n`)) {
+  if (text.startsWith(`${REFERENCE_BLOCK_MARKER}\n`)) {
     blockStart = 0;
   } else {
-    const index = stripped.lastIndexOf(`\n\n${REFERENCE_BLOCK_MARKER}\n`);
+    const index = text.lastIndexOf(`\n\n${REFERENCE_BLOCK_MARKER}\n`);
     if (index >= 0) {
       blockStart = index;
     }
   }
   if (blockStart < 0) {
-    return { body: text, refs: [] };
+    return { rest: text, refs: [] };
   }
-  const body = blockStart === 0 ? "" : stripped.slice(0, blockStart);
-  const block = stripped.slice(blockStart === 0 ? 0 : blockStart + 2);
+  const rest = blockStart === 0 ? "" : text.slice(0, blockStart);
+  const block = text.slice(blockStart === 0 ? 0 : blockStart + 2);
   const [markerLine, ...lines] = block.split("\n");
   if (markerLine !== REFERENCE_BLOCK_MARKER) {
-    return { body: text, refs: [] };
+    return { rest: text, refs: [] };
   }
   const refs: DraftRef[] = [];
   const seen = new Set<string>();
@@ -193,7 +306,7 @@ export function parseUserContent(text: string): ParsedUserContent {
     }
     if (!line.startsWith("@")) {
       // The marker is part of the body, not a trailing block.
-      return { body: text, refs: [] };
+      return { rest: text, refs: [] };
     }
     const path = line.slice(1);
     if (!isValidReferencePath(path)) {
@@ -208,9 +321,50 @@ export function parseUserContent(text: string): ParsedUserContent {
     refs.push({ kind: "workspace", path, name });
   }
   if (refs.length === 0) {
-    return { body: text, refs: [] };
+    return { rest: text, refs: [] };
   }
-  return { body, refs };
+  return { rest, refs };
+}
+
+function splitSkillBlock(text: string): {
+  rest: string;
+  instruction: ParsedSkillInstruction | null;
+} {
+  let blockStart = -1;
+  if (text.startsWith(`${SKILL_INSTRUCTIONS_MARKER}\n`)) {
+    blockStart = 0;
+  } else {
+    const index = text.lastIndexOf(`\n\n${SKILL_INSTRUCTIONS_MARKER}\n`);
+    if (index >= 0) {
+      blockStart = index;
+    }
+  }
+  if (blockStart < 0) {
+    return { rest: text, instruction: null };
+  }
+  const rest = blockStart === 0 ? "" : text.slice(0, blockStart);
+  const block = text.slice(blockStart === 0 ? 0 : blockStart + 2);
+  const [markerLine, ...lines] = block.split("\n");
+  if (markerLine !== SKILL_INSTRUCTIONS_MARKER) {
+    return { rest: text, instruction: null };
+  }
+  let name = "";
+  let headerEnd = -1;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    if (line === "") {
+      headerEnd = index;
+      break;
+    }
+    if (line.startsWith("skill:")) {
+      name = line.slice("skill:".length).trim();
+    }
+  }
+  if (headerEnd < 0 || !isValidSkillName(name)) {
+    return { rest: text, instruction: null };
+  }
+  const content = lines.slice(headerEnd + 1).join("\n").replace(/\s+$/, "");
+  return { rest, instruction: { name, content } };
 }
 
 export interface ComposerTrigger {
@@ -285,6 +439,21 @@ export function filterCommands(
   }
   return commands.filter((command) => {
     const haystack = `${command.id} ${command.title} ${command.group} ${command.hint ?? ""}`;
+    return haystack.toLowerCase().includes(needle);
+  });
+}
+
+/** Case-insensitive `/<skill>` candidate filter over name/description. */
+export function filterSkillCandidates(
+  skills: readonly SkillCandidate[],
+  query: string,
+): SkillCandidate[] {
+  const needle = query.trim().toLowerCase();
+  if (needle === "") {
+    return [...skills];
+  }
+  return skills.filter((skill) => {
+    const haystack = `${skill.name} ${skill.description}`;
     return haystack.toLowerCase().includes(needle);
   });
 }

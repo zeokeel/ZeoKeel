@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SkillReadPayload",
+  "description": "`skill.read` payload (Instructions content; host enforces the 8 KiB bound).",
+  "type": "object",
+  "required": [
+    "conversation_id",
+    "name",
+    "workspace_id"
+  ],
+  "properties": {
+    "conversation_id": {
+      "description": "Conversation context (ownership verified).",
+      "type": "string"
+    },
+    "name": {
+      "description": "Skill name (directory name / frontmatter `name`).",
+      "type": "string"
+    },
+    "version": {
+      "description": "Installed version (enterprise); absent selects the installed latest.",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "workspace_id": {
+      "description": "Owning workspace id.",
+      "type": "string"
+    }
+  }
+}

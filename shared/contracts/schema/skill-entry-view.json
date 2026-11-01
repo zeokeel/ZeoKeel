@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SkillEntryView",
+  "description": "One `/<skill>` candidate (user-invocable only; frontmatter metadata).",
+  "type": "object",
+  "required": [
+    "name",
+    "source",
+    "user_invocable"
+  ],
+  "properties": {
+    "description": {
+      "description": "Frontmatter description (empty when absent); UI falls back to the name.",
+      "default": "",
+      "type": "string"
+    },
+    "name": {
+      "description": "Skill name (frontmatter `name`, falling back to the directory name).",
+      "type": "string"
+    },
+    "source": {
+      "description": "`workspace` (personal `.agents/skills`) | `installed` (enterprise store).",
+      "type": "string"
+    },
+    "user_invocable": {
+      "description": "Frontmatter `user-invocable` (true unless explicitly false).",
+      "type": "boolean"
+    },
+    "version": {
+      "description": "Installed version (enterprise); absent for workspace skills.",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

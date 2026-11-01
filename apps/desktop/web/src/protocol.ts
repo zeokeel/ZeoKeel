@@ -34,6 +34,8 @@ import {
   type ProviderConfig,
   type ProviderKind,
   type ReplyToolCall,
+  type SkillCandidate,
+  type SkillInstruction,
   type Theme,
   type ToolChoiceSetting,
   type ToolSettings,
@@ -75,6 +77,8 @@ import {
   validateCompactionGetResult,
   validatePlanGetResult,
   validatePlanResult,
+  validateSkillListResult,
+  validateSkillReadResult,
   validateCompactResult,
   validateConversationOverrideResult,
   validateFeedbackSubmitResult,
@@ -1000,4 +1004,52 @@ export function parsePlanGetResult(value: unknown): PlanView | null {
 export function parsePlanUpdateResult(value: unknown): PlanView | null {
   if (!isRecord(value) || !validatePlanResult(value)) return null;
   return parsePlanView(value["plan"]);
+}
+
+/** Parse one `skill.list` candidate (snake_case wire → candidate view). */
+export function parseSkillCandidate(value: unknown): SkillCandidate | null {
+  if (!isRecord(value)) return null;
+  const name = readString(value, "name");
+  if (name === null || name.trim() === "") return null;
+  const description = readString(value, "description") ?? "";
+  const version = readString(value, "version");
+  const source = readString(value, "source");
+  return {
+    name,
+    description,
+    user_invocable: readBoolean(value, "user_invocable") ?? true,
+    version: version === null || version === "" ? null : version,
+    source: source === "installed" ? "installed" : "workspace",
+  };
+}
+
+/** `skill.list` result → `/<skill>` candidates (host already filters user-invocable). */
+export function parseSkillListResult(value: unknown): SkillCandidate[] | null {
+  if (!isRecord(value) || !validateSkillListResult(value)) return null;
+  const rows = readArrayOrNull(value["skills"]);
+  if (rows === null) return null;
+  const skills: SkillCandidate[] = [];
+  for (const row of rows) {
+    const candidate = parseSkillCandidate(row);
+    if (candidate !== null) {
+      skills.push(candidate);
+    }
+  }
+  return skills;
+}
+
+/** `skill.read` result → Instructions content (host-enforced ≤8 KiB). */
+export function parseSkillReadResult(value: unknown): SkillInstruction | null {
+  if (!isRecord(value) || !validateSkillReadResult(value)) return null;
+  const name = readString(value, "name");
+  const content = readString(value, "content");
+  if (name === null || content === null) return null;
+  const version = readString(value, "version");
+  const source = readString(value, "source");
+  return {
+    name,
+    version: version === null || version === "" ? null : version,
+    content,
+    source: source === "installed" ? "installed" : "workspace",
+  };
 }

@@ -134,11 +134,11 @@ test.describe("M1 serve carrier (real dispatch + SQLite)", () => {
     await expect(composer).toHaveValue("");
     await expect(page.getByRole("dialog", { name: "会话级设置" })).toBeVisible();
     await page.keyboard.press("Escape");
-    // Batch 2 placeholder never executes or sends (`/compact` is a real command now).
+    // `/skill` is real now: it explains the skill group and never sends a prompt.
     await composer.fill("/skill");
-    await expect(page.getByRole("option", { name: /技能/ })).toBeVisible();
+    await expect(page.locator("#zk-composer-command-skill")).toBeVisible();
     await page.keyboard.press("Enter");
-    await expect(page.getByText("未实现（Batch 2）")).toBeVisible();
+    await expect(page.getByText("输入 / 查看可用技能")).toBeVisible();
     await expect(page.getByTestId("user-text")).toHaveCount(0);
   });
 

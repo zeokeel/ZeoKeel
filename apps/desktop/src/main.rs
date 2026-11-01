@@ -22,6 +22,7 @@ mod mcp_oauth;
 mod native_client;
 mod plan;
 mod serve;
+mod skill;
 
 use std::sync::Arc;
 

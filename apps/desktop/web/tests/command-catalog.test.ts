@@ -51,7 +51,7 @@ describe("single command catalog (⌘K + composer /)", () => {
   });
 });
 
-  it("composer slash rows are DSH commands (Batch2 placeholders disabled, no UI actions)", () => {
+  it("composer slash rows are real DSH commands incl. /skill (no UI actions)", () => {
     const catalog = buildCommandCatalog({ t, enterprise: false, streaming: false, lastSendText: null });
     const slash = catalog.filter((command) => command.surface === "slash");
     expect(slash.map((command) => command.name)).toEqual([
@@ -65,11 +65,9 @@ describe("single command catalog (⌘K + composer /)", () => {
       "export",
       "skill",
     ]);
-    // Batch2 progress: `/compact` and `/plan` are real commands; skill stays a placeholder.
-    expect(slash.filter((command) => command.disabled === true).map((command) => command.name)).toEqual([
-      "skill",
-    ]);
-    for (const name of ["compact", "plan"]) {
+    // Batch 2 is complete: no placeholder rows remain; `/skill` explains the skill group.
+    expect(slash.filter((command) => command.disabled === true)).toEqual([]);
+    for (const name of ["compact", "plan", "skill"]) {
       const command = slash.find((entry) => entry.name === name);
       expect(command?.kind).toBe("execute");
       expect(command?.disabled).toBeUndefined();

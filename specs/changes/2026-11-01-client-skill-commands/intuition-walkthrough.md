@@ -1,6 +1,6 @@
 # command-skill-commands · 认知走查
 
-> docs/27 §2.8；专家走查非用户测试；planned。
+> docs/27 §2.8；专家走查非用户测试；active。
 
 ## Personas
 P1 首次使用者（不知技能来源）；P2 键盘；P3 出错/辅助技术/企业未安装。

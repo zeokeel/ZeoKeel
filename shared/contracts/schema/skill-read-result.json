@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SkillReadResult",
+  "description": "`skill.read` result: the Instructions body (≤8 KiB) and provenance.",
+  "type": "object",
+  "required": [
+    "content",
+    "name",
+    "source"
+  ],
+  "properties": {
+    "content": {
+      "description": "`SKILL.md` content (host-enforced ≤8 KiB).",
+      "type": "string"
+    },
+    "name": {
+      "description": "Skill name.",
+      "type": "string"
+    },
+    "source": {
+      "description": "`workspace` | `installed`.",
+      "type": "string"
+    },
+    "version": {
+      "description": "Installed version (enterprise); absent for workspace skills.",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

@@ -18,6 +18,8 @@ import type {
   ResolvedTheme,
   SessionSearchOutcome,
   SettingsSaveOutcome,
+  SkillCandidate,
+  SkillInstruction,
   ThreadLoadState,
   Workspace,
   WorkspaceFileRef,
@@ -65,6 +67,10 @@ export interface UiActions {
   runCommand: (id: string, query?: string) => void;
   /** Workspace file candidates for `@` (cached `workspace.files`; filtered server-side list). */
   searchWorkspaceFiles: (query: string) => Promise<WorkspaceFileRef[]>;
+  /** `/<skill>` candidates of the active workspace/installed set (`skill.list`; no second scanner). */
+  listSkills: () => Promise<SkillCandidate[]>;
+  /** Read one skill's Instructions body (`skill.read`; rejects with a `skill/*` code). */
+  readSkill: (name: string, version?: string) => Promise<SkillInstruction>;
   /** Save one composer attachment through `workspace.attachment_save` (host validates). */
   saveAttachment: (file: File) => Promise<AttachmentSaveResult>;
   /** Rename/pin/archive one conversation (C18: workspace never changes). */

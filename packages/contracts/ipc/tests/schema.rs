@@ -267,4 +267,24 @@ fn export_schema() {
         "plan-update-result.json",
         &schemars::schema_for!(zk_contract_ipc::results::PlanUpdateResult),
     );
+    write(
+        "ipc-skill-list.json",
+        &schemars::schema_for!(zk_contract_ipc::payloads::SkillListPayload),
+    );
+    write(
+        "ipc-skill-read.json",
+        &schemars::schema_for!(zk_contract_ipc::payloads::SkillReadPayload),
+    );
+    write(
+        "skill-entry-view.json",
+        &schemars::schema_for!(zk_contract_ipc::results::SkillEntryView),
+    );
+    write(
+        "skill-list-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::SkillListResult),
+    );
+    write(
+        "skill-read-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::SkillReadResult),
+    );
 }

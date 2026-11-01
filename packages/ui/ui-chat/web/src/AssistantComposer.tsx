@@ -26,6 +26,7 @@ import {
   IconStop,
   useUi,
   type DraftRef,
+  type SkillCandidate,
   type WorkspaceFileRef,
 } from "@zeokeel/ui-kit";
 import { GoalDialog, ModelDialog, PermissionDialog } from "./CommandDialogs";
@@ -35,13 +36,16 @@ import { PlanCard } from "./PlanCard";
 import {
   ATTACHMENT_EXTENSIONS,
   ATTACHMENT_MAX_COUNT,
+  SKILL_INSTRUCTIONS_MAX_BYTES,
   attachmentSizeLabel,
   composeOutgoingText,
   composerUsage,
   detectComposerTrigger,
   filterCommands,
+  filterSkillCandidates,
   isImageAttachment,
   removeComposerTrigger,
+  utf8ByteLength,
   validateAttachment,
   type ComposerTrigger,
 } from "./composerRefs";
@@ -64,11 +68,27 @@ interface FileMenuState {
   files: WorkspaceFileRef[];
 }
 
+interface SkillMenuState {
+  status: "loading" | "ready" | "error";
+  items: SkillCandidate[];
+}
+
 interface ComposerMenuItem {
   id: string;
   label: string;
   hint: string | null;
   disabled: boolean;
+  /** Present for `/<skill>` candidates (inserts an Instructions chip). */
+  skill?: SkillCandidate;
+}
+
+/** Map a readable `skill/*` host error to the composer i18n key. */
+function skillErrorKey(message: string): string {
+  if (message.includes("skill/too-large")) return "skillTooLarge";
+  if (message.includes("skill/unavailable")) return "skillUnavailable";
+  if (message.includes("skill/not-found")) return "skillNotFound";
+  if (message.includes("skill/invalid")) return "skillReadFailed";
+  return "skillReadFailed";
 }
 
 function readFileAsDataUrl(file: File): Promise<string | undefined> {
@@ -90,16 +110,19 @@ function referenceKey(path: string): string {
 
 export function AssistantComposer() {
   const ui = useUi();
-  const { t, offline, streaming, actions, commands, modelLabel, modelSettingsPane, messages, slashCommand, goal } = ui;
+  const { t, meta, offline, streaming, actions, commands, modelLabel, modelSettingsPane, messages, slashCommand, goal } = ui;
   const searchWorkspaceFiles = actions.searchWorkspaceFiles;
   const saveAttachment = actions.saveAttachment;
   const runCommand = actions.runCommand;
+  const listSkills = actions.listSkills;
+  const readSkill = actions.readSkill;
 
   const [text, setText] = useState("");
   const [refs, setRefs] = useState<DraftRef[]>([]);
   const [menu, setMenu] = useState<ComposerMenuState | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [fileMenu, setFileMenu] = useState<FileMenuState>({ status: "loading", files: [] });
+  const [skillMenu, setSkillMenu] = useState<SkillMenuState>({ status: "loading", items: [] });
   const [composing, setComposing] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [commandError, setCommandError] = useState<string | null>(null);
@@ -155,7 +178,10 @@ export function AssistantComposer() {
   };
 
   const count = Array.from(text).length;
+  // Instructions chips are not references: only `@` refs/attachments count toward the cap.
+  const referenceCount = refs.filter((ref) => ref.kind !== "skill").length;
   const readyRefs = refs.filter((ref) => ref.kind === "workspace" || ref.status === "ready");
+  const skillRef = refs.find((ref) => ref.kind === "skill");
   const hasBody = text.trim() !== "";
   const hasFailedAttachment = refs.some((ref) => ref.status === "error");
   const uploading = uploads > 0;
@@ -164,21 +190,31 @@ export function AssistantComposer() {
     !offline &&
     !uploading &&
     !hasFailedAttachment &&
-    (hasBody || readyRefs.length > 0);
+    (hasBody || readyRefs.length > 0 || skillRef !== undefined);
 
+  const commandQuery = menu === null ? "" : (menu.query.split(" ")[0] ?? menu.query);
   const menuItems: readonly ComposerMenuItem[] =
     menu === null
       ? []
       : menu.kind === "command"
-        ? filterCommands(
-            commands.filter((command) => command.surface !== "palette"),
-            menu.query.split(" ")[0] ?? menu.query,
-          ).map((command) => ({
-            id: `zk-composer-command-${command.name ?? command.id}`,
-            label: command.title,
-            hint: command.group,
-            disabled: command.disabled === true || command.kind === "disabled",
-          }))
+        ? [
+            ...filterCommands(
+              commands.filter((command) => command.surface !== "palette"),
+              commandQuery,
+            ).map((command) => ({
+              id: `zk-composer-command-${command.name ?? command.id}`,
+              label: command.title,
+              hint: command.group,
+              disabled: command.disabled === true || command.kind === "disabled",
+            })),
+            ...filterSkillCandidates(skillMenu.items, commandQuery).map((skill) => ({
+              id: `zk-composer-skill-${skill.name}`,
+              label: skill.name,
+              hint: t("commandGroupSkill"),
+              disabled: false,
+              skill,
+            })),
+          ]
         : fileMenu.files.map((file, index) => ({
             id: `zk-composer-file-${String(index)}`,
             label: file.path,
@@ -205,6 +241,15 @@ export function AssistantComposer() {
           : fileMenu.status === "error"
             ? t("fileMenuError")
             : t("fileMenuEmpty");
+  const skillStatusText = offline
+    ? t("skillMenuOffline")
+    : skillMenu.status === "loading"
+      ? t("skillMenuLoading")
+      : skillMenu.status === "error"
+        ? t("skillMenuError")
+        : skillMenu.items.length === 0
+          ? t(meta.edition === "enterprise" ? "skillMenuEmptyEnterprise" : "skillMenuEmpty")
+          : null;
 
   // `@` candidates are fetched through the app action (cached workspace.files).
   useEffect(() => {
@@ -228,6 +273,30 @@ export function AssistantComposer() {
     };
   }, [menu, offline, searchWorkspaceFiles]);
 
+  // `/<skill>` candidates: one `skill.list` per menu open (no persisted scanner
+  // cache, no second scan implementation; loading/empty/error states are visible).
+  const skillTriggerStart = menu?.kind === "command" ? menu.trigger.start : null;
+  useEffect(() => {
+    if (skillTriggerStart === null || offline) {
+      return undefined;
+    }
+    let cancelled = false;
+    void listSkills()
+      .then((items) => {
+        if (!cancelled) {
+          setSkillMenu({ status: "ready", items });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSkillMenu({ status: "error", items: [] });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [listSkills, offline, skillTriggerStart]);
+
   const syncMenu = (nextText: string, caret: number): void => {
     if (composingRef.current) {
       setMenu(null);
@@ -241,6 +310,9 @@ export function AssistantComposer() {
     setActiveIndex(0);
     if (trigger.kind === "file") {
       setFileMenu({ status: "loading", files: [] });
+    } else if (menu?.kind !== "command") {
+      // Load once per menu open; typing only filters the already-loaded candidates.
+      setSkillMenu({ status: "loading", items: [] });
     }
     setMenu({ kind: trigger.kind, query: trigger.query, trigger });
   };
@@ -254,7 +326,7 @@ export function AssistantComposer() {
   };
 
   const addReference = (file: WorkspaceFileRef, trigger: ComposerTrigger): void => {
-    if (refs.length >= ATTACHMENT_MAX_COUNT) {
+    if (referenceCount >= ATTACHMENT_MAX_COUNT) {
       setAttachmentError("attachmentLimit");
       return;
     }
@@ -270,11 +342,48 @@ export function AssistantComposer() {
     applyTriggerRemoval(trigger);
   };
 
+  /** Insert one `/<skill>` Instructions chip (never sends; replaces any previous one). */
+  const insertSkill = (skill: SkillCandidate, trigger: ComposerTrigger): void => {
+    applyTriggerRemoval(trigger);
+    void readSkill(skill.name, skill.version ?? undefined)
+      .then((instruction) => {
+        if (utf8ByteLength(instruction.content) > SKILL_INSTRUCTIONS_MAX_BYTES) {
+          setCommandError(t("skillTooLarge"));
+          focusInput();
+          return;
+        }
+        setCommandError(null);
+        setRefs((current) => [
+          ...current.filter((ref) => ref.kind !== "skill"),
+          {
+            id: `skill-${instruction.name}`,
+            kind: "skill",
+            path: instruction.name,
+            name: instruction.name,
+            content: instruction.content,
+            version: instruction.version,
+            source: instruction.source,
+            status: "ready",
+          },
+        ]);
+        focusInput();
+      })
+      .catch((error: unknown) => {
+        setCommandError(t(skillErrorKey(error instanceof Error ? error.message : "")));
+        focusInput();
+      });
+  };
+
   const runActiveItem = (): void => {
     if (menu === null) {
       return;
     }
     if (menu.kind === "command") {
+      const skill = menuItems[safeActive]?.skill;
+      if (skill !== undefined) {
+        insertSkill(skill, menu.trigger);
+        return;
+      }
       const slashCommands = commands.filter((command) => command.surface !== "palette");
       const head = menu.query.split(" ")[0] ?? menu.query;
       // `leadingInput` commands accept `/goal <objective>` (name token + free text).
@@ -368,7 +477,7 @@ export function AssistantComposer() {
 
   const addFiles = (files: readonly File[]): void => {
     setAttachmentError(null);
-    let accepted = refs.length;
+    let accepted = referenceCount;
     for (const file of files) {
       const error = validateAttachment(file, accepted);
       if (error !== null) {
@@ -579,7 +688,11 @@ export function AssistantComposer() {
               id={menuId}
               role="listbox"
               aria-label={menuLabel}
-              aria-busy={menu.kind === "file" && fileMenu.status === "loading"}
+              aria-busy={
+                menu.kind === "file"
+                  ? fileMenu.status === "loading"
+                  : skillMenu.status === "loading"
+              }
               // Scrollable region must be focusable (axe `scrollable-region-focusable`);
               // focus is never moved here programmatically — ↑↓/Enter stay on the input.
               tabIndex={0}
@@ -612,7 +725,14 @@ export function AssistantComposer() {
                       index === safeActive ? "bg-muted" : ""
                     } hover:bg-muted disabled:opacity-40`}
                   >
-                    <span className="flex-1 truncate">{item.label}</span>
+                    <span className="flex-1 truncate">
+                      {item.label}
+                      {item.skill !== undefined && item.skill.description !== "" ? (
+                        <span className="ms-2 text-[11px] text-muted-foreground">
+                          {item.skill.description}
+                        </span>
+                      ) : null}
+                    </span>
                     {item.hint === null ? null : (
                       <span className="font-mono text-[10px] text-muted-foreground">{item.hint}</span>
                     )}
@@ -620,6 +740,37 @@ export function AssistantComposer() {
                 ))
               )}
             </div>
+            {menu.kind === "command" && skillStatusText !== null ? (
+              skillMenu.status === "error" ? (
+                <div className="mt-1 flex items-center gap-2 rounded-control px-2 py-1 text-[12px]">
+                  <p role="alert" className="text-destructive">
+                    {skillStatusText}
+                  </p>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 text-[12px] text-foreground hover:bg-muted"
+                    onClick={() => {
+                      setSkillMenu({ status: "loading", items: [] });
+                      void listSkills().then(
+                        (items) => {
+                          setSkillMenu({ status: "ready", items });
+                        },
+                        () => {
+                          setSkillMenu({ status: "error", items: [] });
+                        },
+                      );
+                    }}
+                  >
+                    <IconRetry />
+                    <span>{t("skillMenuRetry")}</span>
+                  </button>
+                </div>
+              ) : (
+                <p role="status" className="mt-1 px-2 py-1 text-[12px] text-muted-foreground">
+                  {skillStatusText}
+                </p>
+              )
+            ) : null}
             {menu.kind === "file" && fileMenu.status === "error" ? (
               <button
                 type="button"
@@ -647,10 +798,12 @@ export function AssistantComposer() {
           <ul aria-label={t("composerRefsLabel")} className="mb-2 flex flex-wrap gap-1.5">
             {refs.map((ref) => {
               const isAttachment = ref.kind === "attachment";
+              const isSkill = ref.kind === "skill";
               const label = ref.name ?? ref.path;
               return (
                 <li
                   key={ref.id ?? `${ref.kind}:${ref.path}`}
+                  data-testid={isSkill ? "composer-skill-chip" : undefined}
                   className="flex max-w-full items-center gap-1.5 rounded-capsule border border-border bg-muted px-2 py-1 text-[12px] text-foreground"
                 >
                   {ref.thumbnail === undefined ? null : (
@@ -660,7 +813,19 @@ export function AssistantComposer() {
                       className="h-5 w-5 rounded-sm object-cover"
                     />
                   )}
-                  <span className="max-w-[220px] truncate">{label}</span>
+                  <span className="max-w-[220px] truncate">
+                    {isSkill ? t("skillChipLabel", { name: label }) : label}
+                  </span>
+                  {isSkill ? (
+                    <span className="text-[10px] text-muted-foreground">
+                      {ref.source === "installed"
+                        ? t("skillSourceInstalled")
+                        : t("skillSourceWorkspace")}
+                      {ref.version === undefined || ref.version === null || ref.version === ""
+                        ? null
+                        : ` ${ref.version}`}
+                    </span>
+                  ) : null}
                   {isAttachment && ref.size !== undefined ? (
                     <span className="text-[10px] text-muted-foreground">
                       {attachmentSizeLabel(ref.size)}
@@ -690,14 +855,19 @@ export function AssistantComposer() {
                   ) : null}
                   <button
                     type="button"
+                    data-testid={isSkill ? "composer-skill-remove" : undefined}
                     aria-label={
                       isAttachment
                         ? t("attachmentRemove", { name: label })
-                        : t("composerRefRemove", { name: label })
+                        : isSkill
+                          ? t("skillChipRemove", { name: label })
+                          : t("composerRefRemove", { name: label })
                     }
                     className="inline-flex h-4 w-4 items-center justify-center rounded-capsule text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
                     onClick={() => {
                       removeRef(ref.id, ref.path, ref.kind);
+                      // Keyboard/pointer removal returns focus to the composer (interaction contract).
+                      focusInput();
                     }}
                   >
                     <IconClose />
@@ -773,7 +943,7 @@ export function AssistantComposer() {
             aria-label={t("composerAttachAria")}
             title={t("composerAttach")}
             className={iconButton}
-            disabled={refs.length >= ATTACHMENT_MAX_COUNT}
+            disabled={referenceCount >= ATTACHMENT_MAX_COUNT}
             onClick={() => {
               fileInputRef.current?.click();
             }}

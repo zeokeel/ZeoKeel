@@ -3,10 +3,10 @@
 - 入口：composer `/` 的「技能」组 + `/name` Instructions
 - 归属：`@zeokeel/ui-chat`、ui-kit、desktop-web
 - 权威：docs/19 §2.1b/§11、docs/27、docs/11 §8.6
-- 状态 planned；证据根 target/evidence/2026-11-01-client-skill-commands/interaction/
+- 状态 active；证据根 target/evidence/2026-11-01-client-skill-commands/interaction/
 - 测试 e2e/interaction/command-skill.spec.ts
 
-- 状态：`planned`（实现开始时与 `intuition.md` 一起改 `active`）
+- 状态：`active`（实现阶段）
 ## 1. 元素
 | 元素 | role/name | 键盘 | 默认焦点 |
 | --- | --- | --- | --- |

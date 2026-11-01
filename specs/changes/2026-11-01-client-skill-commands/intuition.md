@@ -1,6 +1,6 @@
 # command-skill-commands · 直觉判定（INT）
 
-> planned；证据根 target/evidence/2026-11-01-client-skill-commands/intuition/；用户测试 **UNVERIFIED**。
+> active；证据根 target/evidence/2026-11-01-client-skill-commands/intuition/；用户测试 **UNVERIFIED**。
 
 | ID | 原则 | 场景 | 期望 | 反例 | 验证 | 证据 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -19,4 +19,4 @@
 
 ## 覆盖
 - CMD3S-SKILL-01→INT-01/02/03/05/06/11；P1 KEY→02/09；ERR→04/08/10；A11Y→09/10/12。
-- 用户测试 UNVERIFIED；无 OPEN P0（walkthrough W1/W3 关闭）；planned。
+- 用户测试 UNVERIFIED；无 OPEN P0（walkthrough W1/W3 关闭）；active。

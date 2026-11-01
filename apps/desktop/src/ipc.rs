@@ -902,6 +902,38 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 Err(error) => CommandResponse::err(error),
             }
         }
+        commands::SKILL_LIST => {
+            let request: zk_contract_ipc::payloads::SkillListPayload =
+                match serde_json::from_value(payload.clone()) {
+                    Ok(request) => request,
+                    Err(error) => return CommandResponse::err(format!("skill/invalid: {error}")),
+                };
+            match crate::skill::skill_list(
+                state,
+                &request.workspace_id,
+                request.conversation_id.as_deref(),
+            ) {
+                Ok(result) => CommandResponse::ok(json!(result)),
+                Err(error) => CommandResponse::err(error),
+            }
+        }
+        commands::SKILL_READ => {
+            let request: zk_contract_ipc::payloads::SkillReadPayload =
+                match serde_json::from_value(payload.clone()) {
+                    Ok(request) => request,
+                    Err(error) => return CommandResponse::err(format!("skill/invalid: {error}")),
+                };
+            match crate::skill::skill_read(
+                state,
+                &request.workspace_id,
+                &request.conversation_id,
+                &request.name,
+                request.version.as_deref(),
+            ) {
+                Ok(result) => CommandResponse::ok(json!(result)),
+                Err(error) => CommandResponse::err(error),
+            }
+        }
         commands::FEEDBACK_SUBMIT => {
             let request: zk_contract_ipc::payloads::FeedbackSubmitPayload =
                 match serde_json::from_value(payload.clone()) {
@@ -1130,7 +1162,10 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
 }
 
 /// One resolved workspace root from the store (canonical absolute path).
-fn workspace_root_of(state: &Arc<AppState>, workspace_id: &str) -> Result<PathBuf, String> {
+pub(crate) fn workspace_root_of(
+    state: &Arc<AppState>,
+    workspace_id: &str,
+) -> Result<PathBuf, String> {
     let workspaces = state
         .runtime
         .sessions()
@@ -1144,6 +1179,25 @@ fn workspace_root_of(state: &Arc<AppState>, workspace_id: &str) -> Result<PathBu
     };
     std::fs::canonicalize(&workspace.path)
         .map_err(|error| format!("workspace/path-unavailable: {error}"))
+}
+
+/// Verify one conversation belongs to the addressed workspace (C18).
+pub(crate) fn verify_owner(
+    sessions: &dyn zk_contract_session::SessionStore,
+    workspace_id: &str,
+    conversation_id: &str,
+) -> Result<(), String> {
+    let conversations = sessions
+        .list_conversations_in(workspace_id)
+        .map_err(|error| error.to_string())?;
+    if conversations
+        .iter()
+        .any(|conversation| conversation.id == conversation_id)
+    {
+        Ok(())
+    } else {
+        Err("session/workspace-mismatch".to_owned())
+    }
 }
 
 /// Split a workspace-relative forward-slash path into safe components.
@@ -1993,26 +2047,10 @@ fn app_request_builder(
     crate::native_client::apply_headers(client.post(url).bearer_auth(token).json(request))
 }
 
+/// Installed store-skill root (`$ZEOKEEL_HOME/skills`), owned by `zk-tool-skill`
+/// (host reaches it through the generated facade, C4).
 fn skill_root() -> Result<std::path::PathBuf, String> {
-    let base = match std::env::var("ZEOKEEL_HOME") {
-        Ok(value) => std::path::PathBuf::from(value),
-        Err(_) => dirs::home_dir()
-            .ok_or_else(|| "home directory unavailable".to_owned())?
-            .join(".zeokeel"),
-    };
-    Ok(base.join("skills"))
-}
-
-fn safe_component(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 128
-        && value != "."
-        && value != ".."
-        && !value.starts_with('.')
-        && !value.contains(':')
-        && value
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    zk_composed::zk_tool_skill::installed_root().map_err(|error| error.to_string())
 }
 
 fn install_skill(payload: &Value) -> CommandResponse {
@@ -2025,7 +2063,9 @@ fn install_skill(payload: &Value) -> CommandResponse {
     ) else {
         return CommandResponse::err("missing name/version/archive_base64");
     };
-    if !safe_component(name) || !safe_component(version) {
+    if !zk_composed::zk_tool_skill::is_safe_component(name)
+        || !zk_composed::zk_tool_skill::is_safe_component(version)
+    {
         return CommandResponse::err("SKILL_VALIDATION");
     }
     let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(encoded) else {
@@ -2465,7 +2505,7 @@ fn remove_skill(payload: &Value) -> CommandResponse {
     let Some(name) = payload.get("name").and_then(Value::as_str) else {
         return CommandResponse::err("missing name");
     };
-    if !safe_component(name) {
+    if !zk_composed::zk_tool_skill::is_safe_component(name) {
         return CommandResponse::err("SKILL_VALIDATION");
     }
     let root = match skill_root() {
@@ -3739,7 +3779,10 @@ mod tests {
         assert_eq!(link["ok"], serde_json::Value::Bool(false), "{link}");
 
         for hostile in [".", "..", ".hidden", "C:evil", "a/b"] {
-            assert!(!super::safe_component(hostile), "{hostile}");
+            assert!(
+                !zk_composed::zk_tool_skill::is_safe_component(hostile),
+                "{hostile}"
+            );
             let response = super::remove_skill(&serde_json::json!({ "name": hostile }));
             assert!(!response.ok, "{hostile}");
         }
@@ -5775,6 +5818,145 @@ mod tests {
             .error
             .unwrap_or_default()
             .starts_with("session/workspace-mismatch"));
+        std::env::remove_var("ZEOKEEL_HOME");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn skill_list_read_use_workspace_source_limits_and_ownership() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-skill-{}", uuid::Uuid::new_v4()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", home.join("zeokeel-home"));
+        let (state, workspace_id, conversation_id, ws_path) = phase2b_fixture(&home);
+        let skills = ws_path.join(".agents/skills");
+        std::fs::create_dir_all(skills.join("demo")).unwrap();
+        std::fs::write(
+            skills.join("demo/SKILL.md"),
+            "---\nname: demo\ndescription: demo skill\n---\n# Demo instructions\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(skills.join("hidden")).unwrap();
+        std::fs::write(
+            skills.join("hidden/SKILL.md"),
+            "---\nuser-invocable: false\n---\n",
+        )
+        .unwrap();
+
+        let list = call_ok(
+            &state,
+            zk_contract_ipc::commands::SKILL_LIST,
+            json!({ "workspace_id": workspace_id }),
+        );
+        let items = list["skills"].as_array().expect("skills");
+        assert_eq!(items.len(), 1, "user-invocable filter: {list}");
+        assert_eq!(items[0]["name"], "demo");
+        assert_eq!(items[0]["description"], "demo skill");
+        assert_eq!(items[0]["user_invocable"], true);
+        assert_eq!(items[0]["source"], "workspace");
+        assert!(items[0].get("version").is_some());
+
+        // Conversation-scoped list verifies C18 ownership.
+        let scoped = call_ok(
+            &state,
+            zk_contract_ipc::commands::SKILL_LIST,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+            }),
+        );
+        assert_eq!(scoped["skills"].as_array().expect("skills").len(), 1);
+        let mismatch = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SKILL_LIST,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": "not-this-conversation",
+            }),
+        );
+        assert!(!mismatch.ok);
+        assert!(mismatch
+            .error
+            .unwrap_or_default()
+            .starts_with("session/workspace-mismatch"));
+
+        let read = call_ok(
+            &state,
+            zk_contract_ipc::commands::SKILL_READ,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "name": "demo",
+            }),
+        );
+        assert_eq!(
+            read["content"],
+            "---\nname: demo\ndescription: demo skill\n---\n# Demo instructions\n"
+        );
+        assert_eq!(read["name"], "demo");
+        assert_eq!(read["source"], "workspace");
+
+        // Unknown skill stays a readable closed code (no fake content).
+        let unknown = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SKILL_READ,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "name": "missing",
+            }),
+        );
+        assert!(!unknown.ok);
+        assert!(unknown
+            .error
+            .unwrap_or_default()
+            .starts_with("skill/not-found"));
+
+        // >8 KiB Instructions are rejected (never truncated into chat.send).
+        std::fs::create_dir_all(skills.join("big")).unwrap();
+        std::fs::write(
+            skills.join("big/SKILL.md"),
+            "x".repeat(zk_composed::zk_tool_skill::MAX_SKILL_BYTES + 1),
+        )
+        .unwrap();
+        let too_large = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SKILL_READ,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "name": "big",
+            }),
+        );
+        assert!(!too_large.ok);
+        assert!(too_large
+            .error
+            .unwrap_or_default()
+            .starts_with("skill/too-large"));
+
+        // Unknown workspace and malformed payloads fail closed.
+        let unknown_workspace = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SKILL_LIST,
+            &json!({ "workspace_id": "nope" }),
+        );
+        assert!(!unknown_workspace.ok);
+        assert!(unknown_workspace
+            .error
+            .unwrap_or_default()
+            .starts_with("workspace/not-found"));
+        let invalid = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SKILL_READ,
+            &json!({ "workspace_id": workspace_id }),
+        );
+        assert!(!invalid.ok);
+        assert!(invalid
+            .error
+            .unwrap_or_default()
+            .starts_with("skill/invalid"));
+
         std::env::remove_var("ZEOKEEL_HOME");
         let _ = std::fs::remove_dir_all(&home);
     }

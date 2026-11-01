@@ -16,6 +16,8 @@ import {
   type ConversationOverride,
   type FeedbackCategory,
   type GoalView,
+  type SkillCandidate,
+  type SkillInstruction,
   type UiValue,
   type WorkspaceFileRef,
   type SessionSearchOutcome,
@@ -28,8 +30,8 @@ import { upgradeInfoOf } from "./upgrade";
 import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
 import type { Transport } from "./types";
-import { parseCompactResult, parseCompactionGetResult, parseConversation, parsePlanGetResult, parsePlanUpdateResult, parseConversationOverrideResult, parseFeedbackSubmitResult, parseFileEntries, parseGoalResult, parseSessionExportResult, parseSessionSearchResult, parseTerminalResult, parseUpdateRelease, parseWorkspaceChanges, parseWorkspaceFileReadResult } from "./protocol";
-import { validateAttachmentSaveResult } from "./validate";
+import { parseCompactResult, parseCompactionGetResult, parseConversation, parsePlanGetResult, parsePlanUpdateResult, parseConversationOverrideResult, parseFeedbackSubmitResult, parseFileEntries, parseGoalResult, parseSessionExportResult, parseSessionSearchResult, parseSkillListResult, parseSkillReadResult, parseTerminalResult, parseUpdateRelease, parseWorkspaceChanges, parseWorkspaceFileReadResult } from "./protocol";
+import { validateAttachmentSaveResult, validateSkillListResult, validateSkillReadResult } from "./validate";
 import { downloadSkillArchive, fetchAppHtml, fetchApps, fetchConnectorCatalog, fetchSkills, fetchTombstones, openApp, sendInstallReceipt, toBase64, toggleConnector, type AppItem, type ConnectorItem, type SkillItem } from "./store";
 import { clearConnectorCatalog, reloadConnectorSessions, syncConnectorCatalog } from "./connectors-sync";
 import { probeMcpServer } from "./mcp-probe";
@@ -95,7 +97,7 @@ export interface CommandCatalogInput {
  * and both execute through `UiActions.runCommand` — no second list/executor.
  * Personal = 6 commands; enterprise adds the skills/connectors/apps panels (9).
  */
-/** DSH 1:1 slash commands (Batch 1) + Batch 2 placeholders (shared catalog rows). */
+/** DSH 1:1 slash commands (Batch 1 + Batch 2 `/compact`/`/plan`/`/skill`, shared catalog rows). */
 export function buildSlashCommands(
   t: (key: string, vars?: Record<string, string | number>) => string,
   streaming = false,
@@ -124,7 +126,7 @@ export function buildSlashCommands(
     row("slash-permission", "permission", t("slashPermission"), t("commandGroupCommand"), "popupSelect"),
     row("slash-model", "model", t("slashModel"), t("commandGroupCommand"), "popupSelect"),
     row("slash-export", "export", t("slashExport"), t("commandGroupCommand"), "execute"),
-    row("slash-skill", "skill", t("slashSkill"), t("commandGroupSkill"), "disabled"),
+    row("slash-skill", "skill", t("slashSkill"), t("commandGroupSkill"), "execute"),
   ];
 }
 
@@ -376,6 +378,11 @@ export function App(props: { transport: Transport }) {
         void compactConversation();
         return;
       }
+      // `/skill` itself only explains the skill group; it never sends a prompt.
+      if (id === "slash-skill") {
+        controller.showToast(t("skillCommandHint"));
+        return;
+      }
       if (id.startsWith("slash-")) {
         const command = buildSlashCommands(t, state.streaming).find((entry) => entry.id === id);
         if (command?.name === undefined || command.disabled === true) {
@@ -422,6 +429,45 @@ export function App(props: { transport: Transport }) {
       return matched.slice(0, 50);
     },
     [props.transport, state.activeWorkspaceId],
+  );
+
+  /** `/<skill>` candidates (`skill.list`; single host scanner, current workspace only). */
+  const listSkills = useCallback(async (): Promise<SkillCandidate[]> => {
+    const workspaceId = state.activeWorkspaceId;
+    if (workspaceId === null) {
+      return [];
+    }
+    const raw = await props.transport.call("skill.list", { workspace_id: workspaceId });
+    if (!isRecord(raw) || !validateSkillListResult(raw)) {
+      throw new Error("skill/invalid: unexpected host response");
+    }
+    return parseSkillListResult(raw) ?? [];
+  }, [props.transport, state.activeWorkspaceId]);
+
+  /** Read one `/<skill>` Instructions body (`skill.read`; host enforces ≤8 KiB). */
+  const readSkill = useCallback(
+    async (name: string, version?: string): Promise<SkillInstruction> => {
+      const workspaceId = state.activeWorkspaceId;
+      const conversationId = state.activeConversationId;
+      if (workspaceId === null || conversationId === null) {
+        throw new Error("skill/invalid: no active conversation");
+      }
+      const raw = await props.transport.call("skill.read", {
+        workspace_id: workspaceId,
+        conversation_id: conversationId,
+        name,
+        ...(version === undefined || version === "" ? {} : { version }),
+      });
+      if (!isRecord(raw) || !validateSkillReadResult(raw)) {
+        throw new Error("skill/invalid: unexpected host response");
+      }
+      const parsed = parseSkillReadResult(raw);
+      if (parsed === null) {
+        throw new Error("skill/invalid: incomplete host response");
+      }
+      return parsed;
+    },
+    [props.transport, state.activeWorkspaceId, state.activeConversationId],
   );
 
   /** Persist one attachment via the single host IPC, validating the host result (C10). */
@@ -994,6 +1040,8 @@ export function App(props: { transport: Transport }) {
       closeSettings,
       runCommand,
       searchWorkspaceFiles,
+      listSkills,
+      readSkill,
       saveAttachment,
       updateConversation,
       forkConversation,

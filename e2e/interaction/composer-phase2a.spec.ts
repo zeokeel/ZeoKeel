@@ -112,7 +112,7 @@ test.describe("composer Phase 2a interaction contract", () => {
   );
 
   test(
-    "CMP2-CMD-02: Batch 2 placeholders are disabled/inert; no-match shows the empty state",
+    "CMP2-CMD-02: /skill explains the skill group; no-match shows the empty state",
     { tag: ["@interaction:CMP2-CMD-02"] },
     async ({ page }) => {
       await openClient(page);
@@ -127,21 +127,21 @@ test.describe("composer Phase 2a interaction contract", () => {
       await expect(input).toHaveValue("/zzz");
       await expect(page.getByTestId("user-text")).toHaveCount(0);
 
-      // Batch 2 placeholder: visible, disabled, inert (never executed/sent).
+      // `/skill` is a real command now: it explains the skill group and is inert.
       await input.fill("");
       await page.keyboard.type("/skill");
-      const placeholder = page.getByRole("option", { name: /技能/ });
-      await expect(placeholder).toBeVisible();
-      expect(await placeholder.isDisabled()).toBe(true);
+      const skillCommand = page.locator("#zk-composer-command-skill");
+      await expect(skillCommand).toBeVisible();
+      expect(await skillCommand.isDisabled()).toBe(false);
       await page.keyboard.press("Enter");
-      await expect(page.getByText("未实现（Batch 2）")).toBeVisible();
-      await expect(input).toHaveValue("/skill");
+      await expect(page.getByText("输入 / 查看可用技能")).toBeVisible();
+      await expect(input).toHaveValue("");
       await expect(page.getByTestId("user-text")).toHaveCount(0);
       await page.keyboard.press("Escape");
       await expect(input).toBeFocused();
       recordInteraction(
         "CMP2-CMD-02",
-        "CMP2-CMD-02: Batch 2 placeholders are disabled/inert; no-match shows the empty state",
+        "CMP2-CMD-02: the real /skill explains the skill group; no-match shows the empty state",
       );
     },
   );
