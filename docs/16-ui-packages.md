@@ -22,6 +22,7 @@
 | `@zeokeel/ui-chat` | `ui.slot.chat` | ChatView + assistant-ui primitives + 工具卡/审批/空态 + ExternalStoreRuntime adapter | ui-kit + `@assistant-ui/*` |
 | `@zeokeel/ui-settings` | `ui.slot.settings` | SettingsDialog + 校验 | ui-kit + Radix dialog |
 | `@zeokeel/ui-settings-provider`（personal-only） | `ui.slot.settings-provider` | 本地 provider 字段（enterprise 构建期 exclude） | ui-kit + settings 注入 |
+| `@zeokeel/ui-settings-mcp`（personal-only） | `ui.slot.settings-mcp` | 本地 MCP server 列表/测试连接（`ui.settings.pane` order 70；enterprise 构建期 exclude） | ui-kit + settings 注入（`app.testMcpServer`） |
 | `@zeokeel/ui-shell` | `ui.shell` | AppShell + FirstRun（布局/header/status/overlay/首用页；app 已接入） | ui-kit + Radix tooltip |
 | `@zeokeel/ui-inspector` | `ui.slot.inspector` | 右栏文件树/变更/终端（`workspace.files`，⌘B） | ui-kit |
 | `@zeokeel/ui-commands` | `ui.slot.commands` | ⌘K 命令面板（搜索/键盘导航/动作由 app 注入） | ui-kit |
@@ -118,6 +119,7 @@ editions = ["personal"]
 | 50 | 网络与检索 | `ui-settings` | 全部 |
 | 60 | 嵌入/向量索引 | `ui-settings` | `personal` |
 | 65 | 媒体能力 | `ui-settings` | `personal` |
+| 70 | MCP 本地服务 | `ui-settings-mcp` | `personal` |
 | 80 | 企业 | `ui-settings` | `enterprise` |
 | 90 | 关于与更新 | `ui-settings` | 全部 |
 

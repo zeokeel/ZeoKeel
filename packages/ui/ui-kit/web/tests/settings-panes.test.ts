@@ -24,6 +24,7 @@ const EMPTY_ERRORS: SettingsErrors = {
   mediaBaseUrl: null,
   webSearchBaseUrl: null,
   webSearchTimeoutMs: null,
+  mcpServers: null,
 };
 
 const EMPTY_FORM: SettingsForm = {
@@ -35,6 +36,7 @@ const EMPTY_FORM: SettingsForm = {
   locale: "zh-CN",
   autoApproveReadOnly: true,
   approvalPolicy: "ask",
+  mcpServers: [],
   serverUrl: "",
   maxSteps: "50",
   temperature: "",

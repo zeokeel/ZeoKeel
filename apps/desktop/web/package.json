@@ -31,7 +31,8 @@
     "@zeokeel/ui-skills": "workspace:*",
     "ajv": "^8.20.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "@zeokeel/ui-settings-mcp": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

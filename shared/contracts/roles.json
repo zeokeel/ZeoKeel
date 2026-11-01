@@ -323,6 +323,12 @@
     "crate_name": "zk-ui-settings",
     "package": "zeokeel/ui-settings"
   },
+  "ui.slot.settings-mcp": {
+    "cardinality": "singleton",
+    "contract": "zk-contract-ui",
+    "crate_name": "zk-ui-settings-mcp",
+    "package": "zeokeel/ui-settings-mcp"
+  },
   "ui.slot.settings-provider": {
     "cardinality": "singleton",
     "contract": "zk-contract-ui",

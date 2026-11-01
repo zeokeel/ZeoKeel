@@ -432,6 +432,14 @@
     "version": "0.1.0"
   },
   {
+    "id": "zeokeel/ui-settings-mcp",
+    "kind": "ui",
+    "roles": [
+      "ui.slot.settings-mcp"
+    ],
+    "version": "0.1.0"
+  },
+  {
     "id": "zeokeel/ui-settings-provider",
     "kind": "ui",
     "roles": [

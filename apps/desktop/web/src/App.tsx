@@ -21,6 +21,7 @@ import type { Transport } from "./types";
 import { parseFileEntries, parseWorkspaceChanges, parseUpdateRelease, type FileEntry, type WorkspaceChange } from "./protocol";
 import { downloadSkillArchive, fetchAppHtml, fetchApps, fetchConnectorCatalog, fetchSkills, fetchTombstones, openApp, sendInstallReceipt, toggleConnector, type AppItem, type ConnectorItem, type SkillItem } from "./store";
 import { clearConnectorCatalog, reloadConnectorSessions, syncConnectorCatalog } from "./connectors-sync";
+import { probeMcpServer } from "./mcp-probe";
 import { oauthMetadataPayload, parseOAuthTokens, tokenNeedsRefresh, waitForOAuthFlow } from "./oauth";
 import { clearSession, fetchBootstrapInfo, loadGatewayModel, loadServerUrl, loadSession, login as loginRequest, refreshSession, saveGatewayModel, saveServerUrl, saveSession, type AuthSession } from "./auth";
 
@@ -662,6 +663,7 @@ function AppShell(props: AppShellProps) {
               onCheckUpdate,
               updateText,
               updateBusy,
+              testMcpServer: (server) => probeMcpServer(props.transport, server),
             }}
           />
         </SlotErrorBoundary>

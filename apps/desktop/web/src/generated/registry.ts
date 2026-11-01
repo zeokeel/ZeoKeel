@@ -7,7 +7,8 @@ import { components as c2 } from "@zeokeel/ui-commands";
 import { components as c3 } from "@zeokeel/ui-inspector";
 import { components as c4 } from "@zeokeel/ui-sessions";
 import { components as c5 } from "@zeokeel/ui-settings";
-import { components as c6 } from "@zeokeel/ui-settings-provider";
+import { components as c6 } from "@zeokeel/ui-settings-mcp";
+import { components as c7 } from "@zeokeel/ui-settings-provider";
 
 export const COMPONENTS = {
   ...c0,
@@ -17,17 +18,19 @@ export const COMPONENTS = {
   ...c4,
   ...c5,
   ...c6,
+  ...c7,
 } as const;
 
 export const SettingsPanes: ReadonlyArray<SettingsPaneContribution> = [
   { id: "general", order: 10, Component: c5["settings.pane.general"] },
   { id: "models", order: 20, Component: c5["settings.pane.models"] },
-  { id: "provider", order: 21, Component: c6["settings.pane.provider"] },
+  { id: "provider", order: 21, Component: c7["settings.pane.provider"] },
   { id: "agent", order: 30, Component: c5["settings.pane.agent"] },
   { id: "tools", order: 40, Component: c5["settings.pane.tools"] },
   { id: "search", order: 50, Component: c5["settings.pane.search"] },
   { id: "embedding", order: 60, Component: c5["settings.pane.embedding"] },
   { id: "media", order: 65, Component: c5["settings.pane.media"] },
+  { id: "mcp", order: 70, Component: c6["settings.pane.mcp"] },
   { id: "about", order: 90, Component: c5["settings.pane.about"] },
 ];
 

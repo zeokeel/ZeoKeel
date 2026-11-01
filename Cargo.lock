@@ -8584,6 +8584,7 @@ dependencies = [
  "zk-ui-kit",
  "zk-ui-sessions",
  "zk-ui-settings",
+ "zk-ui-settings-mcp",
  "zk-ui-settings-provider",
  "zk-ui-shell",
 ]
@@ -8654,6 +8655,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "zk-contract-connector",
 ]
 
 [[package]]
@@ -8693,6 +8695,7 @@ dependencies = [
  "thiserror 1.0.69",
  "zk-contract-agent",
  "zk-contract-config",
+ "zk-contract-connector",
 ]
 
 [[package]]
@@ -9651,6 +9654,13 @@ dependencies = [
 
 [[package]]
 name = "zk-ui-settings"
+version = "1.0.0-rc.1"
+dependencies = [
+ "zk-contract-ui",
+]
+
+[[package]]
+name = "zk-ui-settings-mcp"
 version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-ui",

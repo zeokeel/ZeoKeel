@@ -1,5 +1,5 @@
 //! Contract conformance: settings round-trip and defaults.
-#![allow(clippy::unwrap_used, clippy::expect_used)] // test-only
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)] // test-only
 
 use zk_contract_config::{
     AgentSettings, AppSettings, ApprovalPolicy, EmbeddingSettings, MediaSettings, ProviderKind,
@@ -660,4 +660,83 @@ fn approval_migration_reads_legacy_json_shapes() {
     let null_policy = r#"{"schema":1,"provider":{"kind":"mock"},"theme":"auto","locale":"zh-CN","auto_approve_read_only":true,"tools":{"tool_timeout_ms":1000,"approval_timeout_ms":1000,"approval_policy":null}}"#;
     let parsed: AppSettings = serde_json::from_str(null_policy).unwrap();
     assert_eq!(parsed.effective_approval_policy(), ApprovalPolicy::Ask);
+}
+
+fn local_server(id: &str) -> zk_contract_connector::McpServerConfig {
+    zk_contract_connector::McpServerConfig {
+        id: id.to_owned(),
+        name: id.to_owned(),
+        transport: zk_contract_connector::ConnectorTransport::Stdio,
+        command: "mcp-demo".to_owned(),
+        args: Vec::new(),
+        env: std::collections::BTreeMap::new(),
+        url: String::new(),
+        timeout_ms: 0,
+        oauth_required: false,
+    }
+}
+
+#[test]
+fn mcp_settings_defaults_roundtrip_and_validation() {
+    use zk_contract_config::McpSettings;
+
+    // Backward-compatible: an old document without `mcp` parses to the default.
+    let legacy: AppSettings = serde_json::from_str(r#"{"schema":1,"provider":{"kind":"mock"},"theme":"auto","locale":"zh-CN","auto_approve_read_only":true}"#).unwrap();
+    assert_eq!(legacy.mcp, McpSettings::default());
+    assert_eq!(
+        serde_json::to_value(AppSettings::default()).unwrap()["mcp"]["servers"],
+        serde_json::json!([])
+    );
+
+    let mut settings = AppSettings::default();
+    settings.mcp.servers = vec![local_server("mcp-demo")];
+    settings.validate().unwrap();
+    let json = serde_json::to_string(&settings).unwrap();
+    let parsed: AppSettings = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.mcp.servers[0].id, "mcp-demo");
+
+    // Duplicate ids are rejected.
+    settings.mcp.servers.push(local_server("mcp-demo"));
+    assert!(settings.validate().is_err());
+
+    // Id charset is local-only.
+    settings.mcp.servers = vec![local_server("bad id/space")];
+    assert!(settings.validate().is_err());
+
+    // Caps: count / args / env / url / timeout.
+    settings.mcp.servers = (0..=McpSettings::MAX_SERVERS)
+        .map(|index| local_server(&format!("s{index}")))
+        .collect();
+    assert!(settings.validate().is_err());
+    settings.mcp.servers = vec![local_server("ok")];
+    settings.mcp.servers[0].args = vec!["x".to_owned(); McpSettings::MAX_ARGS + 1];
+    assert!(settings.validate().is_err());
+    settings.mcp.servers[0].args.clear();
+    settings.mcp.servers[0].env.insert(
+        "K".to_owned(),
+        "v".repeat(McpSettings::MAX_ENV_VALUE_CHARS + 1),
+    );
+    assert!(settings.validate().is_err());
+    settings.mcp.servers[0].env.clear();
+    settings.mcp.servers[0].timeout_ms = McpSettings::MAX_TIMEOUT_MS + 1;
+    assert!(settings.validate().is_err());
+
+    // Local OAuth is unsupported.
+    settings.mcp.servers[0].timeout_ms = 0;
+    settings.mcp.servers[0].oauth_required = true;
+    let error = settings.validate().unwrap_err().to_string();
+    assert!(error.contains("mcp/validation"), "{error}");
+}
+
+#[test]
+fn mcp_two_level_validation_catalog_legal_but_local_capped() {
+    // A catalog-legal server can exceed local caps: `McpServerConfig::validate`
+    // (catalog path) accepts it, while `McpSettings::validate` (local path) rejects it.
+    let mut server = local_server("catalog-server-with-a-long-name");
+    server.name = "n".repeat(200); // > local 128 cap, still catalog-legal
+    server.validate().unwrap();
+    let settings = zk_contract_config::McpSettings {
+        servers: vec![server],
+    };
+    assert!(settings.validate().is_err());
 }

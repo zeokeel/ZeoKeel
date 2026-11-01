@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "McpTestStatusResult",
+  "description": "`mcp.test.status` result: state + tools/error.",
+  "type": "object",
+  "required": [
+    "state"
+  ],
+  "properties": {
+    "error": {
+      "description": "Closed error code when `state == error` (e.g. `mcp/timeout`).",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "state": {
+      "description": "Probe state.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/McpTestState"
+        }
+      ]
+    },
+    "tools": {
+      "description": "Tool names reported by the server (`ok` only; host caps at 200).",
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "definitions": {
+    "McpTestState": {
+      "description": "Closed probe state (C10: no bare `String` on the wire).",
+      "oneOf": [
+        {
+          "description": "Probe still running.",
+          "type": "string",
+          "enum": [
+            "pending"
+          ]
+        },
+        {
+          "description": "Probe finished successfully (`tools` populated).",
+          "type": "string",
+          "enum": [
+            "ok"
+          ]
+        },
+        {
+          "description": "Probe failed (`error` carries a closed error code).",
+          "type": "string",
+          "enum": [
+            "error"
+          ]
+        }
+      ]
+    }
+  }
+}

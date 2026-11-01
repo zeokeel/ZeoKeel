@@ -234,6 +234,112 @@ pub struct ConnectorCatalogItem {
     pub oauth: Option<ConnectorOAuth>,
 }
 
+/// Longest accepted MCP URL.
+const MAX_URL_CHARS: usize = 2048;
+/// Env-key markers rejected as static secrets (ADR-060).
+const SECRET_ENV_MARKERS: [&str; 6] = [
+    "secret",
+    "token",
+    "password",
+    "passwd",
+    "api_key",
+    "credential",
+];
+
+fn url_host(url: &str) -> Option<&str> {
+    let rest = url
+        .strip_prefix("http://")
+        .or_else(|| url.strip_prefix("https://"))?;
+    let authority = rest
+        .split(['/', '?', '#'])
+        .next()
+        .filter(|value| !value.is_empty())?;
+    let host_port = match authority.rsplit_once('@') {
+        Some((_, host)) => host,
+        None => authority,
+    };
+    let host = match host_port.strip_prefix('[') {
+        Some(rest) => rest.split(']').next()?,
+        None => host_port.split(':').next()?,
+    };
+    if host.is_empty() {
+        None
+    } else {
+        Some(host)
+    }
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    matches!(host, "localhost" | "127.0.0.1" | "::1") || host.starts_with("127.")
+}
+
+impl McpServerConfig {
+    /// Validate a client-side MCP server definition (non-secret config, ADR-060).
+    ///
+    /// This is the single implementation shared by the catalog path
+    /// (`zk-connector-mcp::servers_from_catalog`) and the local-settings path
+    /// (`McpSettings::validate` calls this + local caps). Rules mirror the previous
+    /// client-side code verbatim: id/name required, env keys must not look like
+    /// static secrets, stdio requires `command`, http/sse require a bounded
+    /// whitespace-free URL, and plain `http://` is loopback-only (threat model,
+    /// `docs/07` §6.2).
+    ///
+    /// # Errors
+    ///
+    /// Stable `MCP_VALIDATION:` / `MCP_INSECURE_TRANSPORT:` messages.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.id.trim().is_empty() {
+            return Err("MCP_VALIDATION: id is empty".to_owned());
+        }
+        if self.name.trim().is_empty() {
+            return Err("MCP_VALIDATION: name is empty".to_owned());
+        }
+        for key in self.env.keys() {
+            let lowered = key.to_ascii_lowercase();
+            if SECRET_ENV_MARKERS
+                .iter()
+                .any(|marker| lowered.contains(marker))
+            {
+                return Err(format!(
+                    "MCP_VALIDATION: env key {key} looks like a static secret; ADR-060 forbids static secrets in connector config"
+                ));
+            }
+        }
+        match self.transport {
+            ConnectorTransport::Stdio => {
+                if self.command.trim().is_empty() {
+                    return Err("MCP_VALIDATION: stdio transport requires command".to_owned());
+                }
+            }
+            ConnectorTransport::Http | ConnectorTransport::Sse => {
+                let url = self.url.trim();
+                if url.is_empty() {
+                    return Err("MCP_VALIDATION: http transport requires url".to_owned());
+                }
+                if url.chars().count() > MAX_URL_CHARS {
+                    return Err("MCP_VALIDATION: url is too long".to_owned());
+                }
+                if url.chars().any(|ch| ch.is_whitespace() || ch.is_control()) {
+                    return Err(
+                        "MCP_VALIDATION: url contains whitespace/control characters".to_owned()
+                    );
+                }
+                let Some(host) = url_host(url) else {
+                    return Err(
+                        "MCP_VALIDATION: url must start with http:// or https://".to_owned()
+                    );
+                };
+                if url.starts_with("http://") && !is_loopback_host(host) {
+                    return Err(format!(
+                        "MCP_INSECURE_TRANSPORT: plain http:// is only allowed for loopback/dev hosts (got {host}); use https:// or stdio (threat model, docs/07 §6.2)"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 impl ConnectorCatalogItem {
     /// Map a catalog item to the client MCP server config.
     #[must_use]

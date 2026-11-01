@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "McpTestPayload",
+  "description": "`mcp.test` payload: one draft server (not persisted; no global session).",
+  "type": "object",
+  "required": [
+    "server"
+  ],
+  "properties": {
+    "server": {
+      "description": "Draft server config (validated by the host before probing).",
+      "allOf": [
+        {
+          "$ref": "#/definitions/McpServerConfig"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "ConnectorTransport": {
+      "description": "MCP transport.",
+      "type": "string",
+      "enum": [
+        "stdio",
+        "http",
+        "sse"
+      ]
+    },
+    "McpServerConfig": {
+      "description": "Client-side MCP server configuration (non-secret; ADR-060).\n\nDelivered by the connector catalog / local settings; the client spawns `command` (stdio) or POSTs to `url` (http/sse). Static secrets are rejected by validation (`env` keys must not look like credentials); OAuth tokens stay in the OS keychain.",
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "transport"
+      ],
+      "properties": {
+        "args": {
+          "description": "Verbatim argv for stdio (no shell concatenation).",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "command": {
+          "description": "Executable for `transport = \"stdio\"` (no shell; args are passed verbatim).",
+          "default": "",
+          "type": "string"
+        },
+        "env": {
+          "description": "Allow-listed environment for the child process (no static secrets).",
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "id": {
+          "description": "Connector id (stable, used by tools as `server` argument).",
+          "type": "string"
+        },
+        "name": {
+          "description": "Human-readable name.",
+          "type": "string"
+        },
+        "oauth_required": {
+          "description": "Whether this server requires an OAuth bearer token (client-side keychain).\n\nSet from the catalog's public-client metadata; the transport injects `Authorization: Bearer <token>` only when a token was installed by the client OAuth flow and fails honestly with `MCP_OAUTH_REQUIRED` otherwise.",
+          "default": false,
+          "type": "boolean"
+        },
+        "timeout_ms": {
+          "description": "Per-request timeout in milliseconds (0 or absent => default 10s).",
+          "default": 0,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "transport": {
+          "description": "Transport.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ConnectorTransport"
+            }
+          ]
+        },
+        "url": {
+          "description": "HTTP(S) endpoint for `transport = \"http\"` / `\"sse\"`. Plain `http://` is accepted only for loopback/dev hosts (threat model, docs/07 §6.2); non-loopback requires `https://`.",
+          "default": "",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

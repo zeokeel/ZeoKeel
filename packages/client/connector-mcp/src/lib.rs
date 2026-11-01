@@ -33,16 +33,6 @@ pub const DEFAULT_TIMEOUT_MS: u64 = 10_000;
 
 const MAX_MESSAGE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_ERROR_CHARS: usize = 500;
-const MAX_URL_CHARS: usize = 2048;
-const SECRET_ENV_MARKERS: [&str; 6] = [
-    "secret",
-    "token",
-    "password",
-    "passwd",
-    "api_key",
-    "credential",
-];
-
 fn timeout_of(server: &McpServerConfig) -> Duration {
     let ms = if server.timeout_ms == 0 {
         DEFAULT_TIMEOUT_MS
@@ -66,33 +56,6 @@ fn state_error() -> String {
 }
 
 /// Extract the host part of an `http(s)://` URL.
-fn url_host(url: &str) -> Option<&str> {
-    let rest = url
-        .strip_prefix("http://")
-        .or_else(|| url.strip_prefix("https://"))?;
-    let authority = rest
-        .split(['/', '?', '#'])
-        .next()
-        .filter(|value| !value.is_empty())?;
-    let host_port = match authority.rsplit_once('@') {
-        Some((_, host)) => host,
-        None => authority,
-    };
-    let host = match host_port.strip_prefix('[') {
-        Some(rest) => rest.split(']').next()?,
-        None => host_port.split(':').next()?,
-    };
-    if host.is_empty() {
-        None
-    } else {
-        Some(host)
-    }
-}
-
-fn is_loopback_host(host: &str) -> bool {
-    matches!(host, "localhost" | "127.0.0.1" | "::1") || host.starts_with("127.")
-}
-
 /// Validate a client-side MCP server definition (non-secret config, ADR-060).
 ///
 /// # Errors
@@ -100,51 +63,9 @@ fn is_loopback_host(host: &str) -> bool {
 /// Returns `MCP_VALIDATION:` / `MCP_INSECURE_TRANSPORT:` messages for invalid or
 /// unsafe configurations.
 pub fn validate_server(server: &McpServerConfig) -> Result<(), String> {
-    if server.id.trim().is_empty() {
-        return Err("MCP_VALIDATION: id is empty".to_owned());
-    }
-    if server.name.trim().is_empty() {
-        return Err("MCP_VALIDATION: name is empty".to_owned());
-    }
-    for key in server.env.keys() {
-        let lowered = key.to_ascii_lowercase();
-        if SECRET_ENV_MARKERS
-            .iter()
-            .any(|marker| lowered.contains(marker))
-        {
-            return Err(format!(
-                "MCP_VALIDATION: env key {key} looks like a static secret; ADR-060 forbids static secrets in connector config"
-            ));
-        }
-    }
-    match server.transport {
-        ConnectorTransport::Stdio => {
-            if server.command.trim().is_empty() {
-                return Err("MCP_VALIDATION: stdio transport requires command".to_owned());
-            }
-        }
-        ConnectorTransport::Http | ConnectorTransport::Sse => {
-            let url = server.url.trim();
-            if url.is_empty() {
-                return Err("MCP_VALIDATION: http transport requires url".to_owned());
-            }
-            if url.chars().count() > MAX_URL_CHARS {
-                return Err("MCP_VALIDATION: url is too long".to_owned());
-            }
-            if url.chars().any(|ch| ch.is_whitespace() || ch.is_control()) {
-                return Err("MCP_VALIDATION: url contains whitespace/control characters".to_owned());
-            }
-            let Some(host) = url_host(url) else {
-                return Err("MCP_VALIDATION: url must start with http:// or https://".to_owned());
-            };
-            if url.starts_with("http://") && !is_loopback_host(host) {
-                return Err(format!(
-                    "MCP_INSECURE_TRANSPORT: plain http:// is only allowed for loopback/dev hosts (got {host}); use https:// or stdio (threat model, docs/07 §6.2)"
-                ));
-            }
-        }
-    }
-    Ok(())
+    // Single implementation lives in the connector contract (C17); both the
+    // catalog path and the local-settings path validate through this delegate.
+    server.validate()
 }
 
 /// Parse/validate a JSON array of [`McpServerConfig`] (used by [`servers_from_env`]).
@@ -241,14 +162,119 @@ pub fn clear_catalog_config() -> Result<(), String> {
     reload_connectors()
 }
 
-fn configured_servers() -> Result<Vec<McpServerConfig>, String> {
-    let slot = catalog_slot().lock().map_err(|_| state_error())?;
-    let cached = slot.as_ref().filter(|servers| !servers.is_empty()).cloned();
-    drop(slot);
-    match cached {
-        Some(servers) => Ok(servers),
-        None => servers_from_env(),
+static LOCAL_SERVERS: OnceLock<Mutex<Option<Vec<McpServerConfig>>>> = OnceLock::new();
+static ENV_FALLBACK: OnceLock<Mutex<bool>> = OnceLock::new();
+
+fn local_slot() -> &'static Mutex<Option<Vec<McpServerConfig>>> {
+    LOCAL_SERVERS.get_or_init(|| Mutex::new(None))
+}
+
+fn env_fallback_slot() -> &'static Mutex<bool> {
+    ENV_FALLBACK.get_or_init(|| Mutex::new(true))
+}
+
+/// Install the personal local-settings MCP servers (`Some([])` = explicitly none).
+///
+/// Local sources (including an explicit empty list) replace the env fallback; the
+/// catalog always wins over both (enterprise catalog-only, `docs/07` §6.1).
+///
+/// # Errors
+///
+/// Returns `MCP_VALIDATION:` errors or state-lock errors.
+pub fn update_local_servers(servers: Vec<McpServerConfig>) -> Result<(), String> {
+    for server in &servers {
+        validate_server(server)?;
     }
+    let mut slot = local_slot().lock().map_err(|_| state_error())?;
+    *slot = Some(servers);
+    drop(slot);
+    let mut fallback = env_fallback_slot().lock().map_err(|_| state_error())?;
+    *fallback = false;
+    drop(fallback);
+    reload_connectors()
+}
+
+/// Drop local-settings servers and re-enable the `ZEOKEEL_MCP_SERVERS` fallback
+/// (fresh install / no settings file).
+///
+/// # Errors
+///
+/// Returns state-lock errors.
+pub fn clear_local_servers() -> Result<(), String> {
+    let mut slot = local_slot().lock().map_err(|_| state_error())?;
+    *slot = None;
+    drop(slot);
+    let mut fallback = env_fallback_slot().lock().map_err(|_| state_error())?;
+    *fallback = true;
+    drop(fallback);
+    reload_connectors()
+}
+
+/// Toggle the env fallback explicitly (e2e/tests; boot keeps the default).
+///
+/// # Errors
+///
+/// Returns state-lock errors.
+pub fn set_env_fallback_enabled(enabled: bool) -> Result<(), String> {
+    let mut fallback = env_fallback_slot().lock().map_err(|_| state_error())?;
+    *fallback = enabled;
+    drop(fallback);
+    reload_connectors()
+}
+
+/// Source priority (`docs/07` §6.1 / spec R3): catalog (even empty) > local
+/// settings (even empty) > env (only while the env fallback is enabled).
+fn configured_servers() -> Result<Vec<McpServerConfig>, String> {
+    let catalog = catalog_slot().lock().map_err(|_| state_error())?.clone();
+    if let Some(servers) = catalog {
+        return Ok(servers);
+    }
+    let local = local_slot().lock().map_err(|_| state_error())?.clone();
+    if let Some(servers) = local {
+        return Ok(servers);
+    }
+    let fallback = *env_fallback_slot().lock().map_err(|_| state_error())?;
+    if fallback {
+        servers_from_env()
+    } else {
+        Ok(Vec::new())
+    }
+}
+
+/// One-shot, no-cache MCP probe used by `mcp.test` (never touches [`SESSIONS`]).
+///
+/// Spawns a fresh transport, runs `initialize` + `tools/list`, returns the tool
+/// names (capped at 200, each <=128 chars), then drops the transport (stdio child
+/// killed). Never installs a global session or OAuth token.
+///
+/// # Errors
+///
+/// Propagates validation/spawn/connect/protocol errors (`MCP_*` codes).
+pub fn test_server(server: &McpServerConfig) -> Result<Vec<String>, String> {
+    validate_server(server)?;
+    let mut transport = transport(server)?;
+    let _ = initialize(&mut transport)?;
+    let result = transport.request("tools/list", json!({}))?;
+    let tools = result
+        .get("tools")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.get("name").and_then(Value::as_str))
+                .take(200)
+                .map(|name| name.chars().take(128).collect::<String>())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    drop(transport);
+    Ok(tools)
+}
+
+/// Number of cached global MCP sessions (test/verification accessor only).
+#[must_use]
+pub fn session_count() -> usize {
+    sessions().lock().map(|map| map.len()).unwrap_or(0)
 }
 
 // -------------------------------------------------------------- sessions ----

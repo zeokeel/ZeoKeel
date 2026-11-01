@@ -96,6 +96,9 @@ Boot
 
 - **布局**：左导航（每个 `ui.settings.pane` 贡献一项，按 `order` 升序）+ 右侧当前 pane；默认选中第一个可用 pane。
   窄窗（< 720px）导航退化为顶部横向 tab，内容区不横向滚动。企业地址锁定提示、退出登录、企业模型在「企业」pane（仅 enterprise 贡献）。
+- **MCP 本地服务（client-mcp-config）**：personal-only pane「MCP 本地服务」（`ui.settings.pane` order 70，enterprise
+  构建期不存在）：列表/新增/编辑/删除/测试连接（`mcp.test` 轮询）/保存；空态引导添加，测试中该行 pending、按钮禁用，
+  连接失败行内错误；关闭设置丢弃草稿（单次底部保存）。配置非 secret，本地 server 不允许 OAuth（提示用企业 catalog）。
 - **审批策略（config spec C-4）**：审批策略控件位于「工具与审批」pane（order 40，两 edition 共用）：
   `ask`（默认）/`auto_read_only`/`strict` 三选一；文案说明「任何策略都不会自动批准声明需要审批的工具；strict 会询问只读/交互工具」；
   保存后立即生效（runtime settings 发布），旧 `auto_approve_read_only` 不单独呈现（只做迁移）。

@@ -10,6 +10,7 @@ import type {
   AgentSettings,
   AppSettings,
   ApprovalPolicy,
+  McpServerConfig,
   ParallelMode,
   PromptCache,
   ReasoningEffort,
@@ -47,6 +48,7 @@ export const EMPTY_SETTINGS_ERRORS: SettingsErrors = {
   mediaBaseUrl: null,
   webSearchBaseUrl: null,
   webSearchTimeoutMs: null,
+  mcpServers: null,
 };
 
 /** Map the persisted policy (or legacy boolean) to the form value. */
@@ -179,6 +181,7 @@ export function toForm(settings: AppSettings): SettingsForm {
     toolTimeoutMs: String(settings.tools.tool_timeout_ms),
     approvalTimeoutMs: String(settings.tools.approval_timeout_ms),
     approvalPolicy: approvalPolicyOf(settings.tools.approval_policy, settings.auto_approve_read_only),
+    mcpServers: settings.mcp.servers.map((server) => ({ ...server })),
     embeddingBaseUrl: settings.embedding.base_url,
     embeddingApiKey: settings.embedding.api_key,
     embeddingModel: settings.embedding.model,
@@ -193,6 +196,31 @@ export function toForm(settings: AppSettings): SettingsForm {
     webSearchBaseUrl: settings.web_search.base_url,
     webSearchTimeoutMs: String(settings.web_search.timeout_ms),
   };
+}
+
+/** Basic client-side MCP checks; the Rust host remains authoritative (two-level). */
+function validateMcpServers(servers: McpServerConfig[]): SettingsFieldError {
+  const ids = new Set<string>();
+  for (const server of servers) {
+    const id = server.id.trim();
+    if (id === "" || server.name.trim() === "") {
+      return "settingsMcpInvalid";
+    }
+    if (ids.has(id)) {
+      return "settingsMcpDuplicateId";
+    }
+    ids.add(id);
+    if (server.oauth_required) {
+      return "settingsMcpOAuthLocal";
+    }
+    if (server.transport === "stdio" && server.command.trim() === "") {
+      return "settingsMcpInvalid";
+    }
+    if (server.transport !== "stdio" && server.url.trim() === "") {
+      return "settingsMcpInvalid";
+    }
+  }
+  return null;
 }
 
 export function validateSettings(form: SettingsForm): SettingsErrors {
@@ -212,6 +240,7 @@ export function validateSettings(form: SettingsForm): SettingsErrors {
     ? { value: null, error: null }
     : numberField(form.embeddingDims, { min: 1, max: 65536, integer: true });
   const searchTimeout = numberField(form.webSearchTimeoutMs, { min: 1000, max: 120000, integer: true });
+  const mcpServers = validateMcpServers(form.mcpServers);
   return {
     baseUrl:
       form.providerKind === "mock" || isHttpUrl(form.baseUrl.trim()) ? null : "settingsInvalidUrl",
@@ -240,6 +269,7 @@ export function validateSettings(form: SettingsForm): SettingsErrors {
         : "settingsInvalidSecureUrl",
     webSearchTimeoutMs:
       searchTimeout.error ?? (searchTimeout.value === null ? "settingsInvalidInteger" : null),
+    mcpServers,
   };
 }
 
@@ -292,6 +322,7 @@ export function formToSettings(form: SettingsForm, schema: number): AppSettings 
       // are not published over the env fallback (config spec R4).
       approval_policy: form.approvalPolicy === "ask" ? null : form.approvalPolicy,
     },
+    mcp: { servers: form.mcpServers },
     embedding: {
       base_url: form.embeddingBaseUrl.trim(),
       api_key: form.embeddingApiKey,

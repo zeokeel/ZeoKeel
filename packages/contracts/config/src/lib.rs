@@ -274,6 +274,154 @@ impl Default for ToolSettings {
     }
 }
 
+/// Local MCP server settings (personal edition; non-secret config, ADR-060).
+///
+/// The persisted document only carries non-secret execution config; OAuth tokens
+/// stay in the OS keychain and local servers must not require OAuth (they have no
+/// authorize/token metadata, so a PKCE flow is impossible — use the enterprise
+/// catalog instead).
+///
+/// Limits live **only** here (local settings path): the catalog path keeps the
+/// original [`zk_contract_connector::McpServerConfig::validate`] rules, so an
+/// already-valid catalog server that exceeds a local cap still works (two-level
+/// validation, M-1/R2).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(default)]
+pub struct McpSettings {
+    /// Locally configured MCP servers (bounded by [`Self::MAX_SERVERS`]).
+    pub servers: Vec<zk_contract_connector::McpServerConfig>,
+}
+
+impl McpSettings {
+    /// Largest accepted local server count.
+    pub const MAX_SERVERS: usize = 16;
+    /// Largest accepted `id`/`name` length (chars).
+    pub const MAX_ID_CHARS: usize = 128;
+    /// Largest accepted `args` count.
+    pub const MAX_ARGS: usize = 32;
+    /// Largest accepted single arg length (chars).
+    pub const MAX_ARG_CHARS: usize = 2048;
+    /// Largest accepted `env` entry count.
+    pub const MAX_ENV_ENTRIES: usize = 32;
+    /// Largest accepted env key length (chars).
+    pub const MAX_ENV_KEY_CHARS: usize = 128;
+    /// Largest accepted env value length (chars).
+    pub const MAX_ENV_VALUE_CHARS: usize = 2048;
+    /// Largest accepted URL length (chars).
+    pub const MAX_URL_CHARS: usize = 2048;
+    /// Largest accepted per-request timeout (ms).
+    pub const MAX_TIMEOUT_MS: u64 = 600_000;
+
+    fn invalid(message: impl std::fmt::Display) -> ConfigError {
+        ConfigError::Invalid(format!("mcp/validation: {message}"))
+    }
+
+    /// Validate every local server: shared rules first, then the local caps,
+    /// id charset, duplicate ids, and the "no local OAuth" rule.
+    ///
+    /// # Errors
+    ///
+    /// [`ConfigError::Invalid`] with an `mcp/validation:` prefix naming the server.
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.servers.len() > Self::MAX_SERVERS {
+            return Err(Self::invalid(format!(
+                "at most {} servers (got {})",
+                Self::MAX_SERVERS,
+                self.servers.len()
+            )));
+        }
+        let mut seen: Vec<&str> = Vec::with_capacity(self.servers.len());
+        for server in &self.servers {
+            server
+                .validate()
+                .map_err(|error| Self::invalid(format!("server {}: {error}", server.id)))?;
+            if server.id.chars().count() > Self::MAX_ID_CHARS {
+                return Err(Self::invalid(format!(
+                    "server id exceeds {} characters",
+                    Self::MAX_ID_CHARS
+                )));
+            }
+            if server.name.chars().count() > Self::MAX_ID_CHARS {
+                return Err(Self::invalid(format!(
+                    "server {}: name exceeds {} characters",
+                    server.id,
+                    Self::MAX_ID_CHARS
+                )));
+            }
+            if !server
+                .id
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
+            {
+                return Err(Self::invalid(format!(
+                    "server {}: id must match [A-Za-z0-9._-]",
+                    server.id
+                )));
+            }
+            if seen.contains(&server.id.as_str()) {
+                return Err(Self::invalid(format!("duplicate server id {}", server.id)));
+            }
+            seen.push(&server.id);
+            if server.oauth_required {
+                return Err(Self::invalid(format!(
+                    "server {}: local servers cannot require OAuth (no authorize/token metadata; use the enterprise catalog)",
+                    server.id
+                )));
+            }
+            if server.args.len() > Self::MAX_ARGS {
+                return Err(Self::invalid(format!(
+                    "server {}: at most {} args",
+                    server.id,
+                    Self::MAX_ARGS
+                )));
+            }
+            if server
+                .args
+                .iter()
+                .any(|arg| arg.chars().count() > Self::MAX_ARG_CHARS)
+            {
+                return Err(Self::invalid(format!(
+                    "server {}: arg exceeds {} characters",
+                    server.id,
+                    Self::MAX_ARG_CHARS
+                )));
+            }
+            if server.env.len() > Self::MAX_ENV_ENTRIES {
+                return Err(Self::invalid(format!(
+                    "server {}: at most {} env entries",
+                    server.id,
+                    Self::MAX_ENV_ENTRIES
+                )));
+            }
+            for (key, value) in &server.env {
+                if key.chars().count() > Self::MAX_ENV_KEY_CHARS
+                    || value.chars().count() > Self::MAX_ENV_VALUE_CHARS
+                {
+                    return Err(Self::invalid(format!(
+                        "server {}: env key/value too long",
+                        server.id
+                    )));
+                }
+            }
+            if server.url.chars().count() > Self::MAX_URL_CHARS {
+                return Err(Self::invalid(format!(
+                    "server {}: url exceeds {} characters",
+                    server.id,
+                    Self::MAX_URL_CHARS
+                )));
+            }
+            if server.timeout_ms > Self::MAX_TIMEOUT_MS {
+                return Err(Self::invalid(format!(
+                    "server {}: timeout_ms must be 0..={}",
+                    server.id,
+                    Self::MAX_TIMEOUT_MS
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Workspace schedule auto-run settings (`docs/19`/`docs/38`).
 ///
 /// Auto-run starts scheduled prompts with no human in the loop, so it is
@@ -685,6 +833,9 @@ pub struct AppSettings {
     /// Web-search tool endpoint settings (backward compatible default).
     #[serde(default)]
     pub web_search: WebSearchSettings,
+    /// Local MCP servers (personal edition; backward compatible default).
+    #[serde(default)]
+    pub mcp: McpSettings,
 }
 
 impl Default for AppSettings {
@@ -701,6 +852,7 @@ impl Default for AppSettings {
             embedding: EmbeddingSettings::default(),
             media: MediaSettings::default(),
             web_search: WebSearchSettings::default(),
+            mcp: McpSettings::default(),
         }
     }
 }
@@ -716,7 +868,8 @@ impl AppSettings {
         self.tools.validate()?;
         self.embedding.validate()?;
         self.media.validate()?;
-        self.web_search.validate()
+        self.web_search.validate()?;
+        self.mcp.validate()
     }
 
     /// The effective local approval policy, bridging the deprecated

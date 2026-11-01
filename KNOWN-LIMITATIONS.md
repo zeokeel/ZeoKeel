@@ -102,8 +102,12 @@
   + token 交换/刷新，token 经 keychain IPC 本地保存；MCP HTTP transport 经 `set_oauth_token` 注入
   `Authorization: Bearer`，无 token 时 `MCP_OAUTH_REQUIRED`）。**剩余 UNVERIFIED**：真实 IdP/provider 联调未做
   （本机无外部网络/真实 OAuth MCP server）；OAuth 元数据 discovery（`.well-known`）未实现（endpoint 由 catalog 显式下发）。
+- **个人版本地 MCP 配置（2026-11-01 实现）**：`AppSettings.mcp.servers`（非 secret）+ MCP 设置 pane（`ui-settings-mcp`，
+  `ui.settings.pane` order 70，personal-only）+ 两段式 `mcp.test`/`mcp.test.status`（无缓存探测、15s 硬超时）；来源优先级
+  catalog（含空）> local（含空）> `ZEOKEEL_MCP_SERVERS`（personal 且无设置文件）。**企业版 catalog-only**：本地段不安装、
+  env 关闭、`settings.set` 拒绝（构建期 exclude pane）。这些是客户端行为，服务端不代理 MCP 流量（C6）。
 - **剩余/UNVERIFIED**：远端 connector 生命周期管理（长驻进程守护/健康检查/崩溃重连）未实现（当前按需会话 +
-  配置变更重启）。详见 `docs/07` §6.1/§6.2。
+  配置变更重启）；真实外部 MCP server 联调受网络限制（本机 e2e 用 fake stdio server）。详见 `docs/07` §6.1/§6.2。
 
 - **审批/工具行（2026-11-01 approval spec）的诚实边界**：
   - 脱敏只覆盖参数**键名**（工具声明 `Tool::sensitive_arg_keys` + 内置键名）与常见 token 形状（`sk-…`/`Bearer …`/`KEY=…`）；

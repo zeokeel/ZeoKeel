@@ -149,6 +149,10 @@ pub mod commands {
     pub const CONNECTORS_RELOAD: &str = "connectors.reload";
     /// Clear the catalog-provided connector config (logout/disconnect).
     pub const CONNECTORS_CLEAR: &str = "connectors.clear";
+    /// Start a no-cache MCP server probe (returns a `test_id`; poll `mcp.test.status`).
+    pub const MCP_TEST: &str = "mcp.test";
+    /// Poll one MCP probe (`pending|ok|error`).
+    pub const MCP_TEST_STATUS: &str = "mcp.test.status";
 }
 
 /// Typed command payloads (single source for `schemars` JSON Schema).
@@ -278,6 +282,13 @@ pub mod payloads {
         pub answers: serde_json::Value,
     }
 
+    /// `mcp.test` payload: one draft server (not persisted; no global session).
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct McpTestPayload {
+        /// Draft server config (validated by the host before probing).
+        pub server: zk_contract_connector::McpServerConfig,
+    }
+
     /// `connectors.configure` payload.
     ///
     /// `catalog` is the raw server response (`{items:[...]}`) or its JSON
@@ -395,5 +406,37 @@ pub mod results {
     pub struct ConnectorsClearResult {
         /// True on success (the command fails instead of returning false).
         pub cleared: bool,
+    }
+
+    /// `mcp.test` result: opaque one-shot probe id (`pending` starts immediately).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct McpTestResult {
+        /// Probe id to poll through `mcp.test.status`.
+        pub test_id: String,
+    }
+
+    /// Closed probe state (C10: no bare `String` on the wire).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    #[serde(rename_all = "snake_case")]
+    pub enum McpTestState {
+        /// Probe still running.
+        Pending,
+        /// Probe finished successfully (`tools` populated).
+        Ok,
+        /// Probe failed (`error` carries a closed error code).
+        Error,
+    }
+
+    /// `mcp.test.status` result: state + tools/error.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct McpTestStatusResult {
+        /// Probe state.
+        pub state: McpTestState,
+        /// Tool names reported by the server (`ok` only; host caps at 200).
+        #[serde(default)]
+        pub tools: Vec<String>,
+        /// Closed error code when `state == error` (e.g. `mcp/timeout`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub error: Option<String>,
     }
 }

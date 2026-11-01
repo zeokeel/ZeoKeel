@@ -1,0 +1,22 @@
+schema = 1
+id = "zeokeel/ui-settings-mcp"
+kind = "ui"
+version = "0.1.0"
+license = "MIT"
+summary = "Personal-only local MCP server settings pane"
+
+[role]
+name = "ui.slot.settings-mcp"
+contract = "zk-contract-ui"
+cardinality = "singleton"
+editions = ["personal"]
+
+[facets]
+rust = { crate = "zk-ui-settings-mcp" }
+ui = { package = "@zeokeel/ui-settings-mcp" }
+
+[[ui.contributions]]
+slot = "ui.settings.pane"
+component = "settings.pane.mcp"
+order = 70
+editions = ["personal"]

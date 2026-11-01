@@ -101,6 +101,40 @@ export interface EmbeddingSettings {
   dir: string;
 }
 
+/** Mirrors `zk_contract_connector::McpServerConfig` (non-secret local MCP config). */
+export type McpTransport = "stdio" | "http" | "sse";
+
+/** Mirrors `zk_contract_connector::McpServerConfig`. */
+export interface McpServerConfig {
+  id: string;
+  name: string;
+  transport: McpTransport;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  url: string;
+  timeout_ms: number;
+  oauth_required: boolean;
+}
+
+/** Mirrors `zk_contract_config::McpSettings` (personal local MCP servers). */
+export interface McpSettings {
+  servers: McpServerConfig[];
+}
+
+/** Mirrors `zk_contract_ipc::results::McpTestState` (closed enum). */
+export type McpTestState = "pending" | "ok" | "error";
+
+/** Mirrors `zk_contract_ipc::results::McpTestStatusResult`. */
+export interface McpTestStatusResult {
+  state: McpTestState;
+  tools: string[];
+  error: string | null;
+}
+
+/** One `mcp.test` + polling round trip (app-owned; panes never call IPC directly). */
+export type McpTestProbe = (server: McpServerConfig) => Promise<McpTestStatusResult>;
+
 /** Mirrors `zk_contract_config::ApprovalPolicy` (config spec C-1). */
 export type ApprovalPolicy = "ask" | "auto_read_only" | "strict";
 
@@ -139,6 +173,8 @@ export interface AppSettings {
   media: MediaSettings;
   /** Web-search endpoint settings (serde default for old stores). */
   web_search: WebSearchSettings;
+  /** Local MCP servers (personal edition; serde default for old stores). */
+  mcp: McpSettings;
 }
 
 /** Mirrors `zk_contract_session::Workspace`. */
@@ -391,6 +427,7 @@ export function defaultSettings(): AppSettings {
     embedding: defaultEmbeddingSettings(),
     media: defaultMediaSettings(),
     web_search: defaultWebSearchSettings(),
+    mcp: { servers: [] },
   };
 }
 
@@ -452,6 +489,8 @@ export interface SettingsForm {
   approvalTimeoutMs: string;
   // Local approval policy (config spec: ask / auto_read_only / strict).
   approvalPolicy: ApprovalPolicy;
+  // Local MCP servers (personal-only pane; empty list = none configured).
+  mcpServers: McpServerConfig[];
   // Embedding / vector index (empty dims means "provider default").
   embeddingBaseUrl: string;
   embeddingApiKey: string;
@@ -491,6 +530,7 @@ export interface SettingsErrors {
   mediaBaseUrl: SettingsFieldError;
   webSearchBaseUrl: SettingsFieldError;
   webSearchTimeoutMs: SettingsFieldError;
+  mcpServers: SettingsFieldError;
 }
 
 /** Props every `ui.settings.pane` contribution receives from the settings shell. */
@@ -534,6 +574,8 @@ export interface SettingsPaneAppProps {
   updateText: string | null;
   /** True while the app is checking/downloading an update. */
   updateBusy: boolean;
+  /** No-cache MCP probe (`mcp.test` + `mcp.test.status` polling); absent for panes that do not need it. */
+  testMcpServer?: McpTestProbe | undefined;
 }
 
 /** Outcome of one settings save attempt (the app owns revision + i18n mapping). */

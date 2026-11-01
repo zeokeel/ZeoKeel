@@ -115,4 +115,20 @@ fn export_schema() {
         "ipc-connectors-clear-result.json",
         &schemars::schema_for!(zk_contract_ipc::results::ConnectorsClearResult),
     );
+    write(
+        "ipc-mcp-test.json",
+        &schemars::schema_for!(zk_contract_ipc::payloads::McpTestPayload),
+    );
+    write(
+        "ipc-mcp-test-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::McpTestResult),
+    );
+    write(
+        "ipc-mcp-test-state.json",
+        &schemars::schema_for!(zk_contract_ipc::results::McpTestState),
+    );
+    write(
+        "ipc-mcp-test-status-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::McpTestStatusResult),
+    );
 }

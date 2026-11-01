@@ -18,6 +18,7 @@ import {
   type ApprovalRisk,
   type AgentUsage,
   type AppSettings,
+  type McpServerConfig,
   type CommandResult,
   type Conversation,
   type EmbeddingSettings,
@@ -433,6 +434,7 @@ export function parseSettings(value: unknown): AppSettings {
     embedding: parseEmbeddingSettings(value["embedding"]),
     media: parseMediaSettings(value["media"]),
     web_search: parseWebSearchSettings(value["web_search"]),
+    mcp: parseMcpSettings(value["mcp"]),
   };
 }
 
@@ -503,6 +505,39 @@ function parseEmbeddingSettings(value: unknown): EmbeddingSettings {
 /** Lenient policy reader: unknown/missing values mean "no explicit policy". */
 function readApprovalPolicy(value: unknown): "ask" | "auto_read_only" | "strict" | null {
   return value === "ask" || value === "auto_read_only" || value === "strict" ? value : null;
+}
+
+/** Lenient MCP parser: unknown rows are dropped; the host validates on save. */
+function parseMcpSettings(value: unknown): AppSettings["mcp"] {
+  const servers = isRecord(value) ? value["servers"] : null;
+  if (!Array.isArray(servers)) return { servers: [] };
+  const parsed: McpServerConfig[] = [];
+  for (const row of servers) {
+    if (!isRecord(row)) continue;
+    const id = readString(row, "id");
+    const name = readString(row, "name");
+    const transport = row["transport"];
+    if (id === null || name === null) continue;
+    const envValue = isRecord(row["env"]) ? row["env"] : null;
+    const env: Record<string, string> = {};
+    if (envValue !== null) {
+      for (const [key, entry] of Object.entries(envValue)) {
+        if (typeof entry === "string") env[key] = entry;
+      }
+    }
+    parsed.push({
+      id,
+      name,
+      transport: transport === "http" || transport === "sse" ? transport : "stdio",
+      command: readString(row, "command") ?? "",
+      args: readArray(row, "args")?.flatMap((arg) => (typeof arg === "string" ? [arg] : [])) ?? [],
+      env,
+      url: readString(row, "url") ?? "",
+      timeout_ms: readNumber(row, "timeout_ms") ?? 0,
+      oauth_required: row["oauth_required"] === true,
+    });
+  }
+  return { servers: parsed };
 }
 
 function parseToolSettings(value: unknown): ToolSettings {

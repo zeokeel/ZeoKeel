@@ -194,3 +194,52 @@ fn connector_definition_json_is_unchanged() {
     .unwrap();
     assert_eq!(connector.transport, ConnectorTransport::Stdio);
 }
+
+#[test]
+fn mcp_server_config_validate_rules_are_preserved() {
+    use std::collections::BTreeMap;
+    use zk_contract_connector::{ConnectorTransport, McpServerConfig};
+
+    fn server() -> McpServerConfig {
+        McpServerConfig {
+            id: "mcp-demo".to_owned(),
+            name: "demo".to_owned(),
+            transport: ConnectorTransport::Stdio,
+            command: "mcp-demo".to_owned(),
+            args: Vec::new(),
+            env: BTreeMap::new(),
+            url: String::new(),
+            timeout_ms: 0,
+            oauth_required: false,
+        }
+    }
+
+    let ok = server();
+    ok.validate().unwrap();
+    // id/name required.
+    let mut bad = server();
+    bad.id = " ".to_owned();
+    assert!(bad.validate().is_err());
+    // stdio requires command.
+    let mut bad = server();
+    bad.command = String::new();
+    assert!(bad.validate().is_err());
+    // secret-like env keys rejected (ADR-060).
+    let mut bad = server();
+    bad.env.insert("API_TOKEN".to_owned(), "x".to_owned());
+    assert!(bad.validate().is_err());
+    // http requires a URL and rejects plain http on non-loopback hosts.
+    let mut bad = server();
+    bad.transport = ConnectorTransport::Http;
+    assert!(bad.validate().is_err());
+    bad.url = "http://example.com/mcp".to_owned();
+    assert!(bad.validate().is_err());
+    bad.url = "http://127.0.0.1:8080/mcp".to_owned();
+    bad.validate().unwrap();
+    bad.url = "https://example.com/mcp".to_owned();
+    bad.validate().unwrap();
+    // Catalog rules do NOT apply local caps: a long name is still accepted.
+    let mut long_name = server();
+    long_name.name = "n".repeat(200);
+    long_name.validate().unwrap();
+}

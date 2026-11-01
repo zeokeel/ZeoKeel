@@ -91,4 +91,4 @@
 name = "enterprise"
 base_edition = "personal"
 targets = ["server", "desktop"]
-exclude = ["zeokeel/client-update-github", "zeokeel/ui-settings-provider"]
+exclude = ["zeokeel/client-update-github", "zeokeel/ui-settings-provider", "zeokeel/ui-settings-mcp"]

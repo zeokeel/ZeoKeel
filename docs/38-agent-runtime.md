@@ -39,6 +39,11 @@
 - **执行中取消**（P1-13.2）：取消置位后，无论 gate 前还是工具 outcome 返回后都发 `ToolCallFinished{cancelled}`；result 原样保留工具已产生文本（不伪造失败），
   UI 据此显示「已取消（副作用可能已发生）」；无已产生结果时 result 为空。
 - 默认 `DenyAll`（fail-closed）；超时/无通道 = 拒绝。这是 DSH `ask` 的等价语义；sandbox 升级不在弱管控范围。
+- **本地 MCP 配置/测试连接**（client-mcp-config）：personal `AppSettings.mcp.servers`（非 secret）作为本地源，优先级
+  **企业 catalog（含空）> 本地 settings（含空）> `ZEOKEEL_MCP_SERVERS` env（仅 personal 且无设置文件）**；enterprise
+  catalog-only（本地段不安装、env 关闭、`settings.set` 拒绝）。`mcp.test` → `mcp.test.status` 两段式：独立线程 + 一次性
+  transport（spawn/connect → initialize → tools/list → 关闭，**不写**全局会话缓存），硬超时 15s，`state` 为
+  `pending|ok|error` 封闭枚举（`McpTestState`），错误码 `mcp/validation|mcp/connect-failed|mcp/timeout|mcp/test-in-flight|mcp/unsupported`。
 
 ## 3. 事件/取消/上下文
 

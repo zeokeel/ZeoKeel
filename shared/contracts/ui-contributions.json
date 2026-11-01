@@ -108,6 +108,16 @@
     "slot": "ui.settings.pane"
   },
   {
+    "component": "settings.pane.mcp",
+    "editions": [
+      "personal"
+    ],
+    "order": 70,
+    "package": "zeokeel/ui-settings-mcp",
+    "role": "ui.slot.settings-mcp",
+    "slot": "ui.settings.pane"
+  },
+  {
     "component": "settings.pane.provider",
     "editions": [
       "personal"

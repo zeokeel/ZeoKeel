@@ -44,6 +44,8 @@ pub struct AppState {
     agent_config_error: Mutex<Option<String>>,
     /// Background MCP connector OAuth flows (state only; never tokens).
     oauth_flows: Mutex<HashMap<String, OAuthFlowStatus>>,
+    /// Two-phase MCP connection probes (`mcp.test` / `mcp.test.status`).
+    mcp_probes: Arc<crate::mcp::McpProbeBroker>,
 }
 
 /// One background connector OAuth flow (`docs/07` §6): `pending|authorized|failed`.
@@ -78,6 +80,7 @@ impl AppState {
             questions,
             agent_config_error: Mutex::new(None),
             oauth_flows: Mutex::new(HashMap::new()),
+            mcp_probes: crate::mcp::McpProbeBroker::new(),
         })
     }
 
@@ -322,6 +325,17 @@ pub(crate) fn apply_persisted_settings(
             "zk-desktop: cleared persisted embedding provider (enterprise is gateway-only, C7)"
         );
     }
+    // Enterprise must never hold/persist a local MCP section (catalog-only, C6):
+    // ignore and clear any stale personal-edition values.
+    if zk_composed::EDITION != "personal"
+        && settings.mcp != zk_contract_config::McpSettings::default()
+    {
+        settings.mcp = zk_contract_config::McpSettings::default();
+        dirty = true;
+        eprintln!(
+            "zk-desktop: cleared persisted local MCP servers (enterprise is catalog-only, C6)"
+        );
+    }
     if dirty {
         match runtime.settings().save(&settings) {
             Ok(()) => {
@@ -333,6 +347,9 @@ pub(crate) fn apply_persisted_settings(
     // A settings file (even one carrying the default schedule) is explicit:
     // it overrides env. Only a fresh install (no file) uses the env fallback.
     apply_persisted_schedule(&settings, file_exists)?;
+    if let Err(error) = crate::mcp::apply_persisted_mcp(&settings, file_exists) {
+        eprintln!("zk-desktop: failed to apply persisted MCP settings: {error}");
+    }
     if should_publish_agent_settings(&settings, file_exists) {
         apply_agent_settings(&settings)?;
     }
@@ -618,6 +635,11 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             if let Err(error) = apply_schedule_settings(&settings) {
                 return CommandResponse::err(error);
             }
+            // MCP local settings (spec R4): apply before persisting so a failed
+            // install never yields "saved but not effective".
+            if let Err(error) = crate::mcp::apply_settings_mcp(&settings) {
+                return CommandResponse::err(error);
+            }
             // Publish only explicitly saved non-default sections (env fallback
             // stays authoritative for untouched/default sections).
             if let Err(error) =
@@ -733,6 +755,46 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             ),
             Err(error) => CommandResponse::err(connectors_error("clear", &error)),
         },
+        commands::MCP_TEST => {
+            let Some(server) = payload.get("server") else {
+                return CommandResponse::err("mcp/validation: missing server");
+            };
+            let server: zk_contract_connector::McpServerConfig =
+                match serde_json::from_value(server.clone()) {
+                    Ok(server) => server,
+                    Err(error) => {
+                        return CommandResponse::err(format!(
+                            "mcp/validation: invalid server: {error}"
+                        ))
+                    }
+                };
+            // Reject an invalid draft before starting a probe (spec §2: mcp/validation;
+            // local caps/id charset apply to a prospective local server too).
+            let draft = zk_contract_config::McpSettings {
+                servers: vec![server.clone()],
+            };
+            if let Err(error) = draft.validate() {
+                return CommandResponse::err(error.to_string());
+            }
+            match state.mcp_probes.start(server) {
+                Ok(test_id) => CommandResponse::ok(
+                    serde_json::to_value(zk_contract_ipc::results::McpTestResult { test_id })
+                        .unwrap_or(Value::Null),
+                ),
+                Err(error) => CommandResponse::err(error),
+            }
+        }
+        commands::MCP_TEST_STATUS => {
+            let Some(test_id) = payload.get("test_id").and_then(Value::as_str) else {
+                return CommandResponse::err("mcp/validation: missing test_id");
+            };
+            match state.mcp_probes.status(test_id) {
+                Some(status) => {
+                    CommandResponse::ok(serde_json::to_value(status).unwrap_or(Value::Null))
+                }
+                None => CommandResponse::err("mcp/unsupported: unknown test_id"),
+            }
+        }
         commands::AUTH_CONFIGURE => {
             let (Some(base_url), Some(access_token)) = (
                 payload.get("server_url").and_then(Value::as_str),
@@ -1716,6 +1778,9 @@ fn validate_settings(settings: &AppSettings) -> Result<(), String> {
         return Err(error.to_string());
     }
     if let Err(error) = settings.web_search.validate() {
+        return Err(error.to_string());
+    }
+    if let Err(error) = settings.mcp.validate() {
         return Err(error.to_string());
     }
     if settings.provider.kind != ProviderKind::Mock {
@@ -3247,6 +3312,138 @@ mod tests {
         zk_contract_config::clear_runtime_settings().unwrap();
         crate::automation::clear_settings_override();
         zk_contract_agent::clear_default_agent_settings().unwrap();
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    fn fake_mcp_server(mode: Option<&str>) -> zk_contract_connector::McpServerConfig {
+        let script = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("fake_mcp.py");
+        let mut args = vec![script.to_string_lossy().into_owned()];
+        if let Some(mode) = mode {
+            args.push(mode.to_owned());
+        }
+        zk_contract_connector::McpServerConfig {
+            id: "probe".to_owned(),
+            name: "Probe".to_owned(),
+            transport: zk_contract_connector::ConnectorTransport::Stdio,
+            command: "python3".to_owned(),
+            args,
+            env: std::collections::BTreeMap::new(),
+            url: String::new(),
+            timeout_ms: 0,
+            oauth_required: false,
+        }
+    }
+
+    fn poll_probe(state: &std::sync::Arc<super::AppState>, test_id: &str) -> serde_json::Value {
+        for _ in 0..100 {
+            let response = super::dispatch(
+                state,
+                zk_contract_ipc::commands::MCP_TEST_STATUS,
+                &serde_json::json!({"test_id": test_id}),
+            );
+            if response.ok {
+                let data = response.data.unwrap_or(Value::Null);
+                if data["state"] != serde_json::json!("pending") {
+                    return data;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        serde_json::json!({"state": "pending"})
+    }
+
+    #[test]
+    fn mcp_settings_apply_and_validate_through_settings_set() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-mcp-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", &home);
+        let state = super::AppState::new(zk_composed::build().expect("composed build"));
+
+        let mut settings = zk_contract_config::AppSettings::default();
+        settings.mcp.servers = vec![fake_mcp_server(None)];
+        let saved = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SETTINGS_SET,
+            &serde_json::json!({"settings": settings}),
+        );
+        assert!(saved.ok, "{:?}", saved.error);
+        let ids = zk_connector_mcp::configured_server_ids().unwrap();
+        assert_eq!(ids, vec!["probe".to_owned()]);
+        assert!(!home.join("nonexistent").exists());
+
+        // Duplicate ids are rejected by the local caps and nothing is persisted.
+        let mut duplicate = settings.clone();
+        duplicate.mcp.servers.push(fake_mcp_server(None));
+        let before = state.runtime().settings().load().unwrap();
+        let rejected = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SETTINGS_SET,
+            &serde_json::json!({"settings": duplicate}),
+        );
+        assert!(!rejected.ok);
+        assert!(rejected
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("mcp/validation")));
+        assert_eq!(state.runtime().settings().load().unwrap(), before);
+
+        zk_connector_mcp::clear_local_servers().unwrap();
+        zk_contract_config::clear_runtime_settings().unwrap();
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
+    fn mcp_test_two_phase_probe_ok_and_error_codes() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-mcp-probe-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", &home);
+        let state = super::AppState::new(zk_composed::build().expect("composed build"));
+
+        let started = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::MCP_TEST,
+            &serde_json::json!({"server": fake_mcp_server(None)}),
+        );
+        assert!(started.ok, "{:?}", started.error);
+        let test_id = started.data.unwrap_or(Value::Null)["test_id"]
+            .as_str()
+            .expect("test_id")
+            .to_owned();
+        let status = poll_probe(&state, &test_id);
+        assert_eq!(status["state"], serde_json::json!("ok"), "{status}");
+        assert_eq!(status["tools"], serde_json::json!(["echo"]));
+
+        // Invalid draft server: rejected before probing.
+        let mut invalid = fake_mcp_server(None);
+        invalid.id = "bad id".to_owned();
+        let rejected = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::MCP_TEST,
+            &serde_json::json!({"server": invalid}),
+        );
+        assert!(rejected
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("mcp/validation")));
+        // Unknown test id is a closed error.
+        let unknown = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::MCP_TEST_STATUS,
+            &serde_json::json!({"test_id": "missing"}),
+        );
+        assert!(!unknown.ok);
+        assert_eq!(
+            unknown.error.as_deref(),
+            Some("mcp/unsupported: unknown test_id")
+        );
+
+        zk_connector_mcp::clear_local_servers().unwrap();
+        zk_contract_config::clear_runtime_settings().unwrap();
         std::fs::remove_dir_all(&home).unwrap();
     }
 

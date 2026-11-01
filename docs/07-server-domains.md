@@ -198,6 +198,10 @@
     断言 catalog config 与无 secret。
   - desktop `auth.configure`（登录/bootstrap/refresh）拉取 catalog → `zk_connector_mcp::update_from_catalog`；
     logout → `clear_catalog_config`；更新事件可经 IPC `connectors.configure` / `connectors.reload` /
+    **personal 本地 MCP**（2026-11-01）：`AppSettings.mcp.servers`（非 secret、本地上限/字符集在
+    `McpSettings::validate`）作为本地源；来源优先级 **catalog（含空）> 本地 settings（含空）>
+    `ZEOKEEL_MCP_SERVERS` env（仅 personal 且无设置文件）**。**enterprise catalog-only**：本地段不安装、env 关闭、
+    `settings.set` 拒绝非空本地段（本地 pane 构建期 exclude）。`mcp.test`/`mcp.test.status` 为 personal 无缓存探测。
     `connectors.clear` 触发；**web 已接线**（企业版：登录/刷新后 `connectors.configure`、启停后 configure、
     手动 `connectors.reload`、登出 `connectors.clear`；契约常量/DTO 在 `zk-contract-ipc`，失败码
     `connectors/catalog-invalid`/`connectors/apply-failed`/`connectors/reload-failed`/`connectors/clear-failed`）。

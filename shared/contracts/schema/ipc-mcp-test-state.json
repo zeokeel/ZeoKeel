@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "McpTestState",
+  "description": "Closed probe state (C10: no bare `String` on the wire).",
+  "oneOf": [
+    {
+      "description": "Probe still running.",
+      "type": "string",
+      "enum": [
+        "pending"
+      ]
+    },
+    {
+      "description": "Probe finished successfully (`tools` populated).",
+      "type": "string",
+      "enum": [
+        "ok"
+      ]
+    },
+    {
+      "description": "Probe failed (`error` carries a closed error code).",
+      "type": "string",
+      "enum": [
+        "error"
+      ]
+    }
+  ]
+}

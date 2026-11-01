@@ -19,6 +19,17 @@
   非法 catalog 保留旧配置并显示错误（不假装成功）。
 - MCP 本地配置（`AppSettings.mcp`、`mcp.test`、企业 catalog-only）拆到 `2026-11-01-client-mcp-config`，本版本未实现。
 
+### MCP 本地配置（`2026-11-01-client-mcp-config`）
+
+- personal 新增 `AppSettings.mcp.servers`（非 secret；上限 16 server/id 字符集 `[A-Za-z0-9._-]`/args/env/url/timeout
+  校验；本地 `oauth_required=true` 拒绝）；来源优先级 **企业 catalog（含空）> 本地 settings（含空）>
+  `ZEOKEEL_MCP_SERVERS` env（仅 personal 且无设置文件）**；保存/启动即热生效，无需重启。
+- 新设置 pane「MCP 本地服务」（`zeokeel/ui-settings-mcp`，`ui.settings.pane` order 70，personal-only；enterprise 构建期
+  exclude）：列表/新增/编辑/删除/测试连接/保存。
+- 新 IPC `mcp.test` → `{test_id}` 与 `mcp.test.status`（`pending|ok|error` 封闭枚举；无缓存一次性探测、15s 硬超时；
+  `mcp/test-in-flight`/`mcp/validation`/`mcp/connect-failed`/`mcp/timeout`/`mcp/unsupported`）。
+- 企业版 catalog-only：本地 MCP 段不安装、`ZEOKEEL_MCP_SERVERS` env 关闭、`settings.set` 拒绝非空本地段（C6）。
+
 ## 1.0.0-rc.1 (2026-10-31)
 
 > 发布候选（本地验证）。`1.0.0` 正式版需 rc 验收 + 远端 CI/release 实跑通过后由用户确认；

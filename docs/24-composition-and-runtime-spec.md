@@ -81,10 +81,16 @@ M0 起点角色表（`[roles]` 的键；提供者声明的 contract/cardinality 
 | `srv.content` / `srv.skills` / `srv.apps` | `zk-contract-content` / `zk-contract-skill` / `zk-contract-app` | singleton | enterprise | 内容发布内核/技能/应用 |
 | `srv.app.runtime` / `srv.app.db` | `zk-contract-app` | singleton | enterprise | WASM 执行/每应用 SQLite |
 | `srv.connectors` | `zk-contract-connector` | singleton | enterprise | MCP 下发 |
+| `ui.slot.settings-mcp` | `zk-contract-ui` | singleton | personal | 本地 MCP 设置 pane（`ui.settings.pane` order 70；enterprise exclude） |
 | `srv.updates` | `zk-contract-server` | singleton | enterprise | 企业稳定更新面 |
 | `srv.audit` / `srv.settings` / `srv.jobs` / `srv.http` | `zk-contract-server` | singleton | enterprise | 审计/配置/调度/HTTP |
 | `admin.shell` | `zk-contract-admin-ui` | singleton | enterprise | 管理台壳（导航/布局/主题） |
 | `admin.page.*` / `admin.slot.*` | `zk-contract-admin-ui` | singleton / multi | enterprise | 管理台页面与槽位 |
+
+**契约间依赖（已登记，C4）**：`zk-contract-config → zk-contract-connector`（`AppSettings.mcp.servers` 内含
+`McpServerConfig`）与 `zk-contract-ipc → zk-contract-connector`（`McpTestPayload.server`）。两者均无环（connector 契约
+不依赖其它契约）；`settings`/IPC schema 内含 connector DTO，connector DTO 的破坏性变更必须同步评审 config/ipc schema
+（`docs/04` §10 public-api diff）。
 
 ```toml
 [roles."llm.provider.default"]

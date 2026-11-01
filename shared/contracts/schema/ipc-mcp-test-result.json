@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "McpTestResult",
+  "description": "`mcp.test` result: opaque one-shot probe id (`pending` starts immediately).",
+  "type": "object",
+  "required": [
+    "test_id"
+  ],
+  "properties": {
+    "test_id": {
+      "description": "Probe id to poll through `mcp.test.status`.",
+      "type": "string"
+    }
+  }
+}

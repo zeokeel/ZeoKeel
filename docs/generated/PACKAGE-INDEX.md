@@ -2,7 +2,7 @@
 
 # Package Index
 
-edition `personal` · channel `official` · 56 packages
+edition `personal` · channel `official` · 57 packages
 
 | role | package | crate | contract | cardinality |
 | --- | --- | --- | --- | --- |
@@ -60,5 +60,6 @@ edition `personal` · channel `official` · 56 packages
 | `ui.slot.inspector` | `zeokeel/ui-inspector` | `zk-ui-inspector` | `zk-contract-ui` | singleton |
 | `ui.slot.sessions` | `zeokeel/ui-sessions` | `zk-ui-sessions` | `zk-contract-ui` | singleton |
 | `ui.slot.settings` | `zeokeel/ui-settings` | `zk-ui-settings` | `zk-contract-ui` | singleton |
+| `ui.slot.settings-mcp` | `zeokeel/ui-settings-mcp` | `zk-ui-settings-mcp` | `zk-contract-ui` | singleton |
 | `ui.slot.settings-provider` | `zeokeel/ui-settings-provider` | `zk-ui-settings-provider` | `zk-contract-ui` | singleton |
 | `vector.store` | `zeokeel/cap-vector` | `zk-cap-vector` | `zk-contract-agent` | singleton |

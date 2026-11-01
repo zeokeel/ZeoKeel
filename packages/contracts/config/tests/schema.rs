@@ -36,6 +36,10 @@ fn export_schema() {
         &schemars::schema_for!(zk_contract_config::ApprovalPolicy),
     );
     write(
+        "mcp-settings.json",
+        &schemars::schema_for!(zk_contract_config::McpSettings),
+    );
+    write(
         "runtime-settings.json",
         &schemars::schema_for!(zk_contract_config::RuntimeSettings),
     );

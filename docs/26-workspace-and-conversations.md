@@ -170,8 +170,12 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_m
 | `connectors.configure` | `{catalog: object \| string}` | `{configured:n}` | `connectors/catalog-invalid`、`connectors/apply-failed` |
 | `connectors.reload` | — | `{reloaded:true}` | `connectors/reload-failed` |
 | `connectors.clear` | — | `{cleared:true}` | `connectors/clear-failed` |
+| `mcp.test` | `{server: McpServerConfig}` | `{test_id}` | `mcp/validation`、`mcp/test-in-flight` |
+| `mcp.test.status` | `{test_id}` | `{state: pending\|ok\|error, tools?, error?}` | `mcp/unsupported`（unknown id） |
 
 - 所有会话命令必须带 `workspace_id` 并校验归属；`chat.send` **不再自动建会话**。
+- `mcp.test`/`mcp.test.status` 仅个人版 MCP pane 使用：两段式无缓存探测（15s 硬超时；`state` 为封闭枚举）；
+  `pending` 期间重复 `mcp.test` 返回 `mcp/test-in-flight`，不覆盖在飞探测。
 - `connectors.*` 只由企业版 web 在登录/刷新（configure）、启停（configure）、手动重载（reload）、登出（clear）时调用；
   personal 无登录/连接器面板不发这些命令；personal 的本地 MCP 配置为另一 change（`client-mcp-config`），不与本组命令混用。
 - 并发：Workspace mutation 全局串行（单 writer/互斥）；同一会话单 turn；切换 Workspace 取消活动 turn 并广播 `turn_cancelled`。

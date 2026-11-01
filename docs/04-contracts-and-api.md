@@ -22,7 +22,9 @@
 
 1. UI **不得直连**服务端：UI → 客户端 `ui.transport` → 客户端包；服务端 HTTP 只允许 `server-connector` 一个包发出（包名以 M1 包清单为准，见 [`15` §C](15-open-questions.md#c-待定清单)；便于 mock/录制回放、离线队列与统一 401 处理）。唯一例外是 WASM 应用窗口，经协议 handler（§9）。
 2. 双端都是包：服务端 auth/users/wallet/gateway/skills/connectors/apps/audit/admin 各为包，只经契约与路由表耦合；承载 HTTP 的包可替换（对应 `platform.*` 角色）。
-3. 一份 DTO 双侧单实例：客户端与服务端在同一 workspace 依赖**同一个**契约 crate 实例；若将来拆仓，契约必须发布并按版本锁定（与 ADR-016 同一理由）。`zk-contract-api`/`zk-contract-events` 属 M1 新增契约，须在根 `zk.toml` 的 `[contracts]` 登记（[包模型](02-package-model.md) §5）。
+3. 一份 DTO 双侧单实例：客户端与服务端在同一 workspace 依赖**同一个**契约 crate 实例；若将来拆仓，契约必须发布并按版本锁定（与 ADR-016 同一理由）。
+   **契约间依赖（已登记）**：`zk-contract-config → zk-contract-connector`、`zk-contract-ipc → zk-contract-connector`
+   （settings/IPC DTO 内含 `McpServerConfig`；无环）。破坏性变更需同步 config/ipc schema 评审 + public-api diff（§10）。`zk-contract-api`/`zk-contract-events` 属 M1 新增契约，须在根 `zk.toml` 的 `[contracts]` 登记（[包模型](02-package-model.md) §5）。
 
 ## 1.5 弱管控边界（v3.2 第一原则）
 
