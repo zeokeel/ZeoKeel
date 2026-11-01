@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ActivitySnapshotPayload",
+  "description": "`activity.snapshot` payload (`2026-11-01-client-activity-panels` R1).",
+  "type": "object",
+  "required": [
+    "conversation_id",
+    "workspace_id"
+  ],
+  "properties": {
+    "conversation_id": {
+      "description": "Conversation id (the snapshot is conversation/workspace scoped, C18).",
+      "type": "string"
+    },
+    "workspace_id": {
+      "description": "Owning workspace id.",
+      "type": "string"
+    }
+  }
+}

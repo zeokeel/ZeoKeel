@@ -1970,6 +1970,8 @@ fn compose_cargo_toml(root: &Path, resolved: &Resolved) -> Result<String> {
     out.push_str("zk-kit-tools = { path = \"../../crates/zk-kit-tools\" }\n");
     out.push_str("zk-kit-session = { path = \"../../crates/zk-kit-session\" }\n");
     out.push_str("zk-kit-compaction = { path = \"../../crates/zk-kit-compaction\" }\n");
+    out.push_str("zk-kit-jobs = { path = \"../../crates/zk-kit-jobs\" }\n");
+    out.push_str("zk-kit-subagent = { path = \"../../crates/zk-kit-subagent\" }\n");
     out.push_str("serde_json = { workspace = true }\nrig-core = { workspace = true }\n\n[lints]\nworkspace = true\n");
     // CLI-only dep audit triage: rig-core is consumed by the embedding/media glue
     // generated in this crate's lib.rs; cargo-machete cannot see that dependency edge.
@@ -2213,7 +2215,7 @@ fn compose_lib(root: &Path, resolved: &Resolved) -> Result<String> {
     // Generated facade for shared helpers used by the composition root (C4/C2):
     // the host calls `zk_composed::zk_kit_tools::safe_join_under(...)` instead of
     // depending on kit/tool crates directly.
-    out.push_str("pub use zk_kit_compaction;\npub use zk_kit_session;\npub use zk_kit_tools;\npub use zk_tool_goal;\npub use zk_tool_plan;\npub use zk_tool_skill;\n");
+    out.push_str("pub use zk_kit_compaction;\npub use zk_kit_jobs;\npub use zk_kit_session;\npub use zk_kit_subagent;\npub use zk_kit_tools;\npub use zk_tool_goal;\npub use zk_tool_plan;\npub use zk_tool_schedule;\npub use zk_tool_skill;\n");
     Ok(out)
 }
 

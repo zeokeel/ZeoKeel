@@ -1,0 +1,341 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ActivitySnapshot",
+  "description": "`activity.snapshot` result.\n\nGoal state is **not** included (single owner: `goal.get`); the UI reads it separately. `truncated` marks a bounded section, `derived_unavailable` marks unparseable legacy tool rows (non-blocking hint).",
+  "type": "object",
+  "properties": {
+    "derived_unavailable": {
+      "description": "Some persisted tool rows could not be parsed (legacy/corrupt; skipped).",
+      "default": false,
+      "type": "boolean"
+    },
+    "jobs": {
+      "description": "Background jobs of the current workspace (cwd inside the root).",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ActivityJob"
+      }
+    },
+    "presentations": {
+      "description": "`present` deliverables derived from persisted tool rows.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ActivityPresentation"
+      }
+    },
+    "schedules": {
+      "description": "Workspace schedules (live read through the schedule tool).",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ActivitySchedule"
+      }
+    },
+    "schedules_error": {
+      "description": "Readable `activity/schedule-unreadable` reason when the schedule file could not be read/parsed (the rest of the snapshot stays available).",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "subagents": {
+      "description": "Subagents whose parent is the current conversation.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ActivitySubagent"
+      }
+    },
+    "teams": {
+      "description": "Most recent `agent_team` tool-row results (≤3).",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ActivityTeamRun"
+      }
+    },
+    "todos": {
+      "description": "Todo list replayed from persisted `todo` tool rows.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ActivityTodo"
+      }
+    },
+    "truncated": {
+      "description": "At least one section was capped (jobs ≤50, todos/schedules/presentations ≤100).",
+      "default": false,
+      "type": "boolean"
+    }
+  },
+  "definitions": {
+    "ActivityJob": {
+      "description": "One background job row (`zk-kit-jobs` snapshot, current workspace only).",
+      "type": "object",
+      "required": [
+        "command",
+        "cwd",
+        "id",
+        "output_excerpt",
+        "started_ms",
+        "status"
+      ],
+      "properties": {
+        "command": {
+          "description": "Original command line.",
+          "type": "string"
+        },
+        "cwd": {
+          "description": "Working directory (absolute; filtered to the current workspace root).",
+          "type": "string"
+        },
+        "id": {
+          "description": "Job id (`job-N`).",
+          "type": "string"
+        },
+        "output_excerpt": {
+          "description": "stdout+stderr excerpt (≤4 KiB, truncated on a char boundary).",
+          "type": "string"
+        },
+        "started_ms": {
+          "description": "Start time (ms since epoch).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "status": {
+          "description": "`running` | `completed` | `failed:<code>` (kernel-reported).",
+          "type": "string"
+        }
+      }
+    },
+    "ActivityPresentation": {
+      "description": "One `present` deliverable derived from persisted tool rows (read-only).",
+      "type": "object",
+      "required": [
+        "description",
+        "message_id",
+        "path",
+        "turn_id"
+      ],
+      "properties": {
+        "description": {
+          "description": "Optional description from the tool call.",
+          "type": "string"
+        },
+        "message_id": {
+          "description": "Persisted tool-row message id.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Workspace-relative path (deduplicated, first occurrence wins).",
+          "type": "string"
+        },
+        "turn_id": {
+          "description": "Owning agent turn.",
+          "type": "string"
+        }
+      }
+    },
+    "ActivitySchedule": {
+      "description": "One schedule definition of the current workspace (`.zeokeel/schedules.json`).",
+      "type": "object",
+      "required": [
+        "cron",
+        "enabled",
+        "id",
+        "interval_seconds",
+        "prompt"
+      ],
+      "properties": {
+        "cron": {
+          "description": "Validated 5-field cron expression (advisory; repeats by interval).",
+          "type": "string"
+        },
+        "enabled": {
+          "description": "Whether the scheduler may run it.",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "Schedule id (`schedule-N`).",
+          "type": "string"
+        },
+        "interval_seconds": {
+          "description": "Repeat interval in seconds (≥60).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "next_run_ms": {
+          "description": "Next planned run (ms since epoch), when known.",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "prompt": {
+          "description": "Prompt executed by the scheduler.",
+          "type": "string"
+        }
+      }
+    },
+    "ActivitySubagent": {
+      "description": "One subagent record of the current conversation (`zk-kit-subagent`).",
+      "type": "object",
+      "required": [
+        "depth",
+        "id",
+        "parent",
+        "prompt",
+        "status"
+      ],
+      "properties": {
+        "depth": {
+          "description": "Delegation depth (1 = direct child).",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "id": {
+          "description": "Child id (`subagent-N`).",
+          "type": "string"
+        },
+        "parent": {
+          "description": "Parent conversation id (always the snapshot conversation).",
+          "type": "string"
+        },
+        "prompt": {
+          "description": "Original prompt (≤512 chars).",
+          "type": "string"
+        },
+        "status": {
+          "description": "`running` | `done` | `failed` | `cancelled`.",
+          "type": "string"
+        }
+      }
+    },
+    "ActivityTeamRun": {
+      "description": "One `agent_team` tool-row result (derived; no second team state model).",
+      "type": "object",
+      "required": [
+        "cancelled",
+        "completed",
+        "failed",
+        "message_id",
+        "objective",
+        "status",
+        "total",
+        "turn_id",
+        "workers"
+      ],
+      "properties": {
+        "cancelled": {
+          "description": "Workers cancelled (timeout/interrupt).",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "completed": {
+          "description": "Workers that finished successfully.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "failed": {
+          "description": "Workers that failed.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "message_id": {
+          "description": "Persisted tool-row message id.",
+          "type": "string"
+        },
+        "objective": {
+          "description": "Shared team objective.",
+          "type": "string"
+        },
+        "status": {
+          "description": "`done` | `failed` | `partial` | `timeout`.",
+          "type": "string"
+        },
+        "total": {
+          "description": "Total dispatched workers.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "turn_id": {
+          "description": "Owning agent turn.",
+          "type": "string"
+        },
+        "workers": {
+          "description": "Per-worker rows.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ActivityTeamWorker"
+          }
+        }
+      }
+    },
+    "ActivityTeamWorker": {
+      "description": "One worker of the most recent `agent_team` run (read-only tool-row result).",
+      "type": "object",
+      "required": [
+        "id",
+        "status",
+        "task"
+      ],
+      "properties": {
+        "id": {
+          "description": "Worker id (`worker-N`).",
+          "type": "string"
+        },
+        "result_excerpt": {
+          "description": "Result excerpt (≤512 chars; absent while running/failed).",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "description": "`running` | `done` | `failed` | `cancelled` | `unknown`.",
+          "type": "string"
+        },
+        "task": {
+          "description": "Per-worker task prompt.",
+          "type": "string"
+        }
+      }
+    },
+    "ActivityTodo": {
+      "description": "One todo row derived by replaying persisted `todo` tool rows (read-only).",
+      "type": "object",
+      "required": [
+        "id",
+        "status",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "description": "Todo id (`todo-N`).",
+          "type": "string"
+        },
+        "status": {
+          "description": "`pending` | `in_progress` | `completed` (unknown values are shown verbatim).",
+          "type": "string"
+        },
+        "text": {
+          "description": "Item text.",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

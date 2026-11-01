@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ActivityTeamRun",
+  "description": "One `agent_team` tool-row result (derived; no second team state model).",
+  "type": "object",
+  "required": [
+    "cancelled",
+    "completed",
+    "failed",
+    "message_id",
+    "objective",
+    "status",
+    "total",
+    "turn_id",
+    "workers"
+  ],
+  "properties": {
+    "cancelled": {
+      "description": "Workers cancelled (timeout/interrupt).",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "completed": {
+      "description": "Workers that finished successfully.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "failed": {
+      "description": "Workers that failed.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "message_id": {
+      "description": "Persisted tool-row message id.",
+      "type": "string"
+    },
+    "objective": {
+      "description": "Shared team objective.",
+      "type": "string"
+    },
+    "status": {
+      "description": "`done` | `failed` | `partial` | `timeout`.",
+      "type": "string"
+    },
+    "total": {
+      "description": "Total dispatched workers.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "turn_id": {
+      "description": "Owning agent turn.",
+      "type": "string"
+    },
+    "workers": {
+      "description": "Per-worker rows.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ActivityTeamWorker"
+      }
+    }
+  },
+  "definitions": {
+    "ActivityTeamWorker": {
+      "description": "One worker of the most recent `agent_team` run (read-only tool-row result).",
+      "type": "object",
+      "required": [
+        "id",
+        "status",
+        "task"
+      ],
+      "properties": {
+        "id": {
+          "description": "Worker id (`worker-N`).",
+          "type": "string"
+        },
+        "result_excerpt": {
+          "description": "Result excerpt (≤512 chars; absent while running/failed).",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "description": "`running` | `done` | `failed` | `cancelled` | `unknown`.",
+          "type": "string"
+        },
+        "task": {
+          "description": "Per-worker task prompt.",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

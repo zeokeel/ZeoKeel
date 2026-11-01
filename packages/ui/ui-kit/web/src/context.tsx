@@ -1,5 +1,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 import type {
+  ActivityActionPayload,
+  ActivitySnapshot,
   AppSettings,
   ApprovalDecision,
   AttachmentSaveResult,
@@ -86,6 +88,12 @@ export interface UiActions {
   searchSessions: (query: string, limit?: number) => Promise<SessionSearchOutcome>;
   /** Re-read the active conversation goal (`goal.get`). */
   refreshGoal: () => Promise<void>;
+  /** Read one conversation's activity snapshot (`activity.snapshot`; bounded read). */
+  activitySnapshot: (workspaceId: string, conversationId: string) => Promise<ActivitySnapshot>;
+  /** Run one explicit activity action (`activity.action`; UI confirms inline first). */
+  activityAction: (payload: ActivityActionPayload) => Promise<void>;
+  /** Open one workspace-relative path in the right-panel files preview (turnTail). */
+  openInspectorPreview: (path: string) => void;
   /** Set/replace the active conversation goal (`goal.set`; UI confirms inline). */
   setGoal: (objective: string, maxRounds?: number) => Promise<boolean>;
   /** Pause/resume/cancel the active conversation goal (`goal.update`). */

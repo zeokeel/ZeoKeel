@@ -194,6 +194,12 @@ pub mod commands {
     pub const SKILL_LIST: &str = "skill.list";
     /// Read one skill's `SKILL.md` for a composer Instructions chip (≤8 KiB).
     pub const SKILL_READ: &str = "skill.read";
+    /// Read the aggregated activity snapshot of one conversation (jobs/subagents/
+    /// team runs/todo/schedules/presentations; goal is read through `goal.get`).
+    pub const ACTIVITY_SNAPSHOT: &str = "activity.snapshot";
+    /// One explicit user activity action (job kill/subagent interrupt/schedule
+    /// update/delete); never an agent tool call.
+    pub const ACTIVITY_ACTION: &str = "activity.action";
 }
 
 /// Typed command payloads (single source for `schemars` JSON Schema).
@@ -643,6 +649,49 @@ pub mod payloads {
         #[serde(default)]
         pub limit: Option<u32>,
     }
+
+    /// `activity.snapshot` payload (`2026-11-01-client-activity-panels` R1).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ActivitySnapshotPayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Conversation id (the snapshot is conversation/workspace scoped, C18).
+        pub conversation_id: String,
+    }
+
+    /// One explicit user activity action (`activity.action`).
+    ///
+    /// This is the single write entry of the activity panel; the UI confirms
+    /// destructive actions inline before sending, and the host re-checks the
+    /// current state (a job/subagent/schedule may have finished in between).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    #[serde(rename_all = "snake_case")]
+    pub enum ActivityActionKind {
+        /// Stop one running background job (explicit user action, no approval).
+        JobKill,
+        /// Interrupt one running subagent of the current conversation.
+        SubagentInterrupt,
+        /// Update one workspace schedule (`updates`: enabled/interval_seconds/prompt).
+        ScheduleUpdate,
+        /// Delete one workspace schedule (host pre-checks the id through `list`).
+        ScheduleDelete,
+    }
+
+    /// `activity.action` payload.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ActivityActionPayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Conversation id (jobs/subagents are conversation scoped).
+        pub conversation_id: String,
+        /// Action to perform.
+        pub action: ActivityActionKind,
+        /// Target job/subagent/schedule id.
+        pub id: String,
+        /// `schedule_update` fields: `{enabled?, interval_seconds?, prompt?}`.
+        #[serde(default)]
+        pub updates: serde_json::Value,
+    }
 }
 
 /// Typed command results (single source for `schemars` JSON Schema).
@@ -1010,5 +1059,167 @@ pub mod results {
         pub bytes: u64,
         /// Canonical MIME derived by the host (extension + magic).
         pub mime: String,
+    }
+
+    // -----------------------------------------------------------------------
+    // Activity panel (`2026-11-01-client-activity-panels`; goal excluded on
+    // purpose — the UI reads it through the existing `goal.get` command).
+    // -----------------------------------------------------------------------
+
+    /// One background job row (`zk-kit-jobs` snapshot, current workspace only).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ActivityJob {
+        /// Job id (`job-N`).
+        pub id: String,
+        /// Original command line.
+        pub command: String,
+        /// Working directory (absolute; filtered to the current workspace root).
+        pub cwd: String,
+        /// `running` | `completed` | `failed:<code>` (kernel-reported).
+        pub status: String,
+        /// Start time (ms since epoch).
+        pub started_ms: u64,
+        /// stdout+stderr excerpt (≤4 KiB, truncated on a char boundary).
+        pub output_excerpt: String,
+    }
+
+    /// One subagent record of the current conversation (`zk-kit-subagent`).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ActivitySubagent {
+        /// Child id (`subagent-N`).
+        pub id: String,
+        /// Parent conversation id (always the snapshot conversation).
+        pub parent: String,
+        /// Delegation depth (1 = direct child).
+        pub depth: u32,
+        /// `running` | `done` | `failed` | `cancelled`.
+        pub status: String,
+        /// Original prompt (≤512 chars).
+        pub prompt: String,
+    }
+
+    /// One worker of the most recent `agent_team` run (read-only tool-row result).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ActivityTeamWorker {
+        /// Worker id (`worker-N`).
+        pub id: String,
+        /// Per-worker task prompt.
+        pub task: String,
+        /// `running` | `done` | `failed` | `cancelled` | `unknown`.
+        pub status: String,
+        /// Result excerpt (≤512 chars; absent while running/failed).
+        #[serde(default)]
+        pub result_excerpt: Option<String>,
+    }
+
+    /// One `agent_team` tool-row result (derived; no second team state model).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ActivityTeamRun {
+        /// Owning agent turn.
+        pub turn_id: String,
+        /// Persisted tool-row message id.
+        pub message_id: String,
+        /// Shared team objective.
+        pub objective: String,
+        /// `done` | `failed` | `partial` | `timeout`.
+        pub status: String,
+        /// Workers that finished successfully.
+        pub completed: u32,
+        /// Workers that failed.
+        pub failed: u32,
+        /// Workers cancelled (timeout/interrupt).
+        pub cancelled: u32,
+        /// Total dispatched workers.
+        pub total: u32,
+        /// Per-worker rows.
+        pub workers: Vec<ActivityTeamWorker>,
+    }
+
+    /// One todo row derived by replaying persisted `todo` tool rows (read-only).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ActivityTodo {
+        /// Todo id (`todo-N`).
+        pub id: String,
+        /// Item text.
+        pub text: String,
+        /// `pending` | `in_progress` | `completed` (unknown values are shown verbatim).
+        pub status: String,
+    }
+
+    /// One schedule definition of the current workspace (`.zeokeel/schedules.json`).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ActivitySchedule {
+        /// Schedule id (`schedule-N`).
+        pub id: String,
+        /// Prompt executed by the scheduler.
+        pub prompt: String,
+        /// Validated 5-field cron expression (advisory; repeats by interval).
+        pub cron: String,
+        /// Whether the scheduler may run it.
+        pub enabled: bool,
+        /// Repeat interval in seconds (≥60).
+        pub interval_seconds: u64,
+        /// Next planned run (ms since epoch), when known.
+        #[serde(default)]
+        pub next_run_ms: Option<u64>,
+    }
+
+    /// One `present` deliverable derived from persisted tool rows (read-only).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ActivityPresentation {
+        /// Workspace-relative path (deduplicated, first occurrence wins).
+        pub path: String,
+        /// Optional description from the tool call.
+        pub description: String,
+        /// Owning agent turn.
+        pub turn_id: String,
+        /// Persisted tool-row message id.
+        pub message_id: String,
+    }
+
+    /// `activity.snapshot` result.
+    ///
+    /// Goal state is **not** included (single owner: `goal.get`); the UI reads it
+    /// separately. `truncated` marks a bounded section, `derived_unavailable`
+    /// marks unparseable legacy tool rows (non-blocking hint).
+    #[derive(
+        Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, schemars::JsonSchema,
+    )]
+    pub struct ActivitySnapshot {
+        /// Background jobs of the current workspace (cwd inside the root).
+        #[serde(default)]
+        pub jobs: Vec<ActivityJob>,
+        /// Subagents whose parent is the current conversation.
+        #[serde(default)]
+        pub subagents: Vec<ActivitySubagent>,
+        /// Most recent `agent_team` tool-row results (≤3).
+        #[serde(default)]
+        pub teams: Vec<ActivityTeamRun>,
+        /// Todo list replayed from persisted `todo` tool rows.
+        #[serde(default)]
+        pub todos: Vec<ActivityTodo>,
+        /// Workspace schedules (live read through the schedule tool).
+        #[serde(default)]
+        pub schedules: Vec<ActivitySchedule>,
+        /// Readable `activity/schedule-unreadable` reason when the schedule file
+        /// could not be read/parsed (the rest of the snapshot stays available).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub schedules_error: Option<String>,
+        /// `present` deliverables derived from persisted tool rows.
+        #[serde(default)]
+        pub presentations: Vec<ActivityPresentation>,
+        /// At least one section was capped (jobs ≤50, todos/schedules/presentations ≤100).
+        #[serde(default)]
+        pub truncated: bool,
+        /// Some persisted tool rows could not be parsed (legacy/corrupt; skipped).
+        #[serde(default)]
+        pub derived_unavailable: bool,
+    }
+
+    /// `activity.action` result (failures use `CommandResponse.error`).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ActivityActionResult {
+        /// Always `true` on success (failures are error responses).
+        pub ok: bool,
     }
 }

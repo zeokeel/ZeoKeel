@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ActivityPresentation",
+  "description": "One `present` deliverable derived from persisted tool rows (read-only).",
+  "type": "object",
+  "required": [
+    "description",
+    "message_id",
+    "path",
+    "turn_id"
+  ],
+  "properties": {
+    "description": {
+      "description": "Optional description from the tool call.",
+      "type": "string"
+    },
+    "message_id": {
+      "description": "Persisted tool-row message id.",
+      "type": "string"
+    },
+    "path": {
+      "description": "Workspace-relative path (deduplicated, first occurrence wins).",
+      "type": "string"
+    },
+    "turn_id": {
+      "description": "Owning agent turn.",
+      "type": "string"
+    }
+  }
+}

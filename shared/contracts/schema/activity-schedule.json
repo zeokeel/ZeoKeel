@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ActivitySchedule",
+  "description": "One schedule definition of the current workspace (`.zeokeel/schedules.json`).",
+  "type": "object",
+  "required": [
+    "cron",
+    "enabled",
+    "id",
+    "interval_seconds",
+    "prompt"
+  ],
+  "properties": {
+    "cron": {
+      "description": "Validated 5-field cron expression (advisory; repeats by interval).",
+      "type": "string"
+    },
+    "enabled": {
+      "description": "Whether the scheduler may run it.",
+      "type": "boolean"
+    },
+    "id": {
+      "description": "Schedule id (`schedule-N`).",
+      "type": "string"
+    },
+    "interval_seconds": {
+      "description": "Repeat interval in seconds (≥60).",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "next_run_ms": {
+      "description": "Next planned run (ms since epoch), when known.",
+      "default": null,
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "prompt": {
+      "description": "Prompt executed by the scheduler.",
+      "type": "string"
+    }
+  }
+}

@@ -1,12 +1,18 @@
-/** Right inspector (files tree / preview / changes / terminal) — Phase 2b.
+/** Right inspector (files tree / preview / changes / terminal / activity / plan).
  *
  * The app owns IPC + boundary validation; this package owns view state and the
  * session-scoped layout (tab/width/collapsed in localStorage, `docs/27` §2.6).
+ * Tab order is fixed in-component (docs/16 §2.2): files 10 → changes 20 →
+ * terminal 30 → activity 40 (this package) → plan 50 (`client-plan-mode`).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useUi } from "@zeokeel/ui-kit";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Button, StatusDot, Switch, useUi } from "@zeokeel/ui-kit";
+import type { ActivityActionKind, ActivitySnapshot } from "@zeokeel/ui-kit";
 
-export type InspectorTab = "files" | "changes" | "terminal" | "plan";
+export type InspectorTab = "files" | "changes" | "terminal" | "activity" | "plan";
+
+/** Fixed right-panel tab order (`docs/16` §2.2; no tab registry/slot). */
+const INSPECTOR_TABS: readonly InspectorTab[] = ["files", "changes", "terminal", "activity", "plan"];
 
 export interface InspectorFileEntry { path: string; kind: "dir" | "file"; depth: number }
 
@@ -51,6 +57,13 @@ export interface InspectorPanelProps {
   open: boolean;
   api: InspectorApi;
   onClose: () => void;
+  /**
+   * Cross-surface request: open one workspace-relative file in the files preview
+   * (`turnTail`/activity 「在右栏查看」). A changing `nonce` re-opens the path.
+   */
+  previewRequest?: { path: string; nonce: number } | null;
+  /** Called after `previewRequest` was handled so the app can clear it. */
+  onPreviewConsumed?: () => void;
 }
 
 interface Layout { tab: InspectorTab; width: number; collapsed: boolean }
@@ -76,7 +89,9 @@ function readLayout(conversationId: string | null): Layout {
     const record: Record<string, unknown> = { ...parsed };
     const tab = record["tab"];
     const validTab: InspectorTab =
-      tab === "changes" || tab === "terminal" || tab === "files" || tab === "plan" ? tab : DEFAULT_LAYOUT.tab;
+      tab === "changes" || tab === "terminal" || tab === "files" || tab === "activity" || tab === "plan"
+        ? tab
+        : DEFAULT_LAYOUT.tab;
     const width = typeof record["width"] === "number" ? record["width"] : DEFAULT_LAYOUT.width;
     const collapsed = record["collapsed"] === true;
     return { tab: validTab, width: clampWidth(width), collapsed };
@@ -96,6 +111,69 @@ function writeLayout(conversationId: string | null, layout: Layout): void {
 
 /** Flat visible rows of the expanded tree. */
 interface TreeRow { path: string; name: string; kind: "dir" | "file"; depth: number; expanded: boolean }
+
+/** One titled activity section (title + count; per-section empty/error states). */
+function ActivitySection(props: { title: string; count: number; children: ReactNode }) {
+  return (
+    <section aria-label={props.title} className="flex flex-col gap-1">
+      <h3 className="text-[11px] font-medium uppercase text-muted-foreground">
+        {props.title} · {String(props.count)}
+      </h3>
+      {props.children}
+    </section>
+  );
+}
+
+/**
+ * Inline destructive-action confirmation (C17: no second modal component).
+ *
+ * `role=alertdialog` with a readable label; the default focus is the cancel
+ * button, and Esc cancels without emitting the action (`interaction.md`
+ * ACT2-JOB-STOP-01 / ACT2-SUBAGENT-INTERRUPT-01 / ACT2-SCHEDULE-DELETE-01).
+ */
+function InlineConfirm(props: {
+  label: string;
+  body: ReactNode;
+  confirmLabel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const { t } = useUi();
+  const cancelRef = useRef<HTMLButtonElement | null>(null);
+  const cancel = props.onCancel;
+  // Keyboard contract: Esc cancels without emitting the action; the default
+  // focus is the cancel button (`interaction.md` ACT2-JOB-STOP-01).
+  useEffect(() => {
+    cancelRef.current?.focus();
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancel();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [cancel]);
+  return (
+    <div
+      role="alertdialog"
+      aria-label={props.label}
+      className="mt-1 flex flex-col gap-1 rounded-control border border-destructive/40 bg-muted p-2"
+    >
+      <p className="text-[11px] text-foreground">{props.body}</p>
+      <div className="flex items-center gap-1">
+        <Button ref={cancelRef} size="sm" onClick={props.onCancel}>
+          {t("activityCancel")}
+        </Button>
+        <Button size="sm" variant="destructive" onClick={props.onConfirm}>
+          {props.confirmLabel}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export function InspectorPanel(props: InspectorPanelProps) {
   const { t, plan, actions, streaming } = useUi();
@@ -122,6 +200,142 @@ export function InspectorPanel(props: InspectorPanelProps) {
   const [activeSession, setActiveSession] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [narrow, setNarrow] = useState(false);
+  /** Tab button refs so ←/→/Home/End move real focus with the selection. */
+  const tabRefs = useRef<Partial<Record<InspectorTab, HTMLButtonElement | null>>>({});
+
+  // ---- Activity tab (`2026-11-01-client-activity-panels`, tab order 40) ----
+  // Data/actions come from `UiValue.actions` (app-owned IPC + Ajv validation);
+  // polling lives here and only while this tab is open (`docs/16` §2.2, R1/R4).
+  const [activity, setActivity] = useState<ActivitySnapshot | null>(null);
+  const [activityState, setActivityState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [activityError, setActivityError] = useState<string | null>(null);
+  const [activityStale, setActivityStale] = useState(false);
+  const [activityBusy, setActivityBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionBusyId, setActionBusyId] = useState<string | null>(null);
+  const [expandedJob, setExpandedJob] = useState<string | null>(null);
+  const [stopConfirm, setStopConfirm] = useState<{ kind: "job" | "subagent"; id: string } | null>(null);
+  const [deleteSchedule, setDeleteSchedule] = useState<string | null>(null);
+  const [editSchedule, setEditSchedule] = useState<string | null>(null);
+  const [scheduleInterval, setScheduleInterval] = useState("");
+  const [schedulePrompt, setSchedulePrompt] = useState("");
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  /** Monotonic request fence: stale polling results are dropped (R1). */
+  const activityGeneration = useRef(0);
+  const actionsRef = useRef(actions);
+  useEffect(() => {
+    actionsRef.current = actions;
+  }, [actions]);
+
+  /** Map one host `activity/*` code to a readable (i18n) message. */
+  const activityErrorText = useCallback(
+    (raw: string | null): string => {
+      if (raw === null || raw === "") return t("activityErrorGeneric");
+      if (raw.startsWith("activity/job-not-found")) return t("activityJobNotFound");
+      if (raw.startsWith("activity/job-finished")) return t("activityJobFinished");
+      if (raw.startsWith("activity/subagent-not-found")) return t("activitySubagentNotFound");
+      if (raw.startsWith("activity/schedule-unreadable")) return t("activityScheduleUnreadable");
+      if (raw.startsWith("activity/schedule-invalid")) return t("activityScheduleInvalid");
+      if (raw.startsWith("activity/derived-unavailable")) return t("activityDerivedHint");
+      return t("activityErrorGeneric");
+    },
+    [t],
+  );
+
+  const loadActivity = useCallback(
+    async (mode: "initial" | "poll" | "manual"): Promise<void> => {
+      const workspaceId = ui.activeWorkspaceId;
+      const conversationId = ui.activeConversationId;
+      if (workspaceId === null || conversationId === null) return;
+      const generation = activityGeneration.current + 1;
+      activityGeneration.current = generation;
+      if (mode !== "poll") setActivityError(null);
+      try {
+        const next = await actionsRef.current.activitySnapshot(workspaceId, conversationId);
+        // Drop results of a previous conversation/tab generation (R1).
+        if (activityGeneration.current !== generation) return;
+        if (ui.activeWorkspaceId !== workspaceId || ui.activeConversationId !== conversationId) return;
+        setActivity(next);
+        setActivityState("ready");
+        setActivityStale(false);
+        setActivityError(null);
+      } catch (error: unknown) {
+        if (activityGeneration.current !== generation) return;
+        const message = error instanceof Error ? error.message : "";
+        setActivityError(message);
+        if (mode === "poll") {
+          // Keep the last successful snapshot and show a stale marker (R8).
+          setActivityStale(true);
+        } else {
+          setActivityState((current) => (current === "ready" ? current : "error"));
+        }
+      }
+    },
+    [ui.activeConversationId, ui.activeWorkspaceId],
+  );
+
+  const refreshActivity = useCallback((): void => {
+    setActivityBusy(true);
+    void actionsRef.current.refreshGoal().catch(() => undefined);
+    void loadActivity("manual").finally(() => {
+      setActivityBusy(false);
+    });
+  }, [loadActivity]);
+
+  const runActivityAction = useCallback(
+    async (kind: ActivityActionKind, id: string, updates?: Record<string, unknown>): Promise<void> => {
+      const workspaceId = ui.activeWorkspaceId;
+      const conversationId = ui.activeConversationId;
+      if (workspaceId === null || conversationId === null) return;
+      setActionBusyId(id);
+      setActionError(null);
+      try {
+        await actionsRef.current.activityAction({
+          workspace_id: workspaceId,
+          conversation_id: conversationId,
+          action: kind,
+          id,
+          ...(updates === undefined ? {} : { updates }),
+        });
+        setStopConfirm(null);
+        setDeleteSchedule(null);
+        setEditSchedule(null);
+        setScheduleError(null);
+      } catch (error: unknown) {
+        setActionError(error instanceof Error ? error.message : null);
+      } finally {
+        setActionBusyId(null);
+        // Refresh after every action, success or failure (host state is truth).
+        await loadActivity("manual");
+      }
+    },
+    [loadActivity, ui.activeConversationId, ui.activeWorkspaceId],
+  );
+
+  const saveSchedule = useCallback((): void => {
+    const id = editSchedule;
+    if (id === null) return;
+    const interval = Number.parseInt(scheduleInterval, 10);
+    if (!Number.isInteger(interval) || interval < 60) {
+      setScheduleError("activityScheduleIntervalError");
+      return;
+    }
+    if (new TextEncoder().encode(schedulePrompt).length > 32 * 1024) {
+      setScheduleError("activitySchedulePromptError");
+      return;
+    }
+    setScheduleError(null);
+    void runActivityAction("schedule_update", id, { interval_seconds: interval, prompt: schedulePrompt });
+  }, [editSchedule, runActivityAction, scheduleInterval, schedulePrompt]);
+
+  const activityJobStatus = useCallback(
+    (status: string): string => {
+      if (status === "running") return t("activityJobRunning");
+      if (status.startsWith("failed")) return t("activityJobFailed");
+      return t("activityJobCompleted");
+    },
+    [t],
+  );
 
   // Session-scoped layout restore (conversation switch) + narrow-window auto collapse.
   useEffect(() => {
@@ -256,6 +470,41 @@ export function InspectorPanel(props: InspectorPanelProps) {
     }
   }, [props.api, t]);
 
+  // Open one file in the files preview when another surface asks for it
+  // (`turnTail`/activity 「在右栏查看」; side-panels design §2.3 alignment).
+  const previewRequest = props.previewRequest;
+  const onPreviewConsumed = props.onPreviewConsumed;
+  useEffect(() => {
+    if (previewRequest === undefined || previewRequest === null) return;
+    setLayout((current) => ({ ...current, tab: "files", collapsed: false }));
+    void openFile(previewRequest.path);
+    onPreviewConsumed?.();
+  }, [previewRequest, onPreviewConsumed, openFile]);
+
+  // Load on tab open + 2s polling; close/tab-switch stops polling and drops
+  // in-flight responses (generation fence). Goal is a separate read (`goal.get`).
+  useEffect(() => {
+    if (!props.open || layout.tab !== "activity") return;
+    if (ui.activeWorkspaceId === null || ui.activeConversationId === null) return;
+    setActivity(null);
+    setActivityState("loading");
+    setActivityError(null);
+    setActivityStale(false);
+    setActionError(null);
+    setStopConfirm(null);
+    setDeleteSchedule(null);
+    setEditSchedule(null);
+    void actionsRef.current.refreshGoal().catch(() => undefined);
+    void loadActivity("initial");
+    const interval = window.setInterval(() => {
+      void loadActivity("poll");
+    }, 2000);
+    return () => {
+      window.clearInterval(interval);
+      activityGeneration.current += 1;
+    };
+  }, [props.open, layout.tab, ui.activeWorkspaceId, ui.activeConversationId, loadActivity]);
+
   const refreshTerminal = useCallback(async (): Promise<void> => {
     try {
       const result = await props.api.terminal({ action: "list" });
@@ -331,14 +580,36 @@ export function InspectorPanel(props: InspectorPanelProps) {
     else if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setActiveIndex(index); if (row.kind === "dir") toggleDir(row); else void openFile(row.path); }
   };
 
-  const tabLabel = (tab: InspectorTab): string =>
-    tab === "files"
-      ? t("inspectorTabFiles")
-      : tab === "changes"
-        ? t("inspectorTabChanges")
-        : tab === "plan"
-          ? t("inspectorTabPlan")
-          : t("inspectorTabTerminal");
+  const tabLabel = (tab: InspectorTab): string => {
+    if (tab === "files") return t("inspectorTabFiles");
+    if (tab === "changes") return t("inspectorTabChanges");
+    if (tab === "terminal") return t("inspectorTabTerminal");
+    if (tab === "activity") return t("inspectorTabActivity");
+    return t("inspectorTabPlan");
+  };
+
+  const activityStatusLabel = (status: string): string => {
+    if (status === "running") return t("activityStatusRunning");
+    if (status === "done") return t("activityStatusDone");
+    if (status === "failed") return t("activityStatusFailed");
+    if (status === "cancelled") return t("activityStatusCancelled");
+    return t("activityStatusUnknown");
+  };
+
+  const todoStatusLabel = (status: string): string => {
+    if (status === "pending") return t("activityTodoPending");
+    if (status === "in_progress") return t("activityTodoInProgress");
+    if (status === "completed") return t("activityTodoCompleted");
+    return status;
+  };
+
+  const teamStatusLabel = (status: string): string => {
+    if (status === "done") return t("activityStatusDone");
+    if (status === "failed") return t("activityStatusFailed");
+    if (status === "partial") return t("activityTeamPartial");
+    if (status === "timeout") return t("activityTeamTimeout");
+    return status;
+  };
 
   const rowsById = useMemo(() => new Map(rows.map((row, index) => [row.path, index])), [rows]);
   if (!props.open || narrow) return null;
@@ -378,21 +649,27 @@ export function InspectorPanel(props: InspectorPanelProps) {
       />
       <div className="flex h-9 items-center gap-1 border-b border-border px-2 text-[11px]">
         <div role="tablist" aria-label={t("inspectorTitle")} className="flex items-center gap-1">
-          {(["files", "changes", "terminal", "plan"] as const).map((tab) => (
+          {INSPECTOR_TABS.map((tab) => (
             <button
               key={tab}
+              ref={(element) => { tabRefs.current[tab] = element; }}
               type="button"
               role="tab"
               aria-selected={layout.tab === tab}
               tabIndex={layout.tab === tab ? 0 : -1}
               onClick={() => { setTab(tab); }}
               onKeyDown={(event) => {
-                const tabs: InspectorTab[] = ["files", "changes", "terminal", "plan"];
+                const tabs: readonly InspectorTab[] = INSPECTOR_TABS;
                 const index = tabs.indexOf(tab);
-                if (event.key === "ArrowRight") { event.preventDefault(); setTab(tabs[(index + 1) % tabs.length] ?? "files"); }
-                if (event.key === "ArrowLeft") { event.preventDefault(); setTab(tabs[(index + tabs.length - 1) % tabs.length] ?? "files"); }
-                if (event.key === "Home") { event.preventDefault(); setTab("files"); }
-                if (event.key === "End") { event.preventDefault(); setTab("plan"); }
+                let next: InspectorTab | null = null;
+                if (event.key === "ArrowRight") next = tabs[(index + 1) % tabs.length] ?? "files";
+                if (event.key === "ArrowLeft") next = tabs[(index + tabs.length - 1) % tabs.length] ?? "files";
+                if (event.key === "Home") next = "files";
+                if (event.key === "End") next = "plan";
+                if (next === null) return;
+                event.preventDefault();
+                setTab(next);
+                tabRefs.current[next]?.focus();
               }}
               className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 ${layout.tab === tab ? "bg-muted" : ""}`}
             >
@@ -510,6 +787,400 @@ export function InspectorPanel(props: InspectorPanelProps) {
               </p>
             ))}
           </>
+        ) : null}
+        {layout.tab === "activity" ? (
+          <div className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto" data-testid="activity-panel">
+            <div className="flex items-center gap-2">
+              <p className="font-medium text-foreground">{t("activityTitle")}</p>
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label={t("activityRefresh")}
+                aria-busy={activityBusy}
+                disabled={activityBusy}
+                onClick={refreshActivity}
+              >
+                {t("activityRefresh")}
+              </Button>
+              {activityStale ? (
+                <span role="status" className="text-[11px] text-muted-foreground">
+                  {t("activityStale")}
+                </span>
+              ) : null}
+            </div>
+            {ui.offline ? (
+              <p role="status" className="text-[11px] text-muted-foreground">
+                {t("activityOffline")}
+              </p>
+            ) : null}
+            {ui.activeWorkspaceId === null || ui.activeConversationId === null ? (
+              <p>{t("activityNoConversation")}</p>
+            ) : activityState === "error" ? (
+              <div role="alert" className="flex flex-col items-start gap-2">
+                <p className="text-destructive">{activityErrorText(activityError)}</p>
+                <Button size="sm" onClick={refreshActivity}>
+                  {t("activityRetry")}
+                </Button>
+              </div>
+            ) : activity === null ? (
+              <p aria-busy="true">{t("activityLoading")}</p>
+            ) : (
+              <>
+                {activity.derived_unavailable ? (
+                  <p role="status" className="text-[11px] text-muted-foreground">
+                    {t("activityDerivedHint")}
+                  </p>
+                ) : null}
+                {activity.truncated ? (
+                  <p role="status" className="text-[11px] text-muted-foreground">
+                    {t("activityTruncated")}
+                  </p>
+                ) : null}
+                {actionError !== null ? (
+                  <p role="alert" className="text-destructive">
+                    {activityErrorText(actionError)}
+                  </p>
+                ) : null}
+
+                <ActivitySection title={t("activityJobs")} count={activity.jobs.length}>
+                  {activity.jobs.length === 0 ? (
+                    <p>{t("activityJobsEmpty")}</p>
+                  ) : (
+                    <ul className="flex flex-col gap-1">
+                      {activity.jobs.map((job) => (
+                        <li key={job.id} className="rounded-control border border-border px-2 py-1">
+                          <div className="flex items-center gap-1">
+                            <StatusDot live={job.status === "running"} />
+                            <span className="min-w-0 flex-1 truncate font-mono text-foreground">
+                              {job.command}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {activityJobStatus(job.status)}
+                            </span>
+                          </div>
+                          <p className="truncate text-[11px]">{job.cwd}</p>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              aria-expanded={expandedJob === job.id}
+                              onClick={() => {
+                                setExpandedJob(expandedJob === job.id ? null : job.id);
+                              }}
+                            >
+                              {expandedJob === job.id ? t("activityCollapse") : t("activityExpand")}
+                            </Button>
+                            {job.status === "running" ? (
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                aria-busy={actionBusyId === job.id}
+                                disabled={actionBusyId !== null}
+                                onClick={() => {
+                                  setStopConfirm({ kind: "job", id: job.id });
+                                }}
+                              >
+                                {t("activityStopJob")}
+                              </Button>
+                            ) : null}
+                          </div>
+                          {expandedJob === job.id ? (
+                            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-control bg-muted p-1 font-mono text-foreground">
+                              {job.output_excerpt === "" ? t("activityOutputEmpty") : job.output_excerpt}
+                            </pre>
+                          ) : null}
+                          {stopConfirm !== null && stopConfirm.kind === "job" && stopConfirm.id === job.id ? (
+                            <InlineConfirm
+                              label={t("activityJobStopConfirmLabel")}
+                              body={t("activityJobStopConfirmBody", { id: job.id, command: job.command })}
+                              confirmLabel={t("activityConfirm")}
+                              onConfirm={() => {
+                                void runActivityAction("job_kill", job.id);
+                              }}
+                              onCancel={() => {
+                                setStopConfirm(null);
+                              }}
+                            />
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </ActivitySection>
+
+                <ActivitySection title={t("activitySubagents")} count={activity.subagents.length}>
+                  {activity.subagents.length === 0 ? (
+                    <p>{t("activitySubagentsEmpty")}</p>
+                  ) : (
+                    <ul className="flex flex-col gap-1">
+                      {activity.subagents.map((subagent) => (
+                        <li key={subagent.id} className="rounded-control border border-border px-2 py-1">
+                          <div className="flex items-center gap-1">
+                            <StatusDot live={subagent.status === "running"} />
+                            <span className="min-w-0 flex-1 truncate font-mono text-foreground">
+                              {subagent.id}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {activityStatusLabel(subagent.status)}
+                            </span>
+                          </div>
+                          <p className="truncate text-[11px]">{subagent.prompt}</p>
+                          {subagent.status === "running" ? (
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              aria-busy={actionBusyId === subagent.id}
+                              disabled={actionBusyId !== null}
+                              onClick={() => {
+                                setStopConfirm({ kind: "subagent", id: subagent.id });
+                              }}
+                            >
+                              {t("activityInterrupt")}
+                            </Button>
+                          ) : null}
+                          {stopConfirm !== null && stopConfirm.kind === "subagent" && stopConfirm.id === subagent.id ? (
+                            <InlineConfirm
+                              label={t("activitySubagentInterruptConfirmLabel")}
+                              body={t("activitySubagentInterruptConfirmBody", {
+                                id: subagent.id,
+                                status: activityStatusLabel(subagent.status),
+                              })}
+                              confirmLabel={t("activityConfirm")}
+                              onConfirm={() => {
+                                void runActivityAction("subagent_interrupt", subagent.id);
+                              }}
+                              onCancel={() => {
+                                setStopConfirm(null);
+                              }}
+                            />
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </ActivitySection>
+
+                <ActivitySection title={t("activityTeams")} count={activity.teams.length}>
+                  {activity.teams.length === 0 ? (
+                    <p>{t("activityTeamsEmpty")}</p>
+                  ) : (
+                    (() => {
+                      const team = activity.teams[activity.teams.length - 1];
+                      if (team === undefined) return <p>{t("activityTeamsEmpty")}</p>;
+                      return (
+                        <div className="rounded-control border border-border px-2 py-1">
+                          <p className="truncate text-foreground">{team.objective}</p>
+                          <p className="text-[11px]">
+                            {t("activityTeamSummary", {
+                              status: teamStatusLabel(team.status),
+                              completed: team.completed,
+                              failed: team.failed,
+                              cancelled: team.cancelled,
+                              total: team.total,
+                            })}
+                          </p>
+                          <ul className="flex flex-col gap-0.5">
+                            {team.workers.map((worker) => (
+                              <li key={worker.id} className="truncate text-[11px]">
+                                {worker.id} · {worker.task} · {activityStatusLabel(worker.status)}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    })()
+                  )}
+                </ActivitySection>
+
+                <ActivitySection title={t("activityTodos")} count={activity.todos.length}>
+                  {activity.todos.length === 0 ? (
+                    <p>{t("activityTodosEmpty")}</p>
+                  ) : (
+                    <ul className="flex flex-col gap-0.5">
+                      {activity.todos.map((todo) => (
+                        <li key={todo.id} className="flex items-center gap-1">
+                          <span aria-hidden="true" className="text-[11px]">
+                            {todo.status === "completed" ? "✓" : todo.status === "in_progress" ? "◐" : "○"}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-foreground">{todo.text}</span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {todoStatusLabel(todo.status)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </ActivitySection>
+
+                <ActivitySection title={t("activitySchedules")} count={activity.schedules.length}>
+                  {activity.schedules_error !== null && activity.schedules_error !== undefined ? (
+                    <div role="alert" className="text-destructive">
+                      {activityErrorText(activity.schedules_error)}
+                    </div>
+                  ) : null}
+                  {activity.schedules.length === 0 ? (
+                    <p>{t("activitySchedulesEmpty")}</p>
+                  ) : (
+                    <ul className="flex flex-col gap-1">
+                      {activity.schedules.map((schedule) => (
+                        <li key={schedule.id} className="rounded-control border border-border px-2 py-1">
+                          <div className="flex items-center gap-1">
+                            <span className="min-w-0 flex-1 truncate text-foreground">
+                              {schedule.prompt === "" ? schedule.id : schedule.prompt}
+                            </span>
+                            <Switch
+                              role="switch"
+                              checked={schedule.enabled}
+                              aria-checked={schedule.enabled}
+                              aria-label={t("activityScheduleToggle", { id: schedule.id })}
+                              disabled={actionBusyId !== null}
+                              onChange={(event) => {
+                                void runActivityAction("schedule_update", schedule.id, {
+                                  enabled: event.target.checked,
+                                });
+                              }}
+                            />
+                          </div>
+                          <p className="text-[11px]">
+                            {schedule.cron} · {t("activityScheduleIntervalShort", { seconds: schedule.interval_seconds })}
+                          </p>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              aria-expanded={editSchedule === schedule.id}
+                              onClick={() => {
+                                setEditSchedule(schedule.id);
+                                setScheduleInterval(String(schedule.interval_seconds));
+                                setSchedulePrompt(schedule.prompt);
+                                setScheduleError(null);
+                              }}
+                            >
+                              {t("activityScheduleEdit")}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              aria-expanded={deleteSchedule === schedule.id}
+                              disabled={actionBusyId !== null}
+                              onClick={() => {
+                                setDeleteSchedule(schedule.id);
+                              }}
+                            >
+                              {t("activityScheduleDelete")}
+                            </Button>
+                          </div>
+                          {editSchedule === schedule.id ? (
+                            <div className="mt-1 flex flex-col gap-1">
+                              <label className="flex flex-col gap-0.5 text-[11px]">
+                                {t("activityScheduleInterval")}
+                                <input
+                                  className="rounded-control border border-border bg-transparent px-1 py-0.5 font-mono text-foreground"
+                                  value={scheduleInterval}
+                                  onChange={(event) => {
+                                    setScheduleInterval(event.target.value);
+                                  }}
+                                />
+                              </label>
+                              <label className="flex flex-col gap-0.5 text-[11px]">
+                                {t("activitySchedulePrompt")}
+                                <textarea
+                                  className="min-h-[48px] rounded-control border border-border bg-transparent px-1 py-0.5 text-foreground"
+                                  value={schedulePrompt}
+                                  onChange={(event) => {
+                                    setSchedulePrompt(event.target.value);
+                                  }}
+                                />
+                              </label>
+                              {scheduleError !== null ? (
+                                <p role="alert" className="text-destructive">
+                                  {t(scheduleError)}
+                                </p>
+                              ) : null}
+                              <div className="flex items-center gap-1">
+                                <Button size="sm" disabled={actionBusyId !== null} onClick={saveSchedule}>
+                                  {t("activityScheduleSave")}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setEditSchedule(null);
+                                    setScheduleError(null);
+                                  }}
+                                >
+                                  {t("activityCancel")}
+                                </Button>
+                              </div>
+                            </div>
+                          ) : null}
+                          {deleteSchedule === schedule.id ? (
+                            <InlineConfirm
+                              label={t("activityScheduleDeleteConfirmLabel")}
+                              body={t("activityScheduleDeleteConfirmBody", { id: schedule.id })}
+                              confirmLabel={t("activityConfirm")}
+                              onConfirm={() => {
+                                void runActivityAction("schedule_delete", schedule.id);
+                              }}
+                              onCancel={() => {
+                                setDeleteSchedule(null);
+                              }}
+                            />
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </ActivitySection>
+
+                <ActivitySection title={t("activityPresentations")} count={activity.presentations.length}>
+                  {activity.presentations.length === 0 ? (
+                    <p>{t("activityPresentationsEmpty")}</p>
+                  ) : (
+                    <ul className="flex flex-col gap-0.5">
+                      {activity.presentations.map((presentation) => (
+                        <li key={presentation.path} className="flex flex-col gap-0.5">
+                          <span className="truncate font-mono text-foreground">{presentation.path}</span>
+                          {presentation.description === "" ? null : (
+                            <span className="truncate text-[11px]">{presentation.description}</span>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              actions.openInspectorPreview(presentation.path);
+                            }}
+                          >
+                            {t("activityPresentView")}
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </ActivitySection>
+
+                <ActivitySection title={t("activityGoal")} count={ui.goal === null ? 0 : 1}>
+                  {ui.goal === null ? (
+                    <p>{t("activityGoalEmpty")}</p>
+                  ) : (
+                    <div className="rounded-control border border-border px-2 py-1">
+                      <p className="break-words text-foreground">{ui.goal.objective}</p>
+                      <p className="text-[11px]">
+                        {t("activityGoalMeta", {
+                          status: ui.goal.status,
+                          rounds: ui.goal.rounds,
+                          max_rounds: ui.goal.max_rounds,
+                        })}
+                      </p>
+                      {ui.goal.reason === null || ui.goal.reason === undefined || ui.goal.reason === "" ? null : (
+                        <p className="text-[11px]">{ui.goal.reason}</p>
+                      )}
+                    </div>
+                  )}
+                </ActivitySection>
+              </>
+            )}
+          </div>
         ) : null}
         {layout.tab === "plan" ? (
           <div className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto">

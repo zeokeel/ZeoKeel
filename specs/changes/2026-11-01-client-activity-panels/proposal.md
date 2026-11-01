@@ -1,6 +1,6 @@
 # 2026-11-01-client-activity-panels · 提案
 
-- 状态：`approved`
+- 状态：`done`
 - 2026-11-01 修订：**D3 plan 展示被 `2026-11-01-client-plan-mode` 取代**（plan tab order 50/PlanCard/plan.get/update/exit_plan_mode 接管；activity 不展示 plan、不新增 plan 分区，tab order 40 不变）；**goal 改为只读 `goal.get`**（复用 command-surface IPC；`.zeokeel/goal.json` 单 owner；activity.snapshot 不再包含 goal，不新增写面）；turnTail 仅 present deliverables。
 - 修订预算：**≤15 文件**（沿用 Lead 例外；移除 plan 展示后不新增文件）
 - Owner：dsh-ref

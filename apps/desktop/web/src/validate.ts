@@ -19,6 +19,8 @@
  */
 import Ajv, { type ValidateFunction } from "ajv";
 import {
+  activity_action_resultSchema,
+  activity_snapshotSchema,
   agent_eventSchema,
   agent_question_askedSchema,
   app_settingsSchema,
@@ -103,6 +105,8 @@ export type BoundaryName =
   | "skillListResult"
   | "skillReadResult"
   | "feedbackSubmitResult"
+  | "activitySnapshot"
+  | "activityActionResult"
   | "questionAsked";
 
 const checks: Record<BoundaryName, ValidateFunction> = {
@@ -132,6 +136,8 @@ const checks: Record<BoundaryName, ValidateFunction> = {
   skillListResult: ajv.compile(skill_list_resultSchema),
   skillReadResult: ajv.compile(skill_read_resultSchema),
   questionAsked: ajv.compile(agent_question_askedSchema),
+  activitySnapshot: ajv.compile(activity_snapshotSchema),
+  activityActionResult: ajv.compile(activity_action_resultSchema),
 };
 
 function describe(errors: ValidateFunction["errors"]): string {
@@ -256,4 +262,12 @@ export function validateSkillListResult(value: unknown): boolean {
 
 export function validateSkillReadResult(value: unknown): boolean {
   return validateBoundary("skillReadResult", value);
+}
+
+export function validateActivitySnapshot(value: unknown): boolean {
+  return validateBoundary("activitySnapshot", value);
+}
+
+export function validateActivityActionResult(value: unknown): boolean {
+  return validateBoundary("activityActionResult", value);
 }

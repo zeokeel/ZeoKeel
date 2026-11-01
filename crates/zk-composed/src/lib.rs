@@ -186,8 +186,11 @@ pub fn configure_media_from_settings(settings: &zk_contract_config::MediaSetting
 pub use inner::*;
 
 pub use zk_kit_compaction;
+pub use zk_kit_jobs;
 pub use zk_kit_session;
+pub use zk_kit_subagent;
 pub use zk_kit_tools;
 pub use zk_tool_goal;
 pub use zk_tool_plan;
+pub use zk_tool_schedule;
 pub use zk_tool_skill;

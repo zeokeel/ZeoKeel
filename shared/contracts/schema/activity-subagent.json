@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ActivitySubagent",
+  "description": "One subagent record of the current conversation (`zk-kit-subagent`).",
+  "type": "object",
+  "required": [
+    "depth",
+    "id",
+    "parent",
+    "prompt",
+    "status"
+  ],
+  "properties": {
+    "depth": {
+      "description": "Delegation depth (1 = direct child).",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "id": {
+      "description": "Child id (`subagent-N`).",
+      "type": "string"
+    },
+    "parent": {
+      "description": "Parent conversation id (always the snapshot conversation).",
+      "type": "string"
+    },
+    "prompt": {
+      "description": "Original prompt (≤512 chars).",
+      "type": "string"
+    },
+    "status": {
+      "description": "`running` | `done` | `failed` | `cancelled`.",
+      "type": "string"
+    }
+  }
+}

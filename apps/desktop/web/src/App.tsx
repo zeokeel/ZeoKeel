@@ -21,6 +21,8 @@ import {
   type UiValue,
   type WorkspaceFileRef,
   type SessionSearchOutcome,
+  type ActivityActionPayload,
+  type ActivitySnapshot,
 } from "@zeokeel/ui-kit";
 import { BRAND } from "./generated/brand";
 import { AppSurfaceSlot, AppsSlot, ChatSlot, CommandsSlot, ConnectorsSlot, InspectorSlot, LoginSlot, SessionsSlot, SettingsPanes, SettingsSlot, ShellSlot, SkillsSlot } from "./generated/registry";
@@ -30,7 +32,7 @@ import { upgradeInfoOf } from "./upgrade";
 import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
 import type { Transport } from "./types";
-import { parseCompactResult, parseCompactionGetResult, parseConversation, parsePlanGetResult, parsePlanUpdateResult, parseConversationOverrideResult, parseFeedbackSubmitResult, parseFileEntries, parseGoalResult, parseSessionExportResult, parseSessionSearchResult, parseSkillListResult, parseSkillReadResult, parseTerminalResult, parseUpdateRelease, parseWorkspaceChanges, parseWorkspaceFileReadResult } from "./protocol";
+import { parseActivityActionResult, parseActivitySnapshot, parseCompactResult, parseCompactionGetResult, parseConversation, parsePlanGetResult, parsePlanUpdateResult, parseConversationOverrideResult, parseFeedbackSubmitResult, parseFileEntries, parseGoalResult, parseSessionExportResult, parseSessionSearchResult, parseSkillListResult, parseSkillReadResult, parseTerminalResult, parseUpdateRelease, parseWorkspaceChanges, parseWorkspaceFileReadResult } from "./protocol";
 import { validateAttachmentSaveResult, validateSkillListResult, validateSkillReadResult } from "./validate";
 import { downloadSkillArchive, fetchAppHtml, fetchApps, fetchConnectorCatalog, fetchSkills, fetchTombstones, openApp, sendInstallReceipt, toBase64, toggleConnector, type AppItem, type ConnectorItem, type SkillItem } from "./store";
 import { clearConnectorCatalog, reloadConnectorSessions, syncConnectorCatalog } from "./connectors-sync";
@@ -220,6 +222,9 @@ export function App(props: { transport: Transport }) {
   const [settingsInitialPane, setSettingsInitialPane] = useState<string | undefined>(undefined);
   const [panel, setPanel] = useState<"skills" | "connectors" | "apps" | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  /** Cross-surface files-preview request (`turnTail`/activity 「在右栏查看」). */
+  const [previewRequest, setPreviewRequest] = useState<{ path: string; nonce: number } | null>(null);
+  const previewNonce = useRef(0);
   const workspaceFilesCache = useRef<{ workspaceId: string; files: WorkspaceFileRef[] } | null>(
     null,
   );
@@ -240,6 +245,43 @@ export function App(props: { transport: Transport }) {
   const toggleInspector = useCallback((): void => {
     setInspectorOpen((value) => !value);
   }, []);
+
+  /** Open one workspace-relative path in the right-panel files preview. */
+  const openInspectorPreview = useCallback((path: string): void => {
+    previewNonce.current += 1;
+    setPreviewRequest({ path, nonce: previewNonce.current });
+    setInspectorOpen(true);
+  }, []);
+
+  const consumePreviewRequest = useCallback((): void => {
+    setPreviewRequest(null);
+  }, []);
+
+  /** `activity.snapshot` read through the app transport (Ajv validated, C10). */
+  const activitySnapshot = useCallback(
+    async (workspaceId: string, conversationId: string): Promise<ActivitySnapshot> => {
+      const raw = await props.transport.call("activity.snapshot", {
+        workspace_id: workspaceId,
+        conversation_id: conversationId,
+      });
+      const parsed = parseActivitySnapshot(raw);
+      if (parsed === null) throw new Error("activity/invalid");
+      return parsed;
+    },
+    [props.transport],
+  );
+
+  /** `activity.action` single write entry (host re-validates state + bounds). */
+  const activityAction = useCallback(
+    async (payload: ActivityActionPayload): Promise<void> => {
+      const raw = await props.transport.call("activity.action", {
+        ...payload,
+        updates: payload.updates ?? {},
+      });
+      if (parseActivityActionResult(raw) !== true) throw new Error("activity/invalid");
+    },
+    [props.transport],
+  );
 
   /** Read plan state of the active conversation (also refreshes `ui.plan`). */
   const getPlan = useCallback(async (): Promise<PlanView | null> => {
@@ -1048,6 +1090,9 @@ export function App(props: { transport: Transport }) {
       copyConversationId,
       searchSessions,
       refreshGoal,
+      activitySnapshot,
+      activityAction,
+      openInspectorPreview,
       setGoal,
       updateGoal,
       getConversationOverride,
@@ -1273,6 +1318,8 @@ export function App(props: { transport: Transport }) {
         inspectorOpen={inspectorOpen}
         onInspectorOpenChange={setInspectorOpen}
         onToggleInspector={toggleInspector}
+        previewRequest={previewRequest}
+        onPreviewConsumed={consumePreviewRequest}
       />
     </UiProvider>
   );
@@ -1316,10 +1363,12 @@ interface AppShellProps {
   inspectorOpen: boolean;
   onInspectorOpenChange: (open: boolean) => void;
   onToggleInspector: () => void;
+  previewRequest: { path: string; nonce: number } | null;
+  onPreviewConsumed: () => void;
 }
 
 function AppShell(props: AppShellProps) {
-  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel, updateText, updateBusy, onCheckUpdate, skills, connectors, installed, contentError, contentBusy, onInstall, onAuthorize, onToggleConnector, onReloadConnectors, authorized, apps, appOpened, appError, onOpenApp, surface, onCloseSurface, onSurfaceRequest, serverUrlLocked, onLogout, settingsInitialPane, panel, onPanelChange, inspectorOpen, onInspectorOpenChange, onToggleInspector } = props;
+  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel, updateText, updateBusy, onCheckUpdate, skills, connectors, installed, contentError, contentBusy, onInstall, onAuthorize, onToggleConnector, onReloadConnectors, authorized, apps, appOpened, appError, onOpenApp, surface, onCloseSurface, onSurfaceRequest, serverUrlLocked, onLogout, settingsInitialPane, panel, onPanelChange, inspectorOpen, onInspectorOpenChange, onToggleInspector, previewRequest, onPreviewConsumed } = props;
   const t = ui.t;
   const state = controller.state;
   const enterprise = state.meta.edition === "enterprise";
@@ -1482,7 +1531,7 @@ function AppShell(props: AppShellProps) {
           <SlotErrorBoundary name="ui.apps"><AppsSlot open={panel === "apps"} items={apps} error={appError} opened={appOpened} onOpenApp={onOpenApp} onClose={() => { onPanelChange(null); }} /></SlotErrorBoundary>
         </>
       ) : null}
-      inspector={<SlotErrorBoundary name="ui.inspector"><InspectorSlot open={inspectorOpen} api={inspectorApi} onClose={() => { onInspectorOpenChange(false); }} /></SlotErrorBoundary>}
+      inspector={<SlotErrorBoundary name="ui.inspector"><InspectorSlot open={inspectorOpen} api={inspectorApi} onClose={() => { onInspectorOpenChange(false); }} previewRequest={previewRequest} onPreviewConsumed={onPreviewConsumed} /></SlotErrorBoundary>}
       inspectorOpen={inspectorOpen}
       onToggleInspector={onToggleInspector}
       onRetryBoot={ui.actions.retryBoot}

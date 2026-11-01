@@ -24,7 +24,7 @@
 | `@zeokeel/ui-settings-provider`（personal-only） | `ui.slot.settings-provider` | 本地 provider 字段（enterprise 构建期 exclude） | ui-kit + settings 注入 |
 | `@zeokeel/ui-settings-mcp`（personal-only） | `ui.slot.settings-mcp` | 本地 MCP server 列表/测试连接（`ui.settings.pane` order 70；enterprise 构建期 exclude） | ui-kit + settings 注入（`app.testMcpServer`） |
 | `@zeokeel/ui-shell` | `ui.shell` | AppShell + FirstRun（布局/header/status/overlay/首用页；app 已接入） | ui-kit + Radix tooltip |
-| `@zeokeel/ui-inspector` | `ui.slot.inspector` | 右栏 tabs（order：files 10 / changes 20 / terminal 30 / activity 40 预留，`2026-11-01-client-side-panels`）：懒加载文件树+预览、git 变更、用户显式终端、会话级 tab/宽度/折叠持久化（⌘B） | ui-kit |
+| `@zeokeel/ui-inspector` | `ui.slot.inspector` | 右栏 tabs（固定 order：files 10 / changes 20 / terminal 30 / **activity 40** / plan 50；无 tab registry/slot）：懒加载文件树+预览、git 变更、用户显式终端、**活动面板（jobs/subagents/agent-team/todo/schedule/present；goal 经 `goal.get` 只读；2s 轮询仅打开时；动作内联二次确认）**、会话级 tab/宽度/折叠持久化（⌘B）。activity 40 由 `2026-11-01-client-activity-panels` 落地（design §2.5） | ui-kit |
 | `@zeokeel/ui-commands` | `ui.slot.commands` | ⌘K 命令面板（搜索/键盘导航/动作由 app 注入） | ui-kit |
 | `apps/desktop/web` | 薄壳 | transport/controller/reducer/i18n/theme/UiProvider/registry/first-run | registry 生成的包 |
 

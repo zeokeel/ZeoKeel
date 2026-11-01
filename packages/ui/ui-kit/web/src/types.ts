@@ -794,3 +794,112 @@ export interface PlanView {
   feedback: string | null;
   throughTurn: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Activity right-panel (`2026-11-01-client-activity-panels`)
+//
+// Mirrors `zk_contract_ipc::results::Activity*`; the app validates the wire
+// through the generated Ajv schema and exposes these view types to
+// `@zeokeel/ui-inspector` / `@zeokeel/ui-chat`. The conversation goal is NOT
+// part of the snapshot: the panel reads the existing `goal` state (`goal.get`).
+// ---------------------------------------------------------------------------
+
+/** Mirrors `zk_contract_ipc::results::ActivityJob` (running/completed/failed:N). */
+export interface ActivityJob {
+  id: string;
+  command: string;
+  cwd: string;
+  status: string;
+  started_ms: number;
+  output_excerpt: string;
+}
+
+/** Mirrors `zk_contract_ipc::results::ActivitySubagent`. */
+export interface ActivitySubagent {
+  id: string;
+  parent: string;
+  depth: number;
+  status: string;
+  prompt: string;
+}
+
+/** Mirrors `zk_contract_ipc::results::ActivityTeamWorker`. */
+export interface ActivityTeamWorker {
+  id: string;
+  task: string;
+  status: string;
+  result_excerpt: string | null;
+}
+
+/** Mirrors `zk_contract_ipc::results::ActivityTeamRun` (derived tool-row view). */
+export interface ActivityTeamRun {
+  turn_id: string;
+  message_id: string;
+  objective: string;
+  status: string;
+  completed: number;
+  failed: number;
+  cancelled: number;
+  total: number;
+  workers: ActivityTeamWorker[];
+}
+
+/** Mirrors `zk_contract_ipc::results::ActivityTodo` (read-only replay). */
+export interface ActivityTodo {
+  id: string;
+  text: string;
+  status: string;
+}
+
+/** Mirrors `zk_contract_ipc::results::ActivitySchedule`. */
+export interface ActivitySchedule {
+  id: string;
+  prompt: string;
+  cron: string;
+  enabled: boolean;
+  interval_seconds: number;
+  next_run_ms: number | null;
+}
+
+/** Mirrors `zk_contract_ipc::results::ActivityPresentation` (present tool rows). */
+export interface ActivityPresentation {
+  path: string;
+  description: string;
+  turn_id: string;
+  message_id: string;
+}
+
+/** Mirrors `zk_contract_ipc::results::ActivitySnapshot`. */
+export interface ActivitySnapshot {
+  jobs: ActivityJob[];
+  subagents: ActivitySubagent[];
+  teams: ActivityTeamRun[];
+  todos: ActivityTodo[];
+  schedules: ActivitySchedule[];
+  /** Section-level `activity/schedule-unreadable` reason (rest stays available). */
+  schedules_error?: string | null;
+  presentations: ActivityPresentation[];
+  /** At least one bounded section was capped. */
+  truncated: boolean;
+  /** Some legacy/corrupt tool rows were skipped (non-blocking hint). */
+  derived_unavailable: boolean;
+}
+
+/** Mirrors `zk_contract_ipc::payloads::ActivityActionKind` (closed set). */
+export type ActivityActionKind = "job_kill" | "subagent_interrupt" | "schedule_update" | "schedule_delete";
+
+/** `activity.action` payload (schedule_updates: enabled/interval_seconds/prompt). */
+export interface ActivityActionPayload {
+  workspace_id: string;
+  conversation_id: string;
+  action: ActivityActionKind;
+  id: string;
+  updates?: Record<string, unknown>;
+}
+
+/** `schedule_update` fields accepted by the host whitelist. */
+export interface ActivityScheduleUpdates {
+  enabled?: boolean;
+  interval_seconds?: number;
+  prompt?: string;
+}

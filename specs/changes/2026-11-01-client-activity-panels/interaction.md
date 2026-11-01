@@ -7,7 +7,8 @@
 - 表面 / 入口：右栏 activity tab（order 40）与 chat turnTail（Phase 2b 子 spec）
 - 归属包：`@zeokeel/ui-inspector`（activity tab）+ `@zeokeel/ui-chat`（turnTail）+ `@zeokeel/ui-kit`（类型/actions）
 - 权威文档：`docs/16` §2.2（tab order）、`docs/19` §2/§11、`docs/28` §4、`docs/11` §8.6
-- 状态：`planned`（实现开始时改 `active`；planned 只 WARN，不参与门禁强制）
+- 状态：`active`（2026-11-01 实现开始；P0/P1 标签与证据接入 `python3 scripts/ui-interaction-gate.py`）
+- 实现期合规修正（2026-11-01）：交互 ID 统一为 `interaction.md` §3 的 `<SURFACE>-<AREA>-<NN>` 两段 AREA（`JOB`/`SUBAGENT`/`SCHEDULE`/`TURNTAIL`），以匹配门禁 ID 正则；语义/优先级/测试映射不变（原 `ACT2-JOB-STOP-01` → `ACT2-JOB-01` 等，见 acceptance §1.5 注）。
 - 证据根：`target/evidence/2026-11-01-client-activity-panels/interaction/`
 - 测试：`e2e/interaction/activity.spec.ts`（带 `@interaction:<ID>` 标签；实现时新建）
 
@@ -46,11 +47,11 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | ACT2-SNAPSHOT-01 | 右栏已打开、有 activity | 点击「活动」tab；读取各分区 | tab order 40（files→changes→terminal→activity；plan tab 50 由 plan-mode 另列）；snapshot 分区渲染 jobs/subagents/team/todo/schedules/presentations；**goal 不进 snapshot，单独调 goal.get**；空分区显示空态 | P0 | `activity.spec.ts` | `ACT2-SNAPSHOT-01.json` |
 | ACT2-POLL-01 | activity tab 打开 | 等待 2s；点手动刷新；切走/关闭 tab | 期间轮询更新；手动刷新拉新；切走/关闭停止轮询且不更新其它会话 | P0 | `activity.spec.ts` | `ACT2-POLL-01.json` |
-| ACT2-JOB-STOP-01 | 有 running job | 展开输出；点击「停止任务」→ 内联确认（对象 id/命令/影响）→ 确认或取消 | 确认区 `role=alertdialog` + aria-label「确认停止任务」，默认焦点「取消」；**取消/Esc 不发 action、状态不变**；确认后才停止，停止后状态刷新（completed/failed 或列表移除）；未知/已结束错误可读；不产生工具行/审批 | P0 | `activity.spec.ts` | `ACT2-JOB-STOP-01.json` |
-| ACT2-SUBAGENT-INTERRUPT-01 | 当前会话有 running subagent | 点击「中断子代理」→ 内联确认（id/状态/影响）→ 确认或取消 | 确认区 `role=alertdialog` + aria-label「确认中断子代理」，默认焦点「取消」；**取消/Esc 不发 action**；确认后状态刷新为 cancelled/done；未知/已结束错误可读；roster 按 parent 过滤 | P0 | `activity.spec.ts` | `ACT2-SUBAGENT-INTERRUPT-01.json` |
-| ACT2-SCHEDULE-EDIT-01 | 当前 workspace 有 schedule | 切换启用开关；编辑 interval/prompt 并保存 | 文件/列表同步；非法 interval(<60)/prompt>32 KiB 行内错误且不写盘；只操作当前 workspace | P0 | `activity.spec.ts` | `ACT2-SCHEDULE-EDIT-01.json` |
-| ACT2-SCHEDULE-DELETE-01 | 有 schedule 行 | 点击删除 → 内联确认/取消 | 确认后删除并刷新；取消不变；未知 id/`deleted 0` 映射 `activity/schedule-invalid`；二次确认键盘可达 | P0 | `activity.spec.ts` | `ACT2-SCHEDULE-DELETE-01.json` |
-| ACT2-TURNTAIL-PRESENT-01 | 本轮 assistant 有 present 工具结果 | 查看消息尾部；点击「在右栏查看」 | 交付卡显示文件名/描述、path 去重；点击打开右栏 files 预览；文件不存在可读错误；无空卡；**不展示 plan（plan-mode PlanCard 负责）** | P0 | `activity.spec.ts` | `ACT2-TURNTAIL-PRESENT-01.json` |
+| ACT2-JOB-01 | 有 running job | 展开输出；点击「停止任务」→ 内联确认（对象 id/命令/影响）→ 确认或取消 | 确认区 `role=alertdialog` + aria-label「确认停止任务」，默认焦点「取消」；**取消/Esc 不发 action、状态不变**；确认后才停止，停止后状态刷新（completed/failed 或列表移除）；未知/已结束错误可读；不产生工具行/审批 | P0 | `activity.spec.ts` | `ACT2-JOB-01.json` |
+| ACT2-SUBAGENT-01 | 当前会话有 running subagent | 点击「中断子代理」→ 内联确认（id/状态/影响）→ 确认或取消 | 确认区 `role=alertdialog` + aria-label「确认中断子代理」，默认焦点「取消」；**取消/Esc 不发 action**；确认后状态刷新为 cancelled/done；未知/已结束错误可读；roster 按 parent 过滤 | P0 | `activity.spec.ts` | `ACT2-SUBAGENT-01.json` |
+| ACT2-SCHEDULE-01 | 当前 workspace 有 schedule | 切换启用开关；编辑 interval/prompt 并保存 | 文件/列表同步；非法 interval(<60)/prompt>32 KiB 行内错误且不写盘；只操作当前 workspace | P0 | `activity.spec.ts` | `ACT2-SCHEDULE-01.json` |
+| ACT2-SCHEDULE-02 | 有 schedule 行 | 点击删除 → 内联确认/取消 | 确认后删除并刷新；取消不变；未知 id/`deleted 0` 映射 `activity/schedule-invalid`；二次确认键盘可达 | P0 | `activity.spec.ts` | `ACT2-SCHEDULE-02.json` |
+| ACT2-TURNTAIL-01 | 本轮 assistant 有 present 工具结果 | 查看消息尾部；点击「在右栏查看」 | 交付卡显示文件名/描述、path 去重；点击打开右栏 files 预览；文件不存在可读错误；无空卡；**不展示 plan（plan-mode PlanCard 负责）** | P0 | `activity.spec.ts` | `ACT2-TURNTAIL-01.json` |
 | ACT2-STALE-01 | 轮询失败但已有数据 | 等待下一次轮询 | 保留旧数据 + stale 提示；不反复弹错/不白屏 | P1 | `activity.spec.ts` | `ACT2-STALE-01.json` |
 | ACT2-ERROR-01 | 各分区 | 触发空/加载/错误/离线/流式中/已取消 | 分区级状态可见、可重试/返回；不丢其它分区状态 | P1 | `activity.spec.ts` | `ACT2-ERROR-01.json` |
 | ACT2-A11Y-01 | activity tab/turnTail 可见 | axe 扫描 + 键盘遍历 | 0 serious/critical；tab/动作/删除确认键盘可达；aria 正确；i18n 无硬编码 | P1 | `activity.spec.ts` | `ACT2-A11Y-01.json` |

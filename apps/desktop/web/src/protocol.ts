@@ -12,6 +12,7 @@ import {
   defaultSettings,
   defaultToolSettings,
   defaultWebSearchSettings,
+  type ActivitySnapshot,
   type AgentEvent,
   type AgentSettings,
   type ApprovalMetadata,
@@ -87,6 +88,8 @@ import {
   validateSessionSearchResult,
   validateTerminalResult,
   validateWorkspaceFileReadResult,
+  validateActivitySnapshot,
+  validateActivityActionResult,
 } from "./validate";
 
 export { isRecord, readBoolean, readNumber, readString };
@@ -1052,4 +1055,24 @@ export function parseSkillReadResult(value: unknown): SkillInstruction | null {
     content,
     source: source === "installed" ? "installed" : "workspace",
   };
+}
+
+/**
+ * One `activity.snapshot` result (`2026-11-01-client-activity-panels`).
+ *
+ * The generated JSON Schema is the boundary gate (C10); the predicate only
+ * narrows the already-validated value (no assertion shortcuts).
+ */
+export function isActivitySnapshot(value: unknown): value is ActivitySnapshot {
+  return isRecord(value) && validateActivitySnapshot(value);
+}
+
+export function parseActivitySnapshot(value: unknown): ActivitySnapshot | null {
+  return isActivitySnapshot(value) ? value : null;
+}
+
+/** One `activity.action` result: `{ok:true}` or `null` when invalid. */
+export function parseActivityActionResult(value: unknown): boolean | null {
+  if (!isRecord(value) || !validateActivityActionResult(value)) return null;
+  return readBoolean(value, "ok");
 }

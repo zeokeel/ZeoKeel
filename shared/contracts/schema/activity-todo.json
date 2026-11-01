@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ActivityTodo",
+  "description": "One todo row derived by replaying persisted `todo` tool rows (read-only).",
+  "type": "object",
+  "required": [
+    "id",
+    "status",
+    "text"
+  ],
+  "properties": {
+    "id": {
+      "description": "Todo id (`todo-N`).",
+      "type": "string"
+    },
+    "status": {
+      "description": "`pending` | `in_progress` | `completed` (unknown values are shown verbatim).",
+      "type": "string"
+    },
+    "text": {
+      "description": "Item text.",
+      "type": "string"
+    }
+  }
+}

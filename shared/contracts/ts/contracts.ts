@@ -3,6 +3,94 @@
 
 // --- Types (generated from JSON Schema roots + definitions) ---
 
+export type ActivityActionKind = "job_kill" | "subagent_interrupt" | "schedule_update" | "schedule_delete";
+
+export interface ActivityActionPayload {
+  action: ActivityActionKind;
+  conversation_id: string;
+  id: string;
+  updates?: unknown;
+  workspace_id: string;
+}
+
+export interface ActivityActionResult {
+  ok: boolean;
+}
+
+export interface ActivityJob {
+  command: string;
+  cwd: string;
+  id: string;
+  output_excerpt: string;
+  started_ms: number;
+  status: string;
+}
+
+export interface ActivityPresentation {
+  description: string;
+  message_id: string;
+  path: string;
+  turn_id: string;
+}
+
+export interface ActivitySchedule {
+  cron: string;
+  enabled: boolean;
+  id: string;
+  interval_seconds: number;
+  next_run_ms?: number | null;
+  prompt: string;
+}
+
+export interface ActivitySnapshot {
+  derived_unavailable?: boolean;
+  jobs?: Array<ActivityJob>;
+  presentations?: Array<ActivityPresentation>;
+  schedules?: Array<ActivitySchedule>;
+  subagents?: Array<ActivitySubagent>;
+  teams?: Array<ActivityTeamRun>;
+  todos?: Array<ActivityTodo>;
+  truncated?: boolean;
+}
+
+export interface ActivitySnapshotPayload {
+  conversation_id: string;
+  workspace_id: string;
+}
+
+export interface ActivitySubagent {
+  depth: number;
+  id: string;
+  parent: string;
+  prompt: string;
+  status: string;
+}
+
+export interface ActivityTeamRun {
+  cancelled: number;
+  completed: number;
+  failed: number;
+  message_id: string;
+  objective: string;
+  status: string;
+  total: number;
+  turn_id: string;
+  workers: Array<ActivityTeamWorker>;
+}
+
+export interface ActivityTeamWorker {
+  id: string;
+  result_excerpt?: string | null;
+  status: string;
+  task: string;
+}
+
+export interface ActivityTodo {
+  id: string;
+  status: string;
+  text: string;
+}
+
 export interface AdjustRequest {
   delta_micros: number;
   idempotency_key: string;
@@ -1087,6 +1175,26 @@ export interface WorkspaceRenamePayload {
 
 // --- Embedded JSON Schemas (runtime Ajv validation, C10/T22) ---
 
+export const activity_action_kindSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"One explicit user activity action (`activity.action`).\n\nThis is the single write entry of the activity panel; the UI confirms destructive actions inline before sending, and the host re-checks the current state (a job/subagent/schedule may have finished in between).","oneOf":[{"description":"Stop one running background job (explicit user action, no approval).","enum":["job_kill"],"type":"string"},{"description":"Interrupt one running subagent of the current conversation.","enum":["subagent_interrupt"],"type":"string"},{"description":"Update one workspace schedule (`updates`: enabled/interval_seconds/prompt).","enum":["schedule_update"],"type":"string"},{"description":"Delete one workspace schedule (host pre-checks the id through `list`).","enum":["schedule_delete"],"type":"string"}],"title":"ActivityActionKind"} as const;
+
+export const activity_action_resultSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`activity.action` result (failures use `CommandResponse.error`).","properties":{"ok":{"description":"Always `true` on success (failures are error responses).","type":"boolean"}},"required":["ok"],"title":"ActivityActionResult","type":"object"} as const;
+
+export const activity_jobSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"One background job row (`zk-kit-jobs` snapshot, current workspace only).","properties":{"command":{"description":"Original command line.","type":"string"},"cwd":{"description":"Working directory (absolute; filtered to the current workspace root).","type":"string"},"id":{"description":"Job id (`job-N`).","type":"string"},"output_excerpt":{"description":"stdout+stderr excerpt (≤4 KiB, truncated on a char boundary).","type":"string"},"started_ms":{"description":"Start time (ms since epoch).","format":"uint64","minimum":0.0,"type":"integer"},"status":{"description":"`running` | `completed` | `failed:<code>` (kernel-reported).","type":"string"}},"required":["command","cwd","id","output_excerpt","started_ms","status"],"title":"ActivityJob","type":"object"} as const;
+
+export const activity_presentationSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"One `present` deliverable derived from persisted tool rows (read-only).","properties":{"description":{"description":"Optional description from the tool call.","type":"string"},"message_id":{"description":"Persisted tool-row message id.","type":"string"},"path":{"description":"Workspace-relative path (deduplicated, first occurrence wins).","type":"string"},"turn_id":{"description":"Owning agent turn.","type":"string"}},"required":["description","message_id","path","turn_id"],"title":"ActivityPresentation","type":"object"} as const;
+
+export const activity_scheduleSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"One schedule definition of the current workspace (`.zeokeel/schedules.json`).","properties":{"cron":{"description":"Validated 5-field cron expression (advisory; repeats by interval).","type":"string"},"enabled":{"description":"Whether the scheduler may run it.","type":"boolean"},"id":{"description":"Schedule id (`schedule-N`).","type":"string"},"interval_seconds":{"description":"Repeat interval in seconds (≥60).","format":"uint64","minimum":0.0,"type":"integer"},"next_run_ms":{"default":null,"description":"Next planned run (ms since epoch), when known.","format":"uint64","minimum":0.0,"type":["integer","null"]},"prompt":{"description":"Prompt executed by the scheduler.","type":"string"}},"required":["cron","enabled","id","interval_seconds","prompt"],"title":"ActivitySchedule","type":"object"} as const;
+
+export const activity_snapshotSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"ActivityJob":{"description":"One background job row (`zk-kit-jobs` snapshot, current workspace only).","properties":{"command":{"description":"Original command line.","type":"string"},"cwd":{"description":"Working directory (absolute; filtered to the current workspace root).","type":"string"},"id":{"description":"Job id (`job-N`).","type":"string"},"output_excerpt":{"description":"stdout+stderr excerpt (≤4 KiB, truncated on a char boundary).","type":"string"},"started_ms":{"description":"Start time (ms since epoch).","format":"uint64","minimum":0.0,"type":"integer"},"status":{"description":"`running` | `completed` | `failed:<code>` (kernel-reported).","type":"string"}},"required":["command","cwd","id","output_excerpt","started_ms","status"],"type":"object"},"ActivityPresentation":{"description":"One `present` deliverable derived from persisted tool rows (read-only).","properties":{"description":{"description":"Optional description from the tool call.","type":"string"},"message_id":{"description":"Persisted tool-row message id.","type":"string"},"path":{"description":"Workspace-relative path (deduplicated, first occurrence wins).","type":"string"},"turn_id":{"description":"Owning agent turn.","type":"string"}},"required":["description","message_id","path","turn_id"],"type":"object"},"ActivitySchedule":{"description":"One schedule definition of the current workspace (`.zeokeel/schedules.json`).","properties":{"cron":{"description":"Validated 5-field cron expression (advisory; repeats by interval).","type":"string"},"enabled":{"description":"Whether the scheduler may run it.","type":"boolean"},"id":{"description":"Schedule id (`schedule-N`).","type":"string"},"interval_seconds":{"description":"Repeat interval in seconds (≥60).","format":"uint64","minimum":0.0,"type":"integer"},"next_run_ms":{"default":null,"description":"Next planned run (ms since epoch), when known.","format":"uint64","minimum":0.0,"type":["integer","null"]},"prompt":{"description":"Prompt executed by the scheduler.","type":"string"}},"required":["cron","enabled","id","interval_seconds","prompt"],"type":"object"},"ActivitySubagent":{"description":"One subagent record of the current conversation (`zk-kit-subagent`).","properties":{"depth":{"description":"Delegation depth (1 = direct child).","format":"uint32","minimum":0.0,"type":"integer"},"id":{"description":"Child id (`subagent-N`).","type":"string"},"parent":{"description":"Parent conversation id (always the snapshot conversation).","type":"string"},"prompt":{"description":"Original prompt (≤512 chars).","type":"string"},"status":{"description":"`running` | `done` | `failed` | `cancelled`.","type":"string"}},"required":["depth","id","parent","prompt","status"],"type":"object"},"ActivityTeamRun":{"description":"One `agent_team` tool-row result (derived; no second team state model).","properties":{"cancelled":{"description":"Workers cancelled (timeout/interrupt).","format":"uint32","minimum":0.0,"type":"integer"},"completed":{"description":"Workers that finished successfully.","format":"uint32","minimum":0.0,"type":"integer"},"failed":{"description":"Workers that failed.","format":"uint32","minimum":0.0,"type":"integer"},"message_id":{"description":"Persisted tool-row message id.","type":"string"},"objective":{"description":"Shared team objective.","type":"string"},"status":{"description":"`done` | `failed` | `partial` | `timeout`.","type":"string"},"total":{"description":"Total dispatched workers.","format":"uint32","minimum":0.0,"type":"integer"},"turn_id":{"description":"Owning agent turn.","type":"string"},"workers":{"description":"Per-worker rows.","items":{"$ref":"#/definitions/ActivityTeamWorker"},"type":"array"}},"required":["cancelled","completed","failed","message_id","objective","status","total","turn_id","workers"],"type":"object"},"ActivityTeamWorker":{"description":"One worker of the most recent `agent_team` run (read-only tool-row result).","properties":{"id":{"description":"Worker id (`worker-N`).","type":"string"},"result_excerpt":{"default":null,"description":"Result excerpt (≤512 chars; absent while running/failed).","type":["string","null"]},"status":{"description":"`running` | `done` | `failed` | `cancelled` | `unknown`.","type":"string"},"task":{"description":"Per-worker task prompt.","type":"string"}},"required":["id","status","task"],"type":"object"},"ActivityTodo":{"description":"One todo row derived by replaying persisted `todo` tool rows (read-only).","properties":{"id":{"description":"Todo id (`todo-N`).","type":"string"},"status":{"description":"`pending` | `in_progress` | `completed` (unknown values are shown verbatim).","type":"string"},"text":{"description":"Item text.","type":"string"}},"required":["id","status","text"],"type":"object"}},"description":"`activity.snapshot` result.\n\nGoal state is **not** included (single owner: `goal.get`); the UI reads it separately. `truncated` marks a bounded section, `derived_unavailable` marks unparseable legacy tool rows (non-blocking hint).","properties":{"derived_unavailable":{"default":false,"description":"Some persisted tool rows could not be parsed (legacy/corrupt; skipped).","type":"boolean"},"jobs":{"default":[],"description":"Background jobs of the current workspace (cwd inside the root).","items":{"$ref":"#/definitions/ActivityJob"},"type":"array"},"presentations":{"default":[],"description":"`present` deliverables derived from persisted tool rows.","items":{"$ref":"#/definitions/ActivityPresentation"},"type":"array"},"schedules":{"default":[],"description":"Workspace schedules (live read through the schedule tool).","items":{"$ref":"#/definitions/ActivitySchedule"},"type":"array"},"subagents":{"default":[],"description":"Subagents whose parent is the current conversation.","items":{"$ref":"#/definitions/ActivitySubagent"},"type":"array"},"teams":{"default":[],"description":"Most recent `agent_team` tool-row results (≤3).","items":{"$ref":"#/definitions/ActivityTeamRun"},"type":"array"},"todos":{"default":[],"description":"Todo list replayed from persisted `todo` tool rows.","items":{"$ref":"#/definitions/ActivityTodo"},"type":"array"},"truncated":{"default":false,"description":"At least one section was capped (jobs ≤50, todos/schedules/presentations ≤100).","type":"boolean"}},"title":"ActivitySnapshot","type":"object"} as const;
+
+export const activity_subagentSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"One subagent record of the current conversation (`zk-kit-subagent`).","properties":{"depth":{"description":"Delegation depth (1 = direct child).","format":"uint32","minimum":0.0,"type":"integer"},"id":{"description":"Child id (`subagent-N`).","type":"string"},"parent":{"description":"Parent conversation id (always the snapshot conversation).","type":"string"},"prompt":{"description":"Original prompt (≤512 chars).","type":"string"},"status":{"description":"`running` | `done` | `failed` | `cancelled`.","type":"string"}},"required":["depth","id","parent","prompt","status"],"title":"ActivitySubagent","type":"object"} as const;
+
+export const activity_team_runSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"ActivityTeamWorker":{"description":"One worker of the most recent `agent_team` run (read-only tool-row result).","properties":{"id":{"description":"Worker id (`worker-N`).","type":"string"},"result_excerpt":{"default":null,"description":"Result excerpt (≤512 chars; absent while running/failed).","type":["string","null"]},"status":{"description":"`running` | `done` | `failed` | `cancelled` | `unknown`.","type":"string"},"task":{"description":"Per-worker task prompt.","type":"string"}},"required":["id","status","task"],"type":"object"}},"description":"One `agent_team` tool-row result (derived; no second team state model).","properties":{"cancelled":{"description":"Workers cancelled (timeout/interrupt).","format":"uint32","minimum":0.0,"type":"integer"},"completed":{"description":"Workers that finished successfully.","format":"uint32","minimum":0.0,"type":"integer"},"failed":{"description":"Workers that failed.","format":"uint32","minimum":0.0,"type":"integer"},"message_id":{"description":"Persisted tool-row message id.","type":"string"},"objective":{"description":"Shared team objective.","type":"string"},"status":{"description":"`done` | `failed` | `partial` | `timeout`.","type":"string"},"total":{"description":"Total dispatched workers.","format":"uint32","minimum":0.0,"type":"integer"},"turn_id":{"description":"Owning agent turn.","type":"string"},"workers":{"description":"Per-worker rows.","items":{"$ref":"#/definitions/ActivityTeamWorker"},"type":"array"}},"required":["cancelled","completed","failed","message_id","objective","status","total","turn_id","workers"],"title":"ActivityTeamRun","type":"object"} as const;
+
+export const activity_team_workerSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"One worker of the most recent `agent_team` run (read-only tool-row result).","properties":{"id":{"description":"Worker id (`worker-N`).","type":"string"},"result_excerpt":{"default":null,"description":"Result excerpt (≤512 chars; absent while running/failed).","type":["string","null"]},"status":{"description":"`running` | `done` | `failed` | `cancelled` | `unknown`.","type":"string"},"task":{"description":"Per-worker task prompt.","type":"string"}},"required":["id","status","task"],"title":"ActivityTeamWorker","type":"object"} as const;
+
+export const activity_todoSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"One todo row derived by replaying persisted `todo` tool rows (read-only).","properties":{"id":{"description":"Todo id (`todo-N`).","type":"string"},"status":{"description":"`pending` | `in_progress` | `completed` (unknown values are shown verbatim).","type":"string"},"text":{"description":"Item text.","type":"string"}},"required":["id","status","text"],"title":"ActivityTodo","type":"object"} as const;
+
 export const admin_apps_responseSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"AdminAppItem":{"description":"One admin app row (`GET /api/admin/apps`).","properties":{"id":{"type":"string"},"name":{"type":"string"},"owner_id":{"type":"string"},"status":{"type":"string"},"version":{"type":"string"},"wasm_sha256":{"type":"string"}},"required":["id","name","owner_id","status","version","wasm_sha256"],"type":"object"}},"description":"`GET /api/admin/apps` response.","properties":{"items":{"items":{"$ref":"#/definitions/AdminAppItem"},"type":"array"},"ok":{"type":"boolean"}},"required":["items","ok"],"title":"AdminAppsResponse","type":"object"} as const;
 
 export const admin_audit_responseSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"AdminAuditItem":{"description":"One admin audit row (`GET /api/admin/audit`).","properties":{"action":{"type":"string"},"actor_id":{"type":["string","null"]},"detail":true,"id":{"format":"int64","type":"integer"},"target":{"type":"string"}},"required":["action","detail","id","target"],"type":"object"}},"description":"`GET /api/admin/audit` response.","properties":{"items":{"items":{"$ref":"#/definitions/AdminAuditItem"},"type":"array"},"ok":{"type":"boolean"}},"required":["items","ok"],"title":"AdminAuditResponse","type":"object"} as const;
@@ -1184,6 +1292,10 @@ export const gateway_usageSchema = {"$schema":"http://json-schema.org/draft-07/s
 export const goal_resultSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"GoalView":{"description":"Conversation goal view (mirrors the `tool.goal` driver JSON subset).","properties":{"created_ms":{"default":0,"description":"Creation time (ms since epoch).","format":"uint64","minimum":0.0,"type":"integer"},"last_result":{"default":null,"description":"Last round result summary.","type":["string","null"]},"max_rounds":{"description":"Maximum rounds.","format":"uint32","minimum":0.0,"type":"integer"},"objective":{"description":"Objective text.","type":"string"},"reason":{"default":null,"description":"Optional reason (`paused by user`, `cancelled`, ...).","type":["string","null"]},"rounds":{"description":"Executed/current round.","format":"uint32","minimum":0.0,"type":"integer"},"status":{"description":"`active` | `achieved` | `cancelled` | `blocked`.","type":"string"},"updated_ms":{"default":0,"description":"Last update time (ms since epoch).","format":"uint64","minimum":0.0,"type":"integer"}},"required":["max_rounds","objective","rounds","status"],"type":"object"}},"description":"`goal.get` result (`None` when the conversation has no goal).","properties":{"goal":{"anyOf":[{"$ref":"#/definitions/GoalView"},{"type":"null"}],"default":null,"description":"Current goal, if any."}},"title":"GoalResult","type":"object"} as const;
 
 export const goal_viewSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Conversation goal view (mirrors the `tool.goal` driver JSON subset).","properties":{"created_ms":{"default":0,"description":"Creation time (ms since epoch).","format":"uint64","minimum":0.0,"type":"integer"},"last_result":{"default":null,"description":"Last round result summary.","type":["string","null"]},"max_rounds":{"description":"Maximum rounds.","format":"uint32","minimum":0.0,"type":"integer"},"objective":{"description":"Objective text.","type":"string"},"reason":{"default":null,"description":"Optional reason (`paused by user`, `cancelled`, ...).","type":["string","null"]},"rounds":{"description":"Executed/current round.","format":"uint32","minimum":0.0,"type":"integer"},"status":{"description":"`active` | `achieved` | `cancelled` | `blocked`.","type":"string"},"updated_ms":{"default":0,"description":"Last update time (ms since epoch).","format":"uint64","minimum":0.0,"type":"integer"}},"required":["max_rounds","objective","rounds","status"],"title":"GoalView","type":"object"} as const;
+
+export const ipc_activity_actionSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"ActivityActionKind":{"description":"One explicit user activity action (`activity.action`).\n\nThis is the single write entry of the activity panel; the UI confirms destructive actions inline before sending, and the host re-checks the current state (a job/subagent/schedule may have finished in between).","oneOf":[{"description":"Stop one running background job (explicit user action, no approval).","enum":["job_kill"],"type":"string"},{"description":"Interrupt one running subagent of the current conversation.","enum":["subagent_interrupt"],"type":"string"},{"description":"Update one workspace schedule (`updates`: enabled/interval_seconds/prompt).","enum":["schedule_update"],"type":"string"},{"description":"Delete one workspace schedule (host pre-checks the id through `list`).","enum":["schedule_delete"],"type":"string"}]}},"description":"`activity.action` payload.","properties":{"action":{"allOf":[{"$ref":"#/definitions/ActivityActionKind"}],"description":"Action to perform."},"conversation_id":{"description":"Conversation id (jobs/subagents are conversation scoped).","type":"string"},"id":{"description":"Target job/subagent/schedule id.","type":"string"},"updates":{"default":null,"description":"`schedule_update` fields: `{enabled?, interval_seconds?, prompt?}`."},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["action","conversation_id","id","workspace_id"],"title":"ActivityActionPayload","type":"object"} as const;
+
+export const ipc_activity_snapshotSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`activity.snapshot` payload (`2026-11-01-client-activity-panels` R1).","properties":{"conversation_id":{"description":"Conversation id (the snapshot is conversation/workspace scoped, C18).","type":"string"},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["conversation_id","workspace_id"],"title":"ActivitySnapshotPayload","type":"object"} as const;
 
 export const ipc_approval_decideSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"ApprovalDecision":{"description":"User decision for one approval request.\n\nDefined in the tool contract because [`ApprovalGate`] returns it; the agent contract re-exports it to keep `zk_contract_agent::ApprovalDecision` working.","oneOf":[{"description":"Allow exactly this call.","enum":["allow_once"],"type":"string"},{"description":"Allow this tool for the rest of the conversation (memory only).","enum":["allow_session"],"type":"string"},{"description":"Reject this call (fail-closed default).","enum":["reject"],"type":"string"},{"description":"Cancel the whole turn.","enum":["cancel"],"type":"string"}]}},"description":"`approval.decide` payload.","properties":{"approval_id":{"description":"Pending approval id.","type":"string"},"decision":{"allOf":[{"$ref":"#/definitions/ApprovalDecision"}],"description":"User decision."}},"required":["approval_id","decision"],"title":"ApprovalDecidePayload","type":"object"} as const;
 
@@ -1363,6 +1475,16 @@ export const workspaceSchema = {"$schema":"http://json-schema.org/draft-07/schem
 
 /** JSON Schemas keyed by contract name (schema file, `-` -> `_`). */
 export const SCHEMAS = {
+  activity_action_kind: activity_action_kindSchema,
+  activity_action_result: activity_action_resultSchema,
+  activity_job: activity_jobSchema,
+  activity_presentation: activity_presentationSchema,
+  activity_schedule: activity_scheduleSchema,
+  activity_snapshot: activity_snapshotSchema,
+  activity_subagent: activity_subagentSchema,
+  activity_team_run: activity_team_runSchema,
+  activity_team_worker: activity_team_workerSchema,
+  activity_todo: activity_todoSchema,
   admin_apps_response: admin_apps_responseSchema,
   admin_audit_response: admin_audit_responseSchema,
   admin_connectors_response: admin_connectors_responseSchema,
@@ -1412,6 +1534,8 @@ export const SCHEMAS = {
   gateway_usage: gateway_usageSchema,
   goal_result: goal_resultSchema,
   goal_view: goal_viewSchema,
+  ipc_activity_action: ipc_activity_actionSchema,
+  ipc_activity_snapshot: ipc_activity_snapshotSchema,
   ipc_approval_decide: ipc_approval_decideSchema,
   ipc_attachment_save_result: ipc_attachment_save_resultSchema,
   ipc_attachment_save: ipc_attachment_saveSchema,

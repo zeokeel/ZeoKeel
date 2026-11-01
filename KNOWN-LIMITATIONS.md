@@ -85,9 +85,19 @@
 - **视觉基线**：composer 空态 `toHaveScreenshot` 基线仅在本机（Linux/Chromium）生成并通过；**hosted-runner 首跑与跨平台渲染（字体/抗锯齿）UNVERIFIED**，不得声称 CI 已绿或跨平台一致。基线更新只能人工确认后 `pnpm e2e:ui:update`（`docs/27` §2.6）。
 - **IME**：e2e 用 `compositionstart` + `isComposing` keydown 模拟；真实输入法（中文/日文等）未在真机验证 → UNVERIFIED；L1 单测覆盖状态机。
 - **未采用为门禁**：Playwright MCP/CLI、Storybook/Chromatic、SaaS 视觉服务（仅作未来探索，不进 CI/依赖）。
-- **在途**：Phase 2a `2026-11-01-client-composer-surface`、Phase 2b `2026-11-01-client-side-panels`、子 spec `2026-11-01-client-activity-panels` 的 `interaction.md` 为 `planned`（门禁只 WARN）；实现开始时改 `active` 并补测试/证据。
+- **activity 面板（2026-11-01，`2026-11-01-client-activity-panels`）**：`interaction.md`/`intuition.md` 已 `active`，P0/P1（7 P0 + 3 P1）有 `@interaction:<ID>` 测试与证据 `target/evidence/2026-11-01-client-activity-panels/interaction/<ID>.json`；视觉基线（ACT2-VIS-01，P2）只产出**候选截图** `.../screenshots/activity-light-1280.candidate.png`，**未经人工确认**，不得声称视觉基线已接受（接受只能人工 `pnpm e2e:ui:update`）。
 - **直觉/认知走查（2026-11-01）**：直觉质量由 fresh-context reviewer 按 3 persona × 3 top task 走查 + 真实用户测试判定；`scripts/ui-interaction-gate.py` 只查 `intuition.md`/`intuition-walkthrough.md` 存在与 ≥3 条 INT 行，**存在性 ≠ 质量**、不是自动化直觉评分（`docs/27` §2.7/§2.8、`docs/19` §11.1、`docs/11` §8.6）。
 - **用户测试未执行 → UNVERIFIED**：≥5 名真实用户 think-aloud（成功率/首次点击/时间/错误/SEQ-SUS）尚未运行；证据计划 `target/evidence/<change>/usability/`（匿名化，target gitignore）。在 ≥5 名真实用户测试完成前，任何"符合直觉/直观/用户友好"结论**不得声称**（不允许用 e2e 绿/模型自述替代）。
+
+### 3.4.1 右栏活动面板（activity tab，2026-11-01）
+
+- **进程内状态**：jobs/subagents 来自 `zk-kit-jobs`/`zk-kit-subagent` 进程内 registry，**不做持久化历史**；重启后为空（面板不伪造历史）。
+- **tool 行派生**：todo/agent-team/present 从已持久化 `role="tool"` 行 replay/派生；legacy（无 args）或损坏行跳过并置「由会话工具记录推导，可能不完整」提示；宿主不改工具状态模型（无第二套 todo/team 存储）。
+- **goal 只读**：activity 分区只调既有 `goal.get`（`.zeokeel/goal.json` 单 owner），**不进 snapshot**、不新增写面；GoalBar/`/goal` 仍是唯一写入口；plan 不在 activity/turnTail 展示（`client-plan-mode` 负责）。
+- **schedule**：列表/编辑/删除复用 `zk-tool-schedule` 公开 `Tool::call_json`（host 经 `zk-composed` 生成 facade，前端不 import tool）；未知 id/`deleted 0` → `activity/schedule-invalid`，interval <60/prompt >32 KiB host 预校验；文件损坏 → `activity/schedule-unreadable` 分区错误（不写坏原文件）；无新建/执行历史。
+- **刷新**：2s 轮询（无事件推送；仅 tab 打开时，关闭/切会话即停并丢弃旧响应）；轮询失败保留上次成功数据 + stale 提示；输出摘要 ≤4 KiB、条数有界（jobs ≤50、subagents ≤64、todo/schedule/present ≤100、teams 最近 3 次）。
+- **动作**：job 停止/subagent 中断/schedule 删除均为显式用户操作 + 内联二次确认（`role=alertdialog`、默认焦点取消），不产生工具行/审批；仅 running 可操作，host 按当前状态复核（未知/已结束返回可读错误）。
+- **验证口径**：host 派生/边界/损坏行/跨 workspace 拒绝有单测（`cargo test -p zk-desktop activity`）；交互 e2e 见 `e2e/interaction/activity.spec.ts`；真实 Tauri WebView 未跑（平台项 UNVERIFIED）。
 
 ### 3.5 可访问性/i18n
 

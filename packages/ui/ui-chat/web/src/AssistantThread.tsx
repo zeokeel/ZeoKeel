@@ -7,7 +7,15 @@ import {
 } from "@assistant-ui/react";
 import { CompactDivider } from "./CompactDivider";
 import type { TextMessagePartProps } from "@assistant-ui/react";
-import { IconCopy, IconFolder, IconRetry, useUi } from "@zeokeel/ui-kit";
+import {
+  IconCopy,
+  IconFolder,
+  IconRetry,
+  isRecord,
+  readString,
+  useUi,
+  type ChatMessage,
+} from "@zeokeel/ui-kit";
 import { ApprovalDataPart, ApprovalDecideContext } from "./ApprovalPart";
 import { QuestionAnswerContext, QuestionDataPart } from "./QuestionPart";
 import { AssistantComposer } from "./AssistantComposer";
@@ -168,8 +176,94 @@ function TypingDots() {
   );
 }
 
+/** One `present` deliverable derived from this turn's persisted tool rows. */
+interface PresentDeliverable {
+  path: string;
+  name: string;
+  description: string;
+}
+
+/**
+ * Deliverables of one assistant turn: `present` tool results parsed from the
+ * persisted tool rows (deduplicated by path, call order preserved; R7).
+ *
+ * The plan is intentionally NOT shown here (owned by `client-plan-mode`), and no
+ * second tool-row state is introduced (C17): the app message list stays the only
+ * source and this is a pure read-side derivation.
+ */
+function presentDeliverables(toolCalls: ChatMessage["toolCalls"]): PresentDeliverable[] {
+  const items: PresentDeliverable[] = [];
+  for (const call of toolCalls) {
+    if (call.name !== "present" || call.result === null || call.result === "") continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(call.result);
+    } catch {
+      continue;
+    }
+    if (!isRecord(parsed)) continue;
+    const path = readString(parsed, "presented");
+    if (path === null || path === "") continue;
+    if (items.some((item) => item.path === path)) continue;
+    items.push({
+      path,
+      name: path.split("/").at(-1) ?? path,
+      description: readString(parsed, "description") ?? "",
+    });
+  }
+  return items;
+}
+
+/**
+ * Turn-tail deliverables card (`2026-11-01-client-activity-panels` R7).
+ *
+ * Rendered only for a finished turn (done/cancelled/error) that produced at
+ * least one `present` result; clicking opens the right-panel files preview.
+ */
+function TurnTailPresent(props: { messageId: string }) {
+  const { t, messages, actions } = useUi();
+  const running = useAuiState((state) => state.message.status?.type === "running");
+  if (running) return null;
+  const message = messages.find((entry) => entry.id === props.messageId);
+  if (message === undefined) return null;
+  const deliverables = presentDeliverables(message.toolCalls);
+  if (deliverables.length === 0) return null;
+  return (
+    <section
+      data-testid="turn-tail-present"
+      aria-label={t("turnTailPresentTitle")}
+      className="mt-2 flex flex-col gap-1 rounded-document border border-border/60 px-3 py-2"
+    >
+      <p className="text-[11px] font-medium text-muted-foreground">{t("turnTailPresentTitle")}</p>
+      <ul className="flex flex-col gap-1">
+        {deliverables.map((deliverable) => (
+          <li key={deliverable.path}>
+            <button
+              type="button"
+              aria-label={t("turnTailPresentView", { name: deliverable.name })}
+              className="flex w-full items-center gap-2 rounded-control border border-border px-2 py-1 text-left text-foreground hover:bg-muted"
+              onClick={() => {
+                actions.openInspectorPreview(deliverable.path);
+              }}
+            >
+              <IconFolder />
+              <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{deliverable.name}</span>
+              {deliverable.description === "" ? null : (
+                <span className="truncate text-[11px] text-muted-foreground">
+                  {deliverable.description}
+                </span>
+              )}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function AssistantMessage() {
   const { brand } = useUi();
+  const messageId = useAuiState((state) => state.message.id);
   const running = useAuiState((state) => state.message.status?.type === "running");
   const empty = useAuiState(
     (state) =>
@@ -208,6 +302,7 @@ function AssistantMessage() {
           }}
         />
         <ErrorNote />
+        <TurnTailPresent messageId={messageId} />
       </div>
     </MessagePrimitive.Root>
   );

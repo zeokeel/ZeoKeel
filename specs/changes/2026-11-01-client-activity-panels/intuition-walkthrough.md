@@ -2,7 +2,7 @@
 
 > 方法：`docs/27` §2.8（3 persona × 3 top task × 每步 4 问）；本走查是**专家走查**，不等于用户测试。
 > 摩擦项引用 `intuition.md` 的 INT ID；P0 未解决不得进入实现/发布。
-> 状态：`planned`（实现前先走查；实现后由 fresh-context 评审复核，见 §5）。
+> 状态：`active`（2026-11-01 走查已完成并随实现生效；实现后由 fresh-context 评审复核，见 §5）。
 
 ## 1. Personas
 
@@ -38,7 +38,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | W1 | P1/T1 | 打开右栏找 activity | 知道有后台任务 | tab 名称「活动」可见；刷新按钮常驻 | 打开显示分区/骨架 | 可切回其它 tab | 4th tab 可能被忽略；无空态说明 | INT-01/07/10 | P1 | tab 常驻 + 空态说明「暂无运行中任务」；分区标题/计数 | closed（design §2.3、tasks #6） |
 | W2 | P1/T1 | 找到 job 并点「停止任务」→ 内联确认（id/命令/影响） | 想停掉一个任务 | 行展开输出；停止按钮只在 running 行；确认区可见、默认焦点「取消」 | 取消不变；确认后 busy→状态刷新/列表更新 | 未知/已结束显示可读错误，面板仍可用 | 误停已完成/别的 workspace 任务 = 数据一致性 | INT-03/05/06 | **P0** | host jobs 按 cwd `Path::starts_with` 过滤；动作后重新 snapshot + host 当前状态校验；仅 running 可点；**内联二次确认后才发 action**；错误可读 | closed（spec R2/design §2.3、tasks #4/#6/#9） |
-| W3 | P2/T1 | 用键盘停止另一个 running job（焦点在行上）→ 确认区 Tab 到「取消/确认」→ Enter | 想不用鼠标 | 行/按钮可 Tab 聚焦；确认区 alertdialog 可读 | Enter 后确认；取消不变；aria-live 播报 | Esc/取消后焦点回停止按钮 | 停止不可逆且误操作风险 | INT-02/05/09 | **P0** | 内联二次确认（默认焦点取消，Esc=取消）；确认后才 action；焦点返回；`ACT2-JOB-STOP-01` 增 confirm case | closed（spec R2/interaction `ACT2-JOB-STOP-01`、tasks #6/#9） |
+| W3 | P2/T1 | 用键盘停止另一个 running job（焦点在行上）→ 确认区 Tab 到「取消/确认」→ Enter | 想不用鼠标 | 行/按钮可 Tab 聚焦；确认区 alertdialog 可读 | Enter 后确认；取消不变；aria-live 播报 | Esc/取消后焦点回停止按钮 | 停止不可逆且误操作风险 | INT-02/05/09 | **P0** | 内联二次确认（默认焦点取消，Esc=取消）；确认后才 action；焦点返回；`ACT2-JOB-01` 增 confirm case | closed（spec R2/interaction `ACT2-JOB-01`、tasks #6/#9） |
 | W4 | P2/T2 | 删除 schedule：点删除→内联确认→Enter | 想清理计时任务 | schedule 行删除按钮；确认区可见 | 确认后删除并刷新；取消不变 | 未知 id/`deleted 0` 显示「已不存在」 | 无确认直接删 = 不可逆 | INT-02/05 | **P0** | host 先 `list` 预检；`activity/schedule-invalid`；内联二次确认；取消/确认键盘可达 | closed（spec R6/design §2.3、tasks #4/#6） |
 | W5 | P3/T2 | 编辑 interval=30s / prompt 超长 | 想改定时 | 行内编辑控件/开关 | 行内错误（可修文案） | 不写盘、保留原值 | 错误只弹 toast 或写坏文件 | INT-04/06 | P1 | host 预校验 interval≥60、prompt≤32 KiB；行内错误；tool 原子写 | closed（spec R6/design §2.4、tasks #4） |
 | W6 | P1/T3 | 读 turnTail present 卡→点「在右栏查看」 | 想看交付文件 | 卡片在消息尾部，文件/描述可见 | 打开右栏 files 预览 | 文件不存在时可读错误、可返回消息 | 卡片与正文混在一起/空卡 | INT-01/06/10 | P1 | present 去重、卡片显示文件名/描述；无 present 不渲染；预览失败可关闭 | closed（spec R7/design §2.3、tasks #7） |

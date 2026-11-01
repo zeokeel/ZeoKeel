@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ActivityTeamWorker",
+  "description": "One worker of the most recent `agent_team` run (read-only tool-row result).",
+  "type": "object",
+  "required": [
+    "id",
+    "status",
+    "task"
+  ],
+  "properties": {
+    "id": {
+      "description": "Worker id (`worker-N`).",
+      "type": "string"
+    },
+    "result_excerpt": {
+      "description": "Result excerpt (≤512 chars; absent while running/failed).",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "description": "`running` | `done` | `failed` | `cancelled` | `unknown`.",
+      "type": "string"
+    },
+    "task": {
+      "description": "Per-worker task prompt.",
+      "type": "string"
+    }
+  }
+}

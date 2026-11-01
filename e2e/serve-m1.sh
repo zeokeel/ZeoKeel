@@ -37,8 +37,8 @@ git -C "$HOME_DIR" commit -qm "m1-serve baseline"
 
 # --- fake OpenAI-compatible upstream used by llm-rig (deterministic tool call + usage) ---
 cat > /tmp/zk-m1-fake-upstream.py <<'PY'
-import json, sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import json, sys, time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 def respond(body):
@@ -49,6 +49,25 @@ def respond(body):
     tools_since = len([m for m in messages[last_user + 1:] if m.get("role") == "tool"])
     final_usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
     zero_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    # Activity panel scenario (`2026-11-01-client-activity-panels`): the child
+    # agent stays running long enough for the panel to list/interrupt it. A
+    # threaded server keeps the parent turn responsive while the child sleeps.
+    if "慢子代理" in user:
+        time.sleep(20)
+        return {"id": "chatcmpl-agent-child", "object": "chat.completion", "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "子代理完成"}}], "usage": final_usage}
+    if "后台任务" in user and tools_since == 0:
+        call = {"id": "call_bg", "type": "function", "function": {"name": "bash", "arguments": json.dumps({"command": "sleep 120", "run_in_background": True})}}
+        return {"id": "chatcmpl-tool", "object": "chat.completion", "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {"role": "assistant", "content": None, "tool_calls": [call]}}], "usage": zero_usage}
+    if "子代理" in user and tools_since == 0:
+        call = {"id": "call_sub", "type": "function", "function": {"name": "subagent_start", "arguments": json.dumps({"prompt": "慢子代理：检查工作区"}, ensure_ascii=False)}}
+        return {"id": "chatcmpl-tool", "object": "chat.completion", "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {"role": "assistant", "content": None, "tool_calls": [call]}}], "usage": zero_usage}
+    if "待办与交付" in user and tools_since == 0:
+        calls = [
+            {"id": "call_todo1", "type": "function", "function": {"name": "todo", "arguments": json.dumps({"action": "add", "text": "整理需求"}, ensure_ascii=False)}},
+            {"id": "call_todo2", "type": "function", "function": {"name": "todo", "arguments": json.dumps({"action": "add", "text": "补充测试"}, ensure_ascii=False)}},
+            {"id": "call_present", "type": "function", "function": {"name": "present", "arguments": json.dumps({"path": "demo-data/hello.txt", "description": "演示交付物"}, ensure_ascii=False)}},
+        ]
+        return {"id": "chatcmpl-tool", "object": "chat.completion", "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {"role": "assistant", "content": None, "tool_calls": calls}}], "usage": zero_usage}
     if "提交计划" in user and tools_since == 0:
         call = {"id": "call_plan", "type": "function", "function": {"name": "exit_plan_mode", "arguments": json.dumps({"plan": "# Plan\n- step one\n- step two"}, ensure_ascii=False)}}
         return {"id": "chatcmpl-tool", "object": "chat.completion", "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {"role": "assistant", "content": None, "tool_calls": [call]}}], "usage": zero_usage}
@@ -76,7 +95,7 @@ class H(BaseHTTPRequestHandler):
         pass
 
 
-HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
 PY
 python3 /tmp/zk-m1-fake-upstream.py "$UPSTREAM_PORT" >/tmp/zk-m1-fake-upstream.log 2>&1 &
 UPSTREAM_PID=$!

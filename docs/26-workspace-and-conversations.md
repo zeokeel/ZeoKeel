@@ -270,6 +270,17 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_m
 - 工具过滤：agent-rig 在动态工具构造时按 plan mode 白名单/黑名单处理（静态六项 delegation 兜底 + `mutating` 派生 + schedule/MCP）；被禁工具保留可见但返回可读错误，不执行；delegation 不向 child 传播（避免绕过）。
 - UI：`session.messages` 不变；`/plan`/`/plan off` 经 Batch1 唯一 catalog/runCommand；PlanCard（turnTail）+ 右栏 plan tab（order 50）本地审核；不自动执行计划、不自动退出；C6 无 sandbox/企业策略。
 
+### 5.6 活动面板（右栏 activity tab，`2026-11-01-client-activity-panels`）
+
+| 命令 | 输入 | 输出 | 错误 |
+| --- | --- | --- | --- |
+| `activity.snapshot` | `{workspace_id, conversation_id}` | `ActivitySnapshot`：`jobs[]`（cwd 在当前 workspace 根内；stdout+stderr ≤4 KiB/条、≤50 条）、`subagents[]`（parent=当前会话、≤64）、`teams[]`（最近 3 次 `agent_team` 工具行）、`todos[]`（`todo` 工具行 replay，≤100）、`schedules[]`（当前 workspace `.zeokeel/schedules.json`，≤100）、`presentations[]`（`present` 工具行去重，≤100）、`schedules_error?`、`truncated`、`derived_unavailable`；**不含 goal** | `activity/invalid`、`session/workspace-mismatch`、`workspace/not-found`、`session/not-found` |
+| `activity.action` | `{workspace_id, conversation_id, action: job_kill\|subagent_interrupt\|schedule_update\|schedule_delete, id, updates?}` | `{ok:true}` | `activity/invalid`；`activity/job-not-found`、`activity/job-finished`、`activity/subagent-not-found`、`activity/schedule-unreadable`、`activity/schedule-invalid`；归属 `session/workspace-mismatch` |
+
+- 数据源（单一实现，C17）：jobs/subagents 复用 `zk-kit-jobs`/`zk-kit-subagent` 进程内 registry（经 `zk-composed` 生成 facade）；todo/agent-team/present 从**已持久化 `role="tool"` 行** replay/派生（`args` 字符串二次 JSON 解析；legacy/损坏行跳过并置 `derived_unavailable`）；schedules 复用 `zk-tool-schedule` 公开 `Tool::call_json`（list/update/delete）；goal 不进 snapshot，UI 走既有 `goal.get`（单 owner）。plan 不读、不展示（`client-plan-mode` 负责）。
+- 动作均为**显式用户操作**（非 agent 工具调用）：不产生工具行/审批；job 只停 running 且 cwd 在 workspace 内（canonicalize + `Path::starts_with` 组件级）；subagent 只中断当前会话 running；schedule 写先 `list` 预检 id（未知/`deleted 0` → `activity/schedule-invalid`）、`updates` 白名单（enabled/interval_seconds/prompt，interval ≥60，prompt ≤32 KiB；tool 无长度校验所以 host 预校验）；文件损坏 → `activity/schedule-unreadable` 分区错误，不写坏原文件。
+- 刷新：tab 打开时加载 + 2s 轮询 + 手动刷新 + 动作后刷新；关闭 tab/切会话停轮询并丢弃旧响应（generation fence）；轮询失败保留上次成功数据 + stale 提示；进程内 jobs/subagents 重启即失（`KNOWN-LIMITATIONS.md`）。
+
 ### 5.5 技能目录（`/<skill>`，`2026-11-01-client-skill-commands`）
 
 - IPC：`skill.list {workspace_id, conversation_id?}` → `{skills:[{name,description,user_invocable,version?,source}]}`（当前 workspace/edition，只返回 user-invocable）；`skill.read {workspace_id, conversation_id, name, version?}` → `{name,version?,content,source}`（`content` ≤8 KiB）。错误码：`skill/not-found`、`skill/unavailable`（enterprise 未安装/版本不可用）、`skill/too-large`（`SKILL.md` >8 KiB）、`skill/invalid`（名称/版本/路径非法）、`skill/failed`（IO）；归属仍 `workspace/not-found`/`session/workspace-mismatch`。

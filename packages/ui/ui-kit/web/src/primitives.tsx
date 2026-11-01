@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, Ref } from "react";
 
 type ButtonVariant = "default" | "primary" | "destructive" | "ghost";
 type ButtonSize = "default" | "sm";
@@ -22,10 +22,12 @@ export function Button(
   props: ButtonHTMLAttributes<HTMLButtonElement> & {
     variant?: ButtonVariant;
     size?: ButtonSize;
+    /** Focus management for confirm primitives (React 19 ref-as-prop). */
+    ref?: Ref<HTMLButtonElement>;
   },
 ) {
-  const { variant = "default", size = "default", className = "", ...rest } = props;
-  return <button {...rest} className={buttonClasses(variant, size, className)} />;
+  const { variant = "default", size = "default", className = "", ref, ...rest } = props;
+  return <button {...rest} ref={ref} className={buttonClasses(variant, size, className)} />;
 }
 
 export function Switch(props: InputHTMLAttributes<HTMLInputElement>) {

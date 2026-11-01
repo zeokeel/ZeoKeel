@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ActivityActionResult",
+  "description": "`activity.action` result (failures use `CommandResponse.error`).",
+  "type": "object",
+  "required": [
+    "ok"
+  ],
+  "properties": {
+    "ok": {
+      "description": "Always `true` on success (failures are error responses).",
+      "type": "boolean"
+    }
+  }
+}

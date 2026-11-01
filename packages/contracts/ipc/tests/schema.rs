@@ -287,4 +287,52 @@ fn export_schema() {
         "skill-read-result.json",
         &schemars::schema_for!(zk_contract_ipc::results::SkillReadResult),
     );
+    write(
+        "ipc-activity-snapshot.json",
+        &schemars::schema_for!(zk_contract_ipc::payloads::ActivitySnapshotPayload),
+    );
+    write(
+        "ipc-activity-action.json",
+        &schemars::schema_for!(zk_contract_ipc::payloads::ActivityActionPayload),
+    );
+    write(
+        "activity-action-kind.json",
+        &schemars::schema_for!(zk_contract_ipc::payloads::ActivityActionKind),
+    );
+    write(
+        "activity-snapshot.json",
+        &schemars::schema_for!(zk_contract_ipc::results::ActivitySnapshot),
+    );
+    write(
+        "activity-job.json",
+        &schemars::schema_for!(zk_contract_ipc::results::ActivityJob),
+    );
+    write(
+        "activity-subagent.json",
+        &schemars::schema_for!(zk_contract_ipc::results::ActivitySubagent),
+    );
+    write(
+        "activity-team-worker.json",
+        &schemars::schema_for!(zk_contract_ipc::results::ActivityTeamWorker),
+    );
+    write(
+        "activity-team-run.json",
+        &schemars::schema_for!(zk_contract_ipc::results::ActivityTeamRun),
+    );
+    write(
+        "activity-todo.json",
+        &schemars::schema_for!(zk_contract_ipc::results::ActivityTodo),
+    );
+    write(
+        "activity-schedule.json",
+        &schemars::schema_for!(zk_contract_ipc::results::ActivitySchedule),
+    );
+    write(
+        "activity-presentation.json",
+        &schemars::schema_for!(zk_contract_ipc::results::ActivityPresentation),
+    );
+    write(
+        "activity-action-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::ActivityActionResult),
+    );
 }

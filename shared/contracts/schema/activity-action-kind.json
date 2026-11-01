@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ActivityActionKind",
+  "description": "One explicit user activity action (`activity.action`).\n\nThis is the single write entry of the activity panel; the UI confirms destructive actions inline before sending, and the host re-checks the current state (a job/subagent/schedule may have finished in between).",
+  "oneOf": [
+    {
+      "description": "Stop one running background job (explicit user action, no approval).",
+      "type": "string",
+      "enum": [
+        "job_kill"
+      ]
+    },
+    {
+      "description": "Interrupt one running subagent of the current conversation.",
+      "type": "string",
+      "enum": [
+        "subagent_interrupt"
+      ]
+    },
+    {
+      "description": "Update one workspace schedule (`updates`: enabled/interval_seconds/prompt).",
+      "type": "string",
+      "enum": [
+        "schedule_update"
+      ]
+    },
+    {
+      "description": "Delete one workspace schedule (host pre-checks the id through `list`).",
+      "type": "string",
+      "enum": [
+        "schedule_delete"
+      ]
+    }
+  ]
+}

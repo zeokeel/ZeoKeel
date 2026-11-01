@@ -13,10 +13,13 @@ use tokio::sync::broadcast;
 use zk_contract_agent::ApprovalDecision;
 use zk_contract_agent::{AgentHookSink, HistoryMessage, HistoryRole};
 use zk_contract_config::{AppSettings, ProviderKind, ToolSettings, WebSearchSettings};
-use zk_contract_ipc::results::{ChatSendResult, MetaInfo};
+use zk_contract_ipc::results::{
+    ActivityActionResult, ActivityJob, ActivityPresentation, ActivitySchedule, ActivitySnapshot,
+    ActivitySubagent, ActivityTeamRun, ActivityTeamWorker, ActivityTodo, ChatSendResult, MetaInfo,
+};
 use zk_contract_ipc::{commands, payloads::ApprovalDecidePayload, CommandResponse, UiEvent};
 use zk_contract_session::{FileEntry, FileKind, Message, WorkspaceFilesResult};
-use zk_contract_tool::TurnContext;
+use zk_contract_tool::{Tool as _, TurnContext};
 
 use crate::approval::ApprovalBroker;
 use crate::events::{now_ms, BridgeSink, EVENT_BUFFER};
@@ -934,6 +937,8 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 Err(error) => CommandResponse::err(error),
             }
         }
+        commands::ACTIVITY_SNAPSHOT => activity_snapshot(state, payload),
+        commands::ACTIVITY_ACTION => activity_action(state, payload),
         commands::FEEDBACK_SUBMIT => {
             let request: zk_contract_ipc::payloads::FeedbackSubmitPayload =
                 match serde_json::from_value(payload.clone()) {
@@ -1197,6 +1202,678 @@ pub(crate) fn verify_owner(
         Ok(())
     } else {
         Err("session/workspace-mismatch".to_owned())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Activity panel (`2026-11-01-client-activity-panels`)
+//
+// One read-only snapshot (`activity.snapshot`) and one explicit user action
+// entry (`activity.action`). Every data source is reused, never re-implemented:
+// `zk-kit-jobs`/`zk-kit-subagent` registries (through the generated
+// `zk_composed` facade), persisted `role="tool"` rows (todo/present/agent_team)
+// and the public `zk-tool-schedule` Tool::call_json (list/update/delete). The
+// goal is deliberately **not** part of the snapshot: the UI reads it through the
+// existing `goal.get` command (single owner).
+// ---------------------------------------------------------------------------
+
+/// Job output excerpt bound (R2: ≤4 KiB per row).
+const ACTIVITY_OUTPUT_BYTES: usize = 4 * 1024;
+/// Bounded section sizes (R1; `truncated` marks any cap).
+const ACTIVITY_MAX_JOBS: usize = 50;
+const ACTIVITY_MAX_TODOS: usize = 100;
+const ACTIVITY_MAX_SCHEDULES: usize = 100;
+const ACTIVITY_MAX_PRESENTATIONS: usize = 100;
+/// Most recent `agent_team` results kept (read-only tool-row derivation).
+const ACTIVITY_MAX_TEAMS: usize = 3;
+/// Per-string excerpt bound (prompt/description/result).
+const ACTIVITY_TEXT_CHARS: usize = 512;
+/// Host-side schedule prompt limit: the schedule tool has no length check (R6).
+const ACTIVITY_SCHEDULE_PROMPT_BYTES: usize = 32 * 1024;
+/// Minimum accepted schedule interval (the tool clamps; the panel rejects).
+const ACTIVITY_MIN_INTERVAL_SECONDS: u64 = 60;
+
+/// Char-boundary-safe excerpt limited by character count.
+fn activity_text(text: &str, max_chars: usize) -> String {
+    let mut out = String::new();
+    for (index, character) in text.chars().enumerate() {
+        if index >= max_chars {
+            out.push('…');
+            return out;
+        }
+        out.push(character);
+    }
+    out
+}
+
+/// Char-boundary-safe excerpt limited by bytes; returns whether it was cut.
+fn activity_output(text: &str, max_bytes: usize) -> (String, bool) {
+    if text.len() <= max_bytes {
+        return (text.to_owned(), false);
+    }
+    let mut boundary = max_bytes;
+    while boundary > 0 && !text.is_char_boundary(boundary) {
+        boundary = boundary.saturating_sub(1);
+    }
+    let head = text.get(..boundary).unwrap_or_default();
+    (format!("{head}…"), true)
+}
+
+/// Component-wise containment (never a string prefix; rejects `/workspace-evil`).
+fn activity_cwd_within(root: &std::path::Path, cwd: &str) -> bool {
+    match std::fs::canonicalize(cwd) {
+        Ok(candidate) => candidate.starts_with(root),
+        Err(_) => false,
+    }
+}
+
+/// One persisted `role="tool"` row parsed for the activity derivations.
+struct ActivityToolRow {
+    name: String,
+    args: Option<Value>,
+    result: String,
+    turn_id: String,
+    message_id: String,
+    success: bool,
+}
+
+/// Parse one persisted tool row; `None` = legacy/corrupt (skipped + hinted).
+fn activity_tool_row(message: &Message) -> Option<ActivityToolRow> {
+    let content: Value = serde_json::from_str(&message.content).ok()?;
+    let object = content.as_object()?;
+    let name = object.get("name").and_then(Value::as_str)?.to_owned();
+    let args = match object.get("args").and_then(Value::as_str) {
+        None => None,
+        Some(raw) => Some(serde_json::from_str::<Value>(raw).ok()?),
+    };
+    let success = object
+        .get("status")
+        .and_then(Value::as_str)
+        .is_none_or(|status| status == "success");
+    Some(ActivityToolRow {
+        name,
+        args,
+        result: object
+            .get("result")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        turn_id: message.turn_id.clone(),
+        message_id: message.id.clone(),
+        success,
+    })
+}
+
+/// All persisted tool rows of one conversation (+ whether some were unparseable).
+fn activity_tool_rows(messages: &[Message]) -> (Vec<ActivityToolRow>, bool) {
+    let mut rows = Vec::new();
+    let mut unavailable = false;
+    for message in messages {
+        if message.role != "tool" {
+            continue;
+        }
+        match activity_tool_row(message) {
+            Some(row) => rows.push(row),
+            None => unavailable = true,
+        }
+    }
+    (rows, unavailable)
+}
+
+fn activity_todo_item(value: &Value) -> Option<ActivityTodo> {
+    Some(ActivityTodo {
+        id: value.get("id").and_then(Value::as_str)?.to_owned(),
+        text: value
+            .get("text")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        status: value
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("pending")
+            .to_owned(),
+    })
+}
+
+/// Replay `todo` tool rows (list/add/update/remove) in message order (R5).
+fn derive_activity_todos(
+    rows: &[ActivityToolRow],
+    truncated: &mut bool,
+) -> (Vec<ActivityTodo>, bool) {
+    let mut items: Vec<ActivityTodo> = Vec::new();
+    let mut unavailable = false;
+    for row in rows {
+        if row.name != "todo" || !row.success {
+            continue;
+        }
+        let Some(args) = row.args.as_ref() else {
+            unavailable = true;
+            continue;
+        };
+        match args
+            .get("action")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+        {
+            "list" => match serde_json::from_str::<Value>(&row.result) {
+                Ok(value) => match value.as_array() {
+                    Some(array) => {
+                        items = array.iter().filter_map(activity_todo_item).collect();
+                    }
+                    None => unavailable = true,
+                },
+                Err(_) => unavailable = true,
+            },
+            "add" => {
+                let Some(text) = args.get("text").and_then(Value::as_str) else {
+                    unavailable = true;
+                    continue;
+                };
+                let id = row
+                    .result
+                    .trim()
+                    .strip_prefix("added ")
+                    .map(str::trim)
+                    .filter(|id| !id.is_empty())
+                    .map_or_else(
+                        || format!("todo-{}", items.len().saturating_add(1)),
+                        str::to_owned,
+                    );
+                items.push(ActivityTodo {
+                    id,
+                    text: text.to_owned(),
+                    status: "pending".to_owned(),
+                });
+            }
+            "update" => {
+                let (Some(id), Some(status)) = (
+                    args.get("id").and_then(Value::as_str),
+                    args.get("status").and_then(Value::as_str),
+                ) else {
+                    unavailable = true;
+                    continue;
+                };
+                if let Some(item) = items.iter_mut().find(|item| item.id == id) {
+                    item.status = status.to_owned();
+                }
+            }
+            "remove" => {
+                if let Some(id) = args.get("id").and_then(Value::as_str) {
+                    items.retain(|item| item.id != id);
+                }
+            }
+            _ => unavailable = true,
+        }
+        if items.len() > ACTIVITY_MAX_TODOS {
+            items.truncate(ACTIVITY_MAX_TODOS);
+            *truncated = true;
+        }
+    }
+    (items, unavailable)
+}
+
+/// Derive `present` deliverables from persisted tool rows (dedupe by path, R7).
+fn derive_activity_presentations(
+    rows: &[ActivityToolRow],
+    truncated: &mut bool,
+) -> (Vec<ActivityPresentation>, bool) {
+    let mut items: Vec<ActivityPresentation> = Vec::new();
+    let mut unavailable = false;
+    for row in rows {
+        if row.name != "present" || !row.success {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<Value>(&row.result) else {
+            unavailable = true;
+            continue;
+        };
+        let Some(path) = value.get("presented").and_then(Value::as_str) else {
+            unavailable = true;
+            continue;
+        };
+        if items.iter().any(|item| item.path == path) {
+            continue;
+        }
+        if items.len() >= ACTIVITY_MAX_PRESENTATIONS {
+            *truncated = true;
+            break;
+        }
+        items.push(ActivityPresentation {
+            path: path.to_owned(),
+            description: activity_text(
+                value
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+                ACTIVITY_TEXT_CHARS,
+            ),
+            turn_id: row.turn_id.clone(),
+            message_id: row.message_id.clone(),
+        });
+    }
+    (items, unavailable)
+}
+
+fn activity_team_worker(value: &Value) -> Option<ActivityTeamWorker> {
+    Some(ActivityTeamWorker {
+        id: value.get("id").and_then(Value::as_str)?.to_owned(),
+        task: activity_text(
+            value
+                .get("task")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+            ACTIVITY_TEXT_CHARS,
+        ),
+        status: value
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_owned(),
+        result_excerpt: value
+            .get("result")
+            .and_then(Value::as_str)
+            .map(|result| activity_text(result, ACTIVITY_TEXT_CHARS)),
+    })
+}
+
+fn activity_count(object: &serde_json::Map<String, Value>, key: &str) -> u32 {
+    object
+        .get(key)
+        .and_then(Value::as_u64)
+        .map_or(0, |count| u32::try_from(count).unwrap_or(u32::MAX))
+}
+
+/// Derive the most recent `agent_team` tool-row results (read-only, R3).
+fn derive_activity_teams(rows: &[ActivityToolRow]) -> (Vec<ActivityTeamRun>, bool) {
+    let mut items: Vec<ActivityTeamRun> = Vec::new();
+    let mut unavailable = false;
+    for row in rows {
+        if row.name != "agent_team" || !row.success {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<Value>(&row.result) else {
+            unavailable = true;
+            continue;
+        };
+        let Some(object) = value.as_object() else {
+            unavailable = true;
+            continue;
+        };
+        let workers = object
+            .get("workers")
+            .and_then(Value::as_array)
+            .map_or_else(Vec::new, |workers| {
+                workers.iter().filter_map(activity_team_worker).collect()
+            });
+        items.push(ActivityTeamRun {
+            turn_id: row.turn_id.clone(),
+            message_id: row.message_id.clone(),
+            objective: activity_text(
+                object
+                    .get("objective")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+                ACTIVITY_TEXT_CHARS,
+            ),
+            status: object
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned(),
+            completed: activity_count(object, "completed"),
+            failed: activity_count(object, "failed"),
+            cancelled: activity_count(object, "cancelled"),
+            total: activity_count(object, "total"),
+            workers,
+        });
+    }
+    if items.len() > ACTIVITY_MAX_TEAMS {
+        let excess = items.len().saturating_sub(ACTIVITY_MAX_TEAMS);
+        items = items.split_off(excess);
+    }
+    (items, unavailable)
+}
+
+/// One schedule definition from the schedule tool's `list` output.
+fn activity_schedule_item(value: &Value) -> Option<ActivitySchedule> {
+    Some(ActivitySchedule {
+        id: value.get("id").and_then(Value::as_str)?.to_owned(),
+        prompt: value
+            .get("prompt")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        cron: value
+            .get("cron")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        enabled: value
+            .get("enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        interval_seconds: value
+            .get("interval_seconds")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        next_run_ms: value.get("next_run_ms").and_then(Value::as_u64),
+    })
+}
+
+/// Resolve the conversation scope: ownership + canonical workspace root + ctx.
+fn activity_context(
+    state: &Arc<AppState>,
+    workspace_id: &str,
+    conversation_id: &str,
+) -> Result<(PathBuf, TurnContext), String> {
+    verify_owner(&*state.runtime.sessions(), workspace_id, conversation_id)?;
+    let root = workspace_root_of(state, workspace_id)?;
+    let context = TurnContext {
+        conversation_id: conversation_id.to_owned(),
+        workspace_id: workspace_id.to_owned(),
+        workspace_root: root.to_string_lossy().into_owned(),
+    };
+    Ok((root, context))
+}
+
+/// Read the current workspace schedules through the public schedule tool.
+fn activity_schedules(context: &TurnContext) -> Result<Vec<ActivitySchedule>, String> {
+    let raw = zk_composed::zk_tool_schedule::tool()
+        .call_json(context, json!({ "action": "list" }))
+        .map_err(|error| format!("activity/schedule-unreadable: {error}"))?;
+    let value: Value = serde_json::from_str(&raw)
+        .map_err(|error| format!("activity/schedule-unreadable: {error}"))?;
+    let Some(array) = value.as_array() else {
+        return Err("activity/schedule-unreadable: schedules are not an array".to_owned());
+    };
+    Ok(array.iter().filter_map(activity_schedule_item).collect())
+}
+
+fn activity_jobs(root: &std::path::Path, truncated: &mut bool) -> (Vec<ActivityJob>, bool) {
+    let mut jobs = Vec::new();
+    let Ok(list) = zk_composed::zk_kit_jobs::list() else {
+        return (jobs, true);
+    };
+    let Some(array) = list.as_array() else {
+        return (jobs, true);
+    };
+    for item in array {
+        let Some(id) = item.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(cwd) = item.get("cwd").and_then(Value::as_str) else {
+            continue;
+        };
+        if !activity_cwd_within(root, cwd) {
+            continue;
+        }
+        if jobs.len() >= ACTIVITY_MAX_JOBS {
+            *truncated = true;
+            break;
+        }
+        let mut output = String::new();
+        if let Some(stdout) = item.get("stdout").and_then(Value::as_str) {
+            output.push_str(stdout);
+        }
+        if let Some(stderr) = item.get("stderr").and_then(Value::as_str) {
+            output.push_str(stderr);
+        }
+        let (output_excerpt, cut) = activity_output(&output, ACTIVITY_OUTPUT_BYTES);
+        if cut {
+            *truncated = true;
+        }
+        jobs.push(ActivityJob {
+            id: id.to_owned(),
+            command: item
+                .get("command")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned(),
+            cwd: cwd.to_owned(),
+            status: item
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned(),
+            started_ms: item.get("started_ms").and_then(Value::as_u64).unwrap_or(0),
+            output_excerpt,
+        });
+    }
+    (jobs, false)
+}
+
+fn activity_subagents(conversation_id: &str, truncated: &mut bool) -> Vec<ActivitySubagent> {
+    let mut subagents = Vec::new();
+    for agent in zk_composed::zk_kit_subagent::list() {
+        if agent.parent != conversation_id {
+            continue;
+        }
+        if subagents.len() >= zk_composed::zk_kit_subagent::MAX_AGENT_RECORDS {
+            *truncated = true;
+            break;
+        }
+        subagents.push(ActivitySubagent {
+            id: agent.id,
+            parent: agent.parent,
+            depth: u32::try_from(agent.depth).unwrap_or(u32::MAX),
+            status: agent.status,
+            prompt: activity_text(&agent.prompt, ACTIVITY_TEXT_CHARS),
+        });
+    }
+    subagents
+}
+
+fn build_activity_snapshot(
+    state: &Arc<AppState>,
+    request: &zk_contract_ipc::payloads::ActivitySnapshotPayload,
+) -> Result<ActivitySnapshot, String> {
+    let (root, context) = activity_context(state, &request.workspace_id, &request.conversation_id)?;
+    let messages = state
+        .runtime
+        .sessions()
+        .messages_in(&request.workspace_id, &request.conversation_id)
+        .map_err(|error| error.to_string())?;
+    let (rows, derived_unavailable) = activity_tool_rows(&messages);
+    let mut truncated = false;
+    let (jobs, jobs_unavailable) = activity_jobs(&root, &mut truncated);
+    let subagents = activity_subagents(&request.conversation_id, &mut truncated);
+    let (todos, todos_unavailable) = derive_activity_todos(&rows, &mut truncated);
+    let (presentations, presentations_unavailable) =
+        derive_activity_presentations(&rows, &mut truncated);
+    let (teams, teams_unavailable) = derive_activity_teams(&rows);
+    let (schedules, schedules_error) = match activity_schedules(&context) {
+        Ok(mut schedules) => {
+            if schedules.len() > ACTIVITY_MAX_SCHEDULES {
+                schedules.truncate(ACTIVITY_MAX_SCHEDULES);
+                truncated = true;
+            }
+            (schedules, None)
+        }
+        Err(error) => (Vec::new(), Some(error)),
+    };
+    Ok(ActivitySnapshot {
+        jobs,
+        subagents,
+        teams,
+        todos,
+        schedules,
+        schedules_error,
+        presentations,
+        truncated,
+        derived_unavailable: derived_unavailable
+            || jobs_unavailable
+            || todos_unavailable
+            || presentations_unavailable
+            || teams_unavailable,
+    })
+}
+
+fn activity_snapshot(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
+    let request: zk_contract_ipc::payloads::ActivitySnapshotPayload =
+        match serde_json::from_value(payload.clone()) {
+            Ok(request) => request,
+            Err(error) => return CommandResponse::err(format!("activity/invalid: {error}")),
+        };
+    match build_activity_snapshot(state, &request) {
+        Ok(snapshot) => CommandResponse::ok(json!(snapshot)),
+        Err(error) => CommandResponse::err(error),
+    }
+}
+
+fn activity_job_kill(root: &std::path::Path, id: &str) -> Result<(), String> {
+    let snapshot = zk_composed::zk_kit_jobs::output(id).map_err(|error| {
+        let message = error.to_string();
+        if message.contains("not found") {
+            format!("activity/job-not-found: {message}")
+        } else {
+            format!("activity/job-finished: {message}")
+        }
+    })?;
+    let status = snapshot
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if status != "running" {
+        return Err(format!("activity/job-finished: job {id} is {status}"));
+    }
+    let Some(cwd) = snapshot.get("cwd").and_then(Value::as_str) else {
+        return Err("activity/job-not-found: job has no working directory".to_owned());
+    };
+    if !activity_cwd_within(root, cwd) {
+        return Err("activity/job-not-found: job is outside the current workspace".to_owned());
+    }
+    zk_composed::zk_kit_jobs::kill(id)
+        .map_err(|error| format!("activity/job-finished: {error}"))?;
+    Ok(())
+}
+
+fn activity_subagent_interrupt(conversation_id: &str, id: &str) -> Result<(), String> {
+    let known = zk_composed::zk_kit_subagent::list()
+        .into_iter()
+        .find(|agent| agent.id == id && agent.parent == conversation_id)
+        .ok_or_else(|| "activity/subagent-not-found: unknown subagent".to_owned())?;
+    if known.status != "running" {
+        return Err(format!(
+            "activity/subagent-not-found: subagent {id} is {}",
+            known.status
+        ));
+    }
+    let runner = zk_composed::zk_kit_subagent::runner()
+        .ok_or_else(|| "activity/subagent-not-found: no subagent runner installed".to_owned())?;
+    runner
+        .interrupt(id)
+        .map_err(|error| format!("activity/subagent-not-found: {error}"))?;
+    Ok(())
+}
+
+/// Validate one schedule update payload against the whitelist (R6).
+fn activity_schedule_updates(id: &str, updates: &Value) -> Result<Value, String> {
+    let Some(object) = updates.as_object() else {
+        return Err("activity/schedule-invalid: updates must be an object".to_owned());
+    };
+    for key in object.keys() {
+        if !matches!(key.as_str(), "enabled" | "interval_seconds" | "prompt") {
+            return Err(format!(
+                "activity/schedule-invalid: unsupported update field {key}"
+            ));
+        }
+    }
+    let mut args = serde_json::Map::new();
+    args.insert("action".to_owned(), json!("update"));
+    args.insert("id".to_owned(), json!(id));
+    if let Some(enabled) = object.get("enabled") {
+        let Some(enabled) = enabled.as_bool() else {
+            return Err("activity/schedule-invalid: enabled must be a boolean".to_owned());
+        };
+        args.insert("enabled".to_owned(), json!(enabled));
+    }
+    if let Some(interval) = object.get("interval_seconds") {
+        let Some(interval) = interval.as_u64() else {
+            return Err(
+                "activity/schedule-invalid: interval_seconds must be an integer".to_owned(),
+            );
+        };
+        if interval < ACTIVITY_MIN_INTERVAL_SECONDS {
+            return Err(format!(
+                "activity/schedule-invalid: interval_seconds must be >= {ACTIVITY_MIN_INTERVAL_SECONDS}"
+            ));
+        }
+        args.insert("interval_seconds".to_owned(), json!(interval));
+    }
+    if let Some(prompt) = object.get("prompt") {
+        let Some(prompt) = prompt.as_str() else {
+            return Err("activity/schedule-invalid: prompt must be a string".to_owned());
+        };
+        if prompt.len() > ACTIVITY_SCHEDULE_PROMPT_BYTES {
+            return Err("activity/schedule-invalid: prompt exceeds 32 KiB".to_owned());
+        }
+        args.insert("prompt".to_owned(), json!(prompt));
+    }
+    if args.len() <= 2 {
+        return Err("activity/schedule-invalid: no update fields".to_owned());
+    }
+    Ok(Value::Object(args))
+}
+
+fn activity_schedule_write(
+    context: &TurnContext,
+    id: &str,
+    updates: &Value,
+    delete: bool,
+) -> Result<(), String> {
+    // Pre-check the id through the tool's own list output (single implementation);
+    // a stale id maps to `activity/schedule-invalid` instead of silently succeeding.
+    let existing = activity_schedules(context)?;
+    if !existing.iter().any(|schedule| schedule.id == id) {
+        return Err(format!(
+            "activity/schedule-invalid: unknown schedule id {id}"
+        ));
+    }
+    let args = if delete {
+        json!({ "action": "delete", "id": id })
+    } else {
+        activity_schedule_updates(id, updates)?
+    };
+    let output = zk_composed::zk_tool_schedule::tool()
+        .call_json(context, args)
+        .map_err(|error| format!("activity/schedule-invalid: {error}"))?;
+    if delete && output.trim() == "deleted 0" {
+        return Err("activity/schedule-invalid: schedule already removed".to_owned());
+    }
+    Ok(())
+}
+
+fn apply_activity_action(
+    state: &Arc<AppState>,
+    request: &zk_contract_ipc::payloads::ActivityActionPayload,
+) -> Result<(), String> {
+    let (root, context) = activity_context(state, &request.workspace_id, &request.conversation_id)?;
+    match request.action {
+        zk_contract_ipc::payloads::ActivityActionKind::JobKill => {
+            activity_job_kill(&root, &request.id)
+        }
+        zk_contract_ipc::payloads::ActivityActionKind::SubagentInterrupt => {
+            activity_subagent_interrupt(&request.conversation_id, &request.id)
+        }
+        zk_contract_ipc::payloads::ActivityActionKind::ScheduleUpdate => {
+            activity_schedule_write(&context, &request.id, &request.updates, false)
+        }
+        zk_contract_ipc::payloads::ActivityActionKind::ScheduleDelete => {
+            activity_schedule_write(&context, &request.id, &request.updates, true)
+        }
+    }
+}
+
+fn activity_action(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
+    let request: zk_contract_ipc::payloads::ActivityActionPayload =
+        match serde_json::from_value(payload.clone()) {
+            Ok(request) => request,
+            Err(error) => return CommandResponse::err(format!("activity/invalid: {error}")),
+        };
+    match apply_activity_action(state, &request) {
+        Ok(()) => CommandResponse::ok(json!(ActivityActionResult { ok: true })),
+        Err(error) => CommandResponse::err(error),
     }
 }
 
@@ -5956,6 +6633,553 @@ mod tests {
             .error
             .unwrap_or_default()
             .starts_with("skill/invalid"));
+
+        std::env::remove_var("ZEOKEEL_HOME");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+    // ---- Activity panel (`2026-11-01-client-activity-panels`) ----
+
+    fn activity_row(
+        name: &str,
+        args: &str,
+        result: &str,
+        status: &str,
+        turn_id: &str,
+    ) -> zk_contract_session::Message {
+        zk_contract_session::Message {
+            id: uuid::Uuid::new_v4().to_string(),
+            conversation_id: "conv".to_owned(),
+            role: "tool".to_owned(),
+            content: serde_json::json!({
+                "name": name,
+                "args": args,
+                "result": result,
+                "status": status,
+            })
+            .to_string(),
+            created_at_ms: 1,
+            status: "done".to_owned(),
+            usage: None,
+            turn_id: turn_id.to_owned(),
+        }
+    }
+
+    fn append_activity_row(
+        state: &std::sync::Arc<super::AppState>,
+        conversation_id: &str,
+        mut row: zk_contract_session::Message,
+    ) {
+        row.conversation_id = conversation_id.to_owned();
+        state
+            .runtime()
+            .sessions()
+            .append_message(&row)
+            .expect("append tool row");
+    }
+
+    #[test]
+    fn activity_snapshot_replays_tool_rows_and_excludes_goal() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-activity-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", home.join("zeokeel-home"));
+        let (state, workspace_id, conversation_id, _ws_path) = phase2b_fixture(&home);
+
+        let rows = [
+            activity_row(
+                "todo",
+                r#"{"action":"add","text":"first"}"#,
+                "added todo-1",
+                "success",
+                "turn-1",
+            ),
+            activity_row(
+                "todo",
+                r#"{"action":"add","text":"second"}"#,
+                "added todo-2",
+                "success",
+                "turn-1",
+            ),
+            activity_row(
+                "todo",
+                r#"{"action":"update","id":"todo-1","status":"in_progress"}"#,
+                "updated todo-1",
+                "success",
+                "turn-1",
+            ),
+            activity_row(
+                "todo",
+                r#"{"action":"remove","id":"todo-2"}"#,
+                "removed 1",
+                "success",
+                "turn-1",
+            ),
+            activity_row(
+                "present",
+                r#"{"path":"demo-data/hello.txt","description":"deliverable"}"#,
+                r#"{"presented":"demo-data/hello.txt","description":"deliverable"}"#,
+                "success",
+                "turn-2",
+            ),
+            activity_row(
+                "present",
+                r#"{"path":"demo-data/hello.txt","description":"duplicate"}"#,
+                r#"{"presented":"demo-data/hello.txt","description":"duplicate"}"#,
+                "success",
+                "turn-2",
+            ),
+            activity_row(
+                "agent_team",
+                r#"{"objective":"ship it","tasks":[{"prompt":"a"}]}"#,
+                r#"{"objective":"ship it","status":"done","completed":1,"failed":0,"cancelled":0,"total":1,"workers":[{"id":"worker-1","task":"a","status":"done","result":"ok"}]}"#,
+                "success",
+                "turn-3",
+            ),
+        ];
+        for (index, mut row) in rows.into_iter().enumerate() {
+            // Persisted rows are ordered by `created_at_ms`; keep the replay order stable.
+            row.created_at_ms = u64::try_from(index).expect("index") + 1;
+            append_activity_row(&state, &conversation_id, row);
+        }
+        // Legacy (no args) and corrupt rows are skipped with a non-blocking hint.
+        append_activity_row(
+            &state,
+            &conversation_id,
+            zk_contract_session::Message {
+                id: uuid::Uuid::new_v4().to_string(),
+                conversation_id: conversation_id.clone(),
+                role: "tool".to_owned(),
+                content: serde_json::json!({"name": "todo"}).to_string(),
+                created_at_ms: 2,
+                status: "done".to_owned(),
+                usage: None,
+                turn_id: "turn-1".to_owned(),
+            },
+        );
+        append_activity_row(
+            &state,
+            &conversation_id,
+            zk_contract_session::Message {
+                id: uuid::Uuid::new_v4().to_string(),
+                conversation_id: conversation_id.clone(),
+                role: "tool".to_owned(),
+                content: "{not json".to_owned(),
+                created_at_ms: 3,
+                status: "done".to_owned(),
+                usage: None,
+                turn_id: "turn-1".to_owned(),
+            },
+        );
+
+        let snapshot = call_ok(
+            &state,
+            zk_contract_ipc::commands::ACTIVITY_SNAPSHOT,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+            }),
+        );
+        // Goal is not part of the snapshot (single owner: `goal.get`).
+        assert!(snapshot.get("goal").is_none());
+        let todos = snapshot["todos"].as_array().expect("todos");
+        assert_eq!(todos.len(), 1);
+        assert_eq!(todos[0]["id"], "todo-1");
+        assert_eq!(todos[0]["status"], "in_progress");
+        let presentations = snapshot["presentations"].as_array().expect("presentations");
+        assert_eq!(presentations.len(), 1);
+        assert_eq!(presentations[0]["path"], "demo-data/hello.txt");
+        assert_eq!(presentations[0]["turn_id"], "turn-2");
+        let teams = snapshot["teams"].as_array().expect("teams");
+        assert_eq!(teams.len(), 1);
+        assert_eq!(teams[0]["objective"], "ship it");
+        assert_eq!(teams[0]["completed"], 1);
+        assert_eq!(teams[0]["workers"][0]["id"], "worker-1");
+        assert_eq!(snapshot["derived_unavailable"], true);
+        assert_eq!(snapshot["truncated"], false);
+
+        // Cross-workspace conversation is rejected (C18).
+        std::fs::create_dir_all(home.join("ws-other")).expect("other workspace");
+        let other = call_ok(
+            &state,
+            zk_contract_ipc::commands::WORKSPACE_CREATE,
+            json!({ "path": home.join("ws-other").to_string_lossy(), "title": "other" }),
+        );
+        let other_id = other["id"].as_str().expect("other id").to_owned();
+        let mismatch = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::ACTIVITY_SNAPSHOT,
+            &json!({
+                "workspace_id": other_id,
+                "conversation_id": conversation_id,
+            }),
+        );
+        assert!(!mismatch.ok);
+        assert!(mismatch
+            .error
+            .unwrap_or_default()
+            .starts_with("session/workspace-mismatch"));
+
+        std::env::remove_var("ZEOKEEL_HOME");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn activity_cwd_containment_is_component_wise() {
+        let root = std::env::temp_dir().join(format!("zk-activity-root-{}", uuid::Uuid::new_v4()));
+        let evil = std::env::temp_dir().join(format!("{}-evil", root.display()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&evil).unwrap();
+        assert!(super::activity_cwd_within(&root, &root.to_string_lossy()));
+        assert!(!super::activity_cwd_within(&root, &evil.to_string_lossy()));
+        assert!(!super::activity_cwd_within(&root, "/definitely/not/here"));
+        let child = root.join("nested");
+        std::fs::create_dir_all(&child).unwrap();
+        assert!(super::activity_cwd_within(&root, &child.to_string_lossy()));
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&evil);
+    }
+
+    #[test]
+    fn activity_jobs_are_workspace_scoped_and_kill_is_state_checked() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-activity-jobs-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", home.join("zeokeel-home"));
+        let (state, workspace_id, conversation_id, ws_path) = phase2b_fixture(&home);
+        let root = std::fs::canonicalize(&ws_path).expect("canonical workspace");
+        let context = zk_contract_tool::TurnContext {
+            conversation_id: conversation_id.clone(),
+            workspace_id: workspace_id.clone(),
+            workspace_root: root.to_string_lossy().into_owned(),
+        };
+        let job_id =
+            zk_composed::zk_kit_jobs::start(&context, "sleep 30", None).expect("start job");
+        let snapshot = call_ok(
+            &state,
+            zk_contract_ipc::commands::ACTIVITY_SNAPSHOT,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+            }),
+        );
+        let jobs = snapshot["jobs"].as_array().expect("jobs");
+        let job = jobs
+            .iter()
+            .find(|job| job["id"] == job_id.as_str())
+            .expect("started job in snapshot");
+        assert_eq!(job["status"], "running");
+        assert!(job["cwd"]
+            .as_str()
+            .is_some_and(|cwd| cwd.starts_with(&ws_path.to_string_lossy().to_string())));
+
+        // Unknown id maps to a readable not-found code.
+        let unknown = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::ACTIVITY_ACTION,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "job_kill",
+                "id": "job-does-not-exist",
+            }),
+        );
+        assert!(!unknown.ok);
+        assert!(unknown
+            .error
+            .unwrap_or_default()
+            .starts_with("activity/job-not-found"));
+
+        // Running job kill succeeds and the next snapshot no longer reports running.
+        call_ok(
+            &state,
+            zk_contract_ipc::commands::ACTIVITY_ACTION,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "job_kill",
+                "id": job_id,
+            }),
+        );
+        let after = call_ok(
+            &state,
+            zk_contract_ipc::commands::ACTIVITY_SNAPSHOT,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+            }),
+        );
+        let status = after["jobs"]
+            .as_array()
+            .and_then(|jobs| jobs.iter().find(|job| job["id"] == job_id.as_str()))
+            .and_then(|job| job["status"].as_str())
+            .unwrap_or_default()
+            .to_owned();
+        assert_ne!(status, "running", "killed job still running");
+
+        // A finished job cannot be stopped again (host re-checks current state).
+        let finished_id =
+            zk_composed::zk_kit_jobs::start(&context, "true", None).expect("start job");
+        let deadline = std::time::Instant::now();
+        loop {
+            let current = call_ok(
+                &state,
+                zk_contract_ipc::commands::ACTIVITY_SNAPSHOT,
+                json!({
+                    "workspace_id": workspace_id,
+                    "conversation_id": conversation_id,
+                }),
+            );
+            let status = current["jobs"]
+                .as_array()
+                .and_then(|jobs| jobs.iter().find(|job| job["id"] == finished_id.as_str()))
+                .and_then(|job| job["status"].as_str())
+                .unwrap_or_default()
+                .to_owned();
+            if status != "running" {
+                break;
+            }
+            assert!(
+                deadline.elapsed() < std::time::Duration::from_secs(10),
+                "job did not finish"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let finished = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::ACTIVITY_ACTION,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "job_kill",
+                "id": finished_id,
+            }),
+        );
+        assert!(!finished.ok);
+        assert!(finished
+            .error
+            .unwrap_or_default()
+            .starts_with("activity/job-finished"));
+
+        std::env::remove_var("ZEOKEEL_HOME");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn activity_schedule_update_delete_use_tool_and_reject_invalid() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-activity-sched-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", home.join("zeokeel-home"));
+        let (state, workspace_id, conversation_id, ws_path) = phase2b_fixture(&home);
+        let schedules_path = ws_path.join(".zeokeel/schedules.json");
+        std::fs::create_dir_all(schedules_path.parent().expect("dir")).unwrap();
+        std::fs::write(
+            &schedules_path,
+            serde_json::json!([{
+                "id": "schedule-1",
+                "prompt": "nightly",
+                "cron": "0 9 * * *",
+                "enabled": true,
+                "interval_seconds": 3600,
+                "next_run_ms": 1
+            }])
+            .to_string(),
+        )
+        .unwrap();
+
+        let snapshot = call_ok(
+            &state,
+            zk_contract_ipc::commands::ACTIVITY_SNAPSHOT,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+            }),
+        );
+        let schedules = snapshot["schedules"].as_array().expect("schedules");
+        assert_eq!(schedules.len(), 1);
+        assert_eq!(schedules[0]["enabled"], true);
+
+        let action = |payload: Value| {
+            super::dispatch(
+                &state,
+                zk_contract_ipc::commands::ACTIVITY_ACTION,
+                &json!({
+                    "workspace_id": workspace_id,
+                    "conversation_id": conversation_id,
+                    "action": "schedule_update",
+                    "id": "schedule-1",
+                    "updates": payload,
+                }),
+            )
+        };
+        let toggled = action(json!({ "enabled": false }));
+        assert!(toggled.ok, "{:?}", toggled.error);
+        let file: Value =
+            serde_json::from_str(&std::fs::read_to_string(&schedules_path).unwrap()).unwrap();
+        assert_eq!(file[0]["enabled"], false);
+        // Invalid/host-checked values are rejected without touching the file.
+        for invalid in [
+            json!({ "interval_seconds": 30 }),
+            json!({ "prompt": "x".repeat(32 * 1024 + 1) }),
+            json!({ "cron": "0 9 * * *" }),
+            json!({}),
+            json!({ "enabled": "yes" }),
+        ] {
+            let rejected = action(invalid);
+            assert!(!rejected.ok);
+            assert!(rejected
+                .error
+                .unwrap_or_default()
+                .starts_with("activity/schedule-invalid"));
+        }
+        let unchanged: Value =
+            serde_json::from_str(&std::fs::read_to_string(&schedules_path).unwrap()).unwrap();
+        assert_eq!(unchanged[0]["interval_seconds"], 3600);
+        // Valid interval/prompt edits go through the schedule tool (atomic write).
+        let edited = action(json!({ "interval_seconds": 120, "prompt": "refreshed" }));
+        assert!(edited.ok, "{:?}", edited.error);
+        let updated: Value =
+            serde_json::from_str(&std::fs::read_to_string(&schedules_path).unwrap()).unwrap();
+        assert_eq!(updated[0]["interval_seconds"], 120);
+        assert_eq!(updated[0]["prompt"], "refreshed");
+
+        // Unknown/absent ids map to `activity/schedule-invalid`, including delete.
+        let delete_unknown = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::ACTIVITY_ACTION,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "schedule_delete",
+                "id": "schedule-404",
+            }),
+        );
+        assert!(!delete_unknown.ok);
+        assert!(delete_unknown
+            .error
+            .unwrap_or_default()
+            .starts_with("activity/schedule-invalid"));
+        call_ok(
+            &state,
+            zk_contract_ipc::commands::ACTIVITY_ACTION,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "schedule_delete",
+                "id": "schedule-1",
+            }),
+        );
+        let deleted: Value =
+            serde_json::from_str(&std::fs::read_to_string(&schedules_path).unwrap()).unwrap();
+        assert_eq!(deleted.as_array().map(Vec::len), Some(0));
+
+        // A corrupt schedule file degrades to a section-level error, not a crash.
+        std::fs::write(&schedules_path, "{broken").unwrap();
+        let degraded = call_ok(
+            &state,
+            zk_contract_ipc::commands::ACTIVITY_SNAPSHOT,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+            }),
+        );
+        assert_eq!(degraded["schedules"].as_array().map(Vec::len), Some(0));
+        assert!(degraded["schedules_error"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("activity/schedule-unreadable"));
+
+        std::env::remove_var("ZEOKEEL_HOME");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn activity_subagent_roster_filters_parent_and_interrupt_checks_state() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-activity-sub-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", home.join("zeokeel-home"));
+        let (state, workspace_id, conversation_id, _ws_path) = phase2b_fixture(&home);
+        let id = format!("subagent-activity-{}", uuid::Uuid::new_v4());
+        zk_composed::zk_kit_subagent::register(&id, &conversation_id, 1, "inspect workspace");
+        zk_composed::zk_kit_subagent::register(
+            "subagent-other-conversation",
+            "another-conversation",
+            1,
+            "elsewhere",
+        );
+        let snapshot = call_ok(
+            &state,
+            zk_contract_ipc::commands::ACTIVITY_SNAPSHOT,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+            }),
+        );
+        let subagents = snapshot["subagents"].as_array().expect("subagents");
+        assert!(subagents.iter().any(|agent| agent["id"] == id.as_str()));
+        assert!(subagents
+            .iter()
+            .all(|agent| agent["parent"] == conversation_id.as_str()));
+        assert_eq!(
+            subagents
+                .iter()
+                .find(|agent| agent["id"] == id.as_str())
+                .and_then(|agent| agent["depth"].as_u64()),
+            Some(1)
+        );
+
+        // Interrupt of an unknown id is readable and state-checked.
+        let missing = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::ACTIVITY_ACTION,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "subagent_interrupt",
+                "id": "subagent-missing",
+            }),
+        );
+        assert!(!missing.ok);
+        assert!(missing
+            .error
+            .unwrap_or_default()
+            .starts_with("activity/subagent-not-found"));
+        zk_composed::zk_kit_subagent::finish(&id, true);
+        let finished = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::ACTIVITY_ACTION,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "subagent_interrupt",
+                "id": id,
+            }),
+        );
+        assert!(!finished.ok);
+        assert!(finished
+            .error
+            .unwrap_or_default()
+            .starts_with("activity/subagent-not-found"));
+        zk_composed::zk_kit_subagent::forget(&id);
+        zk_composed::zk_kit_subagent::forget("subagent-other-conversation");
+
+        // Unknown action is rejected by the closed payload enum.
+        let invalid = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::ACTIVITY_ACTION,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "launch_missiles",
+                "id": "x",
+            }),
+        );
+        assert!(!invalid.ok);
+        assert!(invalid
+            .error
+            .unwrap_or_default()
+            .starts_with("activity/invalid"));
 
         std::env::remove_var("ZEOKEEL_HOME");
         let _ = std::fs::remove_dir_all(&home);
