@@ -123,6 +123,11 @@
   `cargo deny`/`cargo audit`/`pnpm audit`）在 CI 执行，本机无工具/网络时为 unverified。
 - 威胁模型独立评审 **APPROVED**（精确行 `- 威胁模型评审结论：APPROVED`，`docs/reviews/2026-10-31-threat-model.md:3`，2026-10-31 复评）；M6 acceptance 仍 `blocked`
   （仅剩 Docker/证书/真机/CI 等环境项 + M6 实现复评）：`specs/changes/2026-10-30-hardening-release/acceptance.md`。
+- **桌面 CSP 临时例外（RC.1 hotfix，UNVERIFIED 风险）**：Tauri WebView 的 `script-src` 允许 `'unsafe-eval'`，
+  因为 `apps/desktop/web/src/validate.ts` 用 Ajv 在运行时按 Rust 生成的 JSON Schema 编译边界校验器；没有它 Windows
+  WebView2 会因 CSP 拒绝 `new Function` 而启动失败（2026-11-01 真机白屏报错定位）。该 WebView 只加载本地打包资源
+  （`default-src 'self'`、`frame-src 'none'`、无远程脚本），风险受限；**1.0.0 前必须改为构建期预编译 Ajv validator
+  并移除 `'unsafe-eval'`**。对应 WAF：不改服务端 CSP，admin SPA 不受影响。
 - **依赖审计策略（RC.1）**：`cargo-deny` + `cargo-audit` 在 CI 执行（同一下载 ignore 列表在 `deny.toml` 与 `.cargo/audit.toml`）；known vulnerability 一律 deny，未使用 API 的
   advisory 以窄理由 ignore：zip 4.6 的 `extract()` 系列（本项目只用 `by_index`+`enclosed_name` 并拒绝
   hostile entries）、zstd 0.13（仅 wasmtime 自产模块缓存；wasmtime 50 锁定 0.13）。`unmaintained`/`unsound`

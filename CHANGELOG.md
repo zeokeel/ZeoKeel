@@ -13,6 +13,9 @@
   React 侧新增启动错误边界，脚本加载/渲染失败会显示可截图的错误面板而不是空白窗口。
 - **WebView2 兼容性**：桌面 Web 构建目标降为 `es2020`（`cssTarget: chrome105`），覆盖 Win10 上未及时更新的
   WebView2 运行时；`typecheck`/`lint`/`build` 本地通过。
+- **Ajv 校验与 CSP**：Windows 真机启动报 `EvalError: ... 'unsafe-eval' is not an allowed source of script`（Ajv 运行时编译
+  JSON Schema 校验器被 Tauri CSP 拦截）。桌面 WebView `script-src` 临时加入 `'unsafe-eval'`（仅本地打包资源；1.0.0
+  前改为构建期预编译 validator 并移除，见 `KNOWN-LIMITATIONS.md` §4）。
 
 ### 版本与许可
 
