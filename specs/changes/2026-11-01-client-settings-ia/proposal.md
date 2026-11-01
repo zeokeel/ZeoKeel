@@ -1,6 +1,6 @@
 # 2026-11-01-client-settings-ia · 提案
 
-- 状态：`approved`
+- 状态：`done`
 - Owner：lead
 - 日期：2026-11-01
 - 关联：`research/client-dsh-parity-2026-11-01.md` §4/P1-1、§7 Phase 1；`docs/16-ui-packages.md`、`docs/28-ui-module-map-and-skeleton.md`（设置分页口径需同步）

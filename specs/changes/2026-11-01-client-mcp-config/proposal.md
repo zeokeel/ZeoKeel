@@ -1,6 +1,6 @@
 # 2026-11-01-client-mcp-config · 提案
 
-- 状态：`approved`
+- 状态：`done`
 - Owner：zk-audit（Phase 1c-2，从 `2026-11-01-client-config-approval-mcp` 拆出）
 - 日期：2026-11-01
 - 关联：`docs/reviews/2026-11-01-client-ui-parity-specs.md`（CHANGES-REQUESTED；本稿按其 P1-3 拆分建议、

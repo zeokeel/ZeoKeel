@@ -1,6 +1,6 @@
 # 2026-11-01-client-approval-tool-rendering · 提案
 
-- 状态：`approved`
+- 状态：`done`
 - Owner：`dsh-ref`（2026-11-01 评审修复作者；原作者 `lead`）
 - 日期：2026-11-01
 - 关联：`docs/reviews/2026-11-01-client-ui-parity-specs.md`（P0-2/P0-3/P1-1/P1-2/P1-4/P1-5/P1-11/P1-12/P1-13/P1-14/P1-16/P2-1/P2-2/P2-9 + T5 决策）；`docs/19-client-ux-flows.md` §4.1/§4.2；`docs/38-agent-runtime.md` §2/§3；`docs/28-ui-module-map-and-skeleton.md` §4.5/§4.6；`specs/changes/2026-11-01-client-config-approval-mcp/spec.md` R2（审批事件链共享表）；`research/client-dsh-parity-2026-11-01.md` §4 P0-1/P0-2/P1-9/P2-5
