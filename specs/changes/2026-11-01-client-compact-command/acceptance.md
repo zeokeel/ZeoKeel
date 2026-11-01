@@ -1,5 +1,7 @@
 # 2026-11-01-client-compact-command · 验收与证据
 
+> 修复后复跑（Lead，HEAD `54149f8`）：`m1-serve` **11/11**、`pnpm e2e` **24 passed**、`pnpm e2e:ui` **74 passed**；§0.1 的 runtime panic 已关闭。
+
 > 提交后原样复跑（Lead，HEAD `bd6ae25`）：`pnpm e2e` **22 passed / 2 failed** —— `m1-serve` 终端输出为空、`/compact` 分隔未出现（作者等价序列 11/11 通过；疑似 flaky/环境，待最终树复跑定位；当前记为 UNVERIFIED）。
 
 > 独立评审通过（`docs/reviews/2026-11-01-client-compact-command.md` §8）；C20 `intuition.md` + `intuition-walkthrough.md` 已交付（专家走查；真人用户测试 UNVERIFIED）。

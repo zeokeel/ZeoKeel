@@ -1,5 +1,7 @@
 # 2026-11-01-client-skill-commands · 验收与证据
 
+> 提交后原样复跑（Lead，HEAD `a77dc9e`）：`pnpm e2e` **24 passed**、`pnpm e2e:ui` **74 passed**、`export_schema` 幂等 0 diff。
+
 - 验收人：impl-skill；日期：2026-11-01；PR/commit：未提交（共享工作树；起点 `39f3405`）
 - 状态：`done`（本地实现与证据齐全；UNVERIFIED 见 §1）
 - 证据根：`target/evidence/2026-11-01-client-skill-commands/`

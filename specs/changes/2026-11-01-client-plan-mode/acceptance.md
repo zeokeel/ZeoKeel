@@ -1,5 +1,7 @@
 # 2026-11-01-client-plan-mode · 验收与证据
 
+> 提交后原样复跑（Lead，HEAD `39f3405`）：`pnpm e2e` **24 passed**、`pnpm e2e:ui` **74 passed**。
+
 - 验收人：impl-settings；日期：2026-11-01；PR/commit：未提交（共享工作树；起点 `bd6ae25`）
 - 状态：`done`（本地实现与证据齐全；UNVERIFIED 见 §1）
 
