@@ -52,7 +52,9 @@ fn long_history(count: usize) -> Vec<HistoryMessage> {
 
 #[test]
 fn over_budget_history_is_trimmed_oldest_first() {
-    let (agent, model) = agent(4_500);
+    // Window sized against the current preamble reserve (5_200 - 4_096 = 1_104 token
+    // budget): the base prompt (~513 tokens) fits, 40 history messages still overflow.
+    let (agent, model) = agent(5_200);
     let history = long_history(40);
     agent
         .run_stream_in_shared_with_history(&context(), "turn", "next", &history, Arc::new(NullSink))

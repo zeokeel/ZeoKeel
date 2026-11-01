@@ -5,7 +5,7 @@ const MOCK_URL = "http://127.0.0.1:4173";
 export default defineConfig({
   testDir: "e2e",
   // Agent-rig suite owns its own compose/env lifecycle (scripts/agent-e2e.sh + playwright.agent.config.ts).
-  testIgnore: ["**/agent-rig.spec.ts"],
+  testIgnore: ["**/agent-rig.spec.ts", "**/interaction/**"],
   timeout: 60_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,

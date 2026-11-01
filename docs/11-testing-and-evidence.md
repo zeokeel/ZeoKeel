@@ -152,6 +152,8 @@
 5. bundle 体积预算 + React 单实例校验
 6. 真应用冒烟（Tauri + Xvfb）：窗口、发送、流式、取消
 7. 错误边界覆盖率：每个 slot 必须有 fallback（缺一个即失败）
+8. `pnpm e2e:ui`：交互契约套件（真实 `serve` 载体、`@interaction:<ID>` 标签，见 §8.6）
+9. `python3 scripts/ui-interaction-gate.py`：交互契约 ID ↔ 测试标签 ↔ 证据覆盖 + 反模式门禁（§8.6）
 
 ### 8.5 线上保障
 
@@ -159,6 +161,21 @@
 - 灰度：按渠道/人群开启新版 UI；关键路径埋点（首 token、取消、重试、错误）。
 - 组件状态清单进 PR 模板：空/加载/错误/离线/流式中/已取消 六态必须覆盖。
 - 每个 UI 包 README 写"已知限制 + 不支持场景"，避免误用。
+
+### 8.6 交互契约与真人点击证据（强制）
+
+**适用**：任何客户端 surface（页面/面板/弹窗/菜单/输入区）新增或修改交互行为。契约字段与 ID 规则见 [`19`](19-client-ux-flows.md) §11；交互模式/视觉/ARIA 规则见 [`27`](27-ui-design-system.md) §2.5/§2.6；本节只定义证据与门禁口径。
+
+- **契约先行**：变更目录必须有 `specs/changes/<id>/interaction.md`（模板 `specs/templates/interaction.md`，`scripts/new-change.sh` 自动生成），顶部 `状态：active`（参与门禁）或 `状态：planned`（实现开始时改 `active`）。
+- **ID → 测试 → 证据**：每条交互有唯一 ID `<SURFACE>-<AREA>-<NN>` 与优先级；**P0/P1 必须有**带 `{ tag: ["@interaction:<ID>"] }` 的 Playwright 测试（`e2e/interaction/`，真实 `serve` 载体）与测试末尾写出的证据 `target/evidence/<change>/interaction/<ID>.json`。P2 不进门禁。
+- **命令**：`pnpm e2e:ui` 跑交互套件（`pnpm e2e` 不重复跑）；`python3 scripts/ui-interaction-gate.py --self-test && python3 scripts/ui-interaction-gate.py` 校验覆盖与反模式。门禁算法（解析/active-planned 过滤/退出码）只在脚本内，文档不复述。
+- **active/planned**：只有 `active` 契约强制；`planned` 契约（在途 spec 的 Phase 2a/2b 与 activity 子 spec）只 WARN，实现开始时改 `active` 并补测试。
+- **反模式（门禁失败）**：`waitForTimeout`、`force: true`、无 `@known-issue` 的 `test.skip`、CSS 选择器作主定位、用"手动点过/模型自述"代替证据。
+- **基线永不自动接受**：`toHaveScreenshot`/`toMatchAriaSnapshot` 首次生成或更新必须人工逐张确认后执行 `pnpm e2e:ui:update`；CI/agent 不得自动接受，视觉差异默认判失败。
+- **当前基线**：`specs/changes/2026-11-01-ui-interaction-verification/interaction.md` 为 5 个已实现 surface 的 `active` 契约（19 个 ID，P0 = 11）；`client-composer-surface`、`client-side-panels`、`client-activity-panels` 各自 `interaction.md` 为 `planned`。
+- **直觉产物（第七/八件）**：`active` 契约同目录必须有 `intuition.md` 与 `intuition-walkthrough.md`；字段/映射/证据要求见 [`19`](19-client-ux-flows.md) §11.1，原则与走查方法见 [`27`](27-ui-design-system.md) §2.7/§2.8；`planned` 契约缺这两个文件只 WARN。
+- **直觉门禁只查存在性**：gate 校验两文件存在、`intuition.md` ≥3 INT 行、walkthrough 非空；**不解析 INT 质量、不冒充 e2e 标签门禁**（存在性 ≠ 质量；质量由 reviewer 走查 + 用户测试判定）。
+- **用户测试证据**：P0 旅程发布前须有 ≥5 名真实用户的 think-aloud 证据（成功率/首次点击/时间/错误数/SEQ-SUS，`target/evidence/<change>/usability/`，匿名化）；未执行标 **UNVERIFIED**，禁止"模型自述/看起来不错"或"符合直觉"结论；`e2e` 只能做可观察代理，**不能证明直觉**（`27` §2.7/§2.8）。
 
 ## 9. 文档评审与施工门禁（C19）
 
@@ -185,6 +202,8 @@
 - [ ] 可实现、可测试；有失败/回退/降级路径。
 - [ ] 安全/隐私/弱管控边界写清（不把工作区当沙箱、不承诺工具管控）。
 - [ ] UI 方案含六态、a11y、i18n、明暗主题、窄窗、真实后端与 mock 的边界。
+- [ ] UI 方案含交互契约（`interaction.md`，`active/planned`）与 ID → 测试 → 证据映射；P0/P1 有 `@interaction:<ID>` 测试与证据路径（§8.6）。
+- [ ] 评审者按 3 persona 走查 3 个 top task，核对 `intuition.md` INT 覆盖与 `intuition-walkthrough.md` 摩擦项；P0 摩擦未解决 → CHANGES-REQUESTED（`27` §2.8、`19` §11.1）。
 - [ ] 证据计划可执行（命令/截图/门禁），不是"模型说好了"。
 
 ### 9.3 门禁

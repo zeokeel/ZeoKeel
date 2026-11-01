@@ -65,6 +65,37 @@ Boot
 - 每个 `ui.gate.*` 必须有 fallback 文案与"下一步"动作；不允许白屏。
 - 登录页品牌文案来自 `channel.json` 的 `copy.login_*`，缺键即构建失败（禁止回落官方）。
 
+### 2.1 composer 输入面（Phase 2a，`2026-11-01-client-composer-surface`）
+
+> 状态：已实现（交互契约 `specs/changes/2026-11-01-client-composer-surface/interaction.md`；证据
+> `target/evidence/2026-11-01-client-composer-surface/`）。composer **仍留在 `ui-chat`**，不新增 `ui.composer` slot。
+
+输入行（`AssistantComposer`）在既有 Enter/发送/停止/字数/离线提示之上，新增：
+
+- **`/` 命令菜单**：词首输入 `/`（非 IME composing）打开候选，候选 = **与 ⌘K 同一份 app 命令目录**（同一 `runCommand`；
+  personal 6 条 = 新建会话/设置/侧栏/右栏/取消/重试，enterprise 再加技能/连接器/应用 3 条 = 9 条）；↑/↓/Enter/Esc、过滤不区分大小写；
+  执行后清除 `/query`、焦点回输入框、正文保留；`disabled` 命令可见不可执行（`/cancel` 仅流式中、`/retry` 仅有上一条发送文本且非流式）。
+- **`@` 文件引用**：词首输入 `@` 或点「引用文件」按钮打开 workspace 文件候选（来自既有 `workspace.files`，不新增搜索 IPC；
+  隐藏 `.git`/`.zeokeel`）；过滤 path（不区分大小写）、目录标 `dir`、目录以 `@path/` 形式入 chip；选择后生成可删除的**引用 chip**
+  并从输入框移除 `@query`；重复去重、按添加顺序；引用+附件合计 ≤5 条/消息。
+- **附件**：拖放或「添加附件」文件选择；客户端快速校验（8 类 allowlist：png/jpg/jpeg/webp/gif/pdf/txt/md/json/csv/log；
+  单文件 ≤1 MiB；≤5 个/消息；空文件拒绝）；图片缩略图用 `FileReader.readAsDataURL` 生成 **`data:` URL**（非 `blob:`，不改 CSP）；
+  上传中/失败 chip 可移除或重试，失败不丢草稿、不发送半成品。附件由宿主保存到
+  `<workspace>/.zeokeel/attachments/<conversation_id>/<uuid>-<sanitized-name>`（`workspace.attachment_save`），
+  路径**必须**经 `zk_kit_tools::safe_join_under` 校验（逐组件 no-follow / canonicalize 父目录 / `starts_with(root)` / 拒绝绝对与 `..`；
+  父目录 symlink 指向工作区外时拒绝写入）。附件仅作为 workspace 文件 + 引用块进入消息，不做多模态字节直传。
+- **模型只读标签**：composer 底部显示当前模型（personal = `AppSettings.provider.model`，未配置显示「未配置模型」；
+  enterprise = 已选 gateway model，未选显示「未选择网关模型」）；点击打开设置并**定位到模型相关 pane**
+  （`openSettings(paneId)` 深链，personal `provider` / enterprise `enterprise`），本轮不做内联切换/模型发现。
+- **用量指示**：只读显示本轮 input/output/cached/total 与会话累计（当前会话已持久化 assistant usage 求和），
+  数据仅来自既有 `AgentUsage`/`usage` 事件；无 usage 显示「用量未报告」（不显示 0、不估算上下文窗口百分比）。
+- **发送与引用块**：发送文本 = 用户正文 + 尾部规范化引用块（`--- referenced files ---` + 每行 `@<workspace 相对路径>`；
+  path 以 `@` 开头写 `@@path`；拒绝控制字符/换行/绝对/`..`；块只允许在消息尾部）。无正文但有引用/附件时允许发送；
+  引用块之外的正文按既有规则渲染；UI 把引用块渲染为 chip/列表（不展示原文），刷新/回放后仍识别。`chat.send` 契约不变。
+- **键盘/IME/六态**：Enter 发送、Shift+Enter 换行、Esc 关闭菜单且不丢草稿；菜单打开时方向键只移高亮、焦点留在输入框；
+  `compositionstart→end` 期间 Enter/`/`/`@` 不触发发送/菜单；`/`/`@` 仅词首触发；六态（空/加载/错误/离线/流式中/已取消）不白屏；
+  axe 0 serious/critical。
+
 ## 3. 关键旅程（验收口径）
 
 ### 3.1 个人版首次使用
@@ -237,4 +268,33 @@ Boot
 - 生效方式：桌面在 `settings.set`/启动时发布非密 `RuntimeSettings.web_search`；`tool-web-search` 在每次调用时解析（无需重启），不回显、不落任何搜索凭据（该端点无密钥）。
 - 校验：非 https/非法 URL、超时越界由 `settings.set` 拒绝且不保存；UI 同步给出字段错误。
 - 版本：工具出口端点不是 AI provider，C7（企业 AI 只走网关）不适用；C6 弱管控不限制工具出口，故 personal/enterprise 均可配置。
+
+## 11. 交互契约与交互 ID（强制）
+
+> 本节是**交互契约内容与 ID 规则**的唯一权威；证据/门禁口径见 [`11`](11-testing-and-evidence.md) §8.6，交互模式与视觉/ARIA 规则见 [`27`](27-ui-design-system.md) §2.5/§2.6，此处不复述。
+
+任何客户端 surface（页面/面板/弹窗/菜单/输入区）新增或修改交互行为，变更目录必须包含 `specs/changes/<id>/interaction.md`（模板 `specs/templates/interaction.md`；`scripts/new-change.sh` 自动生成）。
+
+**必填字段**：表面/入口、归属包、权威文档、`状态：active | planned`、证据根、测试落点、元素与语义（role/accessible name/键盘/默认焦点）、状态模型、交互条目表、视觉/ARIA 基线、预算与一致性约束。
+
+- **ID 规则**：`<SURFACE>-<AREA>-<NN>`（大写；AREA 如 `KEY`/`FOCUS`/`IME`/`CMD`/`AT`/`FILE`/`ATT`/`ERR`/`A11Y`/`VIS`/`PERSIST`）。ID 在仓库内唯一；一个 ID 至少一个测试，一个测试可覆盖多个 ID，但不得引用未定义 ID。
+- **优先级**：P0 = 主路径/焦点/数据一致性；P1 = 高频细节/可达性/回归基线；P2 = 可选增强（不进门禁，契约可不列）。P0/P1 必须写测试落点与证据路径。
+- **状态模型**：至少覆盖六态（空/加载/错误/离线/流式中/已取消）+ `busy`/`disabled`/`composing`/`menu-open`（按 surface 适用）。
+- **active / planned**：`active` 参与门禁；`planned` 只 WARN，实现开始时改 `active` 并补 `@interaction:<ID>` 测试与证据。
+- **基线 surface（已实现，`active`）**：composer、settings dialog、inspector、command palette、sessions sidebar——共 19 个 ID（P0 = 11），见 `specs/changes/2026-11-01-ui-interaction-verification/interaction.md`。
+- **在途 surface（`planned`）**：Phase 2a `2026-11-01-client-composer-surface`、Phase 2b `2026-11-01-client-side-panels` 与其子 spec `2026-11-01-client-activity-panels` 各自 `interaction.md` 把其 R1–R8 拆成 ID；企业版登录/网关/商店/管理台 surface 后续按同一模板补。
+- **一致性**：只能复用 `27` §2.5 的唯一交互模式清单；禁止第二套 focus/dialog/menu/toast（C17）。
+
+### 11.1 直觉检查（INT-*，强制）
+
+> 本节定义**契约必填的两个直觉文件与映射要求**；直觉原则/判据/反例只在 [`27`](27-ui-design-system.md) §2.7 定义，
+> 认知走查与用户测试方法只在 [`27`](27-ui-design-system.md) §2.8 定义，证据/门禁口径见 [`11`](11-testing-and-evidence.md) §8.6。本节不复述原则表。
+
+UI 变更在 `interaction.md` 之外，还必须交付两个同目录文件（模板：`specs/templates/intuition.md`、`specs/templates/intuition-walkthrough.md`；`scripts/new-change.sh` 自动复制）：
+
+- **`intuition.md`（第七件）**：`状态：active | planned`；`active` 时 **≥3 条 INT 行**，且该 surface 的**每个 P0 交互 ID 至少映射 1 条 INT**；每行含场景/top task、用户直觉期望（可观察）、反例、验证方式、证据。
+- **`intuition-walkthrough.md`（第八件）**：3 persona × 3 top task，逐步回答 4 问（知道目标？看得到控件？能预判反馈？能恢复？）+ 摩擦表（INT ID、P0/P1/P2、最小修法、状态）；P0 摩擦未解决不得进入实现/发布。
+- **planned 态**：`planned` 契约两个文件可选（门禁只 WARN）；实现开始时必须补齐并把 `interaction.md` 改 `active`，否则不进入实现/验收。
+- **验证方式**：`e2e proxy`（可观察行为代理）/ `review`（fresh-context 3-persona 走查）/ `user test`（≥5 名真实用户 think-aloud，发布前；未执行标 UNVERIFIED）。**e2e 不能证明直觉**；质量由 reviewer 走查 + 用户测试判定，门禁只查存在性/最低行数。
+- **证据**：走查结论进评审记录/`acceptance.md` 并引用 INT ID；用户测试证据 `target/evidence/<change>/usability/`（匿名化，未跑标 UNVERIFIED）。任何"符合直觉"结论在 ≥5 名真实用户测试前不得声称。
 

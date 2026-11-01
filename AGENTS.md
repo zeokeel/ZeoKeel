@@ -59,6 +59,7 @@
 | C17 | **复用优先 / 单一实现**：可复用能力只允许一处实现（契约 / `crates/zk-kit-*` / `packages/ui/ui-kit`）；禁止新建 `utils/helpers/common` 或复制近似实现；新增可复用能力必须先查能力索引并登记 `@capability`；CI 重复/越界门禁（`docs/25`、ADR-057） | 拒绝合并 |
 | C18 | **对话必须归属工作区**：无工作区不建会话；会话 `workspace_id` 创建后不可变（唯一例外：用户显式 `workspace.remove{reassign_to}`，需二次确认/审计）；agent cwd/工具默认根 = 工作区根；会话列表/消息按工作区隔离（归档为 post-M1；`docs/26`、ADR-058） | 拒绝合并 |
 | C19 | **发现即文档，评审后施工**：发现有用方案（库/设计系统/DSH 模式/颜色/品牌规则等）先写入 `docs/`（或 ADR），由非实现者只读评审；实现者修复 P0/P1；同一评审者复评通过后，才可写 approved spec/代码；禁止"先写好看/好用代码再补文档"（`docs/11` §9、`docs/27` §5） | 拒绝合并 |
+| C20 | **直觉交互先行**：任何 UI 新功能先做认知走查（3 persona × 3 top task × 4 问）并写 `intuition.md`（≥3 条 INT、每个 P0 交互 ID 映射 ≥1 条）+ `intuition-walkthrough.md`，再写 `interaction.md` 与代码；e2e 只做代理、不能证明直觉；无走查/评审/≥5 人用户测试证据不得声称"符合直觉"（`docs/27` §2.7/§2.8、`docs/19` §11.1、`docs/11` §8.6） | 拒绝合并 |
 
 ## 3. Architecture model（binding）
 
@@ -170,6 +171,8 @@ pnpm -r lint                      # eslint --max-warnings 0
 pnpm -r test:unit                 # vitest
 pnpm -r build                     # vite build
 pnpm e2e                          # playwright（m1-e2e；别名 test:e2e）
+pnpm e2e:ui                       # 交互契约 e2e（真实 serve；@interaction:<ID> 标签 + 证据）
+python3 scripts/ui-interaction-gate.py --self-test && python3 scripts/ui-interaction-gate.py  # 交互契约门禁
 
 # Rust
 cargo fmt --all -- --check
@@ -262,6 +265,8 @@ python3 golden/run.py           # 可选：已 build 后单独重跑，期望 {"
 - 客户端：reducer golden traces（含中文/emoji 跨 UTF-8 分片）、取消/重连/IME/滚动/Markdown 未闭合/主题截图/axe。
 - 服务端：迁移不可变（改历史必红）、全量端点权限矩阵、钱包并发与峰谷结算、网关流式、WASM 限额。
 - 新增/修改行为必须加测试；修 bug 先写复现。
+- 客户端 UI 行为变更必须交交互契约（`specs/changes/<id>/interaction.md`，唯一 ID）+ 带 `@interaction:<ID>` 标签的真人点击测试 + `target/evidence/` 证据；命令与口径见 `docs/11` §8.6。
+- 客户端 UI 新功能必须先做认知走查（3 persona × 3 top task × 4 问）并产出 `intuition.md`（INT 映射 P0 交互 ID）与 `intuition-walkthrough.md`；e2e 不能证明直觉，无走查/评审/≥5 人用户测试不得声称直观（C20、`docs/19` §11.1、`docs/27` §2.7/§2.8）。
 - 不许用"手动点过"代替测试；手测要落成脚本。
 
 ## 9. Security considerations
@@ -332,12 +337,13 @@ python3 golden/run.py           # 可选：已 build 后单独重跑，期望 {"
 1. **先读**：本文件 → `docs/README.md`（SSOT/任务路径）→ `specs/README.md`（变更规则）→ 任务对应权威文档 → `docs/18`/`docs/25`（写代码时）。
 2. **先搜复用**：`zk find <能力>` / 读 `docs/generated/CAPABILITY-INDEX.md` / `rg` 现有符号；确定复用、扩展或新建，并留证据（`25` §5）。
 3. **先写文档 + 评审**：发现新方案/设计/模式时，先落 `docs/` 或 ADR；由非实现者只读评审 → 修复 → 复评通过（`11` §9、`27` §5）。
-4. **先查 spec**：`specs/changes/` 是否已有同目标变更；没有则 `bash scripts/new-change.sh <slug>`，写 `proposal.md` 并让用户确认后改 `approved`。
-5. **先问**：需求/契约/数据格式/安全边界不明确时问用户；不要替用户做产品决策。
-6. **小步**：按 `tasks.md` 一次一个可提交步骤；改契约先跑 conformance 与 public-api diff。
-7. **验证**：按 §6 跑对应命令；失败就修到绿，不许跳过。
-8. **收尾**：填 `acceptance.md`；更新文档/ADR/README；检查 `docs-check`/`spec-check`/`zk capability --check` 与生成物 `--check`；归档 spec。
-9. **提交**：Conventional Commits（`feat(scope): ...`）；一个 PR 一件事；PR 描述链接 `specs/changes/<id>`，并回答复用四问。
+4. **UI 新功能先走查/INT 再契约/代码**：先做 3 persona × 3 top task × 4 问认知走查，写 `intuition.md`/`intuition-walkthrough.md`（P0 摩擦未解决不动手），再写 `interaction.md` 与代码；e2e 不能证明直觉（C20、`19` §11.1、`27` §2.7/§2.8）。
+5. **先查 spec**：`specs/changes/` 是否已有同目标变更；没有则 `bash scripts/new-change.sh <slug>`，写 `proposal.md` 并让用户确认后改 `approved`。
+6. **先问**：需求/契约/数据格式/安全边界不明确时问用户；不要替用户做产品决策。
+7. **小步**：按 `tasks.md` 一次一个可提交步骤；改契约先跑 conformance 与 public-api diff。
+8. **验证**：按 §6 跑对应命令；失败就修到绿，不许跳过。
+9. **收尾**：填 `acceptance.md`；更新文档/ADR/README；检查 `docs-check`/`spec-check`/`zk capability --check` 与生成物 `--check`；归档 spec。
+10. **提交**：Conventional Commits（`feat(scope): ...`）；一个 PR 一件事；PR 描述链接 `specs/changes/<id>`，并回答复用四问。
 
 ## 14. PR / commit 约定
 

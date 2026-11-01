@@ -79,7 +79,17 @@
 - 企业版媒体/embeddings **按设计不可用**（C7/ADR-031）：UI 隐藏、`settings.set` 拒绝；客户端不得持有上游 key。web-search 是工具出口而非 AI provider，C7 不适用，两版本均可配置。
 - `cap-vector` 仅本地 JSON 持久化：无跨进程写锁、无 SQLite/FTS、无跨设备同步（最后一写者胜），enterprise 无 embeddings 路由。
 
-### 3.4 可访问性/i18n
+### 3.4 客户端交互验证（2026-11-01）
+
+- **已落地（本地）**：`playwright.interaction.config.ts` + `e2e/interaction/` 在真实 `serve` 载体（真实 SQLite + fake upstream）覆盖 5 个已实现 surface 的 19 个 `active` 交互 ID（P0 = 11）；每个 P0/P1 ID 有 `@interaction:<ID>` 测试与证据 `target/evidence/2026-11-01-ui-interaction-verification/interaction/<ID>.json`；门禁 `python3 scripts/ui-interaction-gate.py`（契约/标签/证据/反模式）。口径见 `docs/11` §8.6、`docs/19` §11。
+- **视觉基线**：composer 空态 `toHaveScreenshot` 基线仅在本机（Linux/Chromium）生成并通过；**hosted-runner 首跑与跨平台渲染（字体/抗锯齿）UNVERIFIED**，不得声称 CI 已绿或跨平台一致。基线更新只能人工确认后 `pnpm e2e:ui:update`（`docs/27` §2.6）。
+- **IME**：e2e 用 `compositionstart` + `isComposing` keydown 模拟；真实输入法（中文/日文等）未在真机验证 → UNVERIFIED；L1 单测覆盖状态机。
+- **未采用为门禁**：Playwright MCP/CLI、Storybook/Chromatic、SaaS 视觉服务（仅作未来探索，不进 CI/依赖）。
+- **在途**：Phase 2a `2026-11-01-client-composer-surface`、Phase 2b `2026-11-01-client-side-panels`、子 spec `2026-11-01-client-activity-panels` 的 `interaction.md` 为 `planned`（门禁只 WARN）；实现开始时改 `active` 并补测试/证据。
+- **直觉/认知走查（2026-11-01）**：直觉质量由 fresh-context reviewer 按 3 persona × 3 top task 走查 + 真实用户测试判定；`scripts/ui-interaction-gate.py` 只查 `intuition.md`/`intuition-walkthrough.md` 存在与 ≥3 条 INT 行，**存在性 ≠ 质量**、不是自动化直觉评分（`docs/27` §2.7/§2.8、`docs/19` §11.1、`docs/11` §8.6）。
+- **用户测试未执行 → UNVERIFIED**：≥5 名真实用户 think-aloud（成功率/首次点击/时间/错误/SEQ-SUS）尚未运行；证据计划 `target/evidence/<change>/usability/`（匿名化，target gitignore）。在 ≥5 名真实用户测试完成前，任何"符合直觉/直观/用户友好"结论**不得声称**（不允许用 e2e 绿/模型自述替代）。
+
+### 3.5 可访问性/i18n
 
 - axe 矩阵（B12）已覆盖：client（`serve`：空态/聊天/设置/命令面板/检查器 + Tab/焦点回位/Esc/⌘K/Ctrl+B、
   reduced-motion，`e2e/m1-a11y.spec.ts`）、admin（登录页 + 10 个页面 + 键盘焦点，`e2e/m6-a11y.spec.ts`）、portal
@@ -88,7 +98,7 @@
 - 残余：真实 Tauri WebView/三平台与主题矩阵未跑（M6 平台项）；zh/en 全字符串审计由 B13 `scripts/i18n-check.sh` 覆盖，
   本矩阵只做 `lang` 属性与页面级检查。
 
-### 3.5 连接器（MCP）客户端残余（B16/R9.6）
+### 3.6 连接器（MCP）客户端残余（B16/R9.6）
 
 - 客户端 MCP transport 已实现：stdio JSON-RPC（initialize/tools.list/tools.call）、HTTP(S) POST（rustls TLS）、
   catalog 配置映射/校验、每 connector 一次 initialize 并复用会话、配置变更/force-update 重启；测试
@@ -182,6 +192,16 @@
 2. 远端 CI（hosted runner）全绿；tag `v1.0.0-rc.1` 触发 release 产出真实三平台包/镜像/SBOM/SHA256SUMS。
 3. 上述通过后由用户确认版本号从 `1.0.0-rc.1` 转为 `1.0.0`。
 
+- **composer 附件与引用块（Phase 2a，`2026-11-01-client-composer-surface`）**：
+  附件上限 **1 MiB/文件、≤5 个/消息**（受 `serve /ipc` axum JSON 2 MiB body limit 约束；更大上限需同改 body limit，另立 spec）；
+  类型 allowlist 8 类（png/jpg/jpeg/webp/gif/pdf/txt/md/json/csv/log），其它类型拒绝；
+  附件保存到 `<workspace>/.zeokeel/attachments/<conversation_id>/`（随工作区走、工具可读），**无 GC/去重**（回滚/清理需手工删目录）；
+  图片不直传模型多模态字节（模型用 `read_image`/`read_document` 工具按引用路径读取）；
+  composer chip 显示在输入框上方、**非内联原子 token**（Phase 3 评估结构化编辑器）；引用块为普通文本，旧客户端按文本显示；
+  `@` 候选受 `workspace.files` 有界列表（depth≤2/≤300）限制，深目录引用需后续 listing 扩展。
+- **交互视觉/ARIA 基线（composer Phase 2a）**：`CMP2-VIS-01` 像素基线需人工确认后 `pnpm e2e:ui:update` 生成（agent 不得自动接受），
+  当前以结构/布局断言 + 截图证据替代，像素基线 **UNVERIFIED**；`CMP2-A11Y-01` 已改为 axe + 显式 ARIA 断言（无 aria snapshot 依赖）。
+  同因：基线 surface `CMP-VIS-01`（旧 composer 空态像素基线）在 Phase 2a 视觉变更后需人工确认更新。
 - **容器镜像基础 CVE（RC.1，UNVERIFIED 残余）**：`debian:bookworm-slim` 运行时镜像在 2026-10-31 trivy 库快照下
   有 68 项 HIGH/CRITICAL（含 1 CRITICAL）**无上游修复**（`FixedVersion` 为空，dpkg 包如 `bsdutils`/`curl`/`gzip` 等）；
   可修复项为 0。gate 10 按"无 *可修复* HIGH/CRITICAL"判定，残余项在此登记，供客户按自身补丁策略评估；

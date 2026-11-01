@@ -36,20 +36,24 @@ propose → specify → design → tasks → implement → verify → archive
 ```text
 specs/
 ├─ README.md
-├─ templates/                 # 五件套模板（只读）
+├─ templates/                 # 五件套 + interaction/intuition/intuition-walkthrough 模板（只读）
 ├─ changes/
 │  └─ 2026-10-30-add-package-foo/
 │     ├─ proposal.md
 │     ├─ spec.md
 │     ├─ design.md
 │     ├─ tasks.md
-│     └─ acceptance.md
+│     ├─ acceptance.md
+│     ├─ interaction.md       # UI 交互变更必填（第六件，docs/19 §11）
+│     ├─ intuition.md         # UI 变更必填（第七件，docs/19 §11.1）
+│     └─ intuition-walkthrough.md  # UI 变更必填（第八件，docs/19 §11.1）
 └─ archive/                   # done/abandoned 后移动到这里
 ```
 
 - `<id>` = `YYYY-MM-DD-<kebab-slug>`，全仓唯一。
-- 新建：`bash scripts/new-change.sh add-package-foo`（自动生成 id 与五件套）。
+- 新建：`bash scripts/new-change.sh add-package-foo`（自动生成 id、五件套与三个可选模板（模板存在时））。
 - 小变更可只填必要小节，但**不能删除文件**；大变更五件套必须完整。
+- 客户端 surface 交互变更：`interaction.md`（第六件）、`intuition.md`（第七件）、`intuition-walkthrough.md`（第八件）为**必填**（`docs/19` §11/§11.1、`docs/11` §8.6）；非 UI 变更可不填。
 
 ## 4. 每个文件写什么
 
@@ -60,6 +64,9 @@ specs/
 | `design.md` | 影响的包/契约/路由/迁移/生成物、方案与备选、安全、发布/回滚、测试计划、文档更新 | 重复 `docs/` 已有规范 |
 | `tasks.md` | 可独立提交的任务、写作用域、依赖、验证命令 | 大而全的“完成功能” |
 | `acceptance.md` | 验收命令、证据路径、手工检查、文档/ADR、回滚、签字 | 主观“看起来没问题” |
+| `interaction.md` | （UI 变更）交互 ID/状态/焦点/键盘/错误/证据映射 | 复制 `docs/19` 规范正文 |
+| `intuition.md` | （UI 变更）INT 判定/P0 交互 ID 映射/验证方式/证据 | 复制 `docs/27` §2.7 原则表 |
+| `intuition-walkthrough.md` | （UI 变更）3 persona × 3 top task × 4 问 + 摩擦表 + 用户测试计划（未跑标 UNVERIFIED） | 把走查写成“看起来不错” |
 
 ## 5. 与 `docs/` 的边界
 
@@ -70,7 +77,7 @@ specs/
 
 ## 6. 门禁（当前如实口径）
 
-- `python3 scripts/spec-check.py`：**只做结构检查**——模板齐全、`changes/<id>/` 五件套存在、`proposal.md` 状态合法、`tasks.md` 有任务表头与验证列。**`specs/changes/` 为空时不报错**；内容质量由评审负责，不由脚本保证。
+- `python3 scripts/spec-check.py`：**只做结构检查**——模板齐全、`changes/<id>/` 五件套存在、`proposal.md` 状态合法、`tasks.md` 有任务表头与验证列；三个 UI 可选模板（interaction/intuition/intuition-walkthrough）不做存在性校验，由 `scripts/ui-interaction-gate.py` 对 active 契约检查。**`specs/changes/` 为空时不报错**；内容质量由评审负责，不由脚本保证。
 - `python3 scripts/docs-check.py`：文档结构/链接/SSOT 登记/ADR-D 编号/废弃口径。**不检查"多文档重复短语"**；去重靠 SSOT 评审 + `rg` 手工检索。
 - **C16（无 spec 不开工）当前由评审执行**：没有自动门禁拦截"未建 spec 就改代码"；scaffold 后接入 CI（`AGENTS.md` §6）。
 - CI 顺序（scaffold 后）：`spec-check` → `docs-check` → 代码/契约/测试门禁（见 `AGENTS.md` §6）。

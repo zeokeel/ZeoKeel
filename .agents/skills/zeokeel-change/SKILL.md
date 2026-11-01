@@ -17,6 +17,7 @@ description: Use when starting any ZeoKeel change that touches code, contracts, 
 3. **先搜复用**（C17/`docs/25`）：`zk find <能力>` / 读 `docs/generated/CAPABILITY-INDEX.md` / `rg` 现有符号；确定复用、扩展还是新建，并留证据。
 4. 检查 `specs/changes/` 是否已有同目标变更；有则续用，不另建。
 5. 检查 `docs/15`（D）与 `docs/13`（ADR）是否已有结论；冲突时停下来问用户，不自行选。
+6. **UI/交互变更**：额外加载 `.agents/skills/zeokeel-ui-interaction/SKILL.md`（先 `interaction.md` 契约与 `@interaction:<ID>` 测试，再改代码；`docs/19` §11）。
 
 ## 建 spec
 

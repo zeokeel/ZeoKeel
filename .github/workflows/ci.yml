@@ -177,6 +177,35 @@ jobs:
           path: target/evidence
           if-no-files-found: ignore
 
+  ui-interaction:
+    # Baseline interaction contracts (specs/changes/2026-11-01-ui-interaction-verification):
+    # real serve carrier + real SQLite + fake upstream, role/keyboard journeys tagged
+    # @interaction:<ID>, committed visual/aria baselines, gate = contract ↔ tag ↔ evidence.
+    # Existing jobs are not modified; runtime is bounded to one serve build + 5 specs.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          system-deps: "true"
+          rust: "true"
+          pnpm: "true"
+          node: "true"
+          node-cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: UI interaction e2e (serve carrier, @interaction tags, evidence JSON)
+        run: pnpm e2e:ui
+      - name: UI interaction gate (contract ID ↔ test tag ↔ evidence, self-test)
+        run: python3 scripts/ui-interaction-gate.py --self-test && python3 scripts/ui-interaction-gate.py
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ui-interaction-evidence
+          path: target/evidence/2026-11-01-ui-interaction-verification
+          if-no-files-found: ignore
+
   a11y:
     # Real axe matrix executed by the enterprise e2e scripts:
     #   scripts/login-e2e.sh -> m2-login/m3-client-content/m4-client-apps (AxeBuilder)
