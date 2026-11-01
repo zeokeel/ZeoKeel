@@ -134,6 +134,13 @@ fn oauth_command_names_are_stable_and_unique() {
         commands::SESSION_UPDATE,
         commands::SESSION_FORK,
         commands::SESSION_SEARCH,
+        commands::GOAL_GET,
+        commands::GOAL_SET,
+        commands::GOAL_UPDATE,
+        commands::SESSION_OVERRIDE_GET,
+        commands::SESSION_OVERRIDE_SET,
+        commands::SESSION_EXPORT,
+        commands::FEEDBACK_SUBMIT,
     ];
     let mut sorted = names.to_vec();
     sorted.sort_unstable();
@@ -258,5 +265,61 @@ fn phase2b_payloads_round_trip() {
     assert_eq!(
         search,
         serde_json::from_str(&serde_json::to_string(&search).unwrap()).unwrap()
+    );
+}
+
+#[test]
+fn command_surface_payloads_round_trip() {
+    use zk_contract_ipc::payloads::{
+        ConversationOverrideSetPayload, FeedbackSubmitPayload, GoalGetPayload, GoalSetPayload,
+        SessionExportPayload,
+    };
+    let goal = GoalSetPayload {
+        workspace_id: "w".to_owned(),
+        conversation_id: "c".to_owned(),
+        objective: "ship it".to_owned(),
+        max_rounds: Some(3),
+    };
+    assert_eq!(
+        goal,
+        serde_json::from_str(&serde_json::to_string(&goal).unwrap()).unwrap()
+    );
+    let get = GoalGetPayload {
+        workspace_id: "w".to_owned(),
+        conversation_id: "c".to_owned(),
+    };
+    assert_eq!(
+        get,
+        serde_json::from_str(&serde_json::to_string(&get).unwrap()).unwrap()
+    );
+    let override_set = ConversationOverrideSetPayload {
+        workspace_id: "w".to_owned(),
+        conversation_id: "c".to_owned(),
+        model: Some("deepseek-chat".to_owned()),
+        reasoning_effort: Some("low".to_owned()),
+        approval_policy: Some("strict".to_owned()),
+    };
+    assert_eq!(
+        override_set,
+        serde_json::from_str(&serde_json::to_string(&override_set).unwrap()).unwrap()
+    );
+    let export = SessionExportPayload {
+        workspace_id: "w".to_owned(),
+        conversation_id: "c".to_owned(),
+        format: "markdown".to_owned(),
+    };
+    assert_eq!(
+        export,
+        serde_json::from_str(&serde_json::to_string(&export).unwrap()).unwrap()
+    );
+    let feedback = FeedbackSubmitPayload {
+        workspace_id: "w".to_owned(),
+        conversation_id: "c".to_owned(),
+        category: "bug".to_owned(),
+        description: Some("x".to_owned()),
+    };
+    assert_eq!(
+        feedback,
+        serde_json::from_str(&serde_json::to_string(&feedback).unwrap()).unwrap()
     );
 }

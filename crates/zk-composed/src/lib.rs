@@ -42,6 +42,10 @@ impl Runtime {
 
     pub fn configure_llm(&self, base_url: &str, api_key: &str, model: &str, provider: &str) -> Result<(), String> { self.agent.configure_model(base_url, api_key, model, provider) }
 
+    pub fn configure_agent_runtime(&self, settings: &zk_contract_config::AgentSettings) -> Result<(), String> { self.agent.configure_agent(settings) }
+
+    pub fn set_approval_preset(&self, preset: Option<&str>) -> Result<(), String> { self.agent.set_approval_preset(preset) }
+
     pub fn sessions(&self) -> Arc<dyn zk_contract_session::SessionStore> {
         Arc::clone(&self.sessions)
     }
@@ -178,3 +182,4 @@ pub use inner::*;
 
 pub use zk_kit_session;
 pub use zk_kit_tools;
+pub use zk_tool_goal;

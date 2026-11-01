@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BrandLogo,
   Button,
@@ -12,6 +11,7 @@ import {
   IconSearch,
   IconSliders,
   IconTask,
+  Modal as KitModal,
   useUi,
   type Conversation,
   type Locale,
@@ -32,95 +32,6 @@ function sessionTime(timestamp: number, locale: Locale): string {
   ).format(date);
 }
 
-function Modal(props: {
-  labelId: string;
-  title: string;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  const { t } = useUi();
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const panel = panelRef.current;
-    const focusables = (): HTMLElement[] => {
-      if (panel === null) {
-        return [];
-      }
-      return Array.from(panel.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ));
-    };
-    const initial = panel?.querySelector<HTMLElement>('[data-autofocus]') ?? focusables()[0];
-    initial?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        props.onClose();
-        return;
-      }
-      if (event.key !== "Tab") {
-        return;
-      }
-      const items = focusables();
-      if (items.length === 0) {
-        event.preventDefault();
-        return;
-      }
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (first === undefined || last === undefined) {
-        return;
-      }
-      if (event.shiftKey && (document.activeElement === first || !panel?.contains(document.activeElement))) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && (document.activeElement === last || !panel?.contains(document.activeElement))) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      previous?.focus();
-    };
-  }, [props]);
-
-  return createPortal(
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <button
-        type="button"
-        aria-label={t("close")}
-        className="absolute inset-0 border-0 bg-[var(--zk-overlay)]"
-        onClick={props.onClose}
-      />
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={props.labelId}
-        className="relative z-10 w-[min(420px,100%)] rounded-xl bg-popover p-4 shadow-[var(--zk-shadow-lift)]"
-      >
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 id={props.labelId} className="text-[15px] font-semibold text-foreground">
-            {props.title}
-          </h2>
-          <button
-            type="button"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-control text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"
-            aria-label={t("close")}
-            onClick={props.onClose}
-          >
-            <IconClose />
-          </button>
-        </div>
-        {props.children}
-      </div>
-    </div>,
-    document.body,
-  );
-}
 
 /** `sessions.sidebar` slot: DSH-style flat workspaces with nested conversations. */
 export function Sidebar() {
@@ -754,8 +665,8 @@ export function Sidebar() {
       ) : null}
 
       {renameTarget !== null ? (
-        <Modal
-          labelId="workspace-rename"
+        <KitModal
+          open
           title={t("workspaceRename")}
           onClose={() => { setRenameTarget(null); }}
         >
@@ -787,12 +698,12 @@ export function Sidebar() {
               </Button>
             </div>
           </form>
-        </Modal>
+        </KitModal>
       ) : null}
 
       {removeTarget !== null ? (
-        <Modal
-          labelId="workspace-remove"
+        <KitModal
+          open
           title={t("workspaceRemoveTitle")}
           onClose={() => { setRemoveTarget(null); }}
         >
@@ -842,7 +753,7 @@ export function Sidebar() {
               {t("workspaceRemoveConfirm")}
             </Button>
           </div>
-        </Modal>
+        </KitModal>
       ) : null}
 
     </aside>

@@ -27,9 +27,13 @@ import {
   ipc_chat_send_resultSchema,
   ipc_command_responseSchema,
   ipc_eventSchema,
+  conversation_override_resultSchema,
+  feedback_submit_resultSchema,
+  goal_resultSchema,
   ipc_meta_infoSchema,
   ipc_terminal_resultSchema,
   session_messageSchema,
+  session_export_resultSchema,
   session_search_resultSchema,
   workspace_file_read_resultSchema,
   workspace_changes_resultSchema,
@@ -83,6 +87,10 @@ export type BoundaryName =
   | "workspaceFileReadResult"
   | "sessionSearchResult"
   | "terminalResult"
+  | "goalResult"
+  | "conversationOverrideResult"
+  | "sessionExportResult"
+  | "feedbackSubmitResult"
   | "questionAsked";
 
 const checks: Record<BoundaryName, ValidateFunction> = {
@@ -101,6 +109,10 @@ const checks: Record<BoundaryName, ValidateFunction> = {
   workspaceFileReadResult: ajv.compile(workspace_file_read_resultSchema),
   sessionSearchResult: ajv.compile(session_search_resultSchema),
   terminalResult: ajv.compile(ipc_terminal_resultSchema),
+  goalResult: ajv.compile(goal_resultSchema),
+  conversationOverrideResult: ajv.compile(conversation_override_resultSchema),
+  sessionExportResult: ajv.compile(session_export_resultSchema),
+  feedbackSubmitResult: ajv.compile(feedback_submit_resultSchema),
   questionAsked: ajv.compile(agent_question_askedSchema),
 };
 
@@ -186,4 +198,20 @@ export function validateSessionSearchResult(value: unknown): boolean {
 
 export function validateTerminalResult(value: unknown): boolean {
   return validateBoundary("terminalResult", value);
+}
+
+export function validateGoalResult(value: unknown): boolean {
+  return validateBoundary("goalResult", value);
+}
+
+export function validateConversationOverrideResult(value: unknown): boolean {
+  return validateBoundary("conversationOverrideResult", value);
+}
+
+export function validateSessionExportResult(value: unknown): boolean {
+  return validateBoundary("sessionExportResult", value);
+}
+
+export function validateFeedbackSubmitResult(value: unknown): boolean {
+  return validateBoundary("feedbackSubmitResult", value);
 }

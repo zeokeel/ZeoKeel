@@ -39,8 +39,8 @@
 
 | ID | 前置 | 人的动作（点击/按键/输入/拖放） | 期望（可见 + aria + 焦点 + 持久化） | 优先级 | 测试落点 | 证据 |
 | --- | --- | --- | --- | --- | --- | --- |
-| CMP2-CMD-01 | 已有会话 | 词首输入 `/`，输入过滤，↑/↓ 后 Enter | 菜单在输入框上方打开；过滤大小写不敏感；执行后清除 `/query`、焦点回输入框、正文保留 | P0 | `composer-phase2a.spec.ts` | `CMP2-CMD-01.json` |
-| CMP2-CMD-02 | 菜单已打开 | 按 Esc；查看 disabled 命令；流式中试 `/cancel`、非流式试 `/retry` | Esc 关闭且草稿保留；disabled 可见不可执行；`/cancel` 仅流式中、`/retry` 仅有上一条发送文本且非流式时可执行 | P0 | `composer-phase2a.spec.ts` | `CMP2-CMD-02.json` |
+| CMP2-CMD-01 | 已有会话 | 词首输入 `/`，输入过滤（如「模」），↑/↓，Esc | `/` 打开 DSH 命令 listbox（添加 file/goal + 指令 model/permission/export 等可见，**不含 UI 动作**）；过滤大小写不敏感；↑↓ 只移高亮、焦点留输入框；Esc 关闭且草稿保留、焦点回输入框（命令执行断言归 `CMD2-*`） | P0 | `composer-phase2a.spec.ts` | `CMP2-CMD-01.json` |
+| CMP2-CMD-02 | 菜单已打开 | 输入 `/zzz`；输入 `/compact` 后 Enter；Esc | 无匹配显示「没有匹配的命令」空态、不发送；Batch 2 占位（`/compact`/`/plan`/`/skill`）disabled 且 inert（不执行/不发送、显示「未实现（Batch 2）」）；Esc 保留草稿并回输入框 | P0 | `composer-phase2a.spec.ts` | `CMP2-CMD-02.json` |
 | CMP2-AT-01 | 会话有 workspace | 词首输入 `@` 或点引用按钮 | 打开文件菜单（数据来自 `workspace.files`）；过滤 path（大小写不敏感）；目录/文件均可见并标注 kind | P0 | `composer-phase2a.spec.ts` | `CMP2-AT-01.json` |
 | CMP2-AT-02 | `@` 菜单已打开 | 选择文件/目录；重复选择同一路径；凑满 5 条后再加 | 生成原子引用 chip、从输入框移除 `@query`、去重、按添加顺序；引用+附件合并 ≤5，超出禁用新增并提示 | P0 | `composer-phase2a.spec.ts` | `CMP2-AT-02.json` |
 | CMP2-AT-03 | `@` 菜单已打开 | 文件列表空/加载中/错误/离线 | 显示对应状态与可读提示；不阻塞继续输入普通文本 | P1 | `composer-phase2a.spec.ts` | `CMP2-AT-03.json` |
@@ -76,3 +76,4 @@
 - 视觉更新：只允许人确认后 `pnpm e2e:ui:update`；CI 不得自动接受。
 - 门禁：实现开始时把本文件 `状态` 改 `active`，并把 P0/P1 标签/证据接入 `python3 scripts/ui-interaction-gate.py`。
 - **工具依赖（P1-5）**：`pnpm e2e:ui` 与 `scripts/ui-interaction-gate.py` 由 `2026-11-01-ui-interaction-verification` 落地；本文件写作时两者尚不存在，当前 **UNVERIFIED**，实现前必须确认可用后再声称门禁绿。
+- **演进（`2026-11-01-client-command-surface`，task-42）**：composer `/` 的命令目录已由 command-surface 接管为 DSH 1:1 slash 表面（`/file` `/model` `/permission` `/goal` `/export` `/feedback` + Batch2 占位）；UI 动作（新建会话/侧栏/设置/右栏/cancel/retry）仅保留在 ⌘K palette。`CMP2-CMD-01/02` 仅验证 slash 菜单的打开/过滤/导航/关闭/占位语义，命令执行与会话级行为由 `CMD2-*` 覆盖；两 surface 共用同一 `ui.commands` 目录与唯一 `runCommand` 执行器（C17）。

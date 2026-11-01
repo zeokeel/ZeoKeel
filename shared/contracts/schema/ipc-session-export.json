@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SessionExportPayload",
+  "description": "`session.export` payload.",
+  "type": "object",
+  "required": [
+    "conversation_id",
+    "format",
+    "workspace_id"
+  ],
+  "properties": {
+    "conversation_id": {
+      "description": "Conversation id.",
+      "type": "string"
+    },
+    "format": {
+      "description": "Export format (only `markdown` today).",
+      "type": "string"
+    },
+    "workspace_id": {
+      "description": "Owning workspace id.",
+      "type": "string"
+    }
+  }
+}

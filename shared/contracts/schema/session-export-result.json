@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SessionExportResult",
+  "description": "`session.export` result.",
+  "type": "object",
+  "required": [
+    "bytes",
+    "mime",
+    "path",
+    "truncated"
+  ],
+  "properties": {
+    "bytes": {
+      "description": "File size in bytes.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "mime": {
+      "description": "MIME type (`text/markdown`).",
+      "type": "string"
+    },
+    "path": {
+      "description": "Absolute path of the generated Markdown file.",
+      "type": "string"
+    },
+    "truncated": {
+      "description": "More content existed than the 8 MiB export cap.",
+      "type": "boolean"
+    }
+  }
+}

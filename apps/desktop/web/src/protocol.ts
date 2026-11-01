@@ -21,7 +21,10 @@ import {
   type McpServerConfig,
   type CommandResult,
   type Conversation,
+  type ConversationExport,
+  type ConversationOverride,
   type EmbeddingSettings,
+  type GoalView,
   type Locale,
   type MediaSettings,
   type Message,
@@ -67,6 +70,10 @@ import {
   validateWorkspace,
   validateWorkspaceChangesResult,
   validateWorkspaceFilesResult,
+  validateConversationOverrideResult,
+  validateFeedbackSubmitResult,
+  validateGoalResult,
+  validateSessionExportResult,
   validateSessionSearchResult,
   validateTerminalResult,
   validateWorkspaceFileReadResult,
@@ -870,4 +877,61 @@ export function parseAgentEvent(value: unknown): AgentEvent | null {
     default:
       return null;
   }
+}
+
+/** `goal.get`/`goal.set`/`goal.update` result → `GoalView | null`. */
+export function parseGoalResult(value: unknown): { goal: GoalView | null } | null {
+  if (!isRecord(value) || !validateGoalResult(value)) return null;
+  const raw = value["goal"];
+  if (raw === null || raw === undefined) return { goal: null };
+  if (!isRecord(raw)) return null;
+  const objective = readString(raw, "objective");
+  const status = readString(raw, "status");
+  if (objective === null || status === null) return null;
+  return {
+    goal: {
+      objective,
+      status,
+      rounds: readNumber(raw, "rounds") ?? 0,
+      max_rounds: readNumber(raw, "max_rounds") ?? 0,
+      reason: readString(raw, "reason"),
+      last_result: readString(raw, "last_result"),
+      created_ms: readNumber(raw, "created_ms") ?? 0,
+      updated_ms: readNumber(raw, "updated_ms") ?? 0,
+    },
+  };
+}
+
+/** `session.override_get`/`override_set` result → conversation override. */
+export function parseConversationOverrideResult(value: unknown): ConversationOverride | null {
+  if (!isRecord(value) || !validateConversationOverrideResult(value)) return null;
+  const raw = value["overrides"];
+  if (!isRecord(raw)) return null;
+  return {
+    model: readString(raw, "model"),
+    reasoning_effort: readString(raw, "reasoning_effort"),
+    approval_policy: readString(raw, "approval_policy"),
+    is_session_override: readBoolean(raw, "is_session_override") ?? false,
+  };
+}
+
+/** `session.export` result. */
+export function parseSessionExportResult(value: unknown): ConversationExport | null {
+  if (!isRecord(value) || !validateSessionExportResult(value)) return null;
+  const path = readString(value, "path");
+  if (path === null) return null;
+  return {
+    path,
+    bytes: readNumber(value, "bytes") ?? 0,
+    mime: readString(value, "mime") ?? "text/markdown",
+    truncated: readBoolean(value, "truncated") ?? false,
+  };
+}
+
+/** `feedback.submit` result. */
+export function parseFeedbackSubmitResult(value: unknown): { stored: string; path: string } | null {
+  if (!isRecord(value) || !validateFeedbackSubmitResult(value)) return null;
+  const path = readString(value, "path");
+  if (path === null) return null;
+  return { stored: readString(value, "stored") ?? "local", path };
 }

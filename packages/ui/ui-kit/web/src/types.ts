@@ -649,6 +649,14 @@ export interface CommandDescriptor {
   hint?: string;
   /** Visible but not executable (e.g. `/cancel` outside a stream). */
   disabled?: boolean;
+  /** Surface filter: composer `/` menu vs ⌘K palette (shared catalog). */
+  surface: "slash" | "palette" | "both";
+  /** Slash command kind (`action`/`popupSelect`/`leadingInput`/`execute`). */
+  kind?: "action" | "popupSelect" | "leadingInput" | "execute" | "disabled";
+  /** Visible reason for a disabled row (Batch 2 placeholders). */
+  disabledReason?: string;
+  /** Slash command name without the `/` (e.g. `model`). */
+  name?: string;
 }
 
 /** One workspace file/dir candidate for `@` references (from `workspace.files`). */
@@ -698,3 +706,34 @@ export interface AttachmentSaveResult {
   /** Canonical MIME. */
   mime: string;
 }
+
+/** Conversation goal view (mirrors `zk_contract_ipc::results::GoalView`). */
+export interface GoalView {
+  objective: string;
+  status: string;
+  rounds: number;
+  max_rounds: number;
+  reason?: string | null;
+  last_result?: string | null;
+  created_ms?: number;
+  updated_ms?: number;
+}
+
+/** Conversation-scoped model/permission override (Phase 2b command surface). */
+export interface ConversationOverride {
+  model: string | null;
+  reasoning_effort: string | null;
+  approval_policy: string | null;
+  is_session_override: boolean;
+}
+
+/** `session.export` result. */
+export interface ConversationExport {
+  path: string;
+  bytes: number;
+  mime: string;
+  truncated: boolean;
+}
+
+/** Local-only feedback category. */
+export type FeedbackCategory = "bug" | "idea" | "other";

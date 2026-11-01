@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ConversationOverrideSetPayload",
+  "description": "`session.override_set` payload (`None` clears that field).",
+  "type": "object",
+  "required": [
+    "conversation_id",
+    "workspace_id"
+  ],
+  "properties": {
+    "approval_policy": {
+      "description": "Session approval policy preset (`strict|auto_read_only|ask`).",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "conversation_id": {
+      "description": "Conversation id.",
+      "type": "string"
+    },
+    "model": {
+      "description": "Session model override (`None` = clear; `Some(\"\")` is rejected).",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reasoning_effort": {
+      "description": "Session reasoning effort (`minimal|low|medium|high|xhigh|max`).",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "workspace_id": {
+      "description": "Owning workspace id.",
+      "type": "string"
+    }
+  }
+}

@@ -7,7 +7,7 @@
 - 表面 / 入口：composer `/` 命令菜单 + `/model`/`/permission` popup + `/goal` GoalBar + `/export`/`/feedback` 结果面
 - 归属包：`@zeokeel/ui-chat`（菜单/GoalBar/FeedbackDialog）、`@zeokeel/ui-kit`（命令 DTO/Modal/actions）、`apps/desktop/web`（唯一 catalog/actions）
 - 权威文档：`docs/19` §2/§11、`docs/27` §2.5–§2.8、`docs/11` §8.6、`target/audits/dsh-reference-inventory.md` §5
-- 状态：`planned`（实现开始时与 `intuition.md` 一起改 `active`）
+- 状态：`active`（实现阶段；P0/P1 ID 均有 `@interaction:<ID>` 测试与证据）
 - 证据根：`target/evidence/2026-11-01-client-command-surface/interaction/`
 - 测试：`e2e/interaction/command-surface.spec.ts`（`@interaction:<ID>` 标签；实现时新建）
 

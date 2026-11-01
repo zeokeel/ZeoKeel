@@ -7,6 +7,10 @@ import type {
   ChatMessage,
   CommandDescriptor,
   Conversation,
+  ConversationExport,
+  ConversationOverride,
+  FeedbackCategory,
+  GoalView,
   Locale,
   Meta,
   ResolvedTheme,
@@ -56,7 +60,7 @@ export interface UiActions {
   openModelSettings: (paneId: string) => void;
   closeSettings: () => void;
   /** Execute one catalog command (the only executor for ⌘K and composer `/`). */
-  runCommand: (id: string) => void;
+  runCommand: (id: string, query?: string) => void;
   /** Workspace file candidates for `@` (cached `workspace.files`; filtered server-side list). */
   searchWorkspaceFiles: (query: string) => Promise<WorkspaceFileRef[]>;
   /** Save one composer attachment through `workspace.attachment_save` (host validates). */
@@ -72,6 +76,24 @@ export interface UiActions {
   copyConversationId: (conversationId: string) => Promise<boolean>;
   /** Content search in the current workspace (`session.search`); stale responses drop app-side. */
   searchSessions: (query: string, limit?: number) => Promise<SessionSearchOutcome>;
+  /** Re-read the active conversation goal (`goal.get`). */
+  refreshGoal: () => Promise<void>;
+  /** Set/replace the active conversation goal (`goal.set`; UI confirms inline). */
+  setGoal: (objective: string, maxRounds?: number) => Promise<boolean>;
+  /** Pause/resume/cancel the active conversation goal (`goal.update`). */
+  updateGoal: (action: "pause" | "resume" | "cancel") => Promise<boolean>;
+  /** Read the active conversation's model/permission override. */
+  getConversationOverride: () => Promise<ConversationOverride | null>;
+  /** Write the active conversation override (`model`/`reasoning_effort`/`approval_policy`). */
+  setConversationOverride: (patch: {
+    model?: string;
+    reasoning_effort?: string;
+    approval_policy?: string;
+  }) => Promise<boolean>;
+  /** Export the active conversation as Markdown (`session.export`). */
+  exportConversation: () => Promise<ConversationExport | null>;
+  /** Store local-only feedback JSON (`feedback.submit`; no network). */
+  submitFeedback: (category: FeedbackCategory, description: string) => Promise<boolean>;
   /** Save the whole settings document under the current revision fence. */
   saveSettings: (settings: AppSettings) => Promise<SettingsSaveOutcome>;
   /** Re-read `settings.get` after a revision conflict; returns the fresh document. */
@@ -116,6 +138,12 @@ export interface UiValue {
   modelLabel: string;
   /** Settings pane id the model label deep-links to (`provider` | `enterprise`). */
   modelSettingsPane: string;
+  /** Enterprise gateway model ids cached by the host (personal: empty). */
+  gatewayModels: string[];
+  /** Active conversation goal (null when unset / not loaded). */
+  goal: GoalView | null;
+  /** Pending composer `/` command intent (single executor in the app). */
+  slashCommand: { name: string; query: string; token: number } | null;
   actions: UiActions;
 }
 

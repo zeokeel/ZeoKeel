@@ -48,6 +48,8 @@ pub struct AppState {
     oauth_flows: Mutex<HashMap<String, OAuthFlowStatus>>,
     /// Two-phase MCP connection probes (`mcp.test` / `mcp.test.status`).
     mcp_probes: Arc<crate::mcp::McpProbeBroker>,
+    /// Host-cached enterprise gateway model ids (login/refresh updates; logout clears).
+    gateway_models: Mutex<Vec<String>>,
 }
 
 /// One background connector OAuth flow (`docs/07` §6): `pending|authorized|failed`.
@@ -83,6 +85,7 @@ impl AppState {
             agent_config_error: Mutex::new(None),
             oauth_flows: Mutex::new(HashMap::new()),
             mcp_probes: crate::mcp::McpProbeBroker::new(),
+            gateway_models: Mutex::new(Vec::new()),
         })
     }
 
@@ -628,6 +631,10 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             if let Err(error) = apply_media_settings(&settings) {
                 return CommandResponse::err(error);
             }
+            // Config-mutex: a running turn holds the shared agent config for its
+            // conversation override; settings.apply must queue behind it so it
+            // cannot change the model/permission of an in-flight turn.
+            let _config_guard = crate::command_surface::lock_config();
             // Apply agent + tool settings first: validation/runtime failures
             // must reach the UI instead of persisting settings that never take
             // effect.
@@ -705,6 +712,118 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
         commands::WORKSPACE_FILE_READ => workspace_file_read(state, payload),
         commands::TERMINAL => terminal_command(state, payload),
         commands::SESSION_UPDATE => session_update(state, payload),
+        commands::GOAL_GET => {
+            let request: zk_contract_ipc::payloads::GoalGetPayload =
+                match serde_json::from_value(payload.clone()) {
+                    Ok(request) => request,
+                    Err(error) => return CommandResponse::err(format!("goal/invalid: {error}")),
+                };
+            match crate::command_surface::goal_get(
+                &*state.runtime.sessions(),
+                &request.workspace_id,
+                &request.conversation_id,
+            ) {
+                Ok(result) => CommandResponse::ok(json!(result)),
+                Err(error) => CommandResponse::err(error),
+            }
+        }
+        commands::GOAL_SET => {
+            let request: zk_contract_ipc::payloads::GoalSetPayload =
+                match serde_json::from_value(payload.clone()) {
+                    Ok(request) => request,
+                    Err(error) => return CommandResponse::err(format!("goal/invalid: {error}")),
+                };
+            match crate::command_surface::goal_set(&*state.runtime.sessions(), &request) {
+                Ok(result) => CommandResponse::ok(json!(result)),
+                Err(error) => CommandResponse::err(error),
+            }
+        }
+        commands::GOAL_UPDATE => {
+            let request: zk_contract_ipc::payloads::GoalUpdatePayload =
+                match serde_json::from_value(payload.clone()) {
+                    Ok(request) => request,
+                    Err(error) => return CommandResponse::err(format!("goal/invalid: {error}")),
+                };
+            match crate::command_surface::goal_update(&*state.runtime.sessions(), &request) {
+                Ok(result) => CommandResponse::ok(json!(result)),
+                Err(error) => CommandResponse::err(error),
+            }
+        }
+        commands::SESSION_OVERRIDE_GET => {
+            let request: zk_contract_ipc::payloads::ConversationOverrideGetPayload =
+                match serde_json::from_value(payload.clone()) {
+                    Ok(request) => request,
+                    Err(error) => return CommandResponse::err(format!("session/invalid: {error}")),
+                };
+            match crate::command_surface::get_override(
+                &*state.runtime.sessions(),
+                &request.workspace_id,
+                &request.conversation_id,
+            ) {
+                Ok(result) => CommandResponse::ok(json!(result)),
+                Err(error) => CommandResponse::err(error),
+            }
+        }
+        commands::SESSION_OVERRIDE_SET => {
+            let request: zk_contract_ipc::payloads::ConversationOverrideSetPayload =
+                match serde_json::from_value(payload.clone()) {
+                    Ok(request) => request,
+                    Err(error) => return CommandResponse::err(format!("session/invalid: {error}")),
+                };
+            let models = state
+                .gateway_models
+                .lock()
+                .map(|models| models.clone())
+                .unwrap_or_default();
+            match crate::command_surface::set_override(
+                &*state.runtime.sessions(),
+                &request.workspace_id,
+                &request.conversation_id,
+                request.model.as_deref(),
+                request.reasoning_effort.as_deref(),
+                request.approval_policy.as_deref(),
+                &models,
+            ) {
+                Ok(result) => CommandResponse::ok(json!(result)),
+                Err(error) => CommandResponse::err(error),
+            }
+        }
+        commands::SESSION_EXPORT => {
+            let request: zk_contract_ipc::payloads::SessionExportPayload =
+                match serde_json::from_value(payload.clone()) {
+                    Ok(request) => request,
+                    Err(error) => return CommandResponse::err(format!("session/invalid: {error}")),
+                };
+            if request.format != "markdown" {
+                return CommandResponse::err("session/invalid: unsupported export format");
+            }
+            match crate::command_surface::export_markdown_file(
+                &*state.runtime.sessions(),
+                &request.workspace_id,
+                &request.conversation_id,
+            ) {
+                Ok(result) => CommandResponse::ok(json!(result)),
+                Err(error) => CommandResponse::err(error),
+            }
+        }
+        commands::FEEDBACK_SUBMIT => {
+            let request: zk_contract_ipc::payloads::FeedbackSubmitPayload =
+                match serde_json::from_value(payload.clone()) {
+                    Ok(request) => request,
+                    Err(error) => return CommandResponse::err(format!("session/invalid: {error}")),
+                };
+            match crate::command_surface::submit_feedback(
+                &*state.runtime.sessions(),
+                &request.workspace_id,
+                &request.conversation_id,
+                &request.category,
+                request.description.as_deref(),
+                zk_composed::EDITION,
+            ) {
+                Ok(result) => CommandResponse::ok(json!(result)),
+                Err(error) => CommandResponse::err(error),
+            }
+        }
         commands::SESSION_FORK => session_fork(state, payload),
         commands::SESSION_SEARCH => session_search(state, payload),
         commands::WORKSPACE_ATTACHMENT_SAVE => attachment_save(state, payload),
@@ -792,6 +911,18 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 return CommandResponse::err("missing server_url/access_token");
             };
             let model = payload.get("model").and_then(Value::as_str).unwrap_or("");
+            // Enterprise gateway model ids (bootstrap) are cached for the UI and
+            // for `session.override_set` validation (C7: no upstream keys here).
+            if let Some(models) = payload.get("models").and_then(Value::as_array) {
+                let ids: Vec<String> = models
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_owned)
+                    .collect();
+                if let Ok(mut cache) = state.gateway_models.lock() {
+                    *cache = ids;
+                }
+            }
             // Shared config feeds the gateway credentials/token refresh paths ...
             zk_composed::configure_llm(base_url, access_token, model);
             // ... while this rebuilds the already-constructed rig model so login and
@@ -826,6 +957,9 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             // The local session (tokens/server URL) is owned by the UI layer; here we
             // only make sure no in-flight turn can keep using the old credentials.
             zk_composed::configure_llm("", "", "");
+            if let Ok(mut cache) = state.gateway_models.lock() {
+                cache.clear();
+            }
             // Reset the already-built rig model to the boot placeholder so a
             // logged-out agent cannot keep using the old gateway credentials.
             let _ = state.runtime.configure_llm("", "", "", "gateway");
@@ -2564,6 +2698,41 @@ fn run_turn(state: &Arc<AppState>, job: &TurnJob) {
         }
         return;
     }
+    // Global config mutex: one turn at a time may mutate the shared agent config
+    // (model/agent/approval override). Queued turns cancelled before acquiring the
+    // lock are skipped without events/errors (spec R4 P2-1).
+    let _config_guard = crate::command_surface::lock_config();
+    if job.cancelled.load(Ordering::SeqCst) {
+        if let Ok(mut streams) = state.streams.lock() {
+            streams.remove(&job.stream_id);
+        }
+        return;
+    }
+    let global_settings =
+        crate::command_surface::snapshot_settings(&*state.runtime.settings()).unwrap_or_default();
+    if let Err(error) = crate::command_surface::apply_override(
+        &state.runtime,
+        &global_settings,
+        &job.workspace_id,
+        &job.conversation_id,
+    ) {
+        let _ = crate::command_surface::restore_global(&state.runtime, &global_settings);
+        if let Ok(mut streams) = state.streams.lock() {
+            streams.remove(&job.stream_id);
+        }
+        let payload = serde_json::to_value(zk_contract_agent::AgentEvent::Error { message: error })
+            .unwrap_or(Value::Null);
+        state
+            .bus
+            .send(UiEvent {
+                stream_id: job.stream_id.clone(),
+                seq: 1,
+                kind: "agent".to_owned(),
+                payload,
+            })
+            .ok();
+        return;
+    }
     let seq = Arc::new(AtomicU64::new(1));
     let bridge = Arc::new(BridgeSink::new(
         state.bus.clone(),
@@ -2595,6 +2764,12 @@ fn run_turn(state: &Arc<AppState>, job: &TurnJob) {
         &history,
         sink,
     );
+    // Restore the global agent config from the turn-start snapshot (still under
+    // the config mutex; a concurrent settings.set applies its own snapshot later).
+    if let Err(error) = crate::command_surface::restore_global(&state.runtime, &global_settings) {
+        eprintln!("zk: restore global settings after turn failed: {error}");
+    }
+    drop(_config_guard);
     match result {
         Ok(reply) => {
             let status = if bridge.turn_cancelled() {
@@ -4902,6 +5077,226 @@ mod tests {
             }),
         );
         assert!(!long.ok);
+        std::env::remove_var("ZEOKEEL_HOME");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn command_surface_goal_override_export_feedback_round_trip() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-cmd-surface-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", home.join("zeokeel-home"));
+        let (state, workspace_id, conversation_id, ws_path) = phase2b_fixture(&home);
+
+        // Override: empty → set model/effort/policy → persisted file → partial clear.
+        let initial = call_ok(
+            &state,
+            zk_contract_ipc::commands::SESSION_OVERRIDE_GET,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+            }),
+        );
+        assert_eq!(initial["overrides"]["is_session_override"], false);
+        let set = call_ok(
+            &state,
+            zk_contract_ipc::commands::SESSION_OVERRIDE_SET,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "model": "  deepseek-chat  ",
+                "reasoning_effort": "low",
+                "approval_policy": "strict",
+            }),
+        );
+        assert_eq!(set["overrides"]["model"], "deepseek-chat");
+        assert_eq!(set["overrides"]["is_session_override"], true);
+        assert!(ws_path
+            .join(".zeokeel/conversation-overrides.json")
+            .is_file());
+        let invalid = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SESSION_OVERRIDE_SET,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "approval_policy": "sandbox",
+            }),
+        );
+        assert!(!invalid.ok);
+
+        // Goal: set → pause → resume → cancel (same `.zeokeel/goal.json` as tool.goal).
+        let empty_goal = call_ok(
+            &state,
+            zk_contract_ipc::commands::GOAL_GET,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+            }),
+        );
+        assert!(empty_goal["goal"].is_null());
+        let goal = call_ok(
+            &state,
+            zk_contract_ipc::commands::GOAL_SET,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "objective": "ship the command surface",
+                "max_rounds": 3,
+            }),
+        );
+        assert_eq!(goal["goal"]["status"], "active");
+        assert_eq!(goal["goal"]["max_rounds"], 3);
+        let paused = call_ok(
+            &state,
+            zk_contract_ipc::commands::GOAL_UPDATE,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "pause",
+            }),
+        );
+        assert_eq!(paused["goal"]["status"], "blocked");
+        let resumed = call_ok(
+            &state,
+            zk_contract_ipc::commands::GOAL_UPDATE,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "resume",
+            }),
+        );
+        assert_eq!(resumed["goal"]["status"], "active");
+        let cancelled = call_ok(
+            &state,
+            zk_contract_ipc::commands::GOAL_UPDATE,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "cancel",
+            }),
+        );
+        assert_eq!(cancelled["goal"]["status"], "cancelled");
+        assert!(ws_path.join(".zeokeel/goal.json").is_file());
+
+        // Export: needs messages; writes Markdown under `.zeokeel/exports/`.
+        let empty_export = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SESSION_EXPORT,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "format": "markdown",
+            }),
+        );
+        assert!(!empty_export.ok);
+        state
+            .runtime
+            .sessions()
+            .append_message(&zk_contract_session::Message {
+                id: "m1".to_owned(),
+                conversation_id: conversation_id.clone(),
+                role: "user".to_owned(),
+                content: "export me".to_owned(),
+                created_at_ms: 1,
+                status: "done".to_owned(),
+                usage: None,
+                turn_id: String::new(),
+            })
+            .unwrap();
+        let exported = call_ok(
+            &state,
+            zk_contract_ipc::commands::SESSION_EXPORT,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "format": "markdown",
+            }),
+        );
+        let export_path = exported["path"].as_str().expect("export path");
+        assert!(export_path.contains("/.zeokeel/exports/"));
+        let markdown = std::fs::read_to_string(export_path).unwrap();
+        assert!(markdown.contains("export me"));
+        assert_eq!(exported["mime"], "text/markdown");
+
+        // Feedback: local JSON only, category/limit validation.
+        let feedback = call_ok(
+            &state,
+            zk_contract_ipc::commands::FEEDBACK_SUBMIT,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "category": "idea",
+                "description": "please keep the command menu fast",
+            }),
+        );
+        assert_eq!(feedback["stored"], "local");
+        let feedback_path = feedback["path"].as_str().expect("feedback path");
+        assert!(feedback_path.contains("/.zeokeel/feedback/"));
+        let bad = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::FEEDBACK_SUBMIT,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "category": "spam",
+            }),
+        );
+        assert!(!bad.ok);
+        let too_long = "x".repeat(4097);
+        let long = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::FEEDBACK_SUBMIT,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "category": "bug",
+                "description": too_long,
+            }),
+        );
+        assert!(!long.ok);
+        std::env::remove_var("ZEOKEEL_HOME");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn config_mutex_applies_override_then_restores_global() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-cmd-mutex-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", home.join("zeokeel-home"));
+        let (state, workspace_id, conversation_id, _) = phase2b_fixture(&home);
+        let guard = crate::command_surface::lock_config();
+        let global = crate::command_surface::snapshot_settings(&*state.runtime.settings()).unwrap();
+        // No override yet: apply is a no-op; restore keeps the global config.
+        assert!(!crate::command_surface::apply_override(
+            &state.runtime,
+            &global,
+            &workspace_id,
+            &conversation_id
+        )
+        .unwrap());
+        call_ok(
+            &state,
+            zk_contract_ipc::commands::SESSION_OVERRIDE_SET,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "model": "session-model",
+                "reasoning_effort": "high",
+                "approval_policy": "auto_read_only",
+            }),
+        );
+        assert!(crate::command_surface::apply_override(
+            &state.runtime,
+            &global,
+            &workspace_id,
+            &conversation_id
+        )
+        .unwrap());
+        crate::command_surface::restore_global(&state.runtime, &global).unwrap();
+        drop(guard);
         std::env::remove_var("ZEOKEEL_HOME");
         let _ = std::fs::remove_dir_all(&home);
     }

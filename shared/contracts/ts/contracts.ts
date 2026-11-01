@@ -329,6 +329,12 @@ export interface AttachmentSaveResult {
   path: string;
 }
 
+export interface AuthConfigurePayload {
+  access_token?: string;
+  models?: Array<string>;
+  server_url?: string;
+}
+
 export interface AuthSession {
   access_token: string;
   expires_in: number;
@@ -459,6 +465,30 @@ export interface Conversation {
   workspace_id: string;
 }
 
+export interface ConversationOverride {
+  approval_policy?: string | null;
+  is_session_override: boolean;
+  model?: string | null;
+  reasoning_effort?: string | null;
+}
+
+export interface ConversationOverrideGetPayload {
+  conversation_id: string;
+  workspace_id: string;
+}
+
+export interface ConversationOverrideResult {
+  overrides: ConversationOverride;
+}
+
+export interface ConversationOverrideSetPayload {
+  approval_policy?: string | null;
+  conversation_id: string;
+  model?: string | null;
+  reasoning_effort?: string | null;
+  workspace_id: string;
+}
+
 export interface CreateUser {
   display_name?: string;
   password: string;
@@ -480,6 +510,18 @@ export interface EmbeddingSettings {
 
 export type EmptyPayload = Record<string, unknown>;
 
+export interface FeedbackSubmitPayload {
+  category: string;
+  conversation_id: string;
+  description?: string | null;
+  workspace_id: string;
+}
+
+export interface FeedbackSubmitResult {
+  path: string;
+  stored: string;
+}
+
 export interface FileEntry {
   badge?: string;
   depth: number;
@@ -490,6 +532,41 @@ export interface FileEntry {
 export type FileKind = "dir" | "file";
 
 export type FileReadKind = "text" | "image" | "unsupported";
+
+export type GoalAction = "pause" | "resume" | "cancel";
+
+export interface GoalGetPayload {
+  conversation_id: string;
+  workspace_id: string;
+}
+
+export interface GoalResult {
+  goal?: GoalView | null;
+}
+
+export interface GoalSetPayload {
+  conversation_id: string;
+  max_rounds?: number | null;
+  objective: string;
+  workspace_id: string;
+}
+
+export interface GoalUpdatePayload {
+  action: GoalAction;
+  conversation_id: string;
+  workspace_id: string;
+}
+
+export interface GoalView {
+  created_ms?: number;
+  last_result?: string | null;
+  max_rounds: number;
+  objective: string;
+  reason?: string | null;
+  rounds: number;
+  status: string;
+  updated_ms?: number;
+}
 
 export interface HookSettings {
   enabled?: boolean;
@@ -665,6 +742,19 @@ export interface ServerModule {
 export interface SessionCreatePayload {
   title?: string;
   workspace_id: string;
+}
+
+export interface SessionExportPayload {
+  conversation_id: string;
+  format: string;
+  workspace_id: string;
+}
+
+export interface SessionExportResult {
+  bytes: number;
+  mime: string;
+  path: string;
+  truncated: boolean;
 }
 
 export interface SessionForkPayload {
@@ -971,9 +1061,15 @@ export const connectorSchema = {"$schema":"http://json-schema.org/draft-07/schem
 
 export const contentSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"ContentKind":{"description":"Content kind.","enum":["skill","app"],"type":"string"},"ContentStatus":{"description":"Content lifecycle status.","enum":["pending","approved","rejected","delisted"],"type":"string"},"Visibility":{"description":"Visibility scope.","enum":["all","selected"],"type":"string"}},"description":"Content record.","properties":{"current_release_id":{"type":["string","null"]},"id":{"type":"string"},"kind":{"$ref":"#/definitions/ContentKind"},"name":{"type":"string"},"owner_id":{"type":"string"},"status":{"$ref":"#/definitions/ContentStatus"},"visibility":{"$ref":"#/definitions/Visibility"}},"required":["id","kind","name","owner_id","status","visibility"],"title":"Content","type":"object"} as const;
 
+export const conversation_override_resultSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"ConversationOverride":{"description":"Conversation-scoped override (model/effort/approval policy).","properties":{"approval_policy":{"default":null,"description":"Session approval policy preset.","type":["string","null"]},"is_session_override":{"description":"Whether any field is set for this conversation.","type":"boolean"},"model":{"default":null,"description":"Session model override.","type":["string","null"]},"reasoning_effort":{"default":null,"description":"Session reasoning effort.","type":["string","null"]}},"required":["is_session_override"],"type":"object"}},"description":"`session.override_get` / `session.override_set` result.","properties":{"overrides":{"allOf":[{"$ref":"#/definitions/ConversationOverride"}],"description":"Effective conversation override after the call."}},"required":["overrides"],"title":"ConversationOverrideResult","type":"object"} as const;
+
+export const conversation_overrideSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Conversation-scoped override (model/effort/approval policy).","properties":{"approval_policy":{"default":null,"description":"Session approval policy preset.","type":["string","null"]},"is_session_override":{"description":"Whether any field is set for this conversation.","type":"boolean"},"model":{"default":null,"description":"Session model override.","type":["string","null"]},"reasoning_effort":{"default":null,"description":"Session reasoning effort.","type":["string","null"]}},"required":["is_session_override"],"title":"ConversationOverride","type":"object"} as const;
+
 export const conversationSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"One conversation (message thread), always owned by exactly one workspace.","properties":{"archived":{"default":false,"description":"Archived: hidden from the default list, messages kept (Phase 2b, v6).","type":"boolean"},"created_at_ms":{"description":"Creation time (ms since epoch).","format":"uint64","minimum":0.0,"type":"integer"},"id":{"description":"Stable id (uuid/ulid string).","type":"string"},"pinned":{"default":false,"description":"Pinned to the top of its workspace list (Phase 2b, migration v6).","type":"boolean"},"title":{"description":"Display title.","type":"string"},"updated_at_ms":{"description":"Last update time (ms since epoch).","format":"uint64","minimum":0.0,"type":"integer"},"workspace_id":{"description":"Owning workspace id (immutable except explicit remove reassign).","type":"string"}},"required":["created_at_ms","id","title","updated_at_ms","workspace_id"],"title":"Conversation","type":"object"} as const;
 
 export const embedding_settingsSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Personal-edition embedding/vector provider settings (`cap-vector`).\n\nCustom settings are only valid for personal edition: enterprise AI must go through the gateway (C7), and the generated glue never configures a local embedding provider there. `api_key` is write-only in the UI (`settings.get` masks it, like the chat provider key).","properties":{"api_key":{"default":"","description":"Bearer key (write-only: masked by `settings.get`).","type":"string"},"base_url":{"default":"","description":"OpenAI-compatible API root, e.g. `https://api.openai.com/v1`.","type":"string"},"dims":{"default":null,"description":"Requested vector width (1..=65536), when supported by the endpoint.","format":"uint64","maximum":65536.0,"minimum":1.0,"type":["integer","null"]},"dir":{"default":"","description":"Persistence directory for `vector-index.json`; empty = memory-only.","type":"string"},"model":{"default":"","description":"Embedding model id (e.g. `text-embedding-3-small`).","type":"string"}},"title":"EmbeddingSettings","type":"object"} as const;
+
+export const feedback_submit_resultSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`feedback.submit` result (local store only).","properties":{"path":{"description":"Absolute path of the written JSON file.","type":"string"},"stored":{"description":"Always `local` (no network submission).","type":"string"}},"required":["path","stored"],"title":"FeedbackSubmitResult","type":"object"} as const;
 
 export const file_entrySchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"FileKind":{"description":"Kind of one workspace file-listing entry (`workspace.files`).","oneOf":[{"description":"Directory (may be expanded).","enum":["dir"],"type":"string"},{"description":"Regular file.","enum":["file"],"type":"string"}]}},"description":"One bounded entry of a read-only workspace file listing (`workspace.files`).\n\nMirrors the host emission `{ \"path\", \"depth\", \"kind\" }` in `apps/desktop/src/ipc.rs::list_workspace_files`; `badge` is optional UI metadata for inspectors (absent on the current wire).","properties":{"badge":{"default":"","description":"Optional inspector badge (empty/absent when the entry has none).","type":"string"},"depth":{"description":"Depth relative to the workspace root (`0` = direct child).","format":"uint32","minimum":0.0,"type":"integer"},"kind":{"allOf":[{"$ref":"#/definitions/FileKind"}],"description":"Entry kind."},"path":{"description":"Path relative to the workspace root (forward slashes; depth-bounded).","type":"string"}},"required":["depth","kind","path"],"title":"FileEntry","type":"object"} as const;
 
@@ -983,11 +1079,17 @@ export const gateway_moduleSchema = {"$schema":"http://json-schema.org/draft-07/
 
 export const gateway_usageSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Token usage reported by the upstream Responses API (`docs/22` §4).\n\nSettlement reads the final `response.completed` usage block; `usage` rows and holds are settled in one transaction. Zero values are valid (unknown counts).","properties":{"cached_tokens":{"default":0,"description":"Cached input tokens.","format":"int64","type":"integer"},"input_tokens":{"default":0,"description":"Fresh input tokens.","format":"int64","type":"integer"},"output_tokens":{"default":0,"description":"Output tokens.","format":"int64","type":"integer"},"reasoning_tokens":{"default":0,"description":"Reasoning tokens (subset of output).","format":"int64","type":"integer"}},"title":"UsageTotals","type":"object"} as const;
 
+export const goal_resultSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"GoalView":{"description":"Conversation goal view (mirrors the `tool.goal` driver JSON subset).","properties":{"created_ms":{"default":0,"description":"Creation time (ms since epoch).","format":"uint64","minimum":0.0,"type":"integer"},"last_result":{"default":null,"description":"Last round result summary.","type":["string","null"]},"max_rounds":{"description":"Maximum rounds.","format":"uint32","minimum":0.0,"type":"integer"},"objective":{"description":"Objective text.","type":"string"},"reason":{"default":null,"description":"Optional reason (`paused by user`, `cancelled`, ...).","type":["string","null"]},"rounds":{"description":"Executed/current round.","format":"uint32","minimum":0.0,"type":"integer"},"status":{"description":"`active` | `achieved` | `cancelled` | `blocked`.","type":"string"},"updated_ms":{"default":0,"description":"Last update time (ms since epoch).","format":"uint64","minimum":0.0,"type":"integer"}},"required":["max_rounds","objective","rounds","status"],"type":"object"}},"description":"`goal.get` result (`None` when the conversation has no goal).","properties":{"goal":{"anyOf":[{"$ref":"#/definitions/GoalView"},{"type":"null"}],"default":null,"description":"Current goal, if any."}},"title":"GoalResult","type":"object"} as const;
+
+export const goal_viewSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Conversation goal view (mirrors the `tool.goal` driver JSON subset).","properties":{"created_ms":{"default":0,"description":"Creation time (ms since epoch).","format":"uint64","minimum":0.0,"type":"integer"},"last_result":{"default":null,"description":"Last round result summary.","type":["string","null"]},"max_rounds":{"description":"Maximum rounds.","format":"uint32","minimum":0.0,"type":"integer"},"objective":{"description":"Objective text.","type":"string"},"reason":{"default":null,"description":"Optional reason (`paused by user`, `cancelled`, ...).","type":["string","null"]},"rounds":{"description":"Executed/current round.","format":"uint32","minimum":0.0,"type":"integer"},"status":{"description":"`active` | `achieved` | `cancelled` | `blocked`.","type":"string"},"updated_ms":{"default":0,"description":"Last update time (ms since epoch).","format":"uint64","minimum":0.0,"type":"integer"}},"required":["max_rounds","objective","rounds","status"],"title":"GoalView","type":"object"} as const;
+
 export const ipc_approval_decideSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"ApprovalDecision":{"description":"User decision for one approval request.\n\nDefined in the tool contract because [`ApprovalGate`] returns it; the agent contract re-exports it to keep `zk_contract_agent::ApprovalDecision` working.","oneOf":[{"description":"Allow exactly this call.","enum":["allow_once"],"type":"string"},{"description":"Allow this tool for the rest of the conversation (memory only).","enum":["allow_session"],"type":"string"},{"description":"Reject this call (fail-closed default).","enum":["reject"],"type":"string"},{"description":"Cancel the whole turn.","enum":["cancel"],"type":"string"}]}},"description":"`approval.decide` payload.","properties":{"approval_id":{"description":"Pending approval id.","type":"string"},"decision":{"allOf":[{"$ref":"#/definitions/ApprovalDecision"}],"description":"User decision."}},"required":["approval_id","decision"],"title":"ApprovalDecidePayload","type":"object"} as const;
 
 export const ipc_attachment_save_resultSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`workspace.attachment_save` result (host-canonical metadata).","properties":{"bytes":{"description":"Decoded byte length actually written.","format":"uint64","minimum":0.0,"type":"integer"},"mime":{"description":"Canonical MIME derived by the host (extension + magic).","type":"string"},"name":{"description":"Sanitized display name (basename only).","type":"string"},"path":{"description":"Workspace-relative path (forward slashes), e.g. `.zeokeel/attachments/<conversation>/<uuid>-<name>`.","type":"string"}},"required":["bytes","mime","name","path"],"title":"AttachmentSaveResult","type":"object"} as const;
 
 export const ipc_attachment_saveSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`workspace.attachment_save` payload (composer attachment, additive).\n\nThe host re-validates everything (workspace/conversation ownership, byte size after decode, extension/magic allow-list, filename sanitize) and returns the canonical metadata; the client hints are not trusted.","properties":{"conversation_id":{"description":"Conversation id; must belong to `workspace_id`.","type":"string"},"data_base64":{"description":"Base64 (standard alphabet, padded) of the raw file bytes.","type":"string"},"mime":{"description":"Client-declared MIME (host re-derives it from the extension/magic).","type":"string"},"name":{"description":"Client-declared basename (host sanitizes; path separators rejected).","type":"string"},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["conversation_id","data_base64","mime","name","workspace_id"],"title":"AttachmentSavePayload","type":"object"} as const;
+
+export const ipc_auth_configureSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`auth.configure` payload (additive `models` = enterprise gateway model cache).","properties":{"access_token":{"default":"","description":"Gateway access token.","type":"string"},"models":{"default":[],"description":"Gateway-provided model ids (host caches them; UI only displays them).","items":{"type":"string"},"type":"array"},"server_url":{"default":"","description":"Gateway server URL.","type":"string"}},"title":"AuthConfigurePayload","type":"object"} as const;
 
 export const ipc_chat_cancelSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`chat.cancel` payload (per-stream cancellation).","properties":{"stream_id":{"description":"Active stream id to cancel.","type":"string"},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["stream_id","workspace_id"],"title":"ChatCancelPayload","type":"object"} as const;
 
@@ -1013,6 +1115,14 @@ export const ipc_errorSchema = {"$schema":"http://json-schema.org/draft-07/schem
 
 export const ipc_eventSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Streaming event envelope. `kind` must be a stable string (e.g. `agent`).","properties":{"kind":{"description":"Event kind, e.g. `agent`.","type":"string"},"payload":{"description":"Event payload."},"seq":{"description":"Monotonic per stream.","format":"uint64","minimum":0.0,"type":"integer"},"stream_id":{"description":"Stream id (one per turn/window).","type":"string"}},"required":["kind","payload","seq","stream_id"],"title":"UiEvent","type":"object"} as const;
 
+export const ipc_feedback_submitSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`feedback.submit` payload (local-only; no network).","properties":{"category":{"description":"Category: `bug` | `idea` | `other`.","type":"string"},"conversation_id":{"description":"Conversation id (context only).","type":"string"},"description":{"default":null,"description":"Optional description (≤4 KiB).","type":["string","null"]},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["category","conversation_id","workspace_id"],"title":"FeedbackSubmitPayload","type":"object"} as const;
+
+export const ipc_goal_getSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`goal.get` payload.","properties":{"conversation_id":{"description":"Conversation id (goal is conversation-scoped).","type":"string"},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["conversation_id","workspace_id"],"title":"GoalGetPayload","type":"object"} as const;
+
+export const ipc_goal_setSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`goal.set` payload (`objective` trimmed, 1..=4096 bytes).","properties":{"conversation_id":{"description":"Conversation id.","type":"string"},"max_rounds":{"default":null,"description":"Optional round cap (host clamps 1..=100, default 10).","format":"uint32","minimum":0.0,"type":["integer","null"]},"objective":{"description":"Goal objective.","type":"string"},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["conversation_id","objective","workspace_id"],"title":"GoalSetPayload","type":"object"} as const;
+
+export const ipc_goal_updateSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"GoalAction":{"description":"One goal status action (`goal.update`).","oneOf":[{"description":"Pause the goal (status `blocked`, reason `paused by user`).","enum":["pause"],"type":"string"},{"description":"Resume a paused goal (status `active`).","enum":["resume"],"type":"string"},{"description":"Cancel the goal (status `cancelled`, keeps the round log).","enum":["cancel"],"type":"string"}]}},"description":"`goal.update` payload.","properties":{"action":{"allOf":[{"$ref":"#/definitions/GoalAction"}],"description":"Pause/resume/cancel."},"conversation_id":{"description":"Conversation id.","type":"string"},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["action","conversation_id","workspace_id"],"title":"GoalUpdatePayload","type":"object"} as const;
+
 export const ipc_mcp_test_resultSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`mcp.test` result: opaque one-shot probe id (`pending` starts immediately).","properties":{"test_id":{"description":"Probe id to poll through `mcp.test.status`.","type":"string"}},"required":["test_id"],"title":"McpTestResult","type":"object"} as const;
 
 export const ipc_mcp_test_stateSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Closed probe state (C10: no bare `String` on the wire).","oneOf":[{"description":"Probe still running.","enum":["pending"],"type":"string"},{"description":"Probe finished successfully (`tools` populated).","enum":["ok"],"type":"string"},{"description":"Probe failed (`error` carries a closed error code).","enum":["error"],"type":"string"}],"title":"McpTestState"} as const;
@@ -1027,9 +1137,15 @@ export const ipc_question_answerSchema = {"$schema":"http://json-schema.org/draf
 
 export const ipc_session_createSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`session.create` payload.","properties":{"title":{"default":"","description":"Optional conversation title.","type":"string"},"workspace_id":{"description":"Owning workspace id (mandatory; sessions never auto-create).","type":"string"}},"required":["workspace_id"],"title":"SessionCreatePayload","type":"object"} as const;
 
+export const ipc_session_exportSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`session.export` payload.","properties":{"conversation_id":{"description":"Conversation id.","type":"string"},"format":{"description":"Export format (only `markdown` today).","type":"string"},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["conversation_id","format","workspace_id"],"title":"SessionExportPayload","type":"object"} as const;
+
 export const ipc_session_forkSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`session.fork` payload (same-workspace copy, C18).","properties":{"conversation_id":{"description":"Source conversation id.","type":"string"},"title":{"default":null,"description":"Optional new title; absent derives \"<title> 副本\".","type":["string","null"]},"workspace_id":{"description":"Owning workspace id (fork never crosses workspaces).","type":"string"}},"required":["conversation_id","workspace_id"],"title":"SessionForkPayload","type":"object"} as const;
 
 export const ipc_session_messagesSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`session.messages` payload.","properties":{"conversation_id":{"description":"Conversation id.","type":"string"},"workspace_id":{"description":"Owning workspace id (ownership is verified).","type":"string"}},"required":["conversation_id","workspace_id"],"title":"SessionMessagesPayload","type":"object"} as const;
+
+export const ipc_session_override_getSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`session.override_get` payload.","properties":{"conversation_id":{"description":"Conversation id.","type":"string"},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["conversation_id","workspace_id"],"title":"ConversationOverrideGetPayload","type":"object"} as const;
+
+export const ipc_session_override_setSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`session.override_set` payload (`None` clears that field).","properties":{"approval_policy":{"default":null,"description":"Session approval policy preset (`strict|auto_read_only|ask`).","type":["string","null"]},"conversation_id":{"description":"Conversation id.","type":"string"},"model":{"default":null,"description":"Session model override (`None` = clear; `Some(\"\")` is rejected).","type":["string","null"]},"reasoning_effort":{"default":null,"description":"Session reasoning effort (`minimal|low|medium|high|xhigh|max`).","type":["string","null"]},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["conversation_id","workspace_id"],"title":"ConversationOverrideSetPayload","type":"object"} as const;
 
 export const ipc_session_searchSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`session.search` payload (current workspace only, C18).","properties":{"limit":{"default":null,"description":"Result limit (1..=50; host default 20).","format":"uint32","minimum":0.0,"type":["integer","null"]},"query":{"description":"Query (trimmed; empty = no request, ≤200 chars enforced host-side).","type":"string"},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["query","workspace_id"],"title":"SessionSearchPayload","type":"object"} as const;
 
@@ -1074,6 +1190,8 @@ export const runtime_settingsSchema = {"$schema":"http://json-schema.org/draft-0
 export const schedule_settingsSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Workspace schedule auto-run settings (`docs/19`/`docs/38`).\n\nAuto-run starts scheduled prompts with no human in the loop, so it is **disabled by default**; the desktop executor always starts but idles while disabled. `scan_seconds` is the poll period for due schedules.","properties":{"enabled":{"default":false,"description":"Whether the desktop executes due `.zeokeel/schedules.json` entries.","type":"boolean"},"scan_seconds":{"default":10,"description":"Schedule scan period in seconds (`5..=3600`; default 10).","format":"uint64","maximum":3600.0,"minimum":5.0,"type":"integer"}},"title":"ScheduleSettings","type":"object"} as const;
 
 export const server_moduleSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Stable server module descriptor exposed by `srv.*` packages.","properties":{"id":{"description":"Namespaced module id (e.g. `srv/http`).","type":"string"},"version":{"description":"Human-readable version.","type":"string"}},"required":["id","version"],"title":"ServerModule","type":"object"} as const;
+
+export const session_export_resultSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`session.export` result.","properties":{"bytes":{"description":"File size in bytes.","format":"uint64","minimum":0.0,"type":"integer"},"mime":{"description":"MIME type (`text/markdown`).","type":"string"},"path":{"description":"Absolute path of the generated Markdown file.","type":"string"},"truncated":{"description":"More content existed than the 8 MiB export cap.","type":"boolean"}},"required":["bytes","mime","path","truncated"],"title":"SessionExportResult","type":"object"} as const;
 
 export const session_messageSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"AgentUsage":{"description":"Token usage reported by the provider for one agent turn.\n\nThe counters are required (a `usage` object is only present when the provider reported usage; unreported counters are normalized to `0` by the runtime), matching `specs/changes/2026-10-31-config-and-media/spec.md`. `cost_micros` stays optional because most providers do not report cost.","properties":{"cached_tokens":{"description":"The part of `input_tokens` read from a provider-managed cache.","format":"uint64","minimum":0.0,"type":"integer"},"cost_micros":{"description":"Provider-reported cost in micro-USD (1e-6 USD), when known.","format":"uint64","minimum":0.0,"type":["integer","null"]},"input_tokens":{"description":"Every input token (cached + uncached).","format":"uint64","minimum":0.0,"type":"integer"},"output_tokens":{"description":"Every output token, reasoning included.","format":"uint64","minimum":0.0,"type":"integer"},"reasoning_tokens":{"description":"The part of `output_tokens` spent on internal reasoning.","format":"uint64","minimum":0.0,"type":"integer"},"total_tokens":{"description":"`input_tokens + output_tokens`.","format":"uint64","minimum":0.0,"type":"integer"}},"required":["cached_tokens","input_tokens","output_tokens","reasoning_tokens","total_tokens"],"type":"object"}},"description":"One message inside a conversation.","properties":{"content":{"description":"Text content (tool records are JSON strings in M1).","type":"string"},"conversation_id":{"description":"Parent conversation id.","type":"string"},"created_at_ms":{"description":"Creation time (ms since epoch).","format":"uint64","minimum":0.0,"type":"integer"},"id":{"description":"Stable id.","type":"string"},"role":{"description":"Role: `user` | `assistant` | `tool` | `system`.","type":"string"},"status":{"default":"done","description":"Turn status: `done` | `cancelled` | `error` (M1 persistence for cancel markers).","type":"string"},"turn_id":{"default":"","description":"Owning agent turn; tool rows and the closing assistant row share it.\n\nLegacy rows parse as an empty string and are grouped by the legacy fallback rule (next assistant in the conversation).","type":"string"},"usage":{"anyOf":[{"$ref":"#/definitions/AgentUsage"},{"type":"null"}],"default":null,"description":"Provider token usage for an assistant turn, when reported.\n\nPersisted so usage survives restarts (round-4); legacy rows parse as `None`."}},"required":["content","conversation_id","created_at_ms","id","role"],"title":"Message","type":"object"} as const;
 
@@ -1153,15 +1271,21 @@ export const SCHEMAS = {
   connector_oauth: connector_oauthSchema,
   connector: connectorSchema,
   content: contentSchema,
+  conversation_override_result: conversation_override_resultSchema,
+  conversation_override: conversation_overrideSchema,
   conversation: conversationSchema,
   embedding_settings: embedding_settingsSchema,
+  feedback_submit_result: feedback_submit_resultSchema,
   file_entry: file_entrySchema,
   gateway_model_price: gateway_model_priceSchema,
   gateway_module: gateway_moduleSchema,
   gateway_usage: gateway_usageSchema,
+  goal_result: goal_resultSchema,
+  goal_view: goal_viewSchema,
   ipc_approval_decide: ipc_approval_decideSchema,
   ipc_attachment_save_result: ipc_attachment_save_resultSchema,
   ipc_attachment_save: ipc_attachment_saveSchema,
+  ipc_auth_configure: ipc_auth_configureSchema,
   ipc_chat_cancel: ipc_chat_cancelSchema,
   ipc_chat_send_result: ipc_chat_send_resultSchema,
   ipc_chat_send: ipc_chat_sendSchema,
@@ -1174,6 +1298,10 @@ export const SCHEMAS = {
   ipc_empty_payload: ipc_empty_payloadSchema,
   ipc_error: ipc_errorSchema,
   ipc_event: ipc_eventSchema,
+  ipc_feedback_submit: ipc_feedback_submitSchema,
+  ipc_goal_get: ipc_goal_getSchema,
+  ipc_goal_set: ipc_goal_setSchema,
+  ipc_goal_update: ipc_goal_updateSchema,
   ipc_mcp_test_result: ipc_mcp_test_resultSchema,
   ipc_mcp_test_state: ipc_mcp_test_stateSchema,
   ipc_mcp_test_status_result: ipc_mcp_test_status_resultSchema,
@@ -1181,8 +1309,11 @@ export const SCHEMAS = {
   ipc_meta_info: ipc_meta_infoSchema,
   ipc_question_answer: ipc_question_answerSchema,
   ipc_session_create: ipc_session_createSchema,
+  ipc_session_export: ipc_session_exportSchema,
   ipc_session_fork: ipc_session_forkSchema,
   ipc_session_messages: ipc_session_messagesSchema,
+  ipc_session_override_get: ipc_session_override_getSchema,
+  ipc_session_override_set: ipc_session_override_setSchema,
   ipc_session_search: ipc_session_searchSchema,
   ipc_session_update: ipc_session_updateSchema,
   ipc_settings_get_result: ipc_settings_get_resultSchema,
@@ -1205,6 +1336,7 @@ export const SCHEMAS = {
   runtime_settings: runtime_settingsSchema,
   schedule_settings: schedule_settingsSchema,
   server_module: server_moduleSchema,
+  session_export_result: session_export_resultSchema,
   session_message: session_messageSchema,
   session_search_hit: session_search_hitSchema,
   session_search_result: session_search_resultSchema,

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { copyFileSync, existsSync, mkdirSync, appendFileSync, readdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
@@ -7,34 +7,6 @@ import AxeBuilder from "@axe-core/playwright";
 const SERVE = "http://127.0.0.1:8788";
 const HOME = "target/evidence/m1/home";
 
-
-/** Calls one IPC command through the serve carrier and returns its `data`. */
-async function callIpc(
-  page: Page,
-  name: string,
-  payload: Record<string, unknown>,
-): Promise<unknown> {
-  const response = await page.request.post(`${SERVE}/ipc`, { data: { name, payload } });
-  expect(response.ok()).toBeTruthy();
-  const body: unknown = await response.json();
-  if (typeof body !== "object" || body === null) {
-    return undefined;
-  }
-  const record: Record<string, unknown> = { ...body };
-  return record["data"];
-}
-
-/** Array rows of an IPC `data` payload (settings/workspace/conversation lists). */
-function rowsOf(data: unknown): Record<string, unknown>[] {
-  const entries: unknown[] = Array.isArray(data) ? data : [];
-  const rows: Record<string, unknown>[] = [];
-  for (const row of entries) {
-    if (typeof row === "object" && row !== null) {
-      rows.push({ ...row });
-    }
-  }
-  return rows;
-}
 
 test.describe("M1 serve carrier (real dispatch + SQLite)", () => {
   test("send a tool-backed message, then reload and keep the conversation", async ({ page }) => {
@@ -150,21 +122,24 @@ test.describe("M1 serve carrier (real dispatch + SQLite)", () => {
     await page.screenshot({ path: "target/evidence/m1/serve-settings-schedule.png" });
   });
 
-  test("composer / menu executes the shared command catalog (new conversation)", async ({ page }) => {
+  test("composer / opens the DSH command surface and runs /model", async ({ page }) => {
     await page.goto(`${SERVE}/`, { waitUntil: "networkidle" });
-    const workspaceId = rowsOf(await callIpc(page, "workspace.list", {}))[0]?.["id"];
-    expect(workspaceId).toBeTruthy();
-    const before = rowsOf(await callIpc(page, "session.list", { workspace_id: workspaceId }));
     await page.getByRole("button", { name: "新建会话" }).last().click();
     const composer = page.getByRole("textbox", { name: "消息输入框" });
     await composer.click();
-    await composer.fill("/新");
+    await composer.fill("/mod");
     await expect(page.getByRole("listbox", { name: "命令" })).toBeVisible();
+    await expect(page.getByRole("option", { name: /选择模型/ })).toBeVisible();
     await page.keyboard.press("Enter");
     await expect(composer).toHaveValue("");
-    await expect
-      .poll(async () => rowsOf(await callIpc(page, "session.list", { workspace_id: workspaceId })).length)
-      .toBeGreaterThan(before.length);
+    await expect(page.getByRole("dialog", { name: "会话级设置" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    // Batch 2 placeholder never executes or sends.
+    await composer.fill("/compact");
+    await expect(page.getByRole("option", { name: /压缩上下文/ })).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(page.getByText("未实现（Batch 2）")).toBeVisible();
+    await expect(page.getByTestId("user-text")).toHaveCount(0);
   });
 
   test("composer @ references a workspace file, sends and survives reload", async ({ page }) => {

@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AuthConfigurePayload",
+  "description": "`auth.configure` payload (additive `models` = enterprise gateway model cache).",
+  "type": "object",
+  "properties": {
+    "access_token": {
+      "description": "Gateway access token.",
+      "default": "",
+      "type": "string"
+    },
+    "models": {
+      "description": "Gateway-provided model ids (host caches them; UI only displays them).",
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "server_url": {
+      "description": "Gateway server URL.",
+      "default": "",
+      "type": "string"
+    }
+  }
+}

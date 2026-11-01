@@ -70,6 +70,9 @@ export function testUi(overrides: TestUiOverrides = {}): UiValue {
     commands: [],
     modelLabel: "mock",
     modelSettingsPane: "provider",
+    gatewayModels: [],
+    goal: null,
+    slashCommand: null,
     actions: {
       send: noop,
       cancel: noop,
@@ -91,6 +94,13 @@ export function testUi(overrides: TestUiOverrides = {}): UiValue {
       forkConversation: (): Promise<boolean> => Promise.resolve(true),
       copyConversationId: (): Promise<boolean> => Promise.resolve(true),
       searchSessions: (): Promise<{ items: []; truncated: boolean }> => Promise.resolve({ items: [], truncated: false }),
+      refreshGoal: (): Promise<void> => Promise.resolve(),
+      setGoal: (): Promise<boolean> => Promise.resolve(true),
+      updateGoal: (): Promise<boolean> => Promise.resolve(true),
+      getConversationOverride: (): Promise<null> => Promise.resolve(null),
+      setConversationOverride: (): Promise<boolean> => Promise.resolve(true),
+      exportConversation: (): Promise<null> => Promise.resolve(null),
+      submitFeedback: (): Promise<boolean> => Promise.resolve(true),
       closeSettings: noop,
       saveSettings: (settings: AppSettings): Promise<SettingsSaveOutcome> =>
         Promise.resolve({ status: "saved", settings, revision: 1 }),

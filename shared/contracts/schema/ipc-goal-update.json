@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GoalUpdatePayload",
+  "description": "`goal.update` payload.",
+  "type": "object",
+  "required": [
+    "action",
+    "conversation_id",
+    "workspace_id"
+  ],
+  "properties": {
+    "action": {
+      "description": "Pause/resume/cancel.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/GoalAction"
+        }
+      ]
+    },
+    "conversation_id": {
+      "description": "Conversation id.",
+      "type": "string"
+    },
+    "workspace_id": {
+      "description": "Owning workspace id.",
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "GoalAction": {
+      "description": "One goal status action (`goal.update`).",
+      "oneOf": [
+        {
+          "description": "Pause the goal (status `blocked`, reason `paused by user`).",
+          "type": "string",
+          "enum": [
+            "pause"
+          ]
+        },
+        {
+          "description": "Resume a paused goal (status `active`).",
+          "type": "string",
+          "enum": [
+            "resume"
+          ]
+        },
+        {
+          "description": "Cancel the goal (status `cancelled`, keeps the round log).",
+          "type": "string",
+          "enum": [
+            "cancel"
+          ]
+        }
+      ]
+    }
+  }
+}

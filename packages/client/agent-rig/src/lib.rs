@@ -55,6 +55,16 @@ pub trait ApprovalPolicySource: Send + Sync {
     fn should_ask(&self, requires_approval: bool, mutating: bool) -> bool;
 }
 
+/// Approval policy bridge: `zk_contract_config::ApprovalPolicy` is the single
+/// semantic source (DSH presets are mapped to it by the command surface).
+struct ConfigPolicy(zk_contract_config::ApprovalPolicy);
+
+impl ApprovalPolicySource for ConfigPolicy {
+    fn should_ask(&self, requires_approval: bool, mutating: bool) -> bool {
+        self.0.should_ask(requires_approval, mutating)
+    }
+}
+
 /// Milliseconds since the UNIX epoch.
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
@@ -919,6 +929,16 @@ impl Agent for RigAgent {
             .lock()
             .map_err(|_| "model lock poisoned".to_owned())?;
         *guard = next;
+        Ok(())
+    }
+
+    fn set_approval_preset(&self, preset: Option<&str>) -> Result<(), String> {
+        let policy = preset.map(zk_contract_config::ApprovalPolicy::parse);
+        let source: Option<Arc<dyn ApprovalPolicySource>> = policy.map(|policy| {
+            let source: Arc<dyn ApprovalPolicySource> = Arc::new(ConfigPolicy(policy));
+            source
+        });
+        self.set_approval_policy(source);
         Ok(())
     }
 

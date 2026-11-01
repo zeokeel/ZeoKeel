@@ -79,3 +79,7 @@
 - ARIA 说明：输入框保持 `role=textbox`（既有基线依赖），`aria-expanded` 在 ARIA 中不允许用于 textbox；
   菜单展开经 `aria-haspopup="listbox"` + `aria-controls` + `aria-activedescendant` + `role=status` live region 暴露（`interaction.md` §1 已注明）。
 - `zk docs --check` 的漂移来自并行会话已合并的 `ui-settings-mcp` 包（HEAD 有包但 `docs/generated` 未重生成），已由生成器 `zk docs` 写回（C11）。
+
+## 7. 后续演进备注（task-42，command-surface）
+
+- `/` 菜单由 `2026-11-01-client-command-surface`（Batch 1）接管为 DSH slash 表面；本 spec 的 CMP2-CMD-01/02 已更新为新语义（只验证打开/过滤/导航/Esc/占位 inert），命令执行由 `CMD2-*` 覆盖；A11Y 修复见该 spec 的 task-42 证据。

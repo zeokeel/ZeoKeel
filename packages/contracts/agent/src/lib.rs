@@ -328,6 +328,14 @@ pub trait Agent: Send + Sync {
         Ok(())
     }
 
+    /// Inject the session-scoped approval preset (`strict`/`auto_read_only`/`ask`).
+    ///
+    /// Additive default (Phase 2b command surface): third-party agents ignore it;
+    /// `zk-agent-rig` maps it onto its single `ApprovalPolicySource` point.
+    fn set_approval_preset(&self, _preset: Option<&str>) -> Result<(), String> {
+        Ok(())
+    }
+
     /// Swap the underlying model/provider at runtime (settings hot-reload).
     fn configure_model(
         &self,

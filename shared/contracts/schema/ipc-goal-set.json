@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GoalSetPayload",
+  "description": "`goal.set` payload (`objective` trimmed, 1..=4096 bytes).",
+  "type": "object",
+  "required": [
+    "conversation_id",
+    "objective",
+    "workspace_id"
+  ],
+  "properties": {
+    "conversation_id": {
+      "description": "Conversation id.",
+      "type": "string"
+    },
+    "max_rounds": {
+      "description": "Optional round cap (host clamps 1..=100, default 10).",
+      "default": null,
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "objective": {
+      "description": "Goal objective.",
+      "type": "string"
+    },
+    "workspace_id": {
+      "description": "Owning workspace id.",
+      "type": "string"
+    }
+  }
+}

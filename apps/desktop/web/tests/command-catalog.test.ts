@@ -7,7 +7,8 @@ const t = (key: string, vars?: Record<string, string | number>): string =>
 
 describe("single command catalog (⌘K + composer /)", () => {
   it("personal has exactly 6 commands; enterprise adds the 3 content panels", () => {
-    const personal = buildCommandCatalog({ t, enterprise: false, streaming: false, lastSendText: null });
+    const personal = buildCommandCatalog({ t, enterprise: false, streaming: false, lastSendText: null })
+      .filter((command) => command.surface === "palette");
     expect(personal.map((command) => command.id)).toEqual([
       "new-conversation",
       "toggle-sidebar",
@@ -16,7 +17,8 @@ describe("single command catalog (⌘K + composer /)", () => {
       "cancel",
       "retry",
     ]);
-    const enterprise = buildCommandCatalog({ t, enterprise: true, streaming: false, lastSendText: null });
+    const enterprise = buildCommandCatalog({ t, enterprise: true, streaming: false, lastSendText: null })
+      .filter((command) => command.surface === "palette");
     expect(enterprise.map((command) => command.id)).toEqual([
       "new-conversation",
       "toggle-sidebar",
@@ -31,13 +33,38 @@ describe("single command catalog (⌘K + composer /)", () => {
   });
 
   it("gates cancel/retry by streaming and last-send state", () => {
-    const idle = buildCommandCatalog({ t, enterprise: false, streaming: false, lastSendText: null });
+    const idle = buildCommandCatalog({ t, enterprise: false, streaming: false, lastSendText: null })
+      .filter((command) => command.surface === "palette");
     expect(idle.find((command) => command.id === "cancel")?.disabled).toBe(true);
     expect(idle.find((command) => command.id === "retry")?.disabled).toBe(true);
-    const streaming = buildCommandCatalog({ t, enterprise: false, streaming: true, lastSendText: "hi" });
+    const streaming = buildCommandCatalog({ t, enterprise: false, streaming: true, lastSendText: "hi" })
+      .filter((command) => command.surface === "palette");
     expect(streaming.find((command) => command.id === "cancel")?.disabled).toBe(false);
     expect(streaming.find((command) => command.id === "retry")?.disabled).toBe(true);
-    const afterTurn = buildCommandCatalog({ t, enterprise: false, streaming: false, lastSendText: "hi" });
+    const afterTurn = buildCommandCatalog({ t, enterprise: false, streaming: false, lastSendText: "hi" })
+      .filter((command) => command.surface === "palette");
     expect(afterTurn.find((command) => command.id === "retry")?.disabled).toBe(false);
   });
 });
+
+  it("composer slash rows are DSH commands (Batch2 placeholders disabled, no UI actions)", () => {
+    const catalog = buildCommandCatalog({ t, enterprise: false, streaming: false, lastSendText: null });
+    const slash = catalog.filter((command) => command.surface === "slash");
+    expect(slash.map((command) => command.name)).toEqual([
+      "file",
+      "goal",
+      "plan",
+      "feedback",
+      "compact",
+      "permission",
+      "model",
+      "export",
+      "skill",
+    ]);
+    expect(slash.filter((command) => command.disabled === true).map((command) => command.name)).toEqual([
+      "plan",
+      "compact",
+      "skill",
+    ]);
+    expect(slash.some((command) => command.id === "new-conversation")).toBe(false);
+  });

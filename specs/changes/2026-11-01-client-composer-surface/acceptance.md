@@ -112,3 +112,7 @@
   `AgentUsage`/`usage` 事件、`UiActions.send/cancel`、`settings.get/set` revision（模型标签跳设置）、`ui-commands` 的 listbox 交互模式。
 - 新增包内实现（不登记 INDEX）：`workspace.attachment_save` IPC + host 校验、`zk_kit_tools::safe_join_under`（`kit.tools` 内扩展）、
   `composerRefs.ts`（引用块/触发唯一实现）。
+
+## 10. 演进（`2026-11-01-client-command-surface`，task-42）
+
+- composer `/` 命令面已升级为 DSH 1:1 slash 表面（`/file` `/model` `/permission` `/goal` `/export` `/feedback` + Batch 2 占位）；UI 动作（新建会话/侧栏/设置/右栏/cancel/retry）仅在 ⌘K palette 保留。本 spec 的 `CMP2-CMD-01/02` 断言已按新语义更新（打开/过滤/↑↓/Esc/占位 inert），命令执行类断言由 `CMD2-*` 覆盖；`CMP2-A11Y-01` 随新 listbox 修复 `scrollable-region-focusable`。约束不变：单一 catalog + 唯一执行器（C17）。

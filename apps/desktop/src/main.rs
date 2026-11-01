@@ -13,6 +13,7 @@
 mod approval;
 mod automation;
 mod changes;
+mod command_surface;
 mod events;
 mod ipc;
 mod mcp;

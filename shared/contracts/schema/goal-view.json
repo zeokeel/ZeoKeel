@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GoalView",
+  "description": "Conversation goal view (mirrors the `tool.goal` driver JSON subset).",
+  "type": "object",
+  "required": [
+    "max_rounds",
+    "objective",
+    "rounds",
+    "status"
+  ],
+  "properties": {
+    "created_ms": {
+      "description": "Creation time (ms since epoch).",
+      "default": 0,
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "last_result": {
+      "description": "Last round result summary.",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "max_rounds": {
+      "description": "Maximum rounds.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "objective": {
+      "description": "Objective text.",
+      "type": "string"
+    },
+    "reason": {
+      "description": "Optional reason (`paused by user`, `cancelled`, ...).",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "rounds": {
+      "description": "Executed/current round.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "status": {
+      "description": "`active` | `achieved` | `cancelled` | `blocked`.",
+      "type": "string"
+    },
+    "updated_ms": {
+      "description": "Last update time (ms since epoch).",
+      "default": 0,
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    }
+  }
+}

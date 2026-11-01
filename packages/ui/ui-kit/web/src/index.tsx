@@ -15,3 +15,5 @@ export * from "./toolRows";
 
 /** ui-kit is a non-slot library (`ui.kit` role); it contributes no components. */
 export const components = {} as const;
+
+export { Modal } from "./Modal";

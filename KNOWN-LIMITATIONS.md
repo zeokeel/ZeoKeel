@@ -215,3 +215,13 @@
 - **会话检索**：大小写不敏感子串（无索引/正则/高亮/滚动定位），仅当前 workspace、limit ≤50、query ≤200 字；结果点击仅打开会话；snippet ±60 字符，工具 `session_search` 仍返回完整 content。
 - **会话操作**：fork 复制消息但新会话不继承 pin/archive；archive 不删数据、不提供批量清理/回收站；昵称重名允许。
 - **交互基线（UNVERIFIED）**：`INS2-VIS-01` 像素基线需人工确认后 `pnpm e2e:ui:update`（agent 不自动接受）；`INS2-A11Y-01` 以 axe + 显式 ARIA 断言替代 aria snapshot；真人用户测试（≥5 人）未执行 → 不得声称“符合直觉”。
+
+## Command surface（`2026-11-01-client-command-surface` Batch 1）
+
+- `/model` personal 无可信 provider 模型发现源：只有当前值 + 手动输入 + 本机 recentModels（≤8，localStorage），不内置/不宣称 provider 列表；enterprise 仅展示 host 缓存的 gatewayModels（不显示上游 key/base_url）。
+- `/permission` 只是审批语义映射（strict/auto_read_only/ask），**不是 sandbox**：不限制工具/网络/文件，也不能绕过 `requires_approval` 弱不变量。
+- `/goal` 复用 `tool.goal` driver/存储（`.zeokeel/goal.json`），不做 plan mode；pause/resume/cancel 状态映射如上。
+- `/export` 仅 Markdown（≤8 MiB，超限截断标记）；Tauri 只展示/复制路径，不自动打开（`system.open_url` 仅 http(s)）；serve 通过 `/download?path=`（cookie token + exports 目录白名单）。
+- `/feedback` 仅本地保存（不联网、无服务端上传；企业版服务端反馈通道 UNVERIFIED）。
+- 会话 override 为本地持久化 + 全局 config-mutex；排队 turn 取消跳过语义已实现，真实并发压力下（>2 会话高频）未做长时压测 → UNVERIFIED。
+- 交互基线 `CMD2-VIS-01` 像素/aria snapshot 需人工确认后 `pnpm e2e:ui:update`（agent 不自动接受）；真人用户测试（≥5 人）未执行（不得声称“符合直觉”）。

@@ -28,6 +28,9 @@ import {
   type DraftRef,
   type WorkspaceFileRef,
 } from "@zeokeel/ui-kit";
+import { GoalDialog, ModelDialog, PermissionDialog } from "./CommandDialogs";
+import { FeedbackDialog } from "./FeedbackDialog";
+import { GoalBar } from "./GoalBar";
 import {
   ATTACHMENT_EXTENSIONS,
   ATTACHMENT_MAX_COUNT,
@@ -86,7 +89,7 @@ function referenceKey(path: string): string {
 
 export function AssistantComposer() {
   const ui = useUi();
-  const { t, offline, streaming, actions, commands, modelLabel, modelSettingsPane, messages } = ui;
+  const { t, offline, streaming, actions, commands, modelLabel, modelSettingsPane, messages, slashCommand, goal } = ui;
   const searchWorkspaceFiles = actions.searchWorkspaceFiles;
   const saveAttachment = actions.saveAttachment;
   const runCommand = actions.runCommand;
@@ -98,6 +101,12 @@ export function AssistantComposer() {
   const [fileMenu, setFileMenu] = useState<FileMenuState>({ status: "loading", files: [] });
   const [composing, setComposing] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [commandError, setCommandError] = useState<string | null>(null);
+  const [modelOpen, setModelOpen] = useState(false);
+  const [permissionOpen, setPermissionOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [goalOpen, setGoalOpen] = useState(false);
+  const [goalObjective, setGoalObjective] = useState("");
   const [uploads, setUploads] = useState(0);
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -109,6 +118,33 @@ export function AssistantComposer() {
   const focusInput = (): void => {
     inputRef.current?.focus();
   };
+
+  // Single executor intent from the app catalog: open the matching surface here
+  // (no second command list / executor; C17).
+  const handledSlashToken = useRef<number | null>(null);
+  useEffect(() => {
+    if (slashCommand === null) return undefined;
+    if (handledSlashToken.current === slashCommand.token) return undefined;
+    handledSlashToken.current = slashCommand.token;
+    const { name, query } = slashCommand;
+    const timer = window.setTimeout(() => {
+      if (name === "file") {
+        fileInputRef.current?.click();
+      } else if (name === "model") {
+        setModelOpen(true);
+      } else if (name === "permission") {
+        setPermissionOpen(true);
+      } else if (name === "feedback") {
+        setFeedbackOpen(true);
+      } else if (name === "export") {
+        void actions.exportConversation();
+      } else if (name === "goal") {
+        setGoalObjective(query);
+        setGoalOpen(true);
+      }
+    }, 0);
+    return () => { window.clearTimeout(timer); };
+  }, [actions, slashCommand]);
   const setCaret = (caret: number): void => {
     const input = inputRef.current;
     if (input === null) {
@@ -133,11 +169,14 @@ export function AssistantComposer() {
     menu === null
       ? []
       : menu.kind === "command"
-        ? filterCommands(commands, menu.query).map((command) => ({
-            id: `zk-composer-command-${command.id}`,
+        ? filterCommands(
+            commands.filter((command) => command.surface !== "palette"),
+            menu.query.split(" ")[0] ?? menu.query,
+          ).map((command) => ({
+            id: `zk-composer-command-${command.name ?? command.id}`,
             label: command.title,
             hint: command.group,
-            disabled: command.disabled === true,
+            disabled: command.disabled === true || command.kind === "disabled",
           }))
         : fileMenu.files.map((file, index) => ({
             id: `zk-composer-file-${String(index)}`,
@@ -235,12 +274,39 @@ export function AssistantComposer() {
       return;
     }
     if (menu.kind === "command") {
-      const command = filterCommands(commands, menu.query)[safeActive];
-      if (command === undefined || command.disabled === true) {
+      const slashCommands = commands.filter((command) => command.surface !== "palette");
+      const head = menu.query.split(" ")[0] ?? menu.query;
+      // `leadingInput` commands accept `/goal <objective>` (name token + free text).
+      const textAfterHead = menu.query.slice(head.length).trim();
+      const command =
+        slashCommands.find((entry) => entry.name === head && entry.kind === "leadingInput") ??
+        filterCommands(slashCommands, menu.query)[safeActive];
+      if (command === undefined) {
+        // Unknown command: never silently forward `/text` as a prompt (DSH semantics).
+        setMenu(null);
+        setCommandError(t("commandUnknown"));
+        focusInput();
         return;
       }
+      if (command.disabled === true || command.kind === "disabled") {
+        setMenu(null);
+        setCommandError(t("commandUnimplemented"));
+        focusInput();
+        return;
+      }
+      if (command.name !== "file" && refs.some((ref) => ref.kind === "attachment")) {
+        setMenu(null);
+        setCommandError(t("commandAttachmentsOnlyFile"));
+        focusInput();
+        return;
+      }
+      setCommandError(null);
       applyTriggerRemoval(menu.trigger);
-      runCommand(command.id);
+      if (command.kind === "leadingInput") {
+        runCommand(command.id, textAfterHead);
+      } else {
+        runCommand(command.id);
+      }
       return;
     }
     const file = fileMenu.files[safeActive];
@@ -345,6 +411,16 @@ export function AssistantComposer() {
   };
 
   const submit = (): void => {
+    // `/goal <objective>` (DSH leadingInput): never send command text as a prompt.
+    const goalMatch = /^\s*\/goal(?:\s+(.*))?$/s.exec(text);
+    if (goalMatch !== null) {
+      const objective = (goalMatch[1] ?? "").trim();
+      setText("");
+      setMenu(null);
+      setGoalObjective(objective === "clear" ? "" : objective);
+      setGoalOpen(true);
+      return;
+    }
     if (!canSend) {
       return;
     }
@@ -380,6 +456,16 @@ export function AssistantComposer() {
       if (event.key === "Enter") {
         event.preventDefault();
         runActiveItem();
+        return;
+      }
+      if (event.key === "Tab") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          setMenu(null);
+          focusInput();
+        } else {
+          runActiveItem();
+        }
         return;
       }
     }
@@ -462,6 +548,20 @@ export function AssistantComposer() {
         <span className="sr-only" role="status">
           {menu === null ? "" : menuLabel}
         </span>
+        {goal === null || goal.status === "cancelled" ? null : (
+          <GoalBar
+            goal={goal}
+            onConfirmClear={() => {
+              setGoalObjective("");
+              setGoalOpen(true);
+            }}
+          />
+        )}
+        {commandError === null ? null : (
+          <p role="alert" className="mb-2 rounded-control border border-destructive/40 px-2 py-1 text-[12px] text-destructive">
+            {commandError}
+          </p>
+        )}
         {menu === null ? null : (
           <div className="mb-2 rounded-control border border-border bg-popover p-1 shadow-[var(--zk-shadow-lift)]">
             <div
@@ -469,6 +569,10 @@ export function AssistantComposer() {
               role="listbox"
               aria-label={menuLabel}
               aria-busy={menu.kind === "file" && fileMenu.status === "loading"}
+              // Scrollable region must be focusable (axe `scrollable-region-focusable`);
+              // focus is never moved here programmatically — ↑↓/Enter stay on the input.
+              tabIndex={0}
+              onMouseDown={(event) => { event.preventDefault(); }}
               className="max-h-[220px] overflow-y-auto"
             >
               {itemCount === 0 ? (
@@ -721,6 +825,14 @@ export function AssistantComposer() {
           </button>
         </div>
       </ComposerPrimitive.Root>
+      <ModelDialog open={modelOpen} onClose={() => { setModelOpen(false); }} />
+      <PermissionDialog open={permissionOpen} onClose={() => { setPermissionOpen(false); }} />
+      <FeedbackDialog open={feedbackOpen} onClose={() => { setFeedbackOpen(false); }} />
+      <GoalDialog
+        open={goalOpen}
+        initialObjective={goalObjective}
+        onClose={() => { setGoalOpen(false); }}
+      />
     </div>
   );
 }

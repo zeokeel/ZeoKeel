@@ -2,7 +2,7 @@
 
 > 方法：`docs/27` §2.8（3 persona × 3 top task × 每步 4 问）；本走查是**专家走查**，不等于用户测试。
 > 摩擦项引用 `intuition.md` 的 INT ID；P0 未解决不得进入实现/发布。
-> 状态：`planned`（实现前先走查；实现后由 fresh-context 评审复核，见 §5）。
+> 状态：`active`（实现前先走查；实现后由 fresh-context 评审复核，见 §5）。
 
 ## 1. Personas
 

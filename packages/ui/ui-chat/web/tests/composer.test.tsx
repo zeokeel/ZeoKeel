@@ -65,9 +65,9 @@ beforeAll(() => {
 });
 
 const COMMANDS: CommandDescriptor[] = [
-  { id: "new-conversation", title: "New conversation", group: "Workspace" },
-  { id: "open-settings", title: "Settings", group: "Settings" },
-  { id: "cancel", title: "Cancel turn", group: "Turn", disabled: true },
+  { id: "slash-file", name: "file", title: "Add file", group: "Add", kind: "action", surface: "slash" },
+  { id: "slash-model", name: "model", title: "Choose model", group: "Commands", kind: "popupSelect", surface: "slash" },
+  { id: "slash-compact", name: "compact", title: "Compact (Batch 2)", group: "Commands", kind: "disabled", surface: "slash", disabled: true },
 ];
 
 const FILES: WorkspaceFileRef[] = [
@@ -104,6 +104,13 @@ function makeActions(overrides: Partial<UiActions> = {}): UiActions {
     forkConversation: (): Promise<boolean> => Promise.resolve(true),
     copyConversationId: (): Promise<boolean> => Promise.resolve(true),
     searchSessions: (): Promise<{ items: []; truncated: boolean }> => Promise.resolve({ items: [], truncated: false }),
+    refreshGoal: (): Promise<void> => Promise.resolve(),
+    setGoal: (): Promise<boolean> => Promise.resolve(true),
+    updateGoal: (): Promise<boolean> => Promise.resolve(true),
+    getConversationOverride: (): Promise<null> => Promise.resolve(null),
+    setConversationOverride: (): Promise<boolean> => Promise.resolve(true),
+    exportConversation: (): Promise<null> => Promise.resolve(null),
+    submitFeedback: (): Promise<boolean> => Promise.resolve(true),
     saveSettings: (settings): Promise<{ status: "saved"; settings: typeof settings; revision: number }> =>
       Promise.resolve({ status: "saved", settings, revision: 1 }),
     reloadSettings: (): Promise<ReturnType<typeof defaultSettings>> =>
@@ -145,6 +152,9 @@ function makeUi(overrides: Partial<UiValue> = {}, actions: Partial<UiActions> = 
     commands: COMMANDS,
     modelLabel: "test-model",
     modelSettingsPane: "provider",
+    gatewayModels: [],
+    goal: null,
+    slashCommand: null,
     actions: makeActions(actions),
     ...overrides,
   };
@@ -280,34 +290,39 @@ describe("composer usage", () => {
 });
 
 describe("composer surface", () => {
-  it("/ opens the single command catalog, filters, runs and clears the trigger", async () => {
+  it("/ opens the DSH slash catalog, filters, runs and clears the trigger", async () => {
     const runCommand = vi.fn();
     renderChat(makeUi({}, { runCommand }));
     const input = composer();
-    await userEvent.type(input, "/new");
+    await userEvent.type(input, "/model");
     const list = await screen.findByRole("listbox", { name: "commandMenuLabel" });
     expect(list).toBeTruthy();
-    expect(screen.getByRole("option", { name: /New conversation/ })).toBeTruthy();
-    await userEvent.keyboard("{ArrowDown}{ArrowUp}");
+    expect(screen.getByRole("option", { name: /Choose model/ })).toBeTruthy();
     await userEvent.keyboard("{Enter}");
-    expect(runCommand).toHaveBeenCalledWith("new-conversation");
+    expect(runCommand).toHaveBeenCalledWith("slash-model");
     expect(input.value).toBe("");
+    await userEvent.keyboard("{Escape}");
     expect(document.activeElement).toBe(input);
     expect(screen.queryByRole("listbox", { name: "commandMenuLabel" })).toBeNull();
   });
 
-  it("shows disabled commands but never executes them; Esc keeps the draft", async () => {
+  it("shows Batch 2 placeholders as disabled (never executed) and Esc keeps the draft", async () => {
     const runCommand = vi.fn();
     renderChat(makeUi({}, { runCommand }));
     const input = composer();
-    await userEvent.type(input, "/cancel");
-    const option = await screen.findByRole("option", { name: /Cancel turn/ });
+    await userEvent.type(input, "/compact");
+    const option = await screen.findByRole("option", { name: /Compact/ });
+    expect(option).toBeTruthy();
     expect(option instanceof HTMLButtonElement && option.disabled).toBe(true);
     await userEvent.keyboard("{Enter}");
     expect(runCommand).not.toHaveBeenCalled();
+    await expect(screen.findByText("commandUnimplemented")).resolves.toBeTruthy();
+    await userEvent.keyboard("x");
+    // Draft is preserved with the remaining typed body.
+    expect(input.value.length).toBeGreaterThan(0);
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("listbox")).toBeNull();
-    expect(input.value).toBe("/cancel");
+    expect(input.value).toContain("/compact");
   });
 
   it("@ lists workspace files and adds a de-duplicated reference chip", async () => {

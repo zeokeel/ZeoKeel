@@ -243,3 +243,14 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_m
 | `session/invalid` / `session/workspace-mismatch` | rename 空/超长标题、搜索 query >200、跨 workspace 的 update/fork |
 
 用户显式终端不生成工具行/审批（非 agent 工具），记录在 `KNOWN-LIMITATIONS.md`；检索只读当前 workspace、不写日志/不上报。
+
+## 5.2 Command surface IPC（`2026-11-01-client-command-surface` Batch 1）
+
+| 命令 | 说明 |
+| --- | --- |
+| `goal.get` / `goal.set` / `goal.update` | 会话目标；复用 `tool.goal` driver 与 `.zeokeel/goal.json`（set/clear 由 UI 内联确认；pause→`blocked`，resume→`active`，cancel→`cancelled`） |
+| `session.override_get` / `session.override_set` | 会话级 model/reasoning_effort/approval_policy；存 `<workspace>/.zeokeel/conversation-overrides.json`（原子写；空串清除字段）；personal 手动模型名（≤200、非空、无控制字符），enterprise 必须在 host 缓存的 gatewayModels 内；turn 前应用/turn 后恢复（全局 config-mutex，settings.set 与其它 turn 排队） |
+| `session.export` | Markdown 导出到 `<workspace>/.zeokeel/exports/`（≤8 MiB、文件名 sanitize、空会话/写失败可读错误）；serve `/download?path=` 仅允许已注册 workspace 的 exports 目录 |
+| `feedback.submit` | 本地 `.zeokeel/feedback/*.json`（category bug/idea/other、描述≤4 KiB、版本/edition/平台），**不联网**；企业版服务端反馈 UNVERIFIED |
+
+错误码：`session/invalid`（override/goal/export/feedback 参数与上限）、`workspace/not-found`、`session/workspace-mismatch`、`workspace/path-escape`（override/export/feedback 路径经 `safe_join_under`/`safe_resolve_under`）。config-mutex 排队 turn 被取消时跳过执行、不产生事件/错误。

@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FeedbackSubmitPayload",
+  "description": "`feedback.submit` payload (local-only; no network).",
+  "type": "object",
+  "required": [
+    "category",
+    "conversation_id",
+    "workspace_id"
+  ],
+  "properties": {
+    "category": {
+      "description": "Category: `bug` | `idea` | `other`.",
+      "type": "string"
+    },
+    "conversation_id": {
+      "description": "Conversation id (context only).",
+      "type": "string"
+    },
+    "description": {
+      "description": "Optional description (≤4 KiB).",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "workspace_id": {
+      "description": "Owning workspace id.",
+      "type": "string"
+    }
+  }
+}

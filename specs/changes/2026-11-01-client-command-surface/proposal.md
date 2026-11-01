@@ -1,6 +1,6 @@
 # 2026-11-01-client-command-surface · 提案（Batch 1：DSH 1:1 命令面）
 
-- 状态：`approved`
+- 状态：`done`
 - Owner：dsh-ref
 - 日期：2026-11-01
 - 关联：用户 2026-11-01 新要求（按 DSH 1:1 抄命令面）；`target/audits/dsh-reference-inventory.md` §5；`docs/19` §2/§11、`docs/27` §2.5–§2.8、`docs/11` §8.6；前置：`2026-11-01-client-composer-surface`（`/` 菜单框架、附件、引用、模型只读标签）；`2026-11-01-client-approval-tool-rendering`（approval 交互）；`2026-11-01-client-side-panels`（右栏/会话操作）

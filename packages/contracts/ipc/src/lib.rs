@@ -166,6 +166,20 @@ pub mod commands {
     pub const SESSION_FORK: &str = "session.fork";
     /// Full-text search inside the current workspace (snippet results).
     pub const SESSION_SEARCH: &str = "session.search";
+    /// Read the current conversation goal (same `.zeokeel/goal.json` as `tool.goal`).
+    pub const GOAL_GET: &str = "goal.get";
+    /// Set/replace the current conversation goal (inline confirmation in the UI).
+    pub const GOAL_SET: &str = "goal.set";
+    /// Pause/resume/cancel the current conversation goal.
+    pub const GOAL_UPDATE: &str = "goal.update";
+    /// Read the conversation-scoped model/permission override.
+    pub const SESSION_OVERRIDE_GET: &str = "session.override_get";
+    /// Write the conversation-scoped model/permission override (validated by the host).
+    pub const SESSION_OVERRIDE_SET: &str = "session.override_set";
+    /// Export one conversation as Markdown into `<workspace>/.zeokeel/exports/`.
+    pub const SESSION_EXPORT: &str = "session.export";
+    /// Store local-only feedback JSON under `<workspace>/.zeokeel/feedback/`.
+    pub const FEEDBACK_SUBMIT: &str = "feedback.submit";
 }
 
 /// Typed command payloads (single source for `schemars` JSON Schema).
@@ -313,6 +327,20 @@ pub mod payloads {
         pub catalog: serde_json::Value,
     }
 
+    /// `auth.configure` payload (additive `models` = enterprise gateway model cache).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct AuthConfigurePayload {
+        /// Gateway server URL.
+        #[serde(default)]
+        pub server_url: String,
+        /// Gateway access token.
+        #[serde(default)]
+        pub access_token: String,
+        /// Gateway-provided model ids (host caches them; UI only displays them).
+        #[serde(default)]
+        pub models: Vec<String>,
+    }
+
     /// `workspace.attachment_save` payload (composer attachment, additive).
     ///
     /// The host re-validates everything (workspace/conversation ownership, byte
@@ -427,6 +455,104 @@ pub mod payloads {
         pub title: Option<String>,
     }
 
+    /// `goal.get` payload.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct GoalGetPayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Conversation id (goal is conversation-scoped).
+        pub conversation_id: String,
+    }
+
+    /// One goal status action (`goal.update`).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    #[serde(rename_all = "lowercase")]
+    pub enum GoalAction {
+        /// Pause the goal (status `blocked`, reason `paused by user`).
+        Pause,
+        /// Resume a paused goal (status `active`).
+        Resume,
+        /// Cancel the goal (status `cancelled`, keeps the round log).
+        Cancel,
+    }
+
+    /// `goal.set` payload (`objective` trimmed, 1..=4096 bytes).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct GoalSetPayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Conversation id.
+        pub conversation_id: String,
+        /// Goal objective.
+        pub objective: String,
+        /// Optional round cap (host clamps 1..=100, default 10).
+        #[serde(default)]
+        pub max_rounds: Option<u32>,
+    }
+
+    /// `goal.update` payload.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct GoalUpdatePayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Conversation id.
+        pub conversation_id: String,
+        /// Pause/resume/cancel.
+        pub action: GoalAction,
+    }
+
+    /// `session.override_get` payload.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ConversationOverrideGetPayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Conversation id.
+        pub conversation_id: String,
+    }
+
+    /// `session.override_set` payload (`None` clears that field).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ConversationOverrideSetPayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Conversation id.
+        pub conversation_id: String,
+        /// Session model override (`None` = clear; `Some("")` is rejected).
+        #[serde(default)]
+        pub model: Option<String>,
+        /// Session reasoning effort (`minimal|low|medium|high|xhigh|max`).
+        #[serde(default)]
+        pub reasoning_effort: Option<String>,
+        /// Session approval policy preset (`strict|auto_read_only|ask`).
+        #[serde(default)]
+        pub approval_policy: Option<String>,
+    }
+
+    /// `session.export` payload.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct SessionExportPayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Conversation id.
+        pub conversation_id: String,
+        /// Export format (only `markdown` today).
+        pub format: String,
+    }
+
+    /// `feedback.submit` payload (local-only; no network).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct FeedbackSubmitPayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Conversation id (context only).
+        pub conversation_id: String,
+        /// Category: `bug` | `idea` | `other`.
+        pub category: String,
+        /// Optional description (≤4 KiB).
+        #[serde(default)]
+        pub description: Option<String>,
+    }
+
     /// `session.search` payload (current workspace only, C18).
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
     pub struct SessionSearchPayload {
@@ -484,6 +610,84 @@ pub mod results {
         pub add: u32,
         /// Coarse deleted marker (`1` when git reports a deletion).
         pub del: u32,
+    }
+
+    /// Conversation goal view (mirrors the `tool.goal` driver JSON subset).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct GoalView {
+        /// Objective text.
+        pub objective: String,
+        /// `active` | `achieved` | `cancelled` | `blocked`.
+        pub status: String,
+        /// Executed/current round.
+        pub rounds: u32,
+        /// Maximum rounds.
+        pub max_rounds: u32,
+        /// Optional reason (`paused by user`, `cancelled`, ...).
+        #[serde(default)]
+        pub reason: Option<String>,
+        /// Last round result summary.
+        #[serde(default)]
+        pub last_result: Option<String>,
+        /// Creation time (ms since epoch).
+        #[serde(default)]
+        pub created_ms: u64,
+        /// Last update time (ms since epoch).
+        #[serde(default)]
+        pub updated_ms: u64,
+    }
+
+    /// `goal.get` result (`None` when the conversation has no goal).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct GoalResult {
+        /// Current goal, if any.
+        #[serde(default)]
+        pub goal: Option<GoalView>,
+    }
+
+    /// Conversation-scoped override (model/effort/approval policy).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ConversationOverride {
+        /// Session model override.
+        #[serde(default)]
+        pub model: Option<String>,
+        /// Session reasoning effort.
+        #[serde(default)]
+        pub reasoning_effort: Option<String>,
+        /// Session approval policy preset.
+        #[serde(default)]
+        pub approval_policy: Option<String>,
+        /// Whether any field is set for this conversation.
+        pub is_session_override: bool,
+    }
+
+    /// `session.override_get` / `session.override_set` result.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct ConversationOverrideResult {
+        /// Effective conversation override after the call.
+        pub overrides: ConversationOverride,
+    }
+
+    /// `session.export` result.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct SessionExportResult {
+        /// Absolute path of the generated Markdown file.
+        pub path: String,
+        /// File size in bytes.
+        pub bytes: u64,
+        /// MIME type (`text/markdown`).
+        pub mime: String,
+        /// More content existed than the 8 MiB export cap.
+        pub truncated: bool,
+    }
+
+    /// `feedback.submit` result (local store only).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct FeedbackSubmitResult {
+        /// Always `local` (no network submission).
+        pub stored: String,
+        /// Absolute path of the written JSON file.
+        pub path: String,
     }
 
     /// `terminal` result: live shells + one output snapshot.

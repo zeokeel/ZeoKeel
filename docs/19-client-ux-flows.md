@@ -70,6 +70,12 @@ Boot
 - **右栏**（`ui.slot.inspector`，⌘B）：tabs 顺序 files 10 / changes 20 / terminal 30（activity 40 预留）；tabs 支持 ←/→/Home/End；files 为**懒加载树**（展开目录只取直属子项，隐藏 `.git`/`.zeokeel`，符号链接不跟随/不展示，目录行 loading/error+行内重试，刷新保持已展开路径）；预览文本 ≤256 KiB（截断标「已截断」）、图片 png/jpeg/webp/gif ≤8 MiB，PDF/Office/HTML/二进制诚实降级；terminal 是**用户显式**命令（open/send/close/list，不生成工具行/审批，输出 ≤64 KiB、超时 ≤10 s、无 shell 显示「终端不可用」）；tab/宽度（240–720 且 ≤视口 50%，键盘可调）/折叠按**会话**持久化，窄窗 <768 自动收起保留展开状态。六态 + axe/键盘基线见交互契约。
 - **会话侧栏**：会话行 `⋯` 菜单（rename 非空 ≤200 / fork 同 workspace / copy id 带成功提示 / pin 置顶 / archive 隐藏不删）；「显示已归档」筛选可恢复；流式中 archive/fork 禁用；搜索框默认标题模式，切「内容」模式调 `session.search`（当前 workspace、防抖 ≥250 ms、取消旧请求、snippet 结果按会话展示、点击打开会话、归档命中带标记）。C18：所有会话操作/检索不跨 workspace。
 
+### 2.1b DSH `/` 命令面（Batch 1，`2026-11-01-client-command-surface`）
+
+- composer 词首 `/` 打开 DSH 1:1 命令菜单，空查询两节 + 技能：「添加」file/goal/plan/feedback；「指令」compact/permission/model/export；「技能」skill 末位。↑/↓ 移动、Enter/Tab 接受、Esc/Shift+Tab 关闭回输入框（`aria-activedescendant`，焦点留输入框）；非空查询按命令名/说明过滤（大小写不敏感）。选中后移除 `/<query>`，正文/其余草稿保留；**命令文本不会被当作普通提示词发送**；未知命令 `command/unknown`、Batch 2 占位 `command/unimplemented`（plan/compact/skill 显示「未实现（Batch 2）」不可执行）。
+- ⌘K 命令面板仍保留 UI 动作（新建会话/侧栏/设置/右栏/cancel/retry）；两 surface 共用同一 `ui.commands` 目录（`surface: palette|slash`），唯一执行器 `runCommand`（C17）。
+- `/file` 打开附件选择（复用附件 allowlist/≤1 MiB/≤5）；仅 `/file` 可带附件，其它命令带附件时拒绝并保留 chip；`/model`、`/permission` 为会话级 override（`session.override_get/set` + `.zeokeel/conversation-overrides.json`；turn 前经全局 config-mutex 应用、turn 后按 snapshot/revision 恢复；settings.set 排队同一 mutex；排队 turn 取消则获锁后跳过）；`/permission` 只映射审批语义（strict/auto_read_only/ask），不含 sandbox、不限制工具/网络/文件；`/goal` 复用 `tool.goal` 同一 `.zeokeel/goal.json`，GoalBar 显示/暂停/恢复/清除；`/export` 生成 Markdown 到 `.zeokeel/exports/`（serve 下载、Tauri 展示/复制路径，不承诺自动打开）；`/feedback` 本地 `.zeokeel/feedback/*.json`（分类+描述≤4 KiB，明示本地保存，不联网）。
+
 ### 2.1 composer 输入面（Phase 2a，`2026-11-01-client-composer-surface`）
 
 > 状态：已实现（交互契约 `specs/changes/2026-11-01-client-composer-surface/interaction.md`；证据

@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse, Response};
@@ -72,6 +72,7 @@ fn router(state: ServeState) -> Router {
         .route("/index.html", get(index))
         .route("/ipc", post(ipc))
         .route("/events", get(events))
+        .route("/download", get(download))
         .fallback_service(static_files)
         .layer(
             CorsLayer::new()
@@ -103,6 +104,67 @@ fn authorized(headers: &HeaderMap, token: &str) -> bool {
                     .is_some_and(|(name, value)| name == COOKIE_NAME && value == token)
             })
         })
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct DownloadQuery {
+    path: String,
+}
+
+/// Download one exported conversation Markdown file (serve carrier `/export`).
+///
+/// Only files inside `<workspace>/.zeokeel/exports/` of a registered workspace
+/// are served; the canonical path must stay under a registered root (no
+/// traversal/symlink escape), and the cookie token is required.
+async fn download(
+    State(state): State<ServeState>,
+    headers: HeaderMap,
+    Query(query): Query<DownloadQuery>,
+) -> Response {
+    if !authorized(&headers, &state.token) {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    }
+    let Ok(target) = std::fs::canonicalize(&query.path) else {
+        return (StatusCode::NOT_FOUND, "not found").into_response();
+    };
+    let sessions = state.app.runtime().sessions();
+    let Ok(workspaces) = sessions.list_workspaces() else {
+        return (StatusCode::NOT_FOUND, "not found").into_response();
+    };
+    let mut allowed = false;
+    for workspace in workspaces {
+        let Ok(root) = std::fs::canonicalize(&workspace.path) else {
+            continue;
+        };
+        let exports = root.join(".zeokeel").join("exports");
+        if target.starts_with(&exports) && target.is_file() {
+            allowed = true;
+            break;
+        }
+    }
+    if !allowed {
+        return (StatusCode::FORBIDDEN, "forbidden").into_response();
+    }
+    match std::fs::read(&target) {
+        Ok(bytes) => {
+            let name = target
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "conversation.md".to_owned());
+            let mut response = (StatusCode::OK, bytes).into_response();
+            response.headers_mut().insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/markdown; charset=utf-8"),
+            );
+            if let Ok(value) = HeaderValue::from_str(&format!("attachment; filename=\"{name}\"")) {
+                response
+                    .headers_mut()
+                    .insert(header::CONTENT_DISPOSITION, value);
+            }
+            response
+        }
+        Err(_) => (StatusCode::NOT_FOUND, "not found").into_response(),
+    }
 }
 
 async fn healthz(State(state): State<ServeState>) -> impl IntoResponse {

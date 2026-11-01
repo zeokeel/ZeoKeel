@@ -39,18 +39,6 @@ async function newConversation(page: Page): Promise<Locator> {
   return input;
 }
 
-async function callIpc(page: Page, name: string, payload: Record<string, unknown>): Promise<unknown> {
-  const response = await page.request.post(`${SERVE}/ipc`, { data: { name, payload } });
-  expect(response.ok()).toBeTruthy();
-  const body: unknown = await response.json();
-  if (typeof body !== "object" || body === null) {
-    return undefined;
-  }
-  const record: Record<string, unknown> = { ...body };
-  return record["data"];
-}
-
-
 async function expectNoSeriousAxe(page: Page, label: string): Promise<void> {
   const results = await new AxeBuilder({ page }).analyze();
   const found = results.violations
@@ -88,7 +76,7 @@ function attachmentFiles(): string[] {
 
 test.describe("composer Phase 2a interaction contract", () => {
   test(
-    "CMP2-CMD-01: / opens the shared catalog, filters, runs and returns focus",
+    "CMP2-CMD-01: / opens the DSH command listbox, filters and Esc keeps the draft",
     { tag: ["@interaction:CMP2-CMD-01"] },
     async ({ page }) => {
       await openClient(page);
@@ -98,68 +86,62 @@ test.describe("composer Phase 2a interaction contract", () => {
       await page.keyboard.type("/");
       const list = page.getByRole("listbox", { name: "命令" });
       await expect(list).toBeVisible();
-      await expect(page.getByRole("option", { name: /新建会话/ })).toBeVisible();
-      await page.keyboard.type("新");
-      await expect(page.getByRole("option", { name: /新建会话/ })).toBeVisible();
-      await expect(page.getByRole("option", { name: /切换会话列表/ })).toHaveCount(0);
+      // DSH 1:1 slash surface: on-add + command entries are visible (UI actions moved to ⌘K).
+      for (const label of ["添加文件", "设置会话目标", "选择模型", "权限策略", "导出对话"]) {
+        await expect(page.getByRole("option", { name: new RegExp(label) })).toBeVisible();
+      }
+      await expect(page.getByRole("option", { name: /新建会话/ })).toHaveCount(0);
+      // Local, case-insensitive filtering.
+      await page.keyboard.type("模");
+      await expect(page.getByRole("option", { name: /选择模型/ })).toBeVisible();
+      await expect(page.getByRole("option", { name: /添加文件/ })).toHaveCount(0);
+      // ↑↓ only moves the highlight; focus stays in the composer.
       await page.keyboard.press("ArrowDown");
       await page.keyboard.press("ArrowUp");
-      await page.keyboard.press("Enter");
-      // Trigger text removed, body preserved, focus back in the composer.
-      await expect(input).toHaveValue("你好 ");
       await expect(input).toBeFocused();
-      await expect
-        .poll(async () => {
-          const workspaces = await callIpc(page, "workspace.list", {});
-          const workspace = Array.isArray(workspaces) && workspaces.length > 0 ? workspaces[0] : null;
-          if (typeof workspace !== "object" || workspace === null) {
-            return 0;
-          }
-          const record: Record<string, unknown> = { ...workspace };
-          const id = typeof record["id"] === "string" ? record["id"] : "";
-          const conversations = await callIpc(page, "session.list", { workspace_id: id });
-          return Array.isArray(conversations) ? conversations.length : 0;
-        })
-        .toBeGreaterThan(1);
+      // Esc closes and keeps the draft (no command executed from this surface in the test).
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("listbox")).toHaveCount(0);
+      await expect(input).toHaveValue("你好 /模");
+      await expect(input).toBeFocused();
       recordInteraction(
         "CMP2-CMD-01",
-        "CMP2-CMD-01: / opens the shared catalog, filters, runs and returns focus",
+        "CMP2-CMD-01: / opens the DSH command listbox, filters and Esc keeps the draft",
       );
     },
   );
 
   test(
-    "CMP2-CMD-02: Esc keeps the draft; disabled commands are visible but inert",
+    "CMP2-CMD-02: Batch 2 placeholders are disabled/inert; no-match shows the empty state",
     { tag: ["@interaction:CMP2-CMD-02"] },
     async ({ page }) => {
       await openClient(page);
       const input = await newConversation(page);
       await input.click();
+      // No matching command keeps a readable empty state and never sends the text.
       await page.keyboard.type("/zzz");
       await expect(page.getByRole("listbox", { name: "命令" })).toBeVisible();
       await expect(page.getByText("没有匹配的命令")).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(page.getByRole("listbox")).toHaveCount(0);
       await expect(input).toHaveValue("/zzz");
+      await expect(page.getByTestId("user-text")).toHaveCount(0);
 
+      // Batch 2 placeholder: visible, disabled, inert (never executed/sent).
       await input.fill("");
-      await page.keyboard.type("/cancel");
-      const cancel = page.getByRole("option", { name: /取消本轮生成/ });
-      await expect(cancel).toBeVisible();
-      expect(await cancel.isDisabled()).toBe(true);
+      await page.keyboard.type("/compact");
+      const placeholder = page.getByRole("option", { name: /压缩上下文/ });
+      await expect(placeholder).toBeVisible();
+      expect(await placeholder.isDisabled()).toBe(true);
       await page.keyboard.press("Enter");
-      await expect(input).toHaveValue("/cancel");
+      await expect(page.getByText("未实现（Batch 2）")).toBeVisible();
+      await expect(input).toHaveValue("/compact");
+      await expect(page.getByTestId("user-text")).toHaveCount(0);
       await page.keyboard.press("Escape");
-
-      await input.fill("");
-      await page.keyboard.type("/retry");
-      const retry = page.getByRole("option", { name: /重试上一次发送/ });
-      await expect(retry).toBeVisible();
-      expect(await retry.isDisabled()).toBe(true);
-      await page.keyboard.press("Escape");
+      await expect(input).toBeFocused();
       recordInteraction(
         "CMP2-CMD-02",
-        "CMP2-CMD-02: Esc keeps the draft; disabled commands are visible but inert",
+        "CMP2-CMD-02: Batch 2 placeholders are disabled/inert; no-match shows the empty state",
       );
     },
   );

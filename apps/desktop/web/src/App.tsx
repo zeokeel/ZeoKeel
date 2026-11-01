@@ -10,6 +10,10 @@ import {
   type BrandConfig,
   type CommandDescriptor,
   type SettingsSaveOutcome,
+  type ConversationExport,
+  type ConversationOverride,
+  type FeedbackCategory,
+  type GoalView,
   type UiValue,
   type WorkspaceFileRef,
   type SessionSearchOutcome,
@@ -22,7 +26,7 @@ import { upgradeInfoOf } from "./upgrade";
 import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
 import type { Transport } from "./types";
-import { parseConversation, parseFileEntries, parseSessionSearchResult, parseTerminalResult, parseUpdateRelease, parseWorkspaceChanges, parseWorkspaceFileReadResult } from "./protocol";
+import { parseConversation, parseConversationOverrideResult, parseFeedbackSubmitResult, parseFileEntries, parseGoalResult, parseSessionExportResult, parseSessionSearchResult, parseTerminalResult, parseUpdateRelease, parseWorkspaceChanges, parseWorkspaceFileReadResult } from "./protocol";
 import { validateAttachmentSaveResult } from "./validate";
 import { downloadSkillArchive, fetchAppHtml, fetchApps, fetchConnectorCatalog, fetchSkills, fetchTombstones, openApp, sendInstallReceipt, toBase64, toggleConnector, type AppItem, type ConnectorItem, type SkillItem } from "./store";
 import { clearConnectorCatalog, reloadConnectorSessions, syncConnectorCatalog } from "./connectors-sync";
@@ -89,19 +93,58 @@ export interface CommandCatalogInput {
  * and both execute through `UiActions.runCommand` — no second list/executor.
  * Personal = 6 commands; enterprise adds the skills/connectors/apps panels (9).
  */
+/** DSH 1:1 slash commands (Batch 1) + Batch 2 placeholders (shared catalog rows). */
+export function buildSlashCommands(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): CommandDescriptor[] {
+  const row = (
+    id: string,
+    name: string,
+    title: string,
+    group: string,
+    kind: "action" | "popupSelect" | "leadingInput" | "execute" | "disabled",
+  ): CommandDescriptor => ({
+    id,
+    name,
+    title,
+    group,
+    kind,
+    surface: "slash",
+    ...(kind === "disabled" ? { disabled: true, disabledReason: t("commandUnimplemented") } : {}),
+  });
+  return [
+    row("slash-file", "file", t("slashFile"), t("commandGroupAdd"), "action"),
+    row("slash-goal", "goal", t("slashGoal"), t("commandGroupAdd"), "leadingInput"),
+    row("slash-plan", "plan", t("slashPlan"), t("commandGroupAdd"), "disabled"),
+    row("slash-feedback", "feedback", t("slashFeedback"), t("commandGroupAdd"), "action"),
+    row("slash-compact", "compact", t("slashCompact"), t("commandGroupCommand"), "disabled"),
+    row("slash-permission", "permission", t("slashPermission"), t("commandGroupCommand"), "popupSelect"),
+    row("slash-model", "model", t("slashModel"), t("commandGroupCommand"), "popupSelect"),
+    row("slash-export", "export", t("slashExport"), t("commandGroupCommand"), "execute"),
+    row("slash-skill", "skill", t("slashSkill"), t("commandGroupSkill"), "disabled"),
+  ];
+}
+
+/**
+ * The **single** command catalog (`2026-11-01-client-composer-surface` D1/D6,
+ * `2026-11-01-client-command-surface` R1): ⌘K palette rows carry
+ * `surface: "palette"`, composer `/` rows carry `surface: "slash"`; both
+ * surfaces render this array and execute through `UiActions.runCommand`.
+ */
 export function buildCommandCatalog(input: CommandCatalogInput): CommandDescriptor[] {
   const { t, enterprise, streaming, lastSendText } = input;
-  const commands: CommandDescriptor[] = [
-    { id: "new-conversation", title: t("newConversation"), group: t("workspaceActions") },
-    { id: "toggle-sidebar", title: t("sidebarToggle"), group: t("workspaceActions") },
-    { id: "open-settings", title: t("settingsTitle"), group: t("settings") },
-    { id: "toggle-inspector", title: t("inspectorToggle"), group: t("workspaceActions") },
+  const palette: CommandDescriptor[] = [
+    { id: "new-conversation", title: t("newConversation"), group: t("workspaceActions"), surface: "palette" },
+    { id: "toggle-sidebar", title: t("sidebarToggle"), group: t("workspaceActions"), surface: "palette" },
+    { id: "open-settings", title: t("settingsTitle"), group: t("settings"), surface: "palette" },
+    { id: "toggle-inspector", title: t("inspectorToggle"), group: t("workspaceActions"), surface: "palette" },
     {
       id: "cancel",
       title: t("commandCancel"),
       group: t("commandGroupTurn"),
       hint: t("commandHintCancel"),
       disabled: !streaming,
+      surface: "palette",
     },
     {
       id: "retry",
@@ -109,16 +152,17 @@ export function buildCommandCatalog(input: CommandCatalogInput): CommandDescript
       group: t("commandGroupTurn"),
       hint: t("commandHintRetry"),
       disabled: streaming || lastSendText === null,
+      surface: "palette",
     },
   ];
   if (enterprise) {
-    commands.push(
-      { id: "open-skills", title: t("panelSkills"), group: t("workspaceActions") },
-      { id: "open-connectors", title: t("panelConnectors"), group: t("workspaceActions") },
-      { id: "open-apps", title: t("panelApps"), group: t("workspaceActions") },
+    palette.push(
+      { id: "open-skills", title: t("panelSkills"), group: t("workspaceActions"), surface: "palette" },
+      { id: "open-connectors", title: t("panelConnectors"), group: t("workspaceActions"), surface: "palette" },
+      { id: "open-apps", title: t("panelApps"), group: t("workspaceActions"), surface: "palette" },
     );
   }
-  return commands;
+  return [...palette, ...buildSlashCommands(t)];
 }
 
 export function App(props: { transport: Transport }) {
@@ -132,6 +176,8 @@ export function App(props: { transport: Transport }) {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginLoading, setLoginLoading] = useState(false);
   const [gatewayModels, setGatewayModels] = useState<string[]>([]);
+  const [goal, setGoalState] = useState<GoalView | null>(null);
+  const [slashCommand, setSlashCommand] = useState<{ name: string; query: string; token: number } | null>(null);
   const [gatewayModel, setGatewayModel] = useState<string>(loadGatewayModel);
   const [updateText, setUpdateText] = useState<string | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
@@ -183,7 +229,7 @@ export function App(props: { transport: Transport }) {
 
   /** Single executor for the single catalog (⌘K palette + composer `/`). */
   const runCommand = useCallback(
-    (id: string): void => {
+    (id: string, query?: string): void => {
       switch (id) {
         case "new-conversation":
           controller.createConversation();
@@ -213,10 +259,20 @@ export function App(props: { transport: Transport }) {
           controller.retrySend();
           return;
         default:
+          break;
+      }
+      // DSH `/` commands: same catalog, same executor; the composer reacts to the
+      // intent (file picker / popups / dialogs) instead of duplicating executors.
+      if (id.startsWith("slash-")) {
+        const command = buildSlashCommands(t).find((entry) => entry.id === id);
+        if (command?.name === undefined || command.disabled === true) {
+          controller.showToast(t("commandUnimplemented"));
           return;
+        }
+        setSlashCommand({ name: command.name, query: query ?? "", token: Date.now() });
       }
     },
-    [controller, openSettings],
+    [controller, openSettings, t],
   );
 
   /** Workspace file candidates for `@` (cached `workspace.files`; never a second IPC). */
@@ -435,7 +491,7 @@ export function App(props: { transport: Transport }) {
     if (state.meta.edition !== "enterprise" || session === null) return;
     const url = activeServerUrl;
     if (url === "") return;
-    void props.transport.call("auth.configure", { server_url: url, access_token: session.access_token, model: loadGatewayModel() }).catch(() => undefined);
+    void props.transport.call("auth.configure", { server_url: url, access_token: session.access_token, model: loadGatewayModel(), models: gatewayModels }).catch(() => undefined);
     void Promise.all([fetchSkills(session, url), fetchConnectorCatalog(session, url), props.transport.call("skills.installed", {}), fetchTombstones(session, url), fetchApps(session, url)])
       .then(async ([skillItems, connectorCatalog, installedValue, tombstones, appItems]) => {
         setSkills(skillItems);
@@ -495,7 +551,7 @@ export function App(props: { transport: Transport }) {
         .then((next) => {
           saveSession(next);
           setSession(next);
-          void props.transport.call("auth.configure", { server_url: url, access_token: next.access_token, model: loadGatewayModel() }).catch(() => undefined);
+          void props.transport.call("auth.configure", { server_url: url, access_token: next.access_token, model: loadGatewayModel(), models: gatewayModels }).catch(() => undefined);
         })
         .catch((error: unknown) => {
           const upgrade = upgradeInfoOf(error);
@@ -508,7 +564,7 @@ export function App(props: { transport: Transport }) {
         });
     }, refreshMs);
     return () => { window.clearTimeout(timer); };
-  }, [state.meta.edition, session, activeServerUrl, props.transport, t, reportUpgrade]);
+  }, [state.meta.edition, session, activeServerUrl, props.transport, t, reportUpgrade, gatewayModels]);
 
   // Policy/catalog may change server-side; refresh it on every authenticated start (not only login).
   useEffect(() => {
@@ -533,6 +589,188 @@ export function App(props: { transport: Transport }) {
       });
     return () => { cancelled = true; };
   }, [state.meta.edition, session, activeServerUrl, reportUpgrade]);
+
+  // Conversation goal is conversation-scoped; reload it when the selection changes.
+  useEffect(() => {
+    const workspaceId = state.activeWorkspaceId;
+    const conversationId = state.activeConversationId;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      if (!active) return;
+      if (workspaceId === null || conversationId === null) {
+        setGoalState(null);
+        return;
+      }
+      void props.transport
+        .call("goal.get", { workspace_id: workspaceId, conversation_id: conversationId })
+        .then((raw) => {
+          if (!active) return;
+          const parsed = parseGoalResult(raw);
+          setGoalState(parsed === null ? null : parsed.goal);
+        })
+        .catch(() => {
+          if (active) setGoalState(null);
+        });
+    }, 0);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [props.transport, state.activeWorkspaceId, state.activeConversationId]);
+
+  const conversationArgs = useCallback((): { workspace_id: string; conversation_id: string } | null => {
+    const workspaceId = state.activeWorkspaceId;
+    const conversationId = state.activeConversationId;
+    if (workspaceId === null || conversationId === null) return null;
+    return { workspace_id: workspaceId, conversation_id: conversationId };
+  }, [state.activeWorkspaceId, state.activeConversationId]);
+
+  const refreshGoal = useCallback(async (): Promise<void> => {
+    const args = conversationArgs();
+    if (args === null) return;
+    const parsed = parseGoalResult(await props.transport.call("goal.get", args));
+    setGoalState(parsed === null ? null : parsed.goal);
+  }, [conversationArgs, props.transport]);
+
+  const setGoal = useCallback(
+    async (objective: string, maxRounds?: number): Promise<boolean> => {
+      const args = conversationArgs();
+      if (args === null) return false;
+      try {
+        const raw = await props.transport.call("goal.set", {
+          ...args,
+          objective,
+          ...(maxRounds === undefined ? {} : { max_rounds: maxRounds }),
+        });
+        const parsed = parseGoalResult(raw);
+        if (parsed === null) {
+          controller.showToast(t("goalFailed"));
+          return false;
+        }
+        setGoalState(parsed.goal);
+        return true;
+      } catch {
+        controller.showToast(t("goalFailed"));
+        return false;
+      }
+    },
+    [controller, conversationArgs, props.transport, t],
+  );
+
+  const updateGoal = useCallback(
+    async (action: "pause" | "resume" | "cancel"): Promise<boolean> => {
+      const args = conversationArgs();
+      if (args === null) return false;
+      try {
+        const raw = await props.transport.call("goal.update", { ...args, action });
+        const parsed = parseGoalResult(raw);
+        if (parsed === null) {
+          controller.showToast(t("goalFailed"));
+          return false;
+        }
+        // `clear` maps to goal.update{cancel}; the UI hides the bar immediately.
+        setGoalState(action === "cancel" ? null : parsed.goal);
+        return true;
+      } catch {
+        controller.showToast(t("goalFailed"));
+        return false;
+      }
+    },
+    [controller, conversationArgs, props.transport, t],
+  );
+
+  const getConversationOverride = useCallback(async (): Promise<ConversationOverride | null> => {
+    const args = conversationArgs();
+    if (args === null) return null;
+    try {
+      const parsed = parseConversationOverrideResult(
+        await props.transport.call("session.override_get", args),
+      );
+      return parsed;
+    } catch {
+      return null;
+    }
+  }, [conversationArgs, props.transport]);
+
+  const setConversationOverride = useCallback(
+    async (patch: {
+      model?: string;
+      reasoning_effort?: string;
+      approval_policy?: string;
+    }): Promise<boolean> => {
+      const args = conversationArgs();
+      if (args === null) return false;
+      try {
+        const parsed = parseConversationOverrideResult(
+          await props.transport.call("session.override_set", { ...args, ...patch }),
+        );
+        if (parsed === null) {
+          controller.showToast(t("overrideFailed"));
+          return false;
+        }
+        return true;
+      } catch {
+        controller.showToast(t("overrideFailed"));
+        return false;
+      }
+    },
+    [controller, conversationArgs, props.transport, t],
+  );
+
+  const exportConversation = useCallback(async (): Promise<ConversationExport | null> => {
+    const args = conversationArgs();
+    if (args === null) return null;
+    try {
+      const parsed = parseSessionExportResult(
+        await props.transport.call("session.export", { ...args, format: "markdown" }),
+      );
+      if (parsed === null) {
+        controller.showToast(t("exportFailed"));
+        return null;
+      }
+      // Serve carrier: fetch the exported file through the same-origin download route.
+      // Tauri: display + copy the local path (no automatic open; system.open_url is http(s) only).
+      if (window.location.protocol === "http:" || window.location.protocol === "https:") {
+        const url = `/download?path=${encodeURIComponent(parsed.path)}`;
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = parsed.path.split("/").at(-1) ?? "conversation.md";
+        link.click();
+      } else {
+        await navigator.clipboard.writeText(parsed.path).catch(() => undefined);
+      }
+      controller.showToast(t("exportReady", { path: parsed.path }));
+      return parsed;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "";
+      controller.showToast(
+        message.includes("no messages to export") ? t("exportEmpty") : t("exportFailed"),
+      );
+      return null;
+    }
+  }, [controller, conversationArgs, props.transport, t]);
+
+  const submitFeedback = useCallback(
+    async (category: FeedbackCategory, description: string): Promise<boolean> => {
+      const args = conversationArgs();
+      if (args === null) return false;
+      try {
+        const parsed = parseFeedbackSubmitResult(
+          await props.transport.call("feedback.submit", { ...args, category, description }),
+        );
+        if (parsed === null) {
+          controller.showToast(t("feedbackFailed"));
+          return false;
+        }
+        controller.showToast(t("feedbackSavedLocal"));
+        return true;
+      } catch {
+        controller.showToast(t("feedbackFailed"));
+        return false;
+      }
+    },
+    [controller, conversationArgs, props.transport, t],
+  );
 
   const ui: UiValue = {
     t,
@@ -560,6 +798,9 @@ export function App(props: { transport: Transport }) {
     commands: commandCatalog,
     modelLabel,
     modelSettingsPane,
+    gatewayModels,
+    goal,
+    slashCommand,
     actions: {
       send: controller.send,
       cancel: controller.cancel,
@@ -588,6 +829,13 @@ export function App(props: { transport: Transport }) {
       forkConversation,
       copyConversationId,
       searchSessions,
+      refreshGoal,
+      setGoal,
+      updateGoal,
+      getConversationOverride,
+      setConversationOverride,
+      exportConversation,
+      submitFeedback,
       saveSettings: (next: AppSettings): Promise<SettingsSaveOutcome> => {
         const requiresRelogin =
           session !== null &&
@@ -1022,7 +1270,7 @@ function AppShell(props: AppShellProps) {
       onOpenCommands={() => { controller.setCommandsOpen(true); }}
       onCreateWorkspace={(path, title) => { ui.actions.createWorkspace(path, title); }}
     />
-    <SlotErrorBoundary name="ui.commands"><CommandsSlot key={state.commandsOpen ? "open" : "closed"} open={state.commandsOpen} commands={ui.commands} onRun={ui.actions.runCommand} onClose={() => { controller.setCommandsOpen(false); }} /></SlotErrorBoundary>
+    <SlotErrorBoundary name="ui.commands"><CommandsSlot key={state.commandsOpen ? "open" : "closed"} open={state.commandsOpen} commands={ui.commands.filter((command) => command.surface !== "slash")} onRun={ui.actions.runCommand} onClose={() => { controller.setCommandsOpen(false); }} /></SlotErrorBoundary>
     </>
   );
 }
