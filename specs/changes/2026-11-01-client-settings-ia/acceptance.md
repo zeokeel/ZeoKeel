@@ -5,7 +5,7 @@
 - PR/commit：未提交（共享工作树；由 Lead 汇总提交。§1 中两项要求「已提交基线」的门禁因此记为 UNVERIFIED-until-commit）
 - 证据根目录：`target/evidence/2026-11-01-client-settings-ia/`
 
-> 状态：`done`（实现与本地证据齐全；`git diff --exit-code` / `pnpm e2e` 的提交后复跑与 `cargo public-api diff` 见 §1 备注）
+> 状态：`done`（实现与本地证据齐全；提交后 `pnpm e2e` 16 passed、`export_schema` 幂等复跑 0 diff 已补；`cargo public-api diff` 本机未装 → UNVERIFIED，见 §1 备注）
 
 ## 1. 验收命令与结果
 
@@ -29,7 +29,8 @@
 | `pnpm -r build` | **exit 0** | `pnpm-build.log` |
 | `cargo check --workspace --all-targets`（跨包编译面） | **exit 0** | `cargo-check-workspace.log` |
 | `cargo clippy <本次 5 个 crate> --all-targets --all-features -- -D warnings` + `cargo fmt --all -- --check` | **exit 0** | `clippy-fmt.log` |
-| `pnpm e2e`（设置/axe 用例） | **等价序列全绿**：mock 阶段 8 passed（20 skipped 属其它 suite 门控）；serve 阶段 14 passed，2 个失败已修（375px 入口、`settings.meta.json` 未列入 e2e 工作区 `.gitignore`）后重跑 5 passed。**`pnpm e2e` 原样复跑需已提交生成基线**（`scripts/restore-baseline.sh` 用 `git checkout --` + `--check`，工作树未提交时必然失败，见 §4） | `e2e-manual.log`、`e2e-retry.log`；截图 `e2e/m1-a11y` 输出到 `target/evidence/release-1.0-rc1/phase-b/b12b14/client-settings*.png` |
+| `pnpm e2e`（设置/axe 用例） | **exit 0：16 passed（58.7s）**（提交基线后原样复跑；含设置 pane 遍历逐 pane axe、375px 无横向滚动、serve 设置持久化+revision、inspector 回归） | `target/evidence/2026-11-01-client-settings-ia/e2e-final.log`；截图输出到 `target/evidence/release-1.0-rc1/phase-b/b12b14/client-settings*.png` |
+| `cargo test --workspace export_schema` + `git diff --exit-code`（提交后幂等复跑） | **exit 0**，工作树 0 变更 | `.../export-schema-final.log` |
 | `cargo public-api diff`（契约变更） | **UNVERIFIED（本机未安装）**：新增 DTO/`ConfigError::Conflict` 为 additive；CI/有工具时必须跑（P2-14.3 已补进 `tasks.md`） | `public-api.log`（仅记录命令与"未安装"输出） |
 | `bash scripts/i18n-check.sh` | **exit 1（基线即红，非本变更）**：仅 `apps/desktop/web/src/main.tsx:47,49` 两处硬编码中文，属 approval spec task #11（评审记录 §14.5 已记录基线红）；本 spec 未改该文件（`git diff --stat` 为空，见 `i18n-attribution.txt`）；本 spec 新增文案全部走 `i18n.tsx` 双语键 | `i18n-check.log`、`i18n-attribution.txt` |
 
@@ -67,7 +68,7 @@
 | 设置内搜索/快捷键跳转 | 低 | 后续增强（本 spec 非目标） |
 | 逐 pane 保存/局部合并 | 低 | 暂不做（已定单一保存） |
 | 真实企业组合 e2e（C14 全链路） | 中 | 需企业 serve + PG 的本机环境；本 spec 用单测/既有企业 e2e 覆盖 |
-| `cargo public-api diff` / `pnpm e2e` 原样复跑 | 低 | 需提交后/CI 环境；已给出等价证据 |
+| `cargo public-api diff` | 低 | 本机未装 `cargo-public-api`；CI/有工具时必跑（UNVERIFIED 已记录） |
 | i18n 门禁基线红（`main.tsx`） | 低 | approval spec task #11 修复 |
 
 ## 6. 结论
