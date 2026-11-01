@@ -29,6 +29,7 @@ targets = ["desktop"]
 "tool.read_image" = "zeokeel/tool-read-image"
 
 "tool.goal" = "zeokeel/tool-goal"
+"tool.plan" = "zeokeel/tool-plan"
 "tool.schedule" = "zeokeel/tool-schedule"
 
 "tool.terminal" = "zeokeel/tool-terminal"

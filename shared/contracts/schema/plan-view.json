@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PlanView",
+  "description": "Plan mode + submitted plan review state.",
+  "type": "object",
+  "required": [
+    "mode",
+    "status"
+  ],
+  "properties": {
+    "feedback": {
+      "description": "Optional local review feedback (reject).",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "mode": {
+      "description": "`active` | `off`.",
+      "type": "string"
+    },
+    "plan": {
+      "description": "Plan Markdown (empty before submission).",
+      "default": "",
+      "type": "string"
+    },
+    "status": {
+      "description": "`draft` | `pending_review` | `approved` | `rejected`.",
+      "type": "string"
+    },
+    "through_turn": {
+      "description": "Turn id that submitted the plan.",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

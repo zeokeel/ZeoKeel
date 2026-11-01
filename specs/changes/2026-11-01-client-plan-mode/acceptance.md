@@ -1,37 +1,42 @@
-# 2026-11-01-client-plan-mode · 验收
+# 2026-11-01-client-plan-mode · 验收与证据
 
-- 状态 draft（D3/D4/D6 已定 Lead 2026-11-01；待独立评审）
-- 证据根 target/evidence/2026-11-01-client-plan-mode/
-- 交互/直觉 planned→active；用户测试 UNVERIFIED。
+- 验收人：impl-settings；日期：2026-11-01；PR/commit：未提交（共享工作树；起点 `bd6ae25`）
+- 状态：`done`（本地实现与证据齐全；UNVERIFIED 见 §1）
+
+## 0. 预算例外
+
+> Lead 2026-11-01 追认：实际约 30+ 路径（规划 12），单目标且无第二套实现，不拆分。
 
 ## 1. 门禁
+
 | 命令 | 结果 | 证据 |
 | --- | --- | --- |
-| spec-check/docs-check | 待跑 | logs |
-| cargo test -p zk-contract-ipc -p zk-tool-plan -p zk-agent-rig -p zk-desktop | 待跑 | logs/cargo |
-| export_schema 幂等/schema-check | 待跑 | logs/schema |
-| zk validate/compose --check/capability | 待跑 | logs/zk |
-| pnpm typecheck/lint/test:unit/build + i18n | 待跑 | logs/pnpm |
-| pnpm e2e；e2e:ui --grep command-plan；gate | 待跑 | interaction/CMD3P-PLAN-01/02.json |
+| 同上 | **exit 0**（tool-plan 2、agent-rig plan policy 4、desktop 81） | `logs/cargo-tests.log` |
+| 同上 | **0 / 0 / 0** | `logs/cargo-*.log` |
+| 同上 | **0 / 幂等 yes / 0**（132 schemas） | `logs/export-schema.log` |
+| 同上 | **0/0/0/0**（capability 47 entries 已重生） | `logs/zk-gates.log` |
+| 同上 | **0/0/0/0**（app 133、ui-chat 25） | `logs/pnpm-gates.log` |
+| 同上 | **mock 8/8、m1-serve 11/11（exit 0）**（等价序列，工作树未提交） | `logs/e2e-main.log` |
+| 同上 | **4/4 passed** + 4 份证据 | `logs/e2e-interaction.log`、`interaction/` |
+| 同上 | **71/71 passed（exit 0）** | `logs/e2e-ui-full.log` |
+| 同上 | **gate 0 / strict 0** | `logs/interaction-gate.txt` |
+| 同上 | **0/0/0** | `logs/gates-summary.txt` |
+| `CMD3P-VIS-01` 视觉基线 / ≥5 人用户测试 | **UNVERIFIED**（人工确认后 `e2e:ui:update`；发布前执行） | —— |
 
-## 2. P0
-| ID | 优先级 | 测试 | 证据 |
-| --- | --- | --- | --- |
-| CMD3P-PLAN-01 | P0 | e2e/interaction/command-plan.spec.ts | CMD3P-PLAN-01.json |
-| CMD3P-PLAN-02 | P0 | 同上 | CMD3P-PLAN-02.json |
-| CMD3P-KEY-01 | P1 | 同上 | CMD3P-KEY-01.json |
-| CMD3P-ERR-01 | P1 | 同上 | CMD3P-ERR-01.json |
-| CMD3P-VIS-01 | P2 | 同上 | — |
+## 2. 交互覆盖
 
-## 3. 手工
-- [ ] `/plan`/`off` 真实命令/状态恢复；Batch1 不回归。
-- [ ] plan mode mutating 0 次/只读可用；**delegation 六项（subagent/subagent_start/subagent_fork/agent_team/workflow/ralph）全部阻断，child mutating 0**；`subagent_fork` 专项测试；派生 `subagent*`/role + 静态兜底；exit_plan_mode 提交；非 plan 拒绝。
-- [ ] 右栏 plan tab order50/turnTail 审核批准/拒绝/继续；批准不自动执行；刷新/切会话恢复。
-- [ ] 64 KiB/错误/六态/i18n/axe/键盘；错误码登记；新 tool role/capability；docs/16 plan tab order 50；Lead 16 文件例外已记录。
-- [ ] 无 sandbox/企业策略；用户测试 UNVERIFIED。
+| ID | 测试 | 证据 |
+| --- | --- | --- |
+| CMD3P-PLAN-01 | `/plan` 进入、mutating 工具 `plan/mutating-blocked` 且文件未写、`/plan off` 退出、刷新恢复 | `interaction/CMD3P-PLAN-01.json` |
+| CMD3P-PLAN-02 | `exit_plan_mode` 提交 pending_review；拒绝（反馈）/继续编辑/批准（不执行、退出模式）、刷新持久化 | `interaction/CMD3P-PLAN-02.json` |
+| CMD3P-KEY-01 | `/pl` 过滤、Esc 保留草稿、PlanCard 按钮键盘操作 | `interaction/CMD3P-KEY-01.json` |
+| CMD3P-ERR-01 | plan.update 失败可读、状态不变、无假成功、axe 0 | `interaction/CMD3P-ERR-01.json` |
 
-## 4. 数据/回滚
-- [ ] `.zeokeel/plans.json` 损坏降级 off；无 DB migration；回滚删文件；计划仅本地。
+## 3. 复用与回滚
 
-## 5. 结论
-draft；实现后填证据；未执行标 UNVERIFIED。
+- 复用：`zk-tool-plan::plans` 唯一文件实现（host 经生成 facade）、agent-rig `set_plan_mode`/工具过滤、Batch1 catalog/runCommand、ui-kit actions、assistant-ui；无第二套计划存储/菜单/执行器。
+- 回滚：回退 commit；无 DB migration；`.zeokeel/plans.json` 删除/忽略即回原行为；plan mode 复位在 turn 后自动发生。
+
+## 4. 结论
+
+- [x] `done`（UNVERIFIED：视觉基线、≥5 人用户测试、真实 provider plan 质量、enterprise 行为）

@@ -8,6 +8,7 @@ import {
   type AttachmentSaveResult,
   type ChatMessage,
   type CommandDescriptor,
+  type PlanView,
   type DraftRef,
   type UiActions,
   type UiValue,
@@ -113,6 +114,8 @@ function makeActions(overrides: Partial<UiActions> = {}): UiActions {
     exportConversation: (): Promise<null> => Promise.resolve(null),
     submitFeedback: (): Promise<boolean> => Promise.resolve(true),
     compactConversation: (): Promise<boolean> => Promise.resolve(true),
+    getPlan: (): Promise<PlanView | null> => Promise.resolve(null),
+    updatePlan: (): Promise<boolean> => Promise.resolve(true),
     saveSettings: (settings): Promise<{ status: "saved"; settings: typeof settings; revision: number }> =>
       Promise.resolve({ status: "saved", settings, revision: 1 }),
     reloadSettings: (): Promise<ReturnType<typeof defaultSettings>> =>
@@ -158,6 +161,7 @@ function makeUi(overrides: Partial<UiValue> = {}, actions: Partial<UiActions> = 
     goal: null,
     slashCommand: null,
     compaction: null,
+    plan: null,
     actions: makeActions(actions),
     ...overrides,
   };

@@ -3,10 +3,10 @@
 - 入口：composer `/plan`/`/plan off`；右栏 plan tab；turnTail 计划卡
 - 归属：`@zeokeel/ui-chat`、`@zeokeel/ui-inspector`、ui-kit、desktop-web
 - 权威：docs/19 §2.1b/§11、docs/27、docs/11 §8.6
-- 状态 planned；证据根 target/evidence/2026-11-01-client-plan-mode/interaction/
+- 状态：`active`；证据根 target/evidence/2026-11-01-client-plan-mode/interaction/
 - 测试 e2e/interaction/command-plan.spec.ts
 
-- 状态：`planned`（实现开始时与 `intuition.md` 一起改 `active`）
+- 状态：`active`（实现阶段）（实现开始时与 `intuition.md` 一起改 `active`）
 ## 1. 元素
 | 元素 | role/name | 键盘 | 默认焦点 |
 | --- | --- | --- | --- |

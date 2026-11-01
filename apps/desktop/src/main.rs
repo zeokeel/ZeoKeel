@@ -20,6 +20,7 @@ mod ipc;
 mod mcp;
 mod mcp_oauth;
 mod native_client;
+mod plan;
 mod serve;
 
 use std::sync::Arc;

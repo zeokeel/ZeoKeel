@@ -247,4 +247,24 @@ fn export_schema() {
         "compacted-view-result.json",
         &schemars::schema_for!(zk_contract_ipc::results::CompactedViewResult),
     );
+    write(
+        "ipc-plan-get.json",
+        &schemars::schema_for!(zk_contract_ipc::payloads::PlanGetPayload),
+    );
+    write(
+        "ipc-plan-update.json",
+        &schemars::schema_for!(zk_contract_ipc::payloads::PlanUpdatePayload),
+    );
+    write(
+        "plan-view.json",
+        &schemars::schema_for!(zk_contract_ipc::results::PlanView),
+    );
+    write(
+        "plan-get-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::PlanGetResult),
+    );
+    write(
+        "plan-update-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::PlanUpdateResult),
+    );
 }

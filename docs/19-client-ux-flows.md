@@ -65,6 +65,13 @@ Boot
 - 每个 `ui.gate.*` 必须有 fallback 文案与"下一步"动作；不允许白屏。
 - 登录页品牌文案来自 `channel.json` 的 `copy.login_*`，缺键即构建失败（禁止回落官方）。
 
+### 2.1d `/plan` 计划模式（`2026-11-01-client-plan-mode`）
+
+- `/plan` 进入计划模式（`/plan off` 退出，命令文本不发送）；plan mode **由 agent-rig 工具过滤强制执行**（不依赖提示词）：白名单=只读工具 + `exit_plan_mode`；黑名单=所有 `mutating=true`、全部 delegation（`subagent`/`subagent_start`/`subagent_fork`/`agent_team`/`workflow`/`ralph`，即使声明 `mutating=false`）+ schedule/MCP 执行；被禁工具不执行、返回可读 `plan/mutating-blocked`/`plan/delegation-blocked` 工具错误行；delegation 不在子 agent 传播（父层直接阻断）。
+- `exit_plan_mode` 是**唯一提交入口**：提交后 `pending_review`，写 `<workspace>/.zeokeel/plans.json`（≤64 KiB，按会话）；工具不执行计划、不退出 plan mode。
+- 审核：turnTail `PlanCard` + 右栏 plan tab（order 50）显示模式/状态/计划 Markdown/反馈；本地 **批准**（approved + 退出 plan mode，不自动执行）、**拒绝**（保留反馈、仍在 plan mode）、**继续编辑**（回到 draft）、退出；刷新/重启由 `plan.get` 恢复；流式中审批动作禁用。
+- 非 plan mode 调 `exit_plan_mode` → `plan/not-active`；未知 action/超限可读错误；不做 sandbox/企业策略、不自动执行/自动退出；单 `/plan` 进入不依赖模型可用性。
+
 ### 2.1c `/compact` 会话压缩（`2026-11-01-client-command-compact`）
 
 - composer `/`「指令」组 `/compact` 是真实命令（不再是 Batch 2 占位）；流式中禁用并提示「当前正在生成，停止后可压缩」；执行经 Batch1 唯一 catalog/`runCommand`，命令文本不发送。

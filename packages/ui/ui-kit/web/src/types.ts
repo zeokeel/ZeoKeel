@@ -749,3 +749,12 @@ export interface CompactionMarker {
   compressedMessages: number;
   keepRecent: number;
 }
+
+/** Plan mode + submitted plan review state (`plan.get`). */
+export interface PlanView {
+  mode: "active" | "off";
+  status: "draft" | "pending_review" | "approved" | "rejected";
+  plan: string;
+  feedback: string | null;
+  throughTurn: string | null;
+}

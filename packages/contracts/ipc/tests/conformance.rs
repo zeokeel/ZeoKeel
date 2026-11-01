@@ -144,6 +144,8 @@ fn oauth_command_names_are_stable_and_unique() {
         commands::SESSION_COMPACT,
         commands::SESSION_COMPACTION_GET,
         commands::SESSION_COMPACTED_VIEW,
+        commands::PLAN_GET,
+        commands::PLAN_UPDATE,
     ];
     let mut sorted = names.to_vec();
     sorted.sort_unstable();

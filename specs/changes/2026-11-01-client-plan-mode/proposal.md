@@ -1,6 +1,6 @@
 # 2026-11-01-client-plan-mode · 提案（Batch2-B：/plan）
 
-- 状态：`approved`
+- 状态：`done`
 - 评审：docs/reviews/2026-11-01-client-command-batch2.md
 - Owner：dsh-ref
 - 日期：2026-11-01

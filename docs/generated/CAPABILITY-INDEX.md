@@ -2,7 +2,7 @@
 
 # Capability Index
 
-46 capabilities
+47 capabilities
 
 | id | path |
 | --- | --- |
@@ -50,5 +50,6 @@
 | `store.session.sqlite` | `packages/client/store-session-sqlite/src/lib.rs` |
 | `store.settings.json` | `packages/client/store-settings-json/src/lib.rs` |
 | `tool.fs` | `packages/client/tool-fs/src/lib.rs` |
+| `tool.plan` | `packages/client/tool-plan/src/lib.rs` |
 | `vector.store` | `packages/client/cap-vector/src/lib.rs` |
 | `wasm.runtime` | `crates/zk-kit-wasm/src/lib.rs` |

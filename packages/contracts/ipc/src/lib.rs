@@ -186,6 +186,10 @@ pub mod commands {
     pub const SESSION_COMPACTION_GET: &str = "session.compaction_get";
     /// Read the compacted replay view (marker + recent raw messages; read-only).
     pub const SESSION_COMPACTED_VIEW: &str = "session.compacted_view";
+    /// Read plan mode + submitted plan review state of one conversation.
+    pub const PLAN_GET: &str = "plan.get";
+    /// Enter/leave plan mode or review the submitted plan (approve/reject/continue/off).
+    pub const PLAN_UPDATE: &str = "plan.update";
 }
 
 /// Typed command payloads (single source for `schemars` JSON Schema).
@@ -577,6 +581,29 @@ pub mod payloads {
         pub conversation_id: String,
     }
 
+    /// `plan.get` payload.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct PlanGetPayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Conversation id.
+        pub conversation_id: String,
+    }
+
+    /// `plan.update` payload (local review; never executes the plan).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct PlanUpdatePayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Conversation id.
+        pub conversation_id: String,
+        /// `enter` | `approve` | `reject` | `continue` | `off`.
+        pub action: String,
+        /// Optional local review feedback (reject).
+        #[serde(default)]
+        pub feedback: Option<String>,
+    }
+
     /// `session.search` payload (current workspace only, C18).
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
     pub struct SessionSearchPayload {
@@ -761,6 +788,38 @@ pub mod results {
         pub marker: Option<CompactionMarker>,
         /// Replay view: the marker message followed by recent raw messages.
         pub messages: Vec<zk_contract_session::Message>,
+    }
+
+    /// Plan mode + submitted plan review state.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct PlanView {
+        /// `active` | `off`.
+        pub mode: String,
+        /// `draft` | `pending_review` | `approved` | `rejected`.
+        pub status: String,
+        /// Plan Markdown (empty before submission).
+        #[serde(default)]
+        pub plan: String,
+        /// Optional local review feedback (reject).
+        #[serde(default)]
+        pub feedback: Option<String>,
+        /// Turn id that submitted the plan.
+        #[serde(default)]
+        pub through_turn: Option<String>,
+    }
+
+    /// `plan.get` result.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct PlanGetResult {
+        /// Conversation plan state (off/draft when never used).
+        pub plan: PlanView,
+    }
+
+    /// `plan.update` result.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct PlanUpdateResult {
+        /// Conversation plan state after the update.
+        pub plan: PlanView,
     }
 
     /// `terminal` result: live shells + one output snapshot.

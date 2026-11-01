@@ -74,6 +74,7 @@ export function testUi(overrides: TestUiOverrides = {}): UiValue {
     goal: null,
     slashCommand: null,
     compaction: null,
+    plan: null,
     actions: {
       send: noop,
       cancel: noop,
@@ -103,6 +104,8 @@ export function testUi(overrides: TestUiOverrides = {}): UiValue {
       exportConversation: (): Promise<null> => Promise.resolve(null),
       submitFeedback: (): Promise<boolean> => Promise.resolve(true),
       compactConversation: (): Promise<boolean> => Promise.resolve(true),
+      getPlan: (): Promise<null> => Promise.resolve(null),
+      updatePlan: (): Promise<boolean> => Promise.resolve(true),
       closeSettings: noop,
       saveSettings: (settings: AppSettings): Promise<SettingsSaveOutcome> =>
         Promise.resolve({ status: "saved", settings, revision: 1 }),

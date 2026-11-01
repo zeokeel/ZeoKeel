@@ -8,6 +8,7 @@ import type {
   CommandDescriptor,
   CompactionMarker,
   Conversation,
+  PlanView,
   ConversationExport,
   ConversationOverride,
   FeedbackCategory,
@@ -97,6 +98,10 @@ export interface UiActions {
   submitFeedback: (category: FeedbackCategory, description: string) => Promise<boolean>;
   /** Compact older history of the active conversation (`session.compact`; noop-safe). */
   compactConversation: () => Promise<boolean>;
+  /** Read plan mode/review state of the active conversation (`plan.get`). */
+  getPlan: () => Promise<PlanView | null>;
+  /** Local plan action (`plan.update`: enter/approve/reject/continue/off; never executes). */
+  updatePlan: (action: "enter" | "approve" | "reject" | "continue" | "off", feedback?: string) => Promise<boolean>;
   /** Save the whole settings document under the current revision fence. */
   saveSettings: (settings: AppSettings) => Promise<SettingsSaveOutcome>;
   /** Re-read `settings.get` after a revision conflict; returns the fresh document. */
@@ -149,6 +154,8 @@ export interface UiValue {
   slashCommand: { name: string; query: string; token: number } | null;
   /** Latest compaction marker of the active conversation (raw messages stay visible). */
   compaction: CompactionMarker | null;
+  /** Plan mode + submitted plan review state of the active conversation. */
+  plan: PlanView | null;
   actions: UiActions;
 }
 

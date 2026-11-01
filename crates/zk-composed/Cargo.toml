@@ -55,6 +55,7 @@ zk-tool-grep = { path = "../../packages/client/tool-grep" }
 zk-tool-job-kill = { path = "../../packages/client/tool-job-kill" }
 zk-tool-job-list = { path = "../../packages/client/tool-job-list" }
 zk-tool-job-output = { path = "../../packages/client/tool-job-output" }
+zk-tool-plan = { path = "../../packages/client/tool-plan" }
 zk-tool-present = { path = "../../packages/client/tool-present" }
 zk-tool-pwsh = { path = "../../packages/client/tool-pwsh" }
 zk-tool-pwsh-persistent = { path = "../../packages/client/tool-pwsh-persistent" }

@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PlanUpdatePayload",
+  "description": "`plan.update` payload (local review; never executes the plan).",
+  "type": "object",
+  "required": [
+    "action",
+    "conversation_id",
+    "workspace_id"
+  ],
+  "properties": {
+    "action": {
+      "description": "`enter` | `approve` | `reject` | `continue` | `off`.",
+      "type": "string"
+    },
+    "conversation_id": {
+      "description": "Conversation id.",
+      "type": "string"
+    },
+    "feedback": {
+      "description": "Optional local review feedback (reject).",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "workspace_id": {
+      "description": "Owning workspace id.",
+      "type": "string"
+    }
+  }
+}

@@ -49,6 +49,12 @@ def respond(body):
     tools_since = len([m for m in messages[last_user + 1:] if m.get("role") == "tool"])
     final_usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
     zero_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    if "提交计划" in user and tools_since == 0:
+        call = {"id": "call_plan", "type": "function", "function": {"name": "exit_plan_mode", "arguments": json.dumps({"plan": "# Plan\n- step one\n- step two"}, ensure_ascii=False)}}
+        return {"id": "chatcmpl-tool", "object": "chat.completion", "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {"role": "assistant", "content": None, "tool_calls": [call]}}], "usage": zero_usage}
+    if "写入" in user and tools_since == 0:
+        call = {"id": "call_write", "type": "function", "function": {"name": "fs.write", "arguments": json.dumps({"path": "demo-data/plan-blocked.txt", "content": "should not exist"})}}
+        return {"id": "chatcmpl-tool", "object": "chat.completion", "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {"role": "assistant", "content": None, "tool_calls": [call]}}], "usage": zero_usage}
     if "读取" in user and tools_since == 0:
         call = {"id": "call_read", "type": "function", "function": {"name": "fs.read", "arguments": json.dumps({"path": "demo-data/hello.txt"})}}
         return {"id": "chatcmpl-tool", "object": "chat.completion", "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {"role": "assistant", "content": None, "tool_calls": [call]}}], "usage": zero_usage}

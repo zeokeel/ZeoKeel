@@ -704,6 +704,34 @@ export interface PackageDescriptor {
   version: string;
 }
 
+export interface PlanGetPayload {
+  conversation_id: string;
+  workspace_id: string;
+}
+
+export interface PlanGetResult {
+  plan: PlanView;
+}
+
+export interface PlanUpdatePayload {
+  action: string;
+  conversation_id: string;
+  feedback?: string | null;
+  workspace_id: string;
+}
+
+export interface PlanUpdateResult {
+  plan: PlanView;
+}
+
+export interface PlanView {
+  feedback?: string | null;
+  mode: string;
+  plan?: string;
+  status: string;
+  through_turn?: string | null;
+}
+
 export interface ProviderConfig {
   api_key?: string;
   base_url?: string;
@@ -1178,6 +1206,10 @@ export const ipc_mcp_testSchema = {"$schema":"http://json-schema.org/draft-07/sc
 
 export const ipc_meta_infoSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`meta.get` result.","properties":{"agent_config_error":{"default":null,"description":"Boot-time agent config error when the runtime fell back to defaults.\n\nThe host serializes `null` when there is no error; absent is accepted too.","type":["string","null"]},"edition":{"description":"Edition (`personal` | `enterprise`) baked in by the composed build.","type":"string"},"packages":{"description":"Composed package ids.","items":{"type":"string"},"type":"array"},"version":{"description":"Composed app version.","type":"string"}},"required":["edition","packages","version"],"title":"MetaInfo","type":"object"} as const;
 
+export const ipc_plan_getSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`plan.get` payload.","properties":{"conversation_id":{"description":"Conversation id.","type":"string"},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["conversation_id","workspace_id"],"title":"PlanGetPayload","type":"object"} as const;
+
+export const ipc_plan_updateSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`plan.update` payload (local review; never executes the plan).","properties":{"action":{"description":"`enter` | `approve` | `reject` | `continue` | `off`.","type":"string"},"conversation_id":{"description":"Conversation id.","type":"string"},"feedback":{"default":null,"description":"Optional local review feedback (reject).","type":["string","null"]},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["action","conversation_id","workspace_id"],"title":"PlanUpdatePayload","type":"object"} as const;
+
 export const ipc_question_answerSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`question.answer` payload.","properties":{"answers":{"description":"Answers keyed by question id (opaque JSON)."},"question_id":{"description":"Pending question batch id.","type":"string"}},"required":["answers","question_id"],"title":"QuestionAnswerPayload","type":"object"} as const;
 
 export const ipc_session_compactSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`session.compact` payload.","properties":{"conversation_id":{"description":"Conversation id.","type":"string"},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["conversation_id","workspace_id"],"title":"SessionCompactPayload","type":"object"} as const;
@@ -1227,6 +1259,12 @@ export const mcp_settingsSchema = {"$schema":"http://json-schema.org/draft-07/sc
 export const media_settingsSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Personal-edition media capability settings (`cap-image`/`cap-audio`/ `cap-transcription`/`cap-rerank`).\n\nOne OpenAI/Voyage-compatible endpoint and key drive all four kinds; each kind has its own optional model id (empty = the capability's default model). Like [`EmbeddingSettings`], this is personal-edition only (C7): enterprise AI must go through the gateway; the generated glue never configures local providers there.","properties":{"api_key":{"default":"","description":"Bearer key shared by the four media kinds (write-only: masked).","type":"string"},"audio_model":{"default":"","description":"Speech-synthesis model id (empty = capability default).","type":"string"},"base_url":{"default":"","description":"OpenAI-compatible API root (empty = each kind's provider default).","type":"string"},"image_model":{"default":"","description":"Image-generation model id (empty = capability default).","type":"string"},"rerank_model":{"default":"","description":"Rerank model id (empty = capability default).","type":"string"},"transcription_model":{"default":"","description":"Transcription model id (empty = capability default).","type":"string"}},"title":"MediaSettings","type":"object"} as const;
 
 export const package_descriptorSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Stable identity of a composed package.","properties":{"id":{"description":"Package id, e.g. `zeokeel/tool-fs`.","type":"string"},"kind":{"description":"Package kind, e.g. `capability`.","type":"string"},"roles":{"description":"Roles provided by this package.","items":{"type":"string"},"type":"array"},"version":{"description":"Package version (semver).","type":"string"}},"required":["id","kind","roles","version"],"title":"PackageDescriptor","type":"object"} as const;
+
+export const plan_get_resultSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"PlanView":{"description":"Plan mode + submitted plan review state.","properties":{"feedback":{"default":null,"description":"Optional local review feedback (reject).","type":["string","null"]},"mode":{"description":"`active` | `off`.","type":"string"},"plan":{"default":"","description":"Plan Markdown (empty before submission).","type":"string"},"status":{"description":"`draft` | `pending_review` | `approved` | `rejected`.","type":"string"},"through_turn":{"default":null,"description":"Turn id that submitted the plan.","type":["string","null"]}},"required":["mode","status"],"type":"object"}},"description":"`plan.get` result.","properties":{"plan":{"allOf":[{"$ref":"#/definitions/PlanView"}],"description":"Conversation plan state (off/draft when never used)."}},"required":["plan"],"title":"PlanGetResult","type":"object"} as const;
+
+export const plan_update_resultSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"PlanView":{"description":"Plan mode + submitted plan review state.","properties":{"feedback":{"default":null,"description":"Optional local review feedback (reject).","type":["string","null"]},"mode":{"description":"`active` | `off`.","type":"string"},"plan":{"default":"","description":"Plan Markdown (empty before submission).","type":"string"},"status":{"description":"`draft` | `pending_review` | `approved` | `rejected`.","type":"string"},"through_turn":{"default":null,"description":"Turn id that submitted the plan.","type":["string","null"]}},"required":["mode","status"],"type":"object"}},"description":"`plan.update` result.","properties":{"plan":{"allOf":[{"$ref":"#/definitions/PlanView"}],"description":"Conversation plan state after the update."}},"required":["plan"],"title":"PlanUpdateResult","type":"object"} as const;
+
+export const plan_viewSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Plan mode + submitted plan review state.","properties":{"feedback":{"default":null,"description":"Optional local review feedback (reject).","type":["string","null"]},"mode":{"description":"`active` | `off`.","type":"string"},"plan":{"default":"","description":"Plan Markdown (empty before submission).","type":"string"},"status":{"description":"`draft` | `pending_review` | `approved` | `rejected`.","type":"string"},"through_turn":{"default":null,"description":"Turn id that submitted the plan.","type":["string","null"]}},"required":["mode","status"],"title":"PlanView","type":"object"} as const;
 
 export const provider_configSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"ProviderKind":{"description":"Provider kind (personal edition local providers).","oneOf":[{"description":"Deterministic offline mock.","enum":["mock"],"type":"string"},{"description":"OpenAI-compatible endpoint (DeepSeek/OpenAI/vLLM...).","enum":["open_ai_compatible"],"type":"string"},{"description":"Local Ollama daemon.","enum":["ollama"],"type":"string"}]}},"description":"Local provider configuration.","properties":{"api_key":{"default":"","description":"API key reference (never the raw key in logs/DB; M1 stores locally).","type":"string"},"base_url":{"default":"","description":"Base URL (required for non-mock).","type":"string"},"kind":{"allOf":[{"$ref":"#/definitions/ProviderKind"}],"description":"Provider kind."},"model":{"default":"","description":"Model name.","type":"string"}},"required":["kind"],"title":"ProviderConfig","type":"object"} as const;
 
@@ -1359,6 +1397,8 @@ export const SCHEMAS = {
   ipc_mcp_test_status_result: ipc_mcp_test_status_resultSchema,
   ipc_mcp_test: ipc_mcp_testSchema,
   ipc_meta_info: ipc_meta_infoSchema,
+  ipc_plan_get: ipc_plan_getSchema,
+  ipc_plan_update: ipc_plan_updateSchema,
   ipc_question_answer: ipc_question_answerSchema,
   ipc_session_compact: ipc_session_compactSchema,
   ipc_session_create: ipc_session_createSchema,
@@ -1384,6 +1424,9 @@ export const SCHEMAS = {
   mcp_settings: mcp_settingsSchema,
   media_settings: media_settingsSchema,
   package_descriptor: package_descriptorSchema,
+  plan_get_result: plan_get_resultSchema,
+  plan_update_result: plan_update_resultSchema,
+  plan_view: plan_viewSchema,
   provider_config: provider_configSchema,
   provider_kind: provider_kindSchema,
   runtime_settings: runtime_settingsSchema,

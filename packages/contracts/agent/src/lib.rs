@@ -344,6 +344,12 @@ pub trait Agent: Send + Sync {
         Err("agent does not support raw completion".to_owned())
     }
 
+    /// Enable/disable plan-mode tool filtering for subsequent runs.
+    ///
+    /// Default no-op keeps third-party agents compiling; agent-rig filters its
+    /// dynamic tool list (read-only + `exit_plan_mode`) when enabled.
+    fn set_plan_mode(&self, _active: bool) {}
+
     /// Swap the underlying model/provider at runtime (settings hot-reload).
     fn configure_model(
         &self,

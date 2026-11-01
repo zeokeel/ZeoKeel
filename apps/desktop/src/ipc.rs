@@ -874,6 +874,34 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 Err(error) => CommandResponse::err(error),
             }
         }
+        commands::PLAN_GET => {
+            let request: zk_contract_ipc::payloads::PlanGetPayload =
+                match serde_json::from_value(payload.clone()) {
+                    Ok(request) => request,
+                    Err(error) => return CommandResponse::err(format!("plan/invalid: {error}")),
+                };
+            match crate::plan::plan_get(state, &request.workspace_id, &request.conversation_id) {
+                Ok(result) => CommandResponse::ok(json!(result)),
+                Err(error) => CommandResponse::err(error),
+            }
+        }
+        commands::PLAN_UPDATE => {
+            let request: zk_contract_ipc::payloads::PlanUpdatePayload =
+                match serde_json::from_value(payload.clone()) {
+                    Ok(request) => request,
+                    Err(error) => return CommandResponse::err(format!("plan/invalid: {error}")),
+                };
+            match crate::plan::plan_update(
+                state,
+                &request.workspace_id,
+                &request.conversation_id,
+                &request.action,
+                request.feedback,
+            ) {
+                Ok(result) => CommandResponse::ok(json!(result)),
+                Err(error) => CommandResponse::err(error),
+            }
+        }
         commands::FEEDBACK_SUBMIT => {
             let request: zk_contract_ipc::payloads::FeedbackSubmitPayload =
                 match serde_json::from_value(payload.clone()) {
@@ -2781,6 +2809,31 @@ fn run_turn(state: &Arc<AppState>, job: &TurnJob) {
         state,
         conversation_id: &job.conversation_id,
     };
+    // Plan mode is read from `.zeokeel/plans.json` at turn start; agent-rig then
+    // blocks mutating/delegation tools for this turn only.
+    let plan_root = state
+        .runtime()
+        .sessions()
+        .list_workspaces()
+        .ok()
+        .and_then(|workspaces| {
+            workspaces
+                .into_iter()
+                .find(|workspace| workspace.id == job.workspace_id)
+                .map(|workspace| workspace.path)
+        })
+        .unwrap_or_default();
+    let plan_active = crate::plan::plan_mode_active(state, &plan_root, &job.conversation_id);
+    state.runtime().set_plan_mode(plan_active);
+    struct PlanModeReset<'a> {
+        state: &'a Arc<AppState>,
+    }
+    impl Drop for PlanModeReset<'_> {
+        fn drop(&mut self) {
+            self.state.runtime().set_plan_mode(false);
+        }
+    }
+    let _plan_reset = PlanModeReset { state };
     // Global config mutex: one turn at a time may mutate the shared agent config
     // (model/agent/approval override). Queued turns cancelled before acquiring the
     // lock are skipped without events/errors (spec R4 P2-1).
@@ -5584,6 +5637,144 @@ mod tests {
                 .len(),
             before
         );
+        std::env::remove_var("ZEOKEEL_HOME");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn plan_get_update_review_and_persistence() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-plan-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", home.join("zeokeel-home"));
+        let (state, workspace_id, conversation_id, _) = phase2b_fixture(&home);
+        let get = |state: &std::sync::Arc<crate::ipc::AppState>| {
+            call_ok(
+                state,
+                zk_contract_ipc::commands::PLAN_GET,
+                json!({
+                    "workspace_id": workspace_id,
+                    "conversation_id": conversation_id,
+                }),
+            )
+        };
+        // Never used: off/draft.
+        let initial = get(&state);
+        assert_eq!(initial["plan"]["mode"], "off");
+        assert_eq!(initial["plan"]["status"], "draft");
+        // Enter/off toggle persists.
+        let entered = call_ok(
+            &state,
+            zk_contract_ipc::commands::PLAN_UPDATE,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "enter",
+            }),
+        );
+        assert_eq!(entered["plan"]["mode"], "active");
+        assert_eq!(get(&state)["plan"]["mode"], "active");
+        // No pending plan yet: review actions are readable errors.
+        let no_pending = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::PLAN_UPDATE,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "approve",
+            }),
+        );
+        assert!(!no_pending.ok);
+        assert!(no_pending
+            .error
+            .unwrap_or_default()
+            .starts_with("plan/not-active"));
+        // Simulate the `exit_plan_mode` submission through the shared plan store.
+        let root = super::workspace_root_of(&state, &workspace_id)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let mut file = zk_composed::zk_tool_plan::plans::load(&root).unwrap();
+        file.submit(&conversation_id, "# Plan\n- step".to_owned(), 1)
+            .unwrap();
+        zk_composed::zk_tool_plan::plans::save(&root, &file).unwrap();
+        assert_eq!(get(&state)["plan"]["status"], "pending_review");
+        assert_eq!(get(&state)["plan"]["plan"], "# Plan\n- step");
+        // Reject keeps plan mode active + feedback; continue returns to draft.
+        let rejected = call_ok(
+            &state,
+            zk_contract_ipc::commands::PLAN_UPDATE,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "reject",
+                "feedback": "add tests",
+            }),
+        );
+        assert_eq!(rejected["plan"]["status"], "rejected");
+        assert_eq!(rejected["plan"]["mode"], "active");
+        assert_eq!(rejected["plan"]["feedback"], "add tests");
+        let continued = call_ok(
+            &state,
+            zk_contract_ipc::commands::PLAN_UPDATE,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "continue",
+            }),
+        );
+        assert_eq!(continued["plan"]["status"], "draft");
+        assert_eq!(continued["plan"]["mode"], "active");
+        // Second submission → approve (never executes; leaves plan mode).
+        let mut file = zk_composed::zk_tool_plan::plans::load(&root).unwrap();
+        file.submit(&conversation_id, "# Plan v2".to_owned(), 2)
+            .unwrap();
+        zk_composed::zk_tool_plan::plans::save(&root, &file).unwrap();
+        let approved = call_ok(
+            &state,
+            zk_contract_ipc::commands::PLAN_UPDATE,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "approve",
+            }),
+        );
+        assert_eq!(approved["plan"]["status"], "approved");
+        assert_eq!(approved["plan"]["mode"], "off");
+        assert_eq!(get(&state)["plan"]["status"], "approved");
+        // Turn-start filter reads the persisted mode.
+        let mut file = zk_composed::zk_tool_plan::plans::load(&root).unwrap();
+        file.enter(&conversation_id, 3);
+        zk_composed::zk_tool_plan::plans::save(&root, &file).unwrap();
+        assert!(crate::plan::plan_mode_active(
+            &state,
+            &root,
+            &conversation_id
+        ));
+        // Unknown action is a closed error; wrong workspace keeps C18 isolation.
+        let invalid = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::PLAN_UPDATE,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "explode",
+            }),
+        );
+        assert!(!invalid.ok);
+        let wrong = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::PLAN_GET,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": "not-this-conversation",
+            }),
+        );
+        assert!(!wrong.ok);
+        assert!(wrong
+            .error
+            .unwrap_or_default()
+            .starts_with("session/workspace-mismatch"));
         std::env::remove_var("ZEOKEEL_HOME");
         let _ = std::fs::remove_dir_all(&home);
     }

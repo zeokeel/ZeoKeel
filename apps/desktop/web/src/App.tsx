@@ -11,6 +11,7 @@ import {
   type CommandDescriptor,
   type SettingsSaveOutcome,
   type CompactionMarker,
+  type PlanView,
   type ConversationExport,
   type ConversationOverride,
   type FeedbackCategory,
@@ -27,7 +28,7 @@ import { upgradeInfoOf } from "./upgrade";
 import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
 import type { Transport } from "./types";
-import { parseCompactResult, parseCompactionGetResult, parseConversation, parseConversationOverrideResult, parseFeedbackSubmitResult, parseFileEntries, parseGoalResult, parseSessionExportResult, parseSessionSearchResult, parseTerminalResult, parseUpdateRelease, parseWorkspaceChanges, parseWorkspaceFileReadResult } from "./protocol";
+import { parseCompactResult, parseCompactionGetResult, parseConversation, parsePlanGetResult, parsePlanUpdateResult, parseConversationOverrideResult, parseFeedbackSubmitResult, parseFileEntries, parseGoalResult, parseSessionExportResult, parseSessionSearchResult, parseTerminalResult, parseUpdateRelease, parseWorkspaceChanges, parseWorkspaceFileReadResult } from "./protocol";
 import { validateAttachmentSaveResult } from "./validate";
 import { downloadSkillArchive, fetchAppHtml, fetchApps, fetchConnectorCatalog, fetchSkills, fetchTombstones, openApp, sendInstallReceipt, toBase64, toggleConnector, type AppItem, type ConnectorItem, type SkillItem } from "./store";
 import { clearConnectorCatalog, reloadConnectorSessions, syncConnectorCatalog } from "./connectors-sync";
@@ -117,7 +118,7 @@ export function buildSlashCommands(
   return [
     row("slash-file", "file", t("slashFile"), t("commandGroupAdd"), "action"),
     row("slash-goal", "goal", t("slashGoal"), t("commandGroupAdd"), "leadingInput"),
-    row("slash-plan", "plan", t("slashPlan"), t("commandGroupAdd"), "disabled"),
+    row("slash-plan", "plan", t("slashPlan"), t("commandGroupAdd"), "execute"),
     row("slash-feedback", "feedback", t("slashFeedback"), t("commandGroupAdd"), "action"),
     { ...row("slash-compact", "compact", t("slashCompact"), t("commandGroupCommand"), "execute"), ...(streaming ? { disabled: true, disabledReason: t("compactStreamingBlocked") } : {}) },
     row("slash-permission", "permission", t("slashPermission"), t("commandGroupCommand"), "popupSelect"),
@@ -188,6 +189,7 @@ export function App(props: { transport: Transport }) {
   const [goal, setGoalState] = useState<GoalView | null>(null);
   const [slashCommand, setSlashCommand] = useState<{ name: string; query: string; token: number } | null>(null);
   const [compaction, setCompaction] = useState<CompactionMarker | null>(null);
+  const [plan, setPlan] = useState<PlanView | null>(null);
   const [gatewayModel, setGatewayModel] = useState<string>(loadGatewayModel);
   const [updateText, setUpdateText] = useState<string | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
@@ -236,6 +238,67 @@ export function App(props: { transport: Transport }) {
   const toggleInspector = useCallback((): void => {
     setInspectorOpen((value) => !value);
   }, []);
+
+  /** Read plan state of the active conversation (also refreshes `ui.plan`). */
+  const getPlan = useCallback(async (): Promise<PlanView | null> => {
+    const workspaceId = state.activeWorkspaceId;
+    const conversationId = state.activeConversationId;
+    if (workspaceId === null || conversationId === null) return null;
+    try {
+      const parsed = parsePlanGetResult(
+        await props.transport.call("plan.get", {
+          workspace_id: workspaceId,
+          conversation_id: conversationId,
+        }),
+      );
+      setPlan(parsed);
+      return parsed;
+    } catch {
+      return null;
+    }
+  }, [props.transport, state.activeWorkspaceId, state.activeConversationId]);
+
+  // `exit_plan_mode` is a tool call during a turn: refresh plan state after each turn.
+  useEffect(() => {
+    if (state.streaming) return undefined;
+    if (state.activeWorkspaceId === null || state.activeConversationId === null) return undefined;
+    const timer = window.setTimeout(() => {
+      void getPlan();
+    }, 0);
+    return () => { window.clearTimeout(timer); };
+  }, [getPlan, state.activeConversationId, state.activeWorkspaceId, state.streaming]);
+
+  /** `/plan` + local review (`plan.update`; never executes the plan). */
+  const updatePlan = useCallback(
+    async (action: "enter" | "approve" | "reject" | "continue" | "off", feedback?: string): Promise<boolean> => {
+      const workspaceId = state.activeWorkspaceId;
+      const conversationId = state.activeConversationId;
+      if (workspaceId === null || conversationId === null) {
+        controller.showToast(t("workspaceRequired"));
+        return false;
+      }
+      try {
+        const parsed = parsePlanUpdateResult(
+          await props.transport.call("plan.update", {
+            workspace_id: workspaceId,
+            conversation_id: conversationId,
+            action,
+            ...(feedback === undefined ? {} : { feedback }),
+          }),
+        );
+        if (parsed === null) {
+          controller.showToast(t("planFailed"));
+          return false;
+        }
+        setPlan(parsed);
+        return true;
+      } catch {
+        controller.showToast(t("planFailed"));
+        return false;
+      }
+    },
+    [controller, props.transport, state.activeWorkspaceId, state.activeConversationId, t],
+  );
 
   /** `/compact`: summarize older history into a marker (raw history untouched). */
   const compactConversation = useCallback(async (): Promise<boolean> => {
@@ -305,6 +368,10 @@ export function App(props: { transport: Transport }) {
       }
       // DSH `/` commands: same catalog, same executor; the composer reacts to the
       // intent (file picker / popups / dialogs) instead of duplicating executors.
+      if (id === "slash-plan") {
+        void updatePlan(query?.trim() === "off" ? "off" : "enter");
+        return;
+      }
       if (id === "slash-compact") {
         void compactConversation();
         return;
@@ -318,7 +385,7 @@ export function App(props: { transport: Transport }) {
         setSlashCommand({ name: command.name, query: query ?? "", token: Date.now() });
       }
     },
-    [compactConversation, controller, openSettings, state.streaming, t],
+    [compactConversation, controller, openSettings, state.streaming, t, updatePlan],
   );
 
   /** Workspace file candidates for `@` (cached `workspace.files`; never a second IPC). */
@@ -664,6 +731,33 @@ export function App(props: { transport: Transport }) {
     };
   }, [props.transport, state.activeWorkspaceId, state.activeConversationId]);
 
+  // Plan mode + submitted plan review state is conversation-scoped.
+  useEffect(() => {
+    const workspaceId = state.activeWorkspaceId;
+    const conversationId = state.activeConversationId;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      if (!active) return;
+      if (workspaceId === null || conversationId === null) {
+        setPlan(null);
+        return;
+      }
+      void props.transport
+        .call("plan.get", { workspace_id: workspaceId, conversation_id: conversationId })
+        .then((raw) => {
+          if (!active) return;
+          setPlan(parsePlanGetResult(raw));
+        })
+        .catch(() => {
+          if (active) setPlan(null);
+        });
+    }, 0);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [props.transport, state.activeWorkspaceId, state.activeConversationId]);
+
   // Conversation goal is conversation-scoped; reload it when the selection changes.
   useEffect(() => {
     const workspaceId = state.activeWorkspaceId;
@@ -876,6 +970,7 @@ export function App(props: { transport: Transport }) {
     goal,
     slashCommand,
     compaction,
+    plan,
     actions: {
       send: controller.send,
       cancel: controller.cancel,
@@ -912,6 +1007,8 @@ export function App(props: { transport: Transport }) {
       exportConversation,
       submitFeedback,
       compactConversation,
+      getPlan,
+      updatePlan,
       saveSettings: (next: AppSettings): Promise<SettingsSaveOutcome> => {
         const requiresRelogin =
           session !== null &&

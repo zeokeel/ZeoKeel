@@ -29,6 +29,8 @@ import {
   ipc_eventSchema,
   compact_resultSchema,
   compaction_get_resultSchema,
+  plan_get_resultSchema,
+  plan_update_resultSchema,
   conversation_override_resultSchema,
   feedback_submit_resultSchema,
   goal_resultSchema,
@@ -94,6 +96,8 @@ export type BoundaryName =
   | "sessionExportResult"
   | "compactResult"
   | "compactionGetResult"
+  | "planGetResult"
+  | "planUpdateResult"
   | "feedbackSubmitResult"
   | "questionAsked";
 
@@ -119,6 +123,8 @@ const checks: Record<BoundaryName, ValidateFunction> = {
   feedbackSubmitResult: ajv.compile(feedback_submit_resultSchema),
   compactResult: ajv.compile(compact_resultSchema),
   compactionGetResult: ajv.compile(compaction_get_resultSchema),
+  planGetResult: ajv.compile(plan_get_resultSchema),
+  planUpdateResult: ajv.compile(plan_update_resultSchema),
   questionAsked: ajv.compile(agent_question_askedSchema),
 };
 
@@ -228,4 +234,12 @@ export function validateCompactResult(value: unknown): boolean {
 
 export function validateCompactionGetResult(value: unknown): boolean {
   return validateBoundary("compactionGetResult", value);
+}
+
+export function validatePlanResult(value: unknown): boolean {
+  return validateBoundary("planUpdateResult", value);
+}
+
+export function validatePlanGetResult(value: unknown): boolean {
+  return validateBoundary("planGetResult", value);
 }

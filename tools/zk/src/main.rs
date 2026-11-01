@@ -2045,7 +2045,9 @@ fn compose_lib(root: &Path, resolved: &Resolved) -> Result<String> {
 
     pub fn set_approval_preset(&self, preset: Option<&str>) -> Result<(), String> { self.agent.set_approval_preset(preset) }
 
-    pub fn summarize(&self, prompt: &str) -> Result<String, String> { self.agent.complete_raw(prompt) }\n\n    pub fn sessions(&self) -> Arc<dyn zk_contract_session::SessionStore> {\n        Arc::clone(&self.sessions)\n    }\n\n    pub fn settings(&self) -> Arc<dyn zk_contract_config::SettingsStore> {\n        Arc::clone(&self.settings)\n    }\n\n    pub fn packages(&self) -> &'static [&'static str] {\n        PACKAGES\n    }\n}\n\n");
+    pub fn summarize(&self, prompt: &str) -> Result<String, String> { self.agent.complete_raw(prompt) }
+
+    pub fn set_plan_mode(&self, active: bool) { self.agent.set_plan_mode(active) }\n\n    pub fn sessions(&self) -> Arc<dyn zk_contract_session::SessionStore> {\n        Arc::clone(&self.sessions)\n    }\n\n    pub fn settings(&self) -> Arc<dyn zk_contract_config::SettingsStore> {\n        Arc::clone(&self.settings)\n    }\n\n    pub fn packages(&self) -> &'static [&'static str] {\n        PACKAGES\n    }\n}\n\n");
     if let Some(update_pkg) = update {
         out.push_str(&format!(
             "pub fn check_update(current: &str, platform: &str) -> Result<Option<zk_contract_update::ReleaseInfo>, String> {{\n    {}::check(current, platform).map(|check| if check.available {{ check.release }} else {{ None }}).map_err(|error| error.to_string())\n}}\n\n",
@@ -2211,7 +2213,7 @@ fn compose_lib(root: &Path, resolved: &Resolved) -> Result<String> {
     // Generated facade for shared helpers used by the composition root (C4/C2):
     // the host calls `zk_composed::zk_kit_tools::safe_join_under(...)` instead of
     // depending on kit/tool crates directly.
-    out.push_str("pub use zk_kit_compaction;\npub use zk_kit_session;\npub use zk_kit_tools;\npub use zk_tool_goal;\n");
+    out.push_str("pub use zk_kit_compaction;\npub use zk_kit_session;\npub use zk_kit_tools;\npub use zk_tool_goal;\npub use zk_tool_plan;\n");
     Ok(out)
 }
 

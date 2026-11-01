@@ -31,6 +31,7 @@ import {
 import { GoalDialog, ModelDialog, PermissionDialog } from "./CommandDialogs";
 import { FeedbackDialog } from "./FeedbackDialog";
 import { GoalBar } from "./GoalBar";
+import { PlanCard } from "./PlanCard";
 import {
   ATTACHMENT_EXTENSIONS,
   ATTACHMENT_MAX_COUNT,
@@ -411,6 +412,15 @@ export function AssistantComposer() {
   };
 
   const submit = (): void => {
+    // `/plan` / `/plan off`: toggle plan mode; the command text is never sent.
+    const planMatch = /^\s*\/plan(?:\s+(off))?\s*$/.exec(text);
+    if (planMatch !== null) {
+      actions.runCommand("slash-plan", planMatch[1] === "off" ? "off" : "enter");
+      setText("");
+      setMenu(null);
+      focusInput();
+      return;
+    }
     // `/goal <objective>` (DSH leadingInput): never send command text as a prompt.
     const goalMatch = /^\s*\/goal(?:\s+(.*))?$/s.exec(text);
     if (goalMatch !== null) {
@@ -528,6 +538,7 @@ export function AssistantComposer() {
 
   return (
     <div className="mx-auto w-full max-w-[760px]">
+      <PlanCard />
       <ComposerPrimitive.Root
         className={`rounded-thread border bg-background px-3 pt-2.5 pb-2 transition-colors focus-within:border-foreground/35 ${
           dragActive ? "border-foreground/60" : "border-border"

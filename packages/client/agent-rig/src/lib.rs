@@ -116,6 +116,8 @@ pub struct RigAgent {
     tools: Vec<Arc<dyn Tool>>,
     preamble: String,
     approval: Arc<dyn ApprovalGate>,
+    /// Plan-mode filter (read-only + `exit_plan_mode`; every mutating/delegation blocked).
+    plan_mode: Arc<AtomicBool>,
     streaming: bool,
     config: Arc<Mutex<Option<AgentRuntimeConfig>>>,
     hook_sink: Option<Arc<dyn HookSink>>,
@@ -145,6 +147,7 @@ impl RigAgent {
             tools,
             preamble,
             approval: Arc::new(zk_kit_approval::GlobalGate),
+            plan_mode: Arc::new(AtomicBool::new(false)),
             streaming: std::env::var("ZEOKEEL_AGENT_STREAMING")
                 .map(|value| value != "0")
                 .unwrap_or(true),
@@ -312,6 +315,7 @@ impl RigAgent {
         let approval_timeout_ms = runtime.approval_timeout_ms;
         let always_allow = Arc::clone(&self.always_allow);
         let in_tool = Arc::clone(&runtime.in_tool);
+        let plan_active = self.plan_mode.load(Ordering::SeqCst);
         let policy = self
             .approval_policy
             .lock()
@@ -326,6 +330,44 @@ impl RigAgent {
                 Ok(name) => name,
                 Err(_) => continue,
             };
+            if plan_active {
+                if let Some(reason) = plan_block_reason(&spec) {
+                    // Plan mode: keep the tool visible to the model but never execute it.
+                    let blocked_parameters = if spec.parameters.is_null() {
+                        serde_json::json!({"type":"object"})
+                    } else {
+                        spec.parameters.clone()
+                    };
+                    let sink_for_block = Arc::clone(sink);
+                    let blocked_name = spec.name.clone();
+                    out.push(DynamicTool::new(
+                        name,
+                        format!("{} [blocked in plan mode: {reason}]", spec.description),
+                        blocked_parameters,
+                        move |args| {
+                            let reason = reason.to_owned();
+                            let sink = Arc::clone(&sink_for_block);
+                            let name = blocked_name.clone();
+                            Box::pin(async move {
+                                let args_text = serde_json::to_string(&args).unwrap_or_default();
+                                sink.emit(AgentEvent::ToolCallStarted {
+                                    name: name.clone(),
+                                    args: args_text.clone(),
+                                });
+                                sink.emit(AgentEvent::ToolCallFinished {
+                                    name,
+                                    result: reason.clone(),
+                                    args: args_text,
+                                    status: zk_contract_agent::ToolCallStatus::Failed,
+                                });
+                                // Readable tool error to the model; never executes the tool.
+                                Ok(ToolOutput::text(reason))
+                            })
+                        },
+                    ));
+                    continue;
+                }
+            }
             let parameters = if spec.parameters.is_null() {
                 serde_json::json!({"type":"object"})
             } else {
@@ -834,6 +876,54 @@ fn usd_to_micros(usd: f64) -> Option<u64> {
     whole_micros.checked_add(fraction_micros)
 }
 
+/// Plan-mode static delegation fallback (P2-1): even tools that declare
+/// `mutating=false` are blocked while planning, so children cannot execute.
+pub const PLAN_DELEGATION_TOOLS: [&str; 6] = [
+    "subagent",
+    "subagent_start",
+    "subagent_fork",
+    "agent_team",
+    "workflow",
+    "ralph",
+];
+
+/// Whether a tool name is a delegation tool (static named list + `subagent_*` prefix).
+#[must_use]
+pub fn is_delegation_tool(name: &str) -> bool {
+    PLAN_DELEGATION_TOOLS.contains(&name) || name.starts_with("subagent_")
+}
+
+/// Schedule / MCP execution surfaces are blocked while planning.
+#[must_use]
+pub fn is_schedule_or_mcp_tool(name: &str) -> bool {
+    name == "schedule"
+        || name.starts_with("schedule_")
+        || name.starts_with("mcp")
+        || name.contains("connector")
+}
+
+/// Plan-mode block reason (`None` = tool may run while planning).
+///
+/// Whitelist = read-only non-delegation tools + `exit_plan_mode`; everything
+/// mutating, every delegation tool (even if it declares `mutating=false`) and
+/// schedule/MCP execution is blocked.
+#[must_use]
+pub fn plan_block_reason(spec: &zk_contract_tool::ToolSpec) -> Option<&'static str> {
+    if spec.name == "exit_plan_mode" {
+        return None;
+    }
+    if is_delegation_tool(&spec.name) {
+        return Some("plan/delegation-blocked: delegation tools are disabled in plan mode");
+    }
+    if spec.mutating {
+        return Some("plan/mutating-blocked: mutating tools are disabled in plan mode");
+    }
+    if is_schedule_or_mcp_tool(&spec.name) {
+        return Some("plan/mutating-blocked: schedule/MCP execution is disabled in plan mode");
+    }
+    None
+}
+
 /// Apply configurable completion parameters to the rig agent builder.
 fn apply_completion_config(mut builder: AgentBuilder, config: &CompletionConfig) -> AgentBuilder {
     if let Some(temperature) = config.temperature {
@@ -930,6 +1020,10 @@ impl Agent for RigAgent {
             .map_err(|_| "model lock poisoned".to_owned())?;
         *guard = next;
         Ok(())
+    }
+
+    fn set_plan_mode(&self, active: bool) {
+        self.plan_mode.store(active, Ordering::SeqCst);
     }
 
     fn complete_raw(&self, prompt: &str) -> Result<String, String> {
@@ -3150,5 +3244,79 @@ mod tests {
             .start("too deep", &context(), zk_kit_subagent::MAX_DEPTH)
             .unwrap_err();
         assert!(error.contains("depth limit"), "{error}");
+    }
+}
+
+#[cfg(test)]
+mod plan_mode_tests {
+    use super::{
+        is_delegation_tool, is_schedule_or_mcp_tool, plan_block_reason, PLAN_DELEGATION_TOOLS,
+    };
+    use zk_contract_tool::ToolSpec;
+
+    fn spec(name: &str, mutating: bool) -> ToolSpec {
+        ToolSpec {
+            name: name.to_owned(),
+            description: String::new(),
+            parameters: serde_json::json!({"type": "object"}),
+            mutating,
+            requires_approval: false,
+        }
+    }
+
+    #[test]
+    fn read_only_tools_and_exit_plan_mode_are_allowed() {
+        assert!(plan_block_reason(&spec("fs.read", false)).is_none());
+        assert!(plan_block_reason(&spec("exit_plan_mode", false)).is_none());
+        assert!(plan_block_reason(&spec("grep", false)).is_none());
+    }
+
+    #[test]
+    fn every_mutating_tool_is_blocked() {
+        for name in ["fs.write", "fs.edit", "bash", "terminal", "goal", "todo"] {
+            assert_eq!(
+                plan_block_reason(&spec(name, true)),
+                Some("plan/mutating-blocked: mutating tools are disabled in plan mode"),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_delegation_tool_is_blocked_even_without_mutating_flag() {
+        assert_eq!(PLAN_DELEGATION_TOOLS.len(), 6);
+        for name in [
+            "subagent",
+            "subagent_start",
+            "subagent_fork",
+            "agent_team",
+            "workflow",
+            "ralph",
+        ] {
+            assert!(is_delegation_tool(name), "{name}");
+            assert_eq!(
+                plan_block_reason(&spec(name, false)),
+                Some("plan/delegation-blocked: delegation tools are disabled in plan mode"),
+                "{name}"
+            );
+        }
+        // Prefix fallback keeps future delegation tools blocked.
+        assert!(is_delegation_tool("subagent_control"));
+        assert_eq!(
+            plan_block_reason(&spec("subagent_control", false)),
+            Some("plan/delegation-blocked: delegation tools are disabled in plan mode")
+        );
+    }
+
+    #[test]
+    fn schedule_and_mcp_execution_are_blocked() {
+        for name in ["schedule", "schedule_run", "mcp.call", "connector_run"] {
+            assert!(is_schedule_or_mcp_tool(name), "{name}");
+            assert_eq!(
+                plan_block_reason(&spec(name, false)),
+                Some("plan/mutating-blocked: schedule/MCP execution is disabled in plan mode"),
+                "{name}"
+            );
+        }
     }
 }

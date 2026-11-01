@@ -161,6 +161,12 @@
     "crate_name": "zk-connector-mcp",
     "package": "zeokeel/connector-mcp"
   },
+  "tool.plan": {
+    "cardinality": "singleton",
+    "contract": "zk-contract-tool",
+    "crate_name": "zk-tool-plan",
+    "package": "zeokeel/tool-plan"
+  },
   "tool.present": {
     "cardinality": "singleton",
     "contract": "zk-contract-tool",

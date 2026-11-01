@@ -262,3 +262,10 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_m
 - 归属：只操作当前 workspace/conversation（C18）；失败/超限/流式中在 append 前返回，历史不变；相同边界重复请求 no-op（幂等）；compact 串行。
 - 摘要：personal 本地 provider、enterprise 仅网关（C7）；mock/offline 用确定性抽取式摘要；不产生 agent turn/tool/审批；不写内容日志。
 - UI：`session.messages` 保持 raw；`CompactDivider` 用 marker 边界展示「较早消息已压缩」+ 摘要/条数/usage；`/compact` 流式禁用；无自动压缩。
+
+### 5.4 计划模式（`/plan`，`2026-11-01-client-plan-mode`）
+
+- IPC：`plan.get {workspace_id,conversation_id}` → `{plan:{mode,status,plan,feedback,through_turn}}`；`plan.update {...,action:enter|approve|reject|continue|off, feedback?}` → 同 `{plan}`。错误码：`plan/not-active`（无 pending 可审核/非 plan mode 调 `exit_plan_mode`）、`plan/too-large`（plan 或 plans.json >64 KiB、feedback >4 KiB）、`plan/failed`（IO/损坏）、`plan/invalid`；归属仍 `session/workspace-mismatch`。
+- 数据：无 DB migration；`<workspace>/.zeokeel/plans.json`（按 conversation_id，原子写，≤64 KiB，由 `zk-tool-plan::plans` 唯一实现；host 经 `zk_composed::zk_tool_plan` 复用）；`mode active|off`、`status draft|pending_review|approved|rejected`；提交由 `exit_plan_mode` 工具写 `pending_review`+`through_turn`。
+- 工具过滤：agent-rig 在动态工具构造时按 plan mode 白名单/黑名单处理（静态六项 delegation 兜底 + `mutating` 派生 + schedule/MCP）；被禁工具保留可见但返回可读错误，不执行；delegation 不向 child 传播（避免绕过）。
+- UI：`session.messages` 不变；`/plan`/`/plan off` 经 Batch1 唯一 catalog/runCommand；PlanCard（turnTail）+ 右栏 plan tab（order 50）本地审核；不自动执行计划、不自动退出；C6 无 sandbox/企业策略。

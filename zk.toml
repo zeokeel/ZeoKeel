@@ -271,6 +271,11 @@ contract = "zk-contract-tool"
 cardinality = "singleton"
 editions = ["personal", "enterprise"]
 
+[roles."tool.plan"]
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
 [roles."tool.schedule"]
 contract = "zk-contract-tool"
 cardinality = "singleton"

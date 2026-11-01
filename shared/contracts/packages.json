@@ -216,6 +216,14 @@
     "version": "0.1.0"
   },
   {
+    "id": "zeokeel/tool-plan",
+    "kind": "capability",
+    "roles": [
+      "tool.plan"
+    ],
+    "version": "0.1.0"
+  },
+  {
     "id": "zeokeel/tool-present",
     "kind": "capability",
     "roles": [

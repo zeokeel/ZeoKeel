@@ -1,0 +1,15 @@
+schema = 1
+id = "zeokeel/tool-plan"
+kind = "capability"
+version = "0.1.0"
+license = "MIT"
+summary = "Plan mode submission tool (exit_plan_mode) and .zeokeel/plans.json store"
+
+[role]
+name = "tool.plan"
+contract = "zk-contract-tool"
+cardinality = "singleton"
+editions = ["personal", "enterprise"]
+
+[facets]
+rust = { crate = "zk-tool-plan" }

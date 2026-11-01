@@ -22,6 +22,7 @@ import {
   type CommandResult,
   type Conversation,
   type CompactionMarker,
+  type PlanView,
   type ConversationExport,
   type ConversationOverride,
   type EmbeddingSettings,
@@ -72,6 +73,8 @@ import {
   validateWorkspaceChangesResult,
   validateWorkspaceFilesResult,
   validateCompactionGetResult,
+  validatePlanGetResult,
+  validatePlanResult,
   validateCompactResult,
   validateConversationOverrideResult,
   validateFeedbackSubmitResult,
@@ -971,4 +974,30 @@ export function parseCompactResult(value: unknown): { marker: CompactionMarker |
     marker: parseCompactionMarker(value["marker"]),
     noop: readBoolean(value, "noop") ?? false,
   };
+}
+
+/** Parse one plan view object (snake_case wire → camelCase view). */
+export function parsePlanView(value: unknown): PlanView | null {
+  if (!isRecord(value)) return null;
+  const mode = readString(value, "mode");
+  const status = readString(value, "status");
+  const plan = readString(value, "plan");
+  if (mode === null || status === null || plan === null) return null;
+  if (mode !== "active" && mode !== "off") return null;
+  if (status !== "draft" && status !== "pending_review" && status !== "approved" && status !== "rejected") return null;
+  const feedback = readString(value, "feedback");
+  const throughTurn = readString(value, "through_turn");
+  return { mode, status, plan, feedback, throughTurn };
+}
+
+/** `plan.get` result. */
+export function parsePlanGetResult(value: unknown): PlanView | null {
+  if (!isRecord(value) || !validatePlanGetResult(value)) return null;
+  return parsePlanView(value["plan"]);
+}
+
+/** `plan.update` result. */
+export function parsePlanUpdateResult(value: unknown): PlanView | null {
+  if (!isRecord(value) || !validatePlanResult(value)) return null;
+  return parsePlanView(value["plan"]);
 }

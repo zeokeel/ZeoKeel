@@ -176,6 +176,10 @@
     "path": "packages/client/tool-fs/src/lib.rs"
   },
   {
+    "id": "tool.plan",
+    "path": "packages/client/tool-plan/src/lib.rs"
+  },
+  {
     "id": "vector.store",
     "path": "packages/client/cap-vector/src/lib.rs"
   },

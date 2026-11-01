@@ -8561,6 +8561,7 @@ dependencies = [
  "zk-tool-job-kill",
  "zk-tool-job-list",
  "zk-tool-job-output",
+ "zk-tool-plan",
  "zk-tool-present",
  "zk-tool-pwsh",
  "zk-tool-pwsh-persistent",
@@ -9424,6 +9425,16 @@ dependencies = [
  "serde_json",
  "zk-contract-tool",
  "zk-kit-jobs",
+]
+
+[[package]]
+name = "zk-tool-plan"
+version = "1.0.0-rc.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "zk-contract-tool",
 ]
 
 [[package]]

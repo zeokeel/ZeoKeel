@@ -240,3 +240,10 @@
 - **mock/offline provider 用抽取式摘要**（确定性截断拼接），非模型摘要；personal 真实 provider 经现有 rig 模型做一次 completion；enterprise 网关 summarizer 本机无网关环境 → UNVERIFIED。
 - 上限 12k/2k tokens、保留 6 轮/12 条为合约常量；超限/失败/流式中不写 marker、不改历史；重复同边界 no-op。
 - replay 注入把摘要当 user 历史文本（保留工具行纯文本摘要），不是原生 system prompt；视觉基线（CompactDivider）需人工确认（当前仅交互截图证据）；真人用户测试（≥5 人）UNVERIFIED。
+
+## Plan mode（`/plan`，`2026-11-01-client-plan-mode`）
+
+- **本地审核、非沙箱**：plan mode 只按 agent-rig 动态工具过滤阻止 mutating/delegation/schedule/MCP；不做 sandbox、不接企业策略（C6）、不保证第三方工具内部行为。
+- **delegation 不在子 agent 传播**：父层直接阻断全部 delegation（本 spec 的设计）；child 仍可持有全部工具（若后续放开传播需另行设计）。
+- 提交仅 `exit_plan_mode`（≤64 KiB Markdown）；审核状态持久化在 `.zeokeel/plans.json`（每会话一条，文件上限 64 KiB）；不自动执行计划、不自动退出 plan mode、不自动压缩。
+- mock provider 的 e2e 用内置触发关键字；真实 provider 的 plan 质量取决于模型；工具过滤的 e2e 覆盖 mutating 一项 + Rust 单测枚举六个 delegation（运行路径相同）；视觉基线 `CMD3P-VIS-01` 需人工确认（当前仅交互截图证据）；真人用户测试（≥5 人）UNVERIFIED。

@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUi } from "@zeokeel/ui-kit";
 
-export type InspectorTab = "files" | "changes" | "terminal";
+export type InspectorTab = "files" | "changes" | "terminal" | "plan";
 
 export interface InspectorFileEntry { path: string; kind: "dir" | "file"; depth: number }
 
@@ -76,7 +76,7 @@ function readLayout(conversationId: string | null): Layout {
     const record: Record<string, unknown> = { ...parsed };
     const tab = record["tab"];
     const validTab: InspectorTab =
-      tab === "changes" || tab === "terminal" || tab === "files" ? tab : DEFAULT_LAYOUT.tab;
+      tab === "changes" || tab === "terminal" || tab === "files" || tab === "plan" ? tab : DEFAULT_LAYOUT.tab;
     const width = typeof record["width"] === "number" ? record["width"] : DEFAULT_LAYOUT.width;
     const collapsed = record["collapsed"] === true;
     return { tab: validTab, width: clampWidth(width), collapsed };
@@ -98,7 +98,7 @@ function writeLayout(conversationId: string | null, layout: Layout): void {
 interface TreeRow { path: string; name: string; kind: "dir" | "file"; depth: number; expanded: boolean }
 
 export function InspectorPanel(props: InspectorPanelProps) {
-  const { t } = useUi();
+  const { t, plan, actions, streaming } = useUi();
   const ui = useUi();
   const conversationId = ui.activeConversationId;
   const [layout, setLayout] = useState<Layout>(() => readLayout(conversationId));
@@ -332,7 +332,13 @@ export function InspectorPanel(props: InspectorPanelProps) {
   };
 
   const tabLabel = (tab: InspectorTab): string =>
-    tab === "files" ? t("inspectorTabFiles") : tab === "changes" ? t("inspectorTabChanges") : t("inspectorTabTerminal");
+    tab === "files"
+      ? t("inspectorTabFiles")
+      : tab === "changes"
+        ? t("inspectorTabChanges")
+        : tab === "plan"
+          ? t("inspectorTabPlan")
+          : t("inspectorTabTerminal");
 
   const rowsById = useMemo(() => new Map(rows.map((row, index) => [row.path, index])), [rows]);
   if (!props.open || narrow) return null;
@@ -372,7 +378,7 @@ export function InspectorPanel(props: InspectorPanelProps) {
       />
       <div className="flex h-9 items-center gap-1 border-b border-border px-2 text-[11px]">
         <div role="tablist" aria-label={t("inspectorTitle")} className="flex items-center gap-1">
-          {(["files", "changes", "terminal"] as const).map((tab) => (
+          {(["files", "changes", "terminal", "plan"] as const).map((tab) => (
             <button
               key={tab}
               type="button"
@@ -381,12 +387,12 @@ export function InspectorPanel(props: InspectorPanelProps) {
               tabIndex={layout.tab === tab ? 0 : -1}
               onClick={() => { setTab(tab); }}
               onKeyDown={(event) => {
-                const tabs: InspectorTab[] = ["files", "changes", "terminal"];
+                const tabs: InspectorTab[] = ["files", "changes", "terminal", "plan"];
                 const index = tabs.indexOf(tab);
                 if (event.key === "ArrowRight") { event.preventDefault(); setTab(tabs[(index + 1) % tabs.length] ?? "files"); }
                 if (event.key === "ArrowLeft") { event.preventDefault(); setTab(tabs[(index + tabs.length - 1) % tabs.length] ?? "files"); }
                 if (event.key === "Home") { event.preventDefault(); setTab("files"); }
-                if (event.key === "End") { event.preventDefault(); setTab("terminal"); }
+                if (event.key === "End") { event.preventDefault(); setTab("plan"); }
               }}
               className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 ${layout.tab === tab ? "bg-muted" : ""}`}
             >
@@ -504,6 +510,56 @@ export function InspectorPanel(props: InspectorPanelProps) {
               </p>
             ))}
           </>
+        ) : null}
+        {layout.tab === "plan" ? (
+          <div className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto">
+            <p className="font-medium text-foreground">{t("planReviewTitle")}</p>
+            {plan === null || (plan.mode === "off" && plan.status === "draft") ? (
+              <p>{t("inspectorPlanEmpty")}</p>
+            ) : (
+              <>
+                <p>
+                  {plan.mode === "active" ? t("planModeActive") : t("planModeOff")} ·{" "}
+                  {plan.status === "pending_review"
+                    ? t("planStatusPending")
+                    : plan.status === "approved"
+                      ? t("planStatusApproved")
+                      : plan.status === "rejected"
+                        ? t("planStatusRejected")
+                        : t("planStatusDraft")}
+                </p>
+                {plan.plan === "" ? null : (
+                  <div role="region" aria-label={t("planMarkdownLabel")} className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words text-foreground">
+                    {plan.plan}
+                  </div>
+                )}
+                {plan.feedback === null ? null : <p>{t("planFeedback", { feedback: plan.feedback })}</p>}
+                {plan.mode === "active" ? (
+                  <button type="button" disabled={streaming} className="self-start rounded-control border border-border px-2 py-0.5 text-foreground" onClick={() => { void actions.updatePlan("off"); }}>
+                    {t("planExit")}
+                  </button>
+                ) : null}
+                {plan.status === "pending_review" ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" disabled={streaming} className="rounded-control border border-border px-2 py-0.5 text-foreground" onClick={() => { void actions.updatePlan("approve"); }}>
+                      {t("planApprove")}
+                    </button>
+                    <button type="button" disabled={streaming} className="rounded-control border border-border px-2 py-0.5 text-foreground" onClick={() => { void actions.updatePlan("reject"); }}>
+                      {t("planReject")}
+                    </button>
+                    <button type="button" disabled={streaming} className="rounded-control border border-border px-2 py-0.5 text-foreground" onClick={() => { void actions.updatePlan("continue"); }}>
+                      {t("planContinue")}
+                    </button>
+                  </div>
+                ) : null}
+                {plan.status === "rejected" ? (
+                  <button type="button" disabled={streaming} className="self-start rounded-control border border-border px-2 py-0.5 text-foreground" onClick={() => { void actions.updatePlan("continue"); }}>
+                    {t("planContinue")}
+                  </button>
+                ) : null}
+              </>
+            )}
+          </div>
         ) : null}
         {layout.tab === "terminal" ? (
           <div className="flex h-full min-h-0 flex-col gap-2">
