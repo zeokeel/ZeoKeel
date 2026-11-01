@@ -34,7 +34,7 @@ M1 **默认拒绝**绝对路径/工作区外访问；post-M1 才由 `TurnContext
    - 移除：只从注册表移除、不删目录。无会话时直接移除；有会话时必须 `reassign_to`（目标存在、≠自身、目录可用），事务内迁移会话后移除，返回 `moved_sessions`；用户需二次确认，写审计日志（M1 可本地日志）。**默认 Workspace 不可直接移除**：需先 `workspace.set_default` 指定另一个 default，再移除；`workspace.set_default` 目标必须存在且可用。
    - 重新登记：移除后同 path 可重新 create，生成**新 id**（旧会话已迁移/不存在）；同 path 已登记时 create 返回 `duplicate-path`，不幂等返回旧对象。
 10. **切换 Workspace = 取消当前活动 turn**（保留已生成部分并标记 cancelled），清空当前草稿；草稿可按 Workspace 暂存，禁止跨 Workspace 发送。
-11. **归档/置顶/排序为 post-M1**：M1 不承诺 `archived/pinned/order` 字段与命令（见 §2.5 取舍）；C18 的"按工作区隔离"仍适用于列表/消息。
+11. **归档/置顶/排序（Phase 2b 已实现，`2026-11-01-client-side-panels`）**：SQLite schema **v6** 为 `conversations` 增加 `pinned/archived`（`serde(default)`，旧行 false）；`session.update` 提供 rename/pin/archive、`session.fork` 在同 workspace 复制消息（C18，跨 workspace 不允许）、`session.search` 仅在当前 workspace 做大小写不敏感子串检索并返回 snippet。archive 只从默认列表隐藏（不硬删，可筛选/恢复）；列表排序 `pinned DESC, updated_at_ms DESC, id DESC`。文件树/预览/终端：`workspace.files` 支持可选 `path/depth/limit`（缺省旧行为 depth≤2/≤300），新增 `workspace.file_read`（文本 ≤256 KiB 截断、图片 ≤8 MiB、PDF/Office/HTML/二进制/越界诚实降级）与用户显式 `terminal`（复用持久 bash/pwsh，命令 ≤16 KiB、输出 ≤64 KiB、超时 ≤10 s）。
 12. **fork/恢复同一 Workspace**：会话 fork/resume 只允许在源会话所属 Workspace 内；跨 Workspace 复制是显式导出/导入，不是 resume。
 13. **文件浏览/越界 post-M1**：M1 不提供目录浏览/监听命令与验收；工具 fs 只做工作区根内的读写（见 §9 差距）。
 
@@ -64,7 +64,7 @@ M1 **默认拒绝**绝对路径/工作区外访问；post-M1 才由 `TurnContext
 ## 3. 数据模型（本文唯一 schema 来源；引擎不变量见 `24` §7）
 
 ```sql
--- schema v3；PRAGMA user_version
+-- schema v6（v5 加 pinned/archived 两列）；PRAGMA user_version
 CREATE TABLE workspaces (
   id TEXT PRIMARY KEY,
   path TEXT NOT NULL UNIQUE,          -- canonicalize 后的本地绝对路径
@@ -127,7 +127,7 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_m
    ALTER TABLE messages_new RENAME TO messages;
    CREATE INDEX idx_conversations_workspace ON conversations(workspace_id, updated_at_ms DESC);
    CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_ms);
-   PRAGMA user_version=2;
+   PRAGMA user_version=6;
    COMMIT;
    PRAGMA foreign_keys=ON;
    ```
@@ -230,3 +230,16 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_m
 4. `apps/desktop/src/ipc.rs` + `apps/desktop/web`：workspace 命令、session 命令带 workspace、删除 auto-create、UI switcher/首用/切工作区取消。
 5. 迁移旧 demo 数据：默认 Workspace + 归属回填；验收见 §7。
 6. 兼容：旧客户端无 workspace 字段的库按 v2 迁移；旧 IPC 调用无 workspace 一律报错（不静默）。
+
+## 5.1 Phase 2b 新增错误码（`2026-11-01-client-side-panels`）
+
+| 错误码 | 场景 |
+| --- | --- |
+| `workspace/path-escape` | `workspace.file_read`/`workspace.files` 拒绝绝对路径、`..`、分隔符、控制字符、符号链接逃逸、工作区外 canonical path |
+| `file/too-large` / `file/unsupported` | 图片超 8 MiB / PDF、Office、HTML、二进制、非 UTF-8 文本的诚实降级（返回 `kind=unsupported` + 可读 reason） |
+| `terminal/unavailable` | 平台没有可用 shell（bash/pwsh 缺失） |
+| `terminal/session-invalid` / `terminal/session-not-open` | 终端会话 id 非法 / 未打开 |
+| `terminal/timeout` / `terminal/truncated` | 单命令超时（≤10 s，会话仍可用）/ 输出超 64 KiB 被截断 |
+| `session/invalid` / `session/workspace-mismatch` | rename 空/超长标题、搜索 query >200、跨 workspace 的 update/fork |
+
+用户显式终端不生成工具行/审批（非 agent 工具），记录在 `KNOWN-LIMITATIONS.md`；检索只读当前 workspace、不写日志/不上报。

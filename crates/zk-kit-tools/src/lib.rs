@@ -163,6 +163,70 @@ pub fn safe_join_under(root: &Path, parts: &[&str]) -> Result<PathBuf, ToolError
     Ok(current)
 }
 
+/// Resolve an existing path under `root` without creating or modifying anything.
+///
+/// Same validation as [`safe_join_under`] (no `..`/absolute/separators/control
+/// characters; every component must exist and must not be a symlink; the
+/// canonical parent must stay under the canonical root), but read-only: the
+/// final target must already exist and no directory is created. Used by file
+/// preview (`workspace.file_read`) so an invalid path cannot create dirs.
+///
+/// # Errors
+/// [`ToolError::Denied`] for unsafe paths/symlinks, [`ToolError::NotFound`] when a
+/// component is missing, [`ToolError::Io`] for other filesystem failures.
+pub fn safe_resolve_under(root: &Path, parts: &[&str]) -> Result<PathBuf, ToolError> {
+    if parts.is_empty() {
+        return Err(ToolError::InvalidArgs("path parts are empty".to_owned()));
+    }
+    for part in parts {
+        validate_path_part(part)?;
+    }
+    let canonical_root = root
+        .canonicalize()
+        .map_err(|error| ToolError::Io(format!("workspace root: {error}")))?;
+    if !canonical_root.is_dir() {
+        return Err(ToolError::Denied(
+            "workspace root is not a directory".to_owned(),
+        ));
+    }
+    let last = parts.len().saturating_sub(1);
+    let mut current = canonical_root.clone();
+    for (index, part) in parts.iter().enumerate() {
+        let next = current.join(part);
+        let metadata = match std::fs::symlink_metadata(&next) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err(ToolError::NotFound(format!("path not found: {part}")));
+            }
+            Err(error) => {
+                return Err(ToolError::Io(format!("inspect path part {part}: {error}")));
+            }
+        };
+        if metadata.file_type().is_symlink() {
+            return Err(ToolError::Denied(format!(
+                "symlink is not allowed in a host read path: {part}"
+            )));
+        }
+        if index < last {
+            if !metadata.is_dir() {
+                return Err(ToolError::Denied(format!(
+                    "path component is not a directory: {part}"
+                )));
+            }
+            let canonical = next
+                .canonicalize()
+                .map_err(|error| ToolError::Io(format!("canonicalize {part}: {error}")))?;
+            if !canonical.starts_with(&canonical_root) {
+                return Err(ToolError::Denied("path escapes the workspace".to_owned()));
+            }
+            current = canonical;
+        } else {
+            current = next;
+        }
+    }
+    Ok(current)
+}
+
 fn validate_path_part(part: &str) -> Result<(), ToolError> {
     if part.is_empty() || part == "." || part == ".." {
         return Err(ToolError::Denied(format!("unsafe path part: {part:?}")));

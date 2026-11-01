@@ -156,6 +156,16 @@ pub mod commands {
     /// Persist one composer attachment inside the workspace
     /// (`2026-11-01-client-composer-surface`; base64 payload, host re-validates).
     pub const WORKSPACE_ATTACHMENT_SAVE: &str = "workspace.attachment_save";
+    /// Read one workspace file for preview (text/image, honest degradation).
+    pub const WORKSPACE_FILE_READ: &str = "workspace.file_read";
+    /// User-driven persistent terminal (open/send/close/list/status).
+    pub const TERMINAL: &str = "terminal";
+    /// Rename/pin/archive one conversation.
+    pub const SESSION_UPDATE: &str = "session.update";
+    /// Fork one conversation inside its workspace (C18).
+    pub const SESSION_FORK: &str = "session.fork";
+    /// Full-text search inside the current workspace (snippet results).
+    pub const SESSION_SEARCH: &str = "session.search";
 }
 
 /// Typed command payloads (single source for `schemars` JSON Schema).
@@ -321,6 +331,113 @@ pub mod payloads {
         /// Base64 (standard alphabet, padded) of the raw file bytes.
         pub data_base64: String,
     }
+
+    /// `workspace.files` payload (lazy tree; the no-argument form keeps the old
+    /// depth≤2/≤300 behaviour, `2026-11-01-client-side-panels` R1).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct WorkspaceFilesPayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Workspace-relative directory (`""` = workspace root).
+        #[serde(default)]
+        pub path: String,
+        /// Depth relative to `path` (1..=2; absent keeps the legacy depth 2).
+        #[serde(default)]
+        pub depth: Option<u32>,
+        /// Maximum entries (1..=500; absent keeps the legacy 300).
+        #[serde(default)]
+        pub limit: Option<u32>,
+    }
+
+    /// `workspace.file_read` payload (preview; read-only).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct WorkspaceFileReadPayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Workspace-relative path (forward slashes).
+        pub path: String,
+        /// Optional caller byte budget (host clamps: text 256 KiB/image 8 MiB).
+        #[serde(default)]
+        pub max_bytes: Option<u64>,
+    }
+
+    /// One user-driven terminal action (`terminal` command).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    #[serde(rename_all = "lowercase")]
+    pub enum TerminalAction {
+        /// Open (or return) the persistent shell for a conversation.
+        Open,
+        /// Send one command line to the persistent shell.
+        Send,
+        /// Close the shell and drop it from the list.
+        Close,
+        /// List the conversation's live shells.
+        List,
+        /// Read one shell's accumulated output.
+        Status,
+    }
+
+    /// `terminal` payload (`2026-11-01-client-side-panels` R3).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct TerminalPayload {
+        /// Owning workspace id (the shell runs with this workspace as cwd).
+        pub workspace_id: String,
+        /// Conversation that owns the shell (isolation scope).
+        pub conversation_id: String,
+        /// Action to perform.
+        pub action: TerminalAction,
+        /// Target shell session id (`send`/`close`/`status`).
+        #[serde(default)]
+        pub session: Option<String>,
+        /// Command line (`send`); passed to the persistent shell verbatim.
+        #[serde(default)]
+        pub command: Option<String>,
+        /// Per-command timeout in ms (host clamps to ≤10_000).
+        #[serde(default)]
+        pub timeout_ms: Option<u64>,
+    }
+
+    /// `session.update` payload (rename/pin/archive; at least one field).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct SessionUpdatePayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Conversation id.
+        pub conversation_id: String,
+        /// New title (trimmed, 1..=200 chars) when present.
+        #[serde(default)]
+        pub title: Option<String>,
+        /// Pin/unpin when present.
+        #[serde(default)]
+        pub pinned: Option<bool>,
+        /// Archive/unarchive when present.
+        #[serde(default)]
+        pub archived: Option<bool>,
+    }
+
+    /// `session.fork` payload (same-workspace copy, C18).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct SessionForkPayload {
+        /// Owning workspace id (fork never crosses workspaces).
+        pub workspace_id: String,
+        /// Source conversation id.
+        pub conversation_id: String,
+        /// Optional new title; absent derives "<title> 副本".
+        #[serde(default)]
+        pub title: Option<String>,
+    }
+
+    /// `session.search` payload (current workspace only, C18).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct SessionSearchPayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Query (trimmed; empty = no request, ≤200 chars enforced host-side).
+        pub query: String,
+        /// Result limit (1..=50; host default 20).
+        #[serde(default)]
+        pub limit: Option<u32>,
+    }
 }
 
 /// Typed command results (single source for `schemars` JSON Schema).
@@ -367,6 +484,23 @@ pub mod results {
         pub add: u32,
         /// Coarse deleted marker (`1` when git reports a deletion).
         pub del: u32,
+    }
+
+    /// `terminal` result: live shells + one output snapshot.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct TerminalResult {
+        /// Live shell session ids of the conversation (newest last).
+        pub sessions: Vec<String>,
+        /// New output since the previous read (UTF-8 lossy, ≤64 KiB).
+        pub output: String,
+        /// Output exceeded the per-call cap and was truncated.
+        pub truncated: bool,
+        /// Command exit code for `send` (when the shell reports one).
+        #[serde(default)]
+        pub exit_code: Option<i32>,
+        /// Per-call timeout (ms) was hit; the shell stays usable.
+        #[serde(default)]
+        pub timed_out: bool,
     }
 
     /// `workspace.changes` result: bounded, read-only git working-tree summary.

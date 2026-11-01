@@ -194,6 +194,39 @@ export interface Conversation {
   title: string;
   created_at_ms: number;
   updated_at_ms: number;
+  /** Pinned to the top of its workspace list (Phase 2b, SQLite v6). */
+  pinned?: boolean;
+  /** Archived: hidden from the default list, messages kept (Phase 2b). */
+  archived?: boolean;
+}
+
+/** One content-search hit rendered in the sessions sidebar (Phase 2b R6). */
+export interface SessionSearchHit {
+  conversationId: string;
+  title: string;
+  messageId: string;
+  role: string;
+  snippet: string;
+  archived: boolean;
+}
+
+/** Content-search result (current workspace only; C18). */
+export interface SessionSearchOutcome {
+  items: SessionSearchHit[];
+  truncated: boolean;
+}
+
+/** One preview of `workspace.file_read` (inspector files tab). */
+export interface FilePreview {
+  path: string;
+  state: "loading" | "ready" | "error";
+  kind: "text" | "image" | "unsupported";
+  text: string;
+  dataUrl: string;
+  size: number;
+  truncated: boolean;
+  reason: string;
+  error: string;
 }
 
 /** Mirrors `zk_contract_session::Message`. */

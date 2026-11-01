@@ -129,6 +129,11 @@ fn oauth_command_names_are_stable_and_unique() {
         commands::OAUTH_REFRESH,
         commands::SYSTEM_OPEN_URL,
         commands::WORKSPACE_ATTACHMENT_SAVE,
+        commands::WORKSPACE_FILE_READ,
+        commands::TERMINAL,
+        commands::SESSION_UPDATE,
+        commands::SESSION_FORK,
+        commands::SESSION_SEARCH,
     ];
     let mut sorted = names.to_vec();
     sorted.sort_unstable();
@@ -172,5 +177,86 @@ fn attachment_save_contract_round_trips() {
         Some(&serde_json::json!(
             ".zeokeel/attachments/conv-1/abc-shot.png"
         ))
+    );
+}
+
+#[test]
+fn phase2b_payloads_round_trip() {
+    use zk_contract_ipc::payloads::{
+        SessionForkPayload, SessionSearchPayload, SessionUpdatePayload, TerminalAction,
+        TerminalPayload, WorkspaceFileReadPayload, WorkspaceFilesPayload,
+    };
+
+    let files = WorkspaceFilesPayload {
+        workspace_id: "ws-1".to_owned(),
+        path: "demo-data".to_owned(),
+        depth: Some(1),
+        limit: Some(200),
+    };
+    assert_eq!(
+        files,
+        serde_json::from_str(&serde_json::to_string(&files).unwrap()).unwrap()
+    );
+    // Legacy no-argument payload parses with root/default knobs unset.
+    let legacy: WorkspaceFilesPayload = serde_json::from_str(r#"{"workspace_id":"ws-1"}"#).unwrap();
+    assert_eq!(legacy.path, "");
+    assert_eq!(legacy.depth, None);
+    assert_eq!(legacy.limit, None);
+
+    let read = WorkspaceFileReadPayload {
+        workspace_id: "ws-1".to_owned(),
+        path: "demo-data/hello.txt".to_owned(),
+        max_bytes: Some(1024),
+    };
+    assert_eq!(
+        read,
+        serde_json::from_str(&serde_json::to_string(&read).unwrap()).unwrap()
+    );
+
+    let terminal = TerminalPayload {
+        workspace_id: "ws-1".to_owned(),
+        conversation_id: "c-1".to_owned(),
+        action: TerminalAction::Send,
+        session: Some("default".to_owned()),
+        command: Some("printf hi".to_owned()),
+        timeout_ms: Some(5_000),
+    };
+    let text = serde_json::to_string(&terminal).unwrap();
+    assert!(text.contains("\"action\":\"send\""));
+    assert_eq!(
+        terminal,
+        serde_json::from_str::<TerminalPayload>(&text).unwrap()
+    );
+
+    let update = SessionUpdatePayload {
+        workspace_id: "ws-1".to_owned(),
+        conversation_id: "c-1".to_owned(),
+        title: Some("renamed".to_owned()),
+        pinned: Some(true),
+        archived: Some(false),
+    };
+    assert_eq!(
+        update,
+        serde_json::from_str(&serde_json::to_string(&update).unwrap()).unwrap()
+    );
+
+    let fork = SessionForkPayload {
+        workspace_id: "ws-1".to_owned(),
+        conversation_id: "c-1".to_owned(),
+        title: None,
+    };
+    assert_eq!(
+        fork,
+        serde_json::from_str(&serde_json::to_string(&fork).unwrap()).unwrap()
+    );
+
+    let search = SessionSearchPayload {
+        workspace_id: "ws-1".to_owned(),
+        query: "hello".to_owned(),
+        limit: Some(20),
+    };
+    assert_eq!(
+        search,
+        serde_json::from_str(&serde_json::to_string(&search).unwrap()).unwrap()
     );
 }

@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SessionUpdatePayload",
+  "description": "`session.update` payload (rename/pin/archive; at least one field).",
+  "type": "object",
+  "required": [
+    "conversation_id",
+    "workspace_id"
+  ],
+  "properties": {
+    "archived": {
+      "description": "Archive/unarchive when present.",
+      "default": null,
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "conversation_id": {
+      "description": "Conversation id.",
+      "type": "string"
+    },
+    "pinned": {
+      "description": "Pin/unpin when present.",
+      "default": null,
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "title": {
+      "description": "New title (trimmed, 1..=200 chars) when present.",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "workspace_id": {
+      "description": "Owning workspace id.",
+      "type": "string"
+    }
+  }
+}

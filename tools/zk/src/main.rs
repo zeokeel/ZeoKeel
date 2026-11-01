@@ -1968,6 +1968,7 @@ fn compose_cargo_toml(root: &Path, resolved: &Resolved) -> Result<String> {
     // Shared path/tool helpers are exposed through this generated facade so the
     // desktop composition root never depends on kit/tool crates directly (C4/C2).
     out.push_str("zk-kit-tools = { path = \"../../crates/zk-kit-tools\" }\n");
+    out.push_str("zk-kit-session = { path = \"../../crates/zk-kit-session\" }\n");
     out.push_str("serde_json = { workspace = true }\nrig-core = { workspace = true }\n\n[lints]\nworkspace = true\n");
     // CLI-only dep audit triage: rig-core is consumed by the embedding/media glue
     // generated in this crate's lib.rs; cargo-machete cannot see that dependency edge.
@@ -2201,7 +2202,7 @@ fn compose_lib(root: &Path, resolved: &Resolved) -> Result<String> {
     // Generated facade for shared helpers used by the composition root (C4/C2):
     // the host calls `zk_composed::zk_kit_tools::safe_join_under(...)` instead of
     // depending on kit/tool crates directly.
-    out.push_str("pub use zk_kit_tools;\n");
+    out.push_str("pub use zk_kit_session;\npub use zk_kit_tools;\n");
     Ok(out)
 }
 

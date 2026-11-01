@@ -7,3 +7,6 @@ license.workspace = true
 zk-contract-session = { path = "../../packages/contracts/session" }
 [lints]
 workspace = true
+
+[dev-dependencies]
+zk-store-session-sqlite = { path = "../../packages/client/store-session-sqlite" }

@@ -45,6 +45,72 @@ pub struct Conversation {
     pub created_at_ms: u64,
     /// Last update time (ms since epoch).
     pub updated_at_ms: u64,
+    /// Pinned to the top of its workspace list (Phase 2b, migration v6).
+    #[serde(default)]
+    pub pinned: bool,
+    /// Archived: hidden from the default list, messages kept (Phase 2b, v6).
+    #[serde(default)]
+    pub archived: bool,
+}
+
+/// Kind of a `workspace.file_read` result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum FileReadKind {
+    /// UTF-8 text content (`encoding = utf8`).
+    Text,
+    /// Raster image content (`encoding = base64`).
+    Image,
+    /// Honest degradation: PDF/Office/HTML/binary/too large/symlink escape.
+    Unsupported,
+}
+
+/// One `workspace.file_read` result (read-only, workspace relative).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct WorkspaceFileReadResult {
+    /// Workspace-relative path (forward slashes).
+    pub path: String,
+    /// Content kind.
+    pub kind: FileReadKind,
+    /// Detected MIME (`text/*`/`image/*`; may be `application/octet-stream`).
+    pub mime: String,
+    /// Full file size in bytes.
+    pub size: u64,
+    /// Content was truncated to the host limit (text only).
+    pub truncated: bool,
+    /// `utf8` | `base64` | empty (unsupported).
+    pub encoding: String,
+    /// Content (empty when unsupported).
+    pub content: String,
+    /// User-readable degradation reason (empty when supported).
+    #[serde(default)]
+    pub reason: String,
+}
+
+/// One session full-text search hit (snippet, not full content).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SessionSearchHit {
+    /// Conversation id.
+    pub conversation_id: String,
+    /// Conversation title.
+    pub title: String,
+    /// Matched message id.
+    pub message_id: String,
+    /// Message role (`user`/`assistant`/`tool`/`system`).
+    pub role: String,
+    /// Context window around the match (±60 chars).
+    pub snippet: String,
+    /// Conversation is archived (shown with a marker, still openable).
+    pub archived: bool,
+}
+
+/// `session.search` result.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SessionSearchResult {
+    /// Hits in store order (pinned first, then newest).
+    pub items: Vec<SessionSearchHit>,
+    /// More hits existed than the effective limit.
+    pub truncated: bool,
 }
 
 /// One message inside a conversation.
@@ -237,4 +303,53 @@ pub trait SessionStore: WorkspaceStore + Send + Sync {
         workspace_id: &str,
         conversation_id: &str,
     ) -> Result<Vec<Message>, SessionError>;
+
+    /// Rename one conversation (non-empty title).
+    ///
+    /// Default implementation keeps third-party/test stores compiling (Phase 2b
+    /// additive trait methods, same convention as `store-session-sqlite`).
+    fn rename_conversation(
+        &self,
+        _workspace_id: &str,
+        _conversation_id: &str,
+        _title: &str,
+    ) -> Result<Conversation, SessionError> {
+        Err(SessionError::Invalid(
+            "rename_conversation unsupported".to_owned(),
+        ))
+    }
+
+    /// Pin/unpin one conversation (orders it before unpinned ones).
+    fn set_pinned(
+        &self,
+        _workspace_id: &str,
+        _conversation_id: &str,
+        _pinned: bool,
+    ) -> Result<Conversation, SessionError> {
+        Err(SessionError::Invalid("set_pinned unsupported".to_owned()))
+    }
+
+    /// Archive/unarchive one conversation (hide from the default list; keep data).
+    fn set_archived(
+        &self,
+        _workspace_id: &str,
+        _conversation_id: &str,
+        _archived: bool,
+    ) -> Result<Conversation, SessionError> {
+        Err(SessionError::Invalid("set_archived unsupported".to_owned()))
+    }
+
+    /// Fork one conversation into the same workspace (messages copied).
+    ///
+    /// Default implementation is unsupported; the SQLite store overrides it.
+    fn fork_conversation(
+        &self,
+        _workspace_id: &str,
+        _conversation_id: &str,
+        _title: Option<&str>,
+    ) -> Result<Conversation, SessionError> {
+        Err(SessionError::Invalid(
+            "fork_conversation unsupported".to_owned(),
+        ))
+    }
 }

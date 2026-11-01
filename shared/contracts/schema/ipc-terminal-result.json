@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TerminalResult",
+  "description": "`terminal` result: live shells + one output snapshot.",
+  "type": "object",
+  "required": [
+    "output",
+    "sessions",
+    "truncated"
+  ],
+  "properties": {
+    "exit_code": {
+      "description": "Command exit code for `send` (when the shell reports one).",
+      "default": null,
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int32"
+    },
+    "output": {
+      "description": "New output since the previous read (UTF-8 lossy, ≤64 KiB).",
+      "type": "string"
+    },
+    "sessions": {
+      "description": "Live shell session ids of the conversation (newest last).",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "timed_out": {
+      "description": "Per-call timeout (ms) was hit; the shell stays usable.",
+      "default": false,
+      "type": "boolean"
+    },
+    "truncated": {
+      "description": "Output exceeded the per-call cap and was truncated.",
+      "type": "boolean"
+    }
+  }
+}

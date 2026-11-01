@@ -240,12 +240,12 @@ fn persists_message_usage_across_reopen() {
     assert_eq!(messages[0].usage, Some(usage));
     assert!(messages[1].usage.is_none());
 
-    // Schema is v5 and legacy NULL rows read back as None.
+    // Schema is v6 (v5 + pinned/archived) and legacy NULL rows read back as None.
     let conn = rusqlite::Connection::open(base.join("sessions.db")).unwrap();
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 5);
+    assert_eq!(version, 6);
     drop(conn);
     drop(reopened);
 }
@@ -307,7 +307,7 @@ fn legacy_v3_database_upgrades_to_v4_with_usage_null() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 5, "v3 -> v5 upgrade path");
+    assert_eq!(version, 6, "v3 -> v6 upgrade path");
 }
 
 #[test]
@@ -378,7 +378,7 @@ fn v4_database_is_migrated_to_v5_with_empty_turn_ids() {
         conn.query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap()
     };
-    assert_eq!(version, 5);
+    assert_eq!(version, 6);
     let read = store.messages_in("w1", "c1").unwrap();
     assert_eq!(read.len(), 1);
     assert_eq!(read[0].turn_id, "");

@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WorkspaceFileReadPayload",
+  "description": "`workspace.file_read` payload (preview; read-only).",
+  "type": "object",
+  "required": [
+    "path",
+    "workspace_id"
+  ],
+  "properties": {
+    "max_bytes": {
+      "description": "Optional caller byte budget (host clamps: text 256 KiB/image 8 MiB).",
+      "default": null,
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "path": {
+      "description": "Workspace-relative path (forward slashes).",
+      "type": "string"
+    },
+    "workspace_id": {
+      "description": "Owning workspace id.",
+      "type": "string"
+    }
+  }
+}

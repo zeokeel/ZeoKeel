@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WorkspaceFileReadResult",
+  "description": "One `workspace.file_read` result (read-only, workspace relative).",
+  "type": "object",
+  "required": [
+    "content",
+    "encoding",
+    "kind",
+    "mime",
+    "path",
+    "size",
+    "truncated"
+  ],
+  "properties": {
+    "content": {
+      "description": "Content (empty when unsupported).",
+      "type": "string"
+    },
+    "encoding": {
+      "description": "`utf8` | `base64` | empty (unsupported).",
+      "type": "string"
+    },
+    "kind": {
+      "description": "Content kind.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/FileReadKind"
+        }
+      ]
+    },
+    "mime": {
+      "description": "Detected MIME (`text/*`/`image/*`; may be `application/octet-stream`).",
+      "type": "string"
+    },
+    "path": {
+      "description": "Workspace-relative path (forward slashes).",
+      "type": "string"
+    },
+    "reason": {
+      "description": "User-readable degradation reason (empty when supported).",
+      "default": "",
+      "type": "string"
+    },
+    "size": {
+      "description": "Full file size in bytes.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "truncated": {
+      "description": "Content was truncated to the host limit (text only).",
+      "type": "boolean"
+    }
+  },
+  "definitions": {
+    "FileReadKind": {
+      "description": "Kind of a `workspace.file_read` result.",
+      "oneOf": [
+        {
+          "description": "UTF-8 text content (`encoding = utf8`).",
+          "type": "string",
+          "enum": [
+            "text"
+          ]
+        },
+        {
+          "description": "Raster image content (`encoding = base64`).",
+          "type": "string",
+          "enum": [
+            "image"
+          ]
+        },
+        {
+          "description": "Honest degradation: PDF/Office/HTML/binary/too large/symlink escape.",
+          "type": "string",
+          "enum": [
+            "unsupported"
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -41,6 +41,8 @@ const WORKSPACE = {
   updated_at_ms: 2,
 };
 const CONVERSATION = {
+  pinned: false,
+  archived: false,
   id: "c-1",
   workspace_id: "ws-1",
   title: "Conversation",

@@ -50,17 +50,6 @@ async function callIpc(page: Page, name: string, payload: Record<string, unknown
   return record["data"];
 }
 
-function workspaceIdOf(data: unknown): string {
-  if (!Array.isArray(data) || data.length === 0) {
-    return "";
-  }
-  const first: unknown = data[0];
-  if (typeof first !== "object" || first === null) {
-    return "";
-  }
-  const record: Record<string, unknown> = { ...first };
-  return typeof record["id"] === "string" ? record["id"] : "";
-}
 
 async function expectNoSeriousAxe(page: Page, label: string): Promise<void> {
   const results = await new AxeBuilder({ page }).analyze();
@@ -400,26 +389,11 @@ test.describe("composer Phase 2a interaction contract", () => {
         buffer: PNG_BUFFER,
       });
       await expect(page.getByText("persist.png", { exact: true })).toBeVisible();
-      const workspaceId = workspaceIdOf(await callIpc(page, "workspace.list", {}));
-      const listing = await callIpc(page, "workspace.files", { workspace_id: workspaceId });
-      const data = listing;
-      const items: unknown[] =
-        typeof data === "object" && data !== null
-          ? (() => {
-              const record: Record<string, unknown> = { ...data };
-              const raw = record["items"];
-              return Array.isArray(raw) ? raw : [];
-            })()
-          : [];
-      const paths = items.flatMap((item) => {
-        if (typeof item !== "object" || item === null) {
-          return [];
-        }
-        const record: Record<string, unknown> = { ...item };
-        return typeof record["path"] === "string" ? [record["path"]] : [];
-      });
+      // Side-panels hides dot-directories from `workspace.files` (by design), so assert the
+      // attachment on disk: it must land under <workspace>/.zeokeel/attachments/<conversation>/.
+      const paths = attachmentFiles();
       expect(paths.join("\n")).toContain(".zeokeel/attachments");
-      expect(attachmentFiles().some((file) => file.endsWith(".png"))).toBe(true);
+      expect(paths.some((file) => file.endsWith(".png"))).toBe(true);
 
       await input.fill("持久化附件");
       await page.keyboard.press("Enter");

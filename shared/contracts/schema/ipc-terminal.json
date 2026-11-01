@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TerminalPayload",
+  "description": "`terminal` payload (`2026-11-01-client-side-panels` R3).",
+  "type": "object",
+  "required": [
+    "action",
+    "conversation_id",
+    "workspace_id"
+  ],
+  "properties": {
+    "action": {
+      "description": "Action to perform.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/TerminalAction"
+        }
+      ]
+    },
+    "command": {
+      "description": "Command line (`send`); passed to the persistent shell verbatim.",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "conversation_id": {
+      "description": "Conversation that owns the shell (isolation scope).",
+      "type": "string"
+    },
+    "session": {
+      "description": "Target shell session id (`send`/`close`/`status`).",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "timeout_ms": {
+      "description": "Per-command timeout in ms (host clamps to ≤10_000).",
+      "default": null,
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "workspace_id": {
+      "description": "Owning workspace id (the shell runs with this workspace as cwd).",
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "TerminalAction": {
+      "description": "One user-driven terminal action (`terminal` command).",
+      "oneOf": [
+        {
+          "description": "Open (or return) the persistent shell for a conversation.",
+          "type": "string",
+          "enum": [
+            "open"
+          ]
+        },
+        {
+          "description": "Send one command line to the persistent shell.",
+          "type": "string",
+          "enum": [
+            "send"
+          ]
+        },
+        {
+          "description": "Close the shell and drop it from the list.",
+          "type": "string",
+          "enum": [
+            "close"
+          ]
+        },
+        {
+          "description": "List the conversation's live shells.",
+          "type": "string",
+          "enum": [
+            "list"
+          ]
+        },
+        {
+          "description": "Read one shell's accumulated output.",
+          "type": "string",
+          "enum": [
+            "status"
+          ]
+        }
+      ]
+    }
+  }
+}

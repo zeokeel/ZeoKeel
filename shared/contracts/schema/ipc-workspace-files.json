@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WorkspaceFilesPayload",
+  "description": "`workspace.files` payload (lazy tree; the no-argument form keeps the old depth≤2/≤300 behaviour, `2026-11-01-client-side-panels` R1).",
+  "type": "object",
+  "required": [
+    "workspace_id"
+  ],
+  "properties": {
+    "depth": {
+      "description": "Depth relative to `path` (1..=2; absent keeps the legacy depth 2).",
+      "default": null,
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "limit": {
+      "description": "Maximum entries (1..=500; absent keeps the legacy 300).",
+      "default": null,
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "path": {
+      "description": "Workspace-relative directory (`\"\"` = workspace root).",
+      "default": "",
+      "type": "string"
+    },
+    "workspace_id": {
+      "description": "Owning workspace id.",
+      "type": "string"
+    }
+  }
+}

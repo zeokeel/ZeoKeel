@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SessionSearchPayload",
+  "description": "`session.search` payload (current workspace only, C18).",
+  "type": "object",
+  "required": [
+    "query",
+    "workspace_id"
+  ],
+  "properties": {
+    "limit": {
+      "description": "Result limit (1..=50; host default 20).",
+      "default": null,
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "query": {
+      "description": "Query (trimmed; empty = no request, ≤200 chars enforced host-side).",
+      "type": "string"
+    },
+    "workspace_id": {
+      "description": "Owning workspace id.",
+      "type": "string"
+    }
+  }
+}

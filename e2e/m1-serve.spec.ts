@@ -1,5 +1,5 @@
-import { test, expect } from "@playwright/test";
-import { copyFileSync, mkdirSync, appendFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { test, expect, type Page } from "@playwright/test";
+import { copyFileSync, existsSync, mkdirSync, appendFileSync, readdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
@@ -10,7 +10,7 @@ const HOME = "target/evidence/m1/home";
 
 /** Calls one IPC command through the serve carrier and returns its `data`. */
 async function callIpc(
-  page: import("@playwright/test").Page,
+  page: Page,
   name: string,
   payload: Record<string, unknown>,
 ): Promise<unknown> {
@@ -25,22 +25,15 @@ async function callIpc(
 }
 
 /** Array rows of an IPC `data` payload (settings/workspace/conversation lists). */
-function rowsOf(data: unknown): Array<Record<string, unknown>> {
-  if (!Array.isArray(data)) {
-    return [];
+function rowsOf(data: unknown): Record<string, unknown>[] {
+  const entries: unknown[] = Array.isArray(data) ? data : [];
+  const rows: Record<string, unknown>[] = [];
+  for (const row of entries) {
+    if (typeof row === "object" && row !== null) {
+      rows.push({ ...row });
+    }
   }
-  return data.flatMap((row) =>
-    typeof row === "object" && row !== null ? [{ ...row }] : [],
-  );
-}
-
-/** `workspace.files` returns `{ items: [...] }`; flatten to rows for assertions. */
-function fileRowsOf(data: unknown): Array<Record<string, unknown>> {
-  if (typeof data !== "object" || data === null) {
-    return [];
-  }
-  const record: Record<string, unknown> = { ...data };
-  return rowsOf(record["items"]);
+  return rows;
 }
 
 test.describe("M1 serve carrier (real dispatch + SQLite)", () => {
@@ -77,7 +70,9 @@ test.describe("M1 serve carrier (real dispatch + SQLite)", () => {
     await page.goto(`${SERVE}/`, { waitUntil: "networkidle" });
     await page.keyboard.press("Control+b");
     await expect(page.getByRole("complementary", { name: "右侧检查器" })).toBeVisible();
-    await expect(page.getByText("demo-data/hello.txt", { exact: true })).toBeVisible({ timeout: 10_000 });
+    // Lazy tree: expand the root directory, then see its direct children.
+    await page.getByRole("treeitem", { name: /demo-data/ }).click();
+    await expect(page.getByRole("treeitem", { name: /hello\.txt/ })).toBeVisible({ timeout: 10_000 });
     await page.screenshot({ path: "target/evidence/m1/serve-inspector.png" });
     const axe = await new AxeBuilder({ page }).analyze();
     const serious = axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
@@ -199,7 +194,6 @@ test.describe("M1 serve carrier (real dispatch + SQLite)", () => {
   test("composer attachment is saved under .zeokeel/attachments and survives reload", async ({ page }) => {
     await page.goto(`${SERVE}/`, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: "新建会话" }).last().click();
-    const workspaceId = rowsOf(await callIpc(page, "workspace.list", {}))[0]?.["id"];
     // 1x1 transparent PNG header + payload within the 1 MiB / allow-list limits.
     const png = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
@@ -214,13 +208,18 @@ test.describe("M1 serve carrier (real dispatch + SQLite)", () => {
     // Thumbnail must be a FileReader `data:` URL (never `blob:`, CSP unchanged).
     const thumbnail = await page.getByRole("img", { name: /附件缩略图/ }).first().getAttribute("src");
     expect(thumbnail?.startsWith("data:image/png")).toBe(true);
-    // Host persisted the file inside the workspace (new directory is the <conversation> level).
+    // Host persisted the file inside the workspace (metadata dirs stay hidden from the tree).
     await expect
-      .poll(async () => {
-        const files = fileRowsOf(await callIpc(page, "workspace.files", { workspace_id: workspaceId }));
-        return files.map((entry) => String(entry["path"] ?? "")).join("\n");
+      .poll(() => {
+        const dir = join(HOME, ".zeokeel/attachments");
+        if (!existsSync(dir)) {
+          return "";
+        }
+        return readdirSync(dir, { withFileTypes: true })
+          .flatMap((entry) => (entry.isDirectory() ? readdirSync(join(dir, entry.name)) : []))
+          .join("\n");
       })
-      .toContain(".zeokeel/attachments");
+      .toContain("shot.png");
     const composer = page.getByRole("textbox", { name: "消息输入框" });
     await composer.fill("附件消息");
     await page.keyboard.press("Enter");
@@ -231,5 +230,72 @@ test.describe("M1 serve carrier (real dispatch + SQLite)", () => {
     const axe = await new AxeBuilder({ page }).analyze();
     const serious = axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
     expect(serious, JSON.stringify(serious.map((v) => v.id))).toEqual([]);
+  });
+
+  test("channels: inspector tree lazy-loads, previews text and restores the session tab", async ({ page }) => {
+    mkdirSync(join(HOME, "demo-data"), { recursive: true });
+    copyFileSync("demo-data/hello.txt", join(HOME, "demo-data/hello.txt"));
+    await page.goto(`${SERVE}/`, { waitUntil: "networkidle" });
+    await page.keyboard.press("Control+b");
+    await expect(page.getByRole("complementary", { name: "右侧检查器" })).toBeVisible();
+    // Lazy tree: expanding a directory fetches only its direct children.
+    await page.getByRole("treeitem", { name: /demo-data/ }).click();
+    await expect(page.getByRole("treeitem", { name: /hello\.txt/ })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("treeitem", { name: /hello\.txt/ }).click();
+    await expect(page.getByText(/hello from zeokeel/i)).toBeVisible({ timeout: 10_000 });
+    // Session-scoped layout: the active tab is remembered per conversation.
+    await page.getByRole("tab", { name: "变更" }).click();
+    await page.reload({ waitUntil: "networkidle" });
+    await page.keyboard.press("Control+b");
+    await expect(page.getByRole("tab", { name: "变更" })).toHaveAttribute("aria-selected", "true");
+    await page.screenshot({ path: "target/evidence/m1/serve-inspector-phase2b.png" });
+    const axe = await new AxeBuilder({ page }).analyze();
+    const serious = axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+    expect(serious, JSON.stringify(serious.map((v) => v.id))).toEqual([]);
+  });
+
+  test("channels: session menu rename/pin/archive and content search stay in workspace", async ({ page }) => {
+    await page.goto(`${SERVE}/`, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "新建会话" }).last().click();
+    const composer = page.getByRole("textbox", { name: "消息输入框" });
+    await composer.fill("needle in the haystack");
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("user-text").last()).toHaveText("needle in the haystack");
+    // ⋯ menu: rename, pin, archive toggle (C18: same workspace).
+    await page.getByRole("button", { name: "会话操作" }).last().click();
+    await expect(page.getByRole("menuitem", { name: "重命名" })).toBeVisible();
+    await page.getByRole("menuitem", { name: "重命名" }).click();
+    const rename = page.getByRole("textbox", { name: "会话标题（≤200 字）" });
+    await rename.fill("Renamed conversation");
+    await page.getByRole("button", { name: "保存" }).click();
+    const sessionRow = page.getByRole("listitem").filter({ hasText: "Renamed conversation" }).last();
+    await expect(sessionRow).toBeVisible();
+    await sessionRow.getByRole("button", { name: "会话操作" }).click();
+    await page.getByRole("menuitem", { name: "置顶" }).click();
+    await sessionRow.getByRole("button", { name: "会话操作" }).click();
+    await page.getByRole("menuitem", { name: "归档" }).click();
+    await expect(page.getByRole("listitem").filter({ hasText: "Renamed conversation" })).toHaveCount(0);
+    await page.getByRole("button", { name: "显示已归档" }).click();
+    await expect(page.getByRole("listitem").filter({ hasText: "Renamed conversation" }).last()).toBeVisible();
+    // Content search (current workspace only) finds the message and opens it.
+    await page.getByRole("button", { name: "搜索会话" }).first().click();
+    await page.getByRole("button", { name: "内容" }).click();
+    await page.getByRole("searchbox", { name: "搜索会话" }).fill("needle");
+    await expect(page.getByRole("button", { name: /打开会话/ })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("button", { name: /打开会话/ }).click();
+    await expect(page.getByTestId("user-text").last()).toHaveText("needle in the haystack");
+    await page.screenshot({ path: "target/evidence/m1/serve-sessions-phase2b.png" });
+  });
+
+  test("channels: terminal executes a user command and shows output", async ({ page }) => {
+    await page.goto(`${SERVE}/`, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "新建会话" }).last().click();
+    await page.keyboard.press("Control+b");
+    await page.getByRole("tab", { name: "终端" }).click();
+    const input = page.getByRole("textbox", { name: "终端命令" });
+    await input.fill("printf term-ok");
+    await input.press("Enter");
+    await expect(page.getByTestId("inspector-terminal-output")).toContainText("term-ok", { timeout: 20_000 });
+    await page.screenshot({ path: "target/evidence/m1/serve-terminal-phase2b.png" });
   });
 });

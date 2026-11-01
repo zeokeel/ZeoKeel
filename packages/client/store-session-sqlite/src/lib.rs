@@ -206,10 +206,10 @@ fn migrate(conn: &mut Connection, workspace_root: &Path) -> Result<(), SessionEr
             params![default_id, default_path.to_string_lossy(), "默认工作区", now],
         )
         .map_err(storage)?;
-        // Fresh installs start at the current schema (v5) with usage_json + turn_id.
+        // Fresh installs start at v5 (usage_json + turn_id); the v6 block below
+        // adds pinned/archived.
         conn.pragma_update(None, "user_version", 5)
             .map_err(storage)?;
-        return Ok(());
     }
     let legacy = !has_column(conn, "conversations", "workspace_id")?;
     if legacy || version < 2 {
@@ -316,6 +316,25 @@ fn migrate(conn: &mut Connection, workspace_root: &Path) -> Result<(), SessionEr
         conn.pragma_update(None, "user_version", 5)
             .map_err(storage)?;
     }
+    // v5 -> v6: pinned/archived flags (Phase 2b, additive boolean columns).
+    if !has_column(conn, "conversations", "pinned")? {
+        conn.execute(
+            "ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(storage)?;
+    }
+    if !has_column(conn, "conversations", "archived")? {
+        conn.execute(
+            "ALTER TABLE conversations ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(storage)?;
+    }
+    if schema_version(conn)? < 6 {
+        conn.pragma_update(None, "user_version", 6)
+            .map_err(storage)?;
+    }
     // Normalize any pre-v4 database that already has both columns (e.g. a
     // partially migrated file) to the current version.
     conn.execute(
@@ -374,10 +393,50 @@ fn row_to_conversation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Conversation
         title: row.get(2)?,
         created_at_ms: row.get::<_, i64>(3)?.max(0).try_into().unwrap_or(0),
         updated_at_ms: row.get::<_, i64>(4)?.max(0).try_into().unwrap_or(0),
+        pinned: row.get::<_, i64>(5)? != 0,
+        archived: row.get::<_, i64>(6)? != 0,
     })
 }
 
 impl SqliteSessionStore {
+    /// One conversation by id with workspace-ownership check (v6 columns included).
+    fn conversation_in(
+        conn: &Connection,
+        workspace_id: &str,
+        conversation_id: &str,
+    ) -> Result<Conversation, SessionError> {
+        let conversation = conn
+            .query_row(
+                "SELECT id, workspace_id, title, created_at_ms, updated_at_ms, pinned, archived FROM conversations WHERE id=?1",
+                params![conversation_id],
+                row_to_conversation,
+            )
+            .optional()
+            .map_err(storage)?
+            .ok_or_else(|| SessionError::NotFound(conversation_id.to_owned()))?;
+        if conversation.workspace_id != workspace_id {
+            return Err(SessionError::WorkspaceMismatch {
+                conversation: conversation_id.to_owned(),
+                workspace: workspace_id.to_owned(),
+            });
+        }
+        Ok(conversation)
+    }
+
+    /// Validate a rename title: trimmed, 1..=200 chars.
+    fn checked_title(title: &str) -> Result<String, SessionError> {
+        let trimmed = title.trim();
+        if trimmed.is_empty() {
+            return Err(SessionError::Invalid("empty conversation title".to_owned()));
+        }
+        if trimmed.chars().count() > 200 {
+            return Err(SessionError::Invalid(
+                "conversation title exceeds 200 chars".to_owned(),
+            ));
+        }
+        Ok(trimmed.to_owned())
+    }
+
     fn with_conn<T>(
         &self,
         f: impl FnOnce(&Connection) -> Result<T, SessionError>,
@@ -596,7 +655,7 @@ impl SessionStore for SqliteSessionStore {
             )
             .map_err(storage)?;
             conn.query_row(
-                "SELECT id, workspace_id, title, created_at_ms, updated_at_ms FROM conversations WHERE id=?1",
+                "SELECT id, workspace_id, title, created_at_ms, updated_at_ms, pinned, archived FROM conversations WHERE id=?1",
                 params![id],
                 row_to_conversation,
             )
@@ -608,7 +667,7 @@ impl SessionStore for SqliteSessionStore {
         self.with_conn(|conn| {
             SqliteSessionStore::get_workspace(conn, workspace_id)?;
             let mut stmt = conn
-                .prepare("SELECT id, workspace_id, title, created_at_ms, updated_at_ms FROM conversations WHERE workspace_id=?1 ORDER BY updated_at_ms DESC, id DESC")
+                .prepare("SELECT id, workspace_id, title, created_at_ms, updated_at_ms, pinned, archived FROM conversations WHERE workspace_id=?1 ORDER BY pinned DESC, updated_at_ms DESC, id DESC")
                 .map_err(storage)?;
             let rows = stmt.query_map(params![workspace_id], row_to_conversation).map_err(storage)?;
             rows.collect::<Result<Vec<_>, _>>().map_err(storage)
@@ -678,6 +737,116 @@ impl SessionStore for SqliteSessionStore {
             })
             .map_err(storage)?;
             rows.collect::<Result<Vec<_>, _>>().map_err(storage)
+        })
+    }
+
+    fn rename_conversation(
+        &self,
+        workspace_id: &str,
+        conversation_id: &str,
+        title: &str,
+    ) -> Result<Conversation, SessionError> {
+        let title = Self::checked_title(title)?;
+        self.with_conn(|conn| {
+            Self::conversation_in(conn, workspace_id, conversation_id)?;
+            conn.execute(
+                "UPDATE conversations SET title=?2, updated_at_ms=?3 WHERE id=?1",
+                params![
+                    conversation_id,
+                    title,
+                    i64::try_from(now_ms()).unwrap_or(i64::MAX)
+                ],
+            )
+            .map_err(storage)?;
+            Self::conversation_in(conn, workspace_id, conversation_id)
+        })
+    }
+
+    fn set_pinned(
+        &self,
+        workspace_id: &str,
+        conversation_id: &str,
+        pinned: bool,
+    ) -> Result<Conversation, SessionError> {
+        self.with_conn(|conn| {
+            Self::conversation_in(conn, workspace_id, conversation_id)?;
+            conn.execute(
+                "UPDATE conversations SET pinned=?2 WHERE id=?1",
+                params![conversation_id, i64::from(pinned)],
+            )
+            .map_err(storage)?;
+            Self::conversation_in(conn, workspace_id, conversation_id)
+        })
+    }
+
+    fn set_archived(
+        &self,
+        workspace_id: &str,
+        conversation_id: &str,
+        archived: bool,
+    ) -> Result<Conversation, SessionError> {
+        self.with_conn(|conn| {
+            Self::conversation_in(conn, workspace_id, conversation_id)?;
+            conn.execute(
+                "UPDATE conversations SET archived=?2 WHERE id=?1",
+                params![conversation_id, i64::from(archived)],
+            )
+            .map_err(storage)?;
+            Self::conversation_in(conn, workspace_id, conversation_id)
+        })
+    }
+
+    fn fork_conversation(
+        &self,
+        workspace_id: &str,
+        conversation_id: &str,
+        title: Option<&str>,
+    ) -> Result<Conversation, SessionError> {
+        self.with_conn(|conn| {
+            let source = Self::conversation_in(conn, workspace_id, conversation_id)?;
+            let new_title = match title {
+                Some(value) => Self::checked_title(value)?,
+                None => {
+                    let base = Self::checked_title(&format!("{} 副本", source.title))?;
+                    base
+                }
+            };
+            let tx = conn.unchecked_transaction().map_err(storage)?;
+            let new_id = uuid::Uuid::new_v4().to_string();
+            let now = now_ms();
+            tx.execute(
+                "INSERT INTO conversations (id, workspace_id, title, created_at_ms, updated_at_ms, pinned, archived) VALUES (?1, ?2, ?3, ?4, ?4, 0, 0)",
+                params![new_id, workspace_id, new_title, i64::try_from(now).unwrap_or(i64::MAX)],
+            )
+            .map_err(storage)?;
+            let mut stmt = tx
+                .prepare("SELECT role, content, created_at_ms, status, usage_json, turn_id FROM messages WHERE conversation_id=?1 ORDER BY created_at_ms ASC, id ASC")
+                .map_err(storage)?;
+            let rows = stmt
+                .query_map(params![conversation_id], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, Option<String>>(4)?,
+                        row.get::<_, String>(5)?,
+                    ))
+                })
+                .map_err(storage)?;
+            for row in rows {
+                let (role, content, created_at_ms, status, usage_json, turn_id) =
+                    row.map_err(storage)?;
+                let message_id = uuid::Uuid::new_v4().to_string();
+                tx.execute(
+                    "INSERT INTO messages (id, conversation_id, role, content, created_at_ms, status, usage_json, turn_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    params![message_id, new_id, role, content, created_at_ms, status, usage_json, turn_id],
+                )
+                .map_err(storage)?;
+            }
+            drop(stmt);
+            tx.commit().map_err(storage)?;
+            Self::conversation_in(conn, workspace_id, &new_id)
         })
     }
 }

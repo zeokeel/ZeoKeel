@@ -88,6 +88,10 @@ export interface AppController {
   state: AppState;
   createConversation: () => void;
   selectConversation: (conversationId: string) => void;
+  /** Re-list the active workspace conversations without changing the selection. */
+  refreshActiveConversations: () => Promise<void>;
+  /** Surface one localized toast (sessions ops / search errors). */
+  showToast: (message: string) => void;
   send: (text: string) => void;
   retrySend: () => void;
   cancel: () => void;
@@ -153,6 +157,20 @@ export function useAppController(transport: Transport): AppController {
     },
     [listWorkspaceConversations, showToast],
   );
+
+  /** Re-list the active workspace conversations (pin/archive/rename/fork) without resetting focus. */
+  const refreshActiveConversations = useCallback(async (): Promise<void> => {
+    const workspaceId = stateRef.current.activeWorkspaceId;
+    if (workspaceId === null) {
+      return;
+    }
+    try {
+      const conversations = await listWorkspaceConversations(workspaceId);
+      dispatch({ type: "conversations_refreshed", workspaceId, conversations });
+    } catch (error: unknown) {
+      showToast(friendlyError(error, stateRef.current.settings.locale));
+    }
+  }, [listWorkspaceConversations, showToast]);
 
   const reloadAllConversations = useCallback(async (): Promise<Workspace[]> => {
     const workspacesRaw = await transport.call("workspace.list", {});
@@ -745,6 +763,8 @@ export function useAppController(transport: Transport): AppController {
     state,
     createConversation,
     selectConversation,
+    refreshActiveConversations,
+    showToast,
     send,
     retrySend,
     cancel,

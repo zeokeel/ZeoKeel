@@ -35,4 +35,16 @@ fn export_schema() {
         "workspace-files-result.json",
         &schemars::schema_for!(zk_contract_session::WorkspaceFilesResult),
     );
+    write(
+        "workspace-file-read-result.json",
+        &schemars::schema_for!(zk_contract_session::WorkspaceFileReadResult),
+    );
+    write(
+        "session-search-hit.json",
+        &schemars::schema_for!(zk_contract_session::SessionSearchHit),
+    );
+    write(
+        "session-search-result.json",
+        &schemars::schema_for!(zk_contract_session::SessionSearchResult),
+    );
 }

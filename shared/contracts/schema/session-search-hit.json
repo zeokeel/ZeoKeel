@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SessionSearchHit",
+  "description": "One session full-text search hit (snippet, not full content).",
+  "type": "object",
+  "required": [
+    "archived",
+    "conversation_id",
+    "message_id",
+    "role",
+    "snippet",
+    "title"
+  ],
+  "properties": {
+    "archived": {
+      "description": "Conversation is archived (shown with a marker, still openable).",
+      "type": "boolean"
+    },
+    "conversation_id": {
+      "description": "Conversation id.",
+      "type": "string"
+    },
+    "message_id": {
+      "description": "Matched message id.",
+      "type": "string"
+    },
+    "role": {
+      "description": "Message role (`user`/`assistant`/`tool`/`system`).",
+      "type": "string"
+    },
+    "snippet": {
+      "description": "Context window around the match (±60 chars).",
+      "type": "string"
+    },
+    "title": {
+      "description": "Conversation title.",
+      "type": "string"
+    }
+  }
+}

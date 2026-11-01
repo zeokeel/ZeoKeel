@@ -1,6 +1,6 @@
 # 2026-11-01-client-side-panels · 提案
 
-- 状态：`approved`
+- 状态：`done`
 - Owner：dsh-ref
 - 日期：2026-11-01
 - 关联：用户已批准的 Phase 2「运行时能力可见面 + composer 体验」（A 方案全量分期中的 Phase 2b）；`research/client-dsh-parity-2026-11-01.md` §4/P1-6/P1-10、§3（右栏/文件/终端/会话）；`target/audits/zk-client-inventory.md` §3（B4/B8/B20）、§4（A3/A4）、§5（C8）；`target/audits/dsh-reference-inventory.md` §4.5（右栏 tab 事实）、§4.7（会话操作）；`docs/16` §2.2（slot）、`docs/26`（C18 workspace 规则）、`docs/28` §4（Inspector/会话操作）；前置：Phase 1 全部（settings-ia/approval/config/mcp）

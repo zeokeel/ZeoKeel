@@ -10,6 +10,7 @@ import type {
   Locale,
   Meta,
   ResolvedTheme,
+  SessionSearchOutcome,
   SettingsSaveOutcome,
   ThreadLoadState,
   Workspace,
@@ -60,6 +61,17 @@ export interface UiActions {
   searchWorkspaceFiles: (query: string) => Promise<WorkspaceFileRef[]>;
   /** Save one composer attachment through `workspace.attachment_save` (host validates). */
   saveAttachment: (file: File) => Promise<AttachmentSaveResult>;
+  /** Rename/pin/archive one conversation (C18: workspace never changes). */
+  updateConversation: (
+    conversationId: string,
+    patch: { title?: string; pinned?: boolean; archived?: boolean },
+  ) => Promise<boolean>;
+  /** Fork one conversation inside its workspace and select the copy (C18). */
+  forkConversation: (conversationId: string) => Promise<boolean>;
+  /** Copy a conversation id to the clipboard (success toast is app-owned). */
+  copyConversationId: (conversationId: string) => Promise<boolean>;
+  /** Content search in the current workspace (`session.search`); stale responses drop app-side. */
+  searchSessions: (query: string, limit?: number) => Promise<SessionSearchOutcome>;
   /** Save the whole settings document under the current revision fence. */
   saveSettings: (settings: AppSettings) => Promise<SettingsSaveOutcome>;
   /** Re-read `settings.get` after a revision conflict; returns the fresh document. */

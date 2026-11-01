@@ -100,6 +100,10 @@ function makeActions(overrides: Partial<UiActions> = {}): UiActions {
     searchWorkspaceFiles: (): Promise<WorkspaceFileRef[]> => Promise.resolve([]),
     saveAttachment: (): Promise<AttachmentSaveResult> =>
       Promise.resolve({ path: ".zeokeel/attachments/c/f.png", name: "f.png", bytes: 4, mime: "image/png" }),
+    updateConversation: (): Promise<boolean> => Promise.resolve(true),
+    forkConversation: (): Promise<boolean> => Promise.resolve(true),
+    copyConversationId: (): Promise<boolean> => Promise.resolve(true),
+    searchSessions: (): Promise<{ items: []; truncated: boolean }> => Promise.resolve({ items: [], truncated: false }),
     saveSettings: (settings): Promise<{ status: "saved"; settings: typeof settings; revision: number }> =>
       Promise.resolve({ status: "saved", settings, revision: 1 }),
     reloadSettings: (): Promise<ReturnType<typeof defaultSettings>> =>

@@ -78,6 +78,7 @@ export type AppAction =
       activeId: string | null;
     }
   | { type: "conversation_activated"; workspaceId: string; conversationId: string }
+  | { type: "conversations_refreshed"; workspaceId: string; conversations: Conversation[] }
   | { type: "conversation_created"; conversation: Conversation }
   | { type: "conversation_selected"; conversationId: string }
   | { type: "messages_loading"; conversationId: string }
@@ -446,6 +447,25 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
     case "workspace_error":
       return { ...state, workspaceError: action.message };
+    case "conversations_refreshed": {
+      const map = {
+        ...state.conversationsByWorkspace,
+        [action.workspaceId]: action.conversations,
+      };
+      const conversations =
+        action.workspaceId === state.activeWorkspaceId
+          ? action.conversations
+          : state.conversations;
+      const activeStillExists = conversations.some(
+        (conversation) => conversation.id === state.activeConversationId,
+      );
+      return {
+        ...state,
+        conversationsByWorkspace: map,
+        conversations,
+        activeConversationId: activeStillExists ? state.activeConversationId : null,
+      };
+    }
     case "conversations_map_loaded":
       return {
         ...state,

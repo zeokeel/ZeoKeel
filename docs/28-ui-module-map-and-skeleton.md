@@ -70,8 +70,8 @@
 - 空态/加载/错误/离线/流式中/已取消六态。
 
 ### Inspector
-- Tabs 文件/变更/终端；`⌘B` 折叠；窄窗自动收起；文件树懒加载（后续）、变更 diff 计数、终端 mock。
-- 状态：当前 tab/宽度/选中文件；只读占位，不调用后端。
+- Phase 2b（`2026-11-01-client-side-panels` 已实现）：三 tab（files 10 / changes 20 / terminal 30，activity 40 预留）——files 懒加载树 + 预览（文本 ≤256 KiB / 图片 ≤8 MiB / 其它诚实降级）、changes（git status 文件级，只读）、terminal（用户显式持久 shell，非 agent 工具/审批）；会话级 tab/宽度/折叠 localStorage 持久化（`zk.inspector.v1.<conversationId>`），宽度 240–720 & ≤视口 50%，键盘可调，窄窗 <768 自动收起。数据经 app 的 `workspace.files`（可选 path/depth/limit）/`workspace.file_read`/`terminal` IPC，app 做 Ajv 边界校验，包只持有视图状态。会话侧栏（`ui.slot.sessions`）同时提供 `⋯` 菜单（rename/fork/copy id/pin/archive）与标题/内容检索（`session.search`）。**不新增 slot/包/运行期加载**（C2）。
+- 旧占位（Phase 2b 前）：右栏文件/变更/终端三选项卡 + 空/加载/错误/重试；宽度固定 288px；变更 tab 调 `workspace.changes`（git status 只读、文件级 +add/−del 计数，无行级 diff）。
 
 ### Commands / Settings
 - ⌘K 打开/关闭；↑↓/Enter/Esc；命令项类型（navigation/action/settings）。

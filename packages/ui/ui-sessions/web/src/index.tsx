@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   BrandLogo,
@@ -15,6 +15,7 @@ import {
   useUi,
   type Conversation,
   type Locale,
+  type SessionSearchHit,
   type Workspace,
 } from "@zeokeel/ui-kit";
 
@@ -141,6 +142,14 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchMode, setSearchMode] = useState<"title" | "content">("title");
+  const [contentHits, setContentHits] = useState<SessionSearchHit[]>([]);
+  const [contentState, setContentState] = useState<"idle" | "loading" | "error" | "truncated">("idle");
+  const [showArchived, setShowArchived] = useState(false);
+  const [opsMenuId, setOpsMenuId] = useState<string | null>(null);
+  const [convRenameId, setConvRenameId] = useState<string | null>(null);
+  const [convRenameValue, setConvRenameValue] = useState("");
+  const searchSeq = useRef(0);
   const [hideEmpty, setHideEmpty] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [pathInput, setPathInput] = useState("");
@@ -169,14 +178,48 @@ export function Sidebar() {
     return () => { window.removeEventListener("keydown", onKey); };
   }, [sidebarOpen, actions]);
 
+  // Content search: debounce ≥250 ms, drop stale responses, current workspace only (R6/C18).
+  useEffect(() => {
+    if (searchMode !== "content" || !searchOpen) {
+      return;
+    }
+    const needle = query.trim();
+    const seq = searchSeq.current + 1;
+    searchSeq.current = seq;
+    const timer = window.setTimeout(() => {
+      if (needle === "") {
+        setContentHits([]);
+        setContentState("idle");
+        return;
+      }
+      setContentState("loading");
+      void actions.searchSessions(needle, 20).then((outcome) => {
+        if (searchSeq.current !== seq) return;
+        setContentHits(outcome.items);
+        setContentState(outcome.truncated ? "truncated" : outcome.items.length === 0 ? "idle" : "idle");
+      }).catch(() => {
+        if (searchSeq.current === seq) setContentState("error");
+      });
+    }, 250);
+    return () => { window.clearTimeout(timer); };
+  }, [actions, query, searchMode, searchOpen]);
+
+  const visibleSessionsOf = useCallback(
+    (workspaceId: string): Conversation[] =>
+      (conversationsByWorkspace[workspaceId] ?? []).filter(
+        (conversation) => showArchived || conversation.archived !== true,
+      ),
+    [conversationsByWorkspace, showArchived],
+  );
+
   const normalizedQuery = query.trim().toLowerCase();
   const visibleWorkspaces = useMemo(() => {
     return workspaces.filter((workspace) => {
-      const sessions = conversationsByWorkspace[workspace.id] ?? [];
+      const sessions = visibleSessionsOf(workspace.id);
       if (hideEmpty && sessions.length === 0) {
         return false;
       }
-      if (normalizedQuery === "") {
+      if (normalizedQuery === "" || searchMode === "content") {
         return true;
       }
       return (
@@ -185,7 +228,7 @@ export function Sidebar() {
         sessions.some((conversation) => conversation.title.toLowerCase().includes(normalizedQuery))
       );
     });
-  }, [workspaces, conversationsByWorkspace, hideEmpty, normalizedQuery]);
+  }, [workspaces, hideEmpty, normalizedQuery, searchMode, visibleSessionsOf]);
 
   const otherWorkspaces =
     removeTarget === null
@@ -215,34 +258,91 @@ export function Sidebar() {
     setRenameTarget(null);
   };
 
+  const createFork = (conversationId: string): void => {
+    void actions.forkConversation(conversationId).then((ok) => { if (ok) setOpsMenuId(null); });
+  };
+
+  const startRename = (conversation: Conversation): void => {
+    setConvRenameId(conversation.id);
+    setConvRenameValue(conversation.title);
+    setOpsMenuId(null);
+  };
+
+  const submitConversationRename = (conversationId: string): void => {
+    const next = convRenameValue.trim();
+    if (next === "" || next.length > 200) {
+      // Empty/over-long titles are rejected by the host (readable error, list unchanged).
+      void actions.updateConversation(conversationId, { title: next });
+      return;
+    }
+    void actions.updateConversation(conversationId, { title: next }).then((ok) => {
+      if (ok) setConvRenameId(null);
+    });
+  };
+
   const renderSession = (workspace: Workspace, conversation: Conversation) => {
     const active = conversation.id === activeConversationId && workspace.id === activeWorkspaceId;
     const live = active && streaming;
+    const pinned = conversation.pinned === true;
+    const archived = conversation.archived === true;
     return (
-      <li key={conversation.id}>
-        <button
-          type="button"
-          className={`relative flex w-full items-center gap-2 rounded-sm py-[5px] pe-2 ps-[22px] text-start text-[12px] transition-colors ${
-            active
-              ? "bg-muted font-medium text-foreground shadow-[inset_2px_0_0_var(--zk-blue-500)]"
-              : "text-muted-foreground hover:bg-foreground/[0.03] hover:text-foreground"
-          }`}
-          aria-current={active ? "true" : "false"}
-          onClick={() => {
-            actions.selectConversation(conversation.id);
-          }}
-        >
-          <span
-            className={`h-1.5 w-1.5 shrink-0 rounded-capsule ${
-              live ? "zk-pulse-dot bg-live" : active ? "bg-live" : "bg-border"
-            }`}
-            aria-hidden="true"
-          />
-          <span className="min-w-0 flex-1 truncate">{conversation.title}</span>
-          <span className="shrink-0 text-[11px] text-muted-foreground">
-            {sessionTime(conversation.updated_at_ms, locale)}
-          </span>
-        </button>
+      <li key={conversation.id} className="relative">
+        {convRenameId === conversation.id ? (
+          <div className="flex items-center gap-1 py-[3px] ps-[22px] pe-2">
+            <input
+              aria-label={t("sessionRenamePlaceholder")}
+              value={convRenameValue}
+              maxLength={200}
+              onChange={(event) => { setConvRenameValue(event.target.value); }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") { event.preventDefault(); submitConversationRename(conversation.id); }
+                if (event.key === "Escape") { event.preventDefault(); setConvRenameId(null); }
+              }}
+              className="min-w-0 flex-1 rounded-control border border-border bg-background px-1 py-0.5 text-[12px] text-foreground"
+            />
+            <button type="button" className="rounded-control border border-border px-1 text-[11px] text-foreground" onClick={() => { submitConversationRename(conversation.id); }}>{t("sessionRenameSave")}</button>
+            <button type="button" className="rounded-control border border-border px-1 text-[11px] text-muted-foreground" onClick={() => { setConvRenameId(null); }}>{t("sessionRenameCancel")}</button>
+          </div>
+        ) : (
+          <div className={`flex items-center gap-1 rounded-sm ps-[22px] pe-1 ${active ? "bg-muted" : ""}`}>
+            <button
+              type="button"
+              className={`flex min-w-0 flex-1 items-center gap-2 py-[5px] pe-1 text-start text-[12px] transition-colors ${
+                active ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+              aria-current={active ? "true" : "false"}
+              onClick={() => { actions.selectConversation(conversation.id); }}
+            >
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-capsule ${live ? "zk-pulse-dot bg-live" : active ? "bg-live" : "bg-border"}`}
+                aria-hidden="true"
+              />
+              <span className="min-w-0 flex-1 truncate">{conversation.title}</span>
+              {pinned ? <span className="shrink-0 text-[10px] text-live" aria-label={t("sessionPinnedMark")}>★</span> : null}
+              {archived ? <span className="shrink-0 rounded-control border border-border px-1 text-[10px]">{t("sessionArchivedMark")}</span> : null}
+              <span className="shrink-0 text-[11px] text-muted-foreground">{sessionTime(conversation.updated_at_ms, locale)}</span>
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"
+              aria-label={t("sessionOpsAria")}
+              aria-haspopup="menu"
+              aria-expanded={opsMenuId === conversation.id}
+              onClick={() => { setOpsMenuId((current) => (current === conversation.id ? null : conversation.id)); }}
+            >
+              ⋯
+            </button>
+          </div>
+        )}
+        {opsMenuId === conversation.id ? (
+          <div role="menu" aria-label={t("sessionOpsAria")} className="absolute end-1 z-20 mt-0.5 w-40 rounded-control border border-border bg-popover p-1 shadow-[var(--zk-shadow-lift)]">
+            <button type="button" role="menuitem" className="flex w-full rounded-sm px-2 py-1 text-start text-[12px] text-foreground hover:bg-foreground/[0.05]" onClick={() => { startRename(conversation); }}>{t("sessionRename")}</button>
+            <button type="button" role="menuitem" disabled={live} className="flex w-full rounded-sm px-2 py-1 text-start text-[12px] text-foreground hover:bg-foreground/[0.05] disabled:opacity-50" onClick={() => { createFork(conversation.id); }}>{t("sessionFork")}</button>
+            <button type="button" role="menuitem" className="flex w-full rounded-sm px-2 py-1 text-start text-[12px] text-foreground hover:bg-foreground/[0.05]" onClick={() => { void actions.copyConversationId(conversation.id); setOpsMenuId(null); }}>{t("sessionCopyId")}</button>
+            <button type="button" role="menuitem" className="flex w-full rounded-sm px-2 py-1 text-start text-[12px] text-foreground hover:bg-foreground/[0.05]" onClick={() => { void actions.updateConversation(conversation.id, { pinned: !pinned }); setOpsMenuId(null); }}>{pinned ? t("sessionUnpin") : t("sessionPin")}</button>
+            <button type="button" role="menuitem" disabled={live} className="flex w-full rounded-sm px-2 py-1 text-start text-[12px] text-foreground hover:bg-foreground/[0.05] disabled:opacity-50" onClick={() => { void actions.updateConversation(conversation.id, { archived: !archived }).then((ok) => { if (ok) setOpsMenuId(null); }); }}>{archived ? t("sessionUnarchive") : t("sessionArchive")}</button>
+          </div>
+        ) : null}
       </li>
     );
   };
@@ -270,7 +370,7 @@ export function Sidebar() {
           <button
             type="button"
             className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"
-            aria-label={t("workspaceSearch")}
+            aria-label={t("sessionSearchAria")}
             aria-expanded={searchOpen}
             onClick={() => {
               setSearchOpen((value) => !value);
@@ -335,14 +435,43 @@ export function Sidebar() {
       {searchOpen ? (
         <div className="px-2 pt-2">
           <input
-            aria-label={t("workspaceSearch")}
-            placeholder={t("workspaceSearch")}
+            aria-label={t("sessionSearchAria")}
+            role="searchbox"
+            maxLength={200}
+            placeholder={t("sessionSearchAria")}
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
             }}
             className="w-full rounded-control border border-border bg-background px-2 py-1 text-[12px] text-foreground placeholder:text-muted-foreground"
           />
+          <div className="mt-1 flex items-center gap-1">
+            <button type="button" aria-pressed={searchMode === "title"} className={`rounded-control border border-border px-1.5 py-0.5 text-[11px] ${searchMode === "title" ? "bg-muted text-foreground" : "text-muted-foreground"}`} onClick={() => { setSearchMode("title"); }}>{t("sessionSearchTitleMode")}</button>
+            <button type="button" aria-pressed={searchMode === "content"} className={`rounded-control border border-border px-1.5 py-0.5 text-[11px] ${searchMode === "content" ? "bg-muted text-foreground" : "text-muted-foreground"}`} onClick={() => { setSearchMode("content"); }}>{t("sessionSearchContentMode")}</button>
+          </div>
+          {searchMode === "content" ? (
+            <div className="mt-1 max-h-64 overflow-y-auto rounded-control border border-border p-1 text-[11px]">
+              {contentState === "loading" ? <p aria-busy="true">{t("sessionSearchLoading")}</p> : null}
+              {contentState === "error" ? <p role="alert" className="text-destructive">{t("sessionSearchError")}</p> : null}
+              {contentState === "truncated" ? <p role="status">{t("sessionSearchTruncated")}</p> : null}
+              {contentState !== "loading" && contentHits.length === 0 && normalizedQuery !== "" ? <p>{t("sessionSearchEmpty")}</p> : null}
+              {contentHits.map((hit) => (
+                <button
+                  key={`${hit.conversationId}:${hit.messageId}`}
+                  type="button"
+                  className="flex w-full flex-col items-start gap-0.5 rounded-sm px-1 py-0.5 text-start hover:bg-foreground/[0.05]"
+                  aria-label={t("sessionSearchOpen", { title: hit.title })}
+                  onClick={() => { actions.selectConversation(hit.conversationId); }}
+                >
+                  <span className="flex w-full items-center gap-1 text-foreground">
+                    <span className="truncate">{hit.title}</span>
+                    {hit.archived ? <span className="rounded-control border border-border px-1 text-[10px]">{t("sessionSearchArchivedTag")}</span> : null}
+                  </span>
+                  <span className="line-clamp-2 text-muted-foreground">{hit.snippet}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -354,7 +483,7 @@ export function Sidebar() {
           <button
             type="button"
             className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"
-            aria-label={t("workspaceSearch")}
+            aria-label={t("sessionSearchAria")}
             aria-pressed={searchOpen}
             onClick={() => {
               setSearchOpen((value) => !value);
@@ -374,6 +503,17 @@ export function Sidebar() {
             }}
           >
             <IconSliders />
+          </button>
+          <button
+            type="button"
+            className={`inline-flex items-center justify-center rounded-sm px-1 text-[10px] hover:bg-foreground/[0.05] ${showArchived ? "text-live" : "text-muted-foreground"}`}
+            aria-label={t("sessionShowArchived")}
+            aria-pressed={showArchived}
+            onClick={() => {
+              setShowArchived((value) => !value);
+            }}
+          >
+            {t("sessionArchivedMark")}
           </button>
           <button
             type="button"
@@ -452,7 +592,7 @@ export function Sidebar() {
           <ul className="flex flex-col gap-0.5">
             {visibleWorkspaces.map((workspace) => {
               const workspaceActive = workspace.id === activeWorkspaceId;
-              const sessions = conversationsByWorkspace[workspace.id] ?? [];
+              const sessions = visibleSessionsOf(workspace.id);
               const open = !collapsed.has(workspace.id);
               const filteredSessions =
                 normalizedQuery === ""
@@ -627,9 +767,9 @@ export function Sidebar() {
           >
             <input
               data-autofocus
-              value={renameValue}
+              value={convRenameValue}
               onChange={(event) => {
-                setRenameValue(event.target.value);
+                setConvRenameValue(event.target.value);
               }}
               className="w-full rounded-control border border-border bg-background px-2 py-1.5 text-[13px] text-foreground"
             />

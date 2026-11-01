@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   SlotErrorBoundary,
   UiProvider,
@@ -12,6 +12,7 @@ import {
   type SettingsSaveOutcome,
   type UiValue,
   type WorkspaceFileRef,
+  type SessionSearchOutcome,
 } from "@zeokeel/ui-kit";
 import { BRAND } from "./generated/brand";
 import { AppSurfaceSlot, AppsSlot, ChatSlot, CommandsSlot, ConnectorsSlot, InspectorSlot, LoginSlot, SessionsSlot, SettingsPanes, SettingsSlot, ShellSlot, SkillsSlot } from "./generated/registry";
@@ -21,7 +22,7 @@ import { upgradeInfoOf } from "./upgrade";
 import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
 import type { Transport } from "./types";
-import { parseFileEntries, parseWorkspaceChanges, parseUpdateRelease, type FileEntry, type WorkspaceChange } from "./protocol";
+import { parseConversation, parseFileEntries, parseSessionSearchResult, parseTerminalResult, parseUpdateRelease, parseWorkspaceChanges, parseWorkspaceFileReadResult } from "./protocol";
 import { validateAttachmentSaveResult } from "./validate";
 import { downloadSkillArchive, fetchAppHtml, fetchApps, fetchConnectorCatalog, fetchSkills, fetchTombstones, openApp, sendInstallReceipt, toBase64, toggleConnector, type AppItem, type ConnectorItem, type SkillItem } from "./store";
 import { clearConnectorCatalog, reloadConnectorSessions, syncConnectorCatalog } from "./connectors-sync";
@@ -285,6 +286,114 @@ export function App(props: { transport: Transport }) {
     [props.transport, state.activeWorkspaceId, state.activeConversationId],
   );
 
+  /** Rename/pin/archive one conversation (C18: workspace id never changes). */
+  const updateConversation = useCallback(
+    async (
+      conversationId: string,
+      patch: { title?: string; pinned?: boolean; archived?: boolean },
+    ): Promise<boolean> => {
+      const workspaceId = state.activeWorkspaceId;
+      if (workspaceId === null) {
+        return false;
+      }
+      try {
+        const raw = await props.transport.call("session.update", {
+          workspace_id: workspaceId,
+          conversation_id: conversationId,
+          ...patch,
+        });
+        if (parseConversation(raw) === null) {
+          controller.showToast(t("sessionOpFailed"));
+          return false;
+        }
+        await controller.refreshActiveConversations();
+        return true;
+      } catch {
+        controller.showToast(t("sessionOpFailed"));
+        return false;
+      }
+    },
+    [controller, props.transport, state.activeWorkspaceId, t],
+  );
+
+  /** Fork one conversation inside its workspace and select the copy (C18). */
+  const forkConversation = useCallback(
+    async (conversationId: string): Promise<boolean> => {
+      const workspaceId = state.activeWorkspaceId;
+      if (workspaceId === null) {
+        return false;
+      }
+      try {
+        const raw = await props.transport.call("session.fork", {
+          workspace_id: workspaceId,
+          conversation_id: conversationId,
+        });
+        const forked = parseConversation(raw);
+        if (forked === null) {
+          controller.showToast(t("sessionOpFailed"));
+          return false;
+        }
+        await controller.refreshActiveConversations();
+        controller.selectConversation(forked.id);
+        return true;
+      } catch {
+        controller.showToast(t("sessionOpFailed"));
+        return false;
+      }
+    },
+    [controller, props.transport, state.activeWorkspaceId, t],
+  );
+
+  /** Copy a conversation id to the clipboard (with a success toast). */
+  const copyConversationId = useCallback(
+    async (conversationId: string): Promise<boolean> => {
+      try {
+        await navigator.clipboard.writeText(conversationId);
+        controller.showToast(t("sessionCopied", { id: conversationId }));
+        return true;
+      } catch {
+        controller.showToast(t("sessionCopyFailed"));
+        return false;
+      }
+    },
+    [controller, t],
+  );
+
+  /** Content search in the current workspace (`session.search`; snippet hits only). */
+  const searchSessions = useCallback(
+    async (query: string, limit?: number): Promise<SessionSearchOutcome> => {
+      const workspaceId = state.activeWorkspaceId;
+      if (workspaceId === null || query.trim() === "") {
+        return { items: [], truncated: false };
+      }
+      try {
+        const raw = await props.transport.call("session.search", {
+          workspace_id: workspaceId,
+          query,
+          limit: limit ?? 20,
+        });
+        const parsed = parseSessionSearchResult(raw);
+        if (parsed === null) {
+          return { items: [], truncated: false };
+        }
+        return {
+          items: parsed.items.map((hit) => ({
+            conversationId: hit.conversation_id,
+            title: hit.title,
+            messageId: hit.message_id,
+            role: hit.role,
+            snippet: hit.snippet,
+            archived: hit.archived,
+          })),
+          truncated: parsed.truncated,
+        };
+      } catch {
+        throw new Error(t("sessionSearchFailed"));
+      }
+    },
+    [props.transport, state.activeWorkspaceId, t],
+  );
+
   const commandCatalog = buildCommandCatalog({
     t,
     enterprise: state.meta.edition === "enterprise",
@@ -475,6 +584,10 @@ export function App(props: { transport: Transport }) {
       runCommand,
       searchWorkspaceFiles,
       saveAttachment,
+      updateConversation,
+      forkConversation,
+      copyConversationId,
+      searchSessions,
       saveSettings: (next: AppSettings): Promise<SettingsSaveOutcome> => {
         const requiresRelogin =
           session !== null &&
@@ -741,57 +854,6 @@ function AppShell(props: AppShellProps) {
   const t = ui.t;
   const state = controller.state;
   const enterprise = state.meta.edition === "enterprise";
-  const [inspectorTab, setInspectorTab] = useState<"files" | "changes" | "terminal">("files");
-  const [files, setFiles] = useState<FileEntry[]>([]);
-  const [changes, setChanges] = useState<WorkspaceChange[]>([]);
-  const [changesState, setChangesState] = useState<"idle" | "loading" | "error">("idle");
-  const [changesError, setChangesError] = useState<string | null>(null);
-  const [changesWarning, setChangesWarning] = useState<string | null>(null);
-  const [changesAttempt, setChangesAttempt] = useState(0);
-  useEffect(() => {
-    if (!inspectorOpen || inspectorTab !== "changes" || ui.activeWorkspaceId === null) {
-      return;
-    }
-    let active = true;
-    // Defer the loading transition out of the render commit (react-hooks/set-state-in-effect).
-    void Promise.resolve().then(() => {
-      if (!active) return undefined;
-      setChangesState("loading");
-      setChangesError(null);
-      return transport.call("workspace.changes", { workspace_id: ui.activeWorkspaceId });
-    })
-      .then((value) => {
-        if (!active) return;
-        const parsed = parseWorkspaceChanges(value);
-        if (parsed === null) {
-          setChanges([]);
-          setChangesWarning(null);
-          setChangesState("error");
-          setChangesError(t("inspectorChangesError"));
-          return;
-        }
-        setChanges(parsed.items);
-        setChangesWarning(parsed.warning);
-        setChangesState("idle");
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        setChanges([]);
-        setChangesWarning(null);
-        setChangesState("error");
-        setChangesError(error instanceof Error ? error.message : t("inspectorChangesError"));
-      });
-    return () => { active = false; };
-  }, [inspectorOpen, inspectorTab, ui.activeWorkspaceId, transport, changesAttempt, t]);
-  useEffect(() => {
-    if (!inspectorOpen || ui.activeWorkspaceId === null) { return; }
-    let cancelled = false;
-    const isCancelled = (): boolean => cancelled;
-    void transport.call("workspace.files", { workspace_id: ui.activeWorkspaceId })
-      .then((value) => { if (!isCancelled()) setFiles(parseFileEntries(value) ?? []); })
-      .catch(() => { if (!isCancelled()) setFiles([]); });
-    return () => { cancelled = true; };
-  }, [inspectorOpen, ui.activeWorkspaceId, transport]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
@@ -819,7 +881,71 @@ function AppShell(props: AppShellProps) {
     ui.meta.packages.length === 0
       ? t("metaPackagesEmpty")
       : t("metaLine", { version: ui.meta.version, packages: ui.meta.packages.length });
-  const visibleFiles = inspectorOpen && ui.activeWorkspaceId !== null ? files : [];
+  /** Inspector data callbacks: the app owns IPC + schema validation; the package owns view state. */
+  const inspectorApi = useMemo(() => ({
+    loadFiles: async (path: string) => {
+      const workspaceId = ui.activeWorkspaceId;
+      if (workspaceId === null) return [];
+      const raw = await transport.call("workspace.files", {
+        workspace_id: workspaceId,
+        path,
+        depth: 1,
+        limit: 200,
+      });
+      const entries = parseFileEntries(raw) ?? [];
+      return entries.map((entry) => ({
+        path: entry.path,
+        kind: entry.kind === "dir" ? ("dir" as const) : ("file" as const),
+        depth: entry.depth,
+      }));
+    },
+    loadPreview: async (path: string) => {
+      const workspaceId = ui.activeWorkspaceId;
+      if (workspaceId === null) throw new Error("workspace/not-found");
+      const raw = await transport.call("workspace.file_read", { workspace_id: workspaceId, path });
+      const result = parseWorkspaceFileReadResult(raw);
+      if (result === null) throw new Error("workspace/file-read-invalid");
+      return {
+        path: result.path,
+        state: "ready" as const,
+        kind: result.kind === "image" ? ("image" as const) : result.kind === "text" ? ("text" as const) : ("unsupported" as const),
+        text: result.content,
+        dataUrl: result.encoding === "base64" && result.content !== "" ? `data:${result.mime};base64,${result.content}` : "",
+        size: result.size,
+        truncated: result.truncated,
+        reason: result.reason ?? "",
+        error: "",
+      };
+    },
+    loadChanges: async () => {
+      const workspaceId = ui.activeWorkspaceId;
+      if (workspaceId === null) return { items: [], warning: null };
+      const raw = await transport.call("workspace.changes", { workspace_id: workspaceId });
+      const parsed = parseWorkspaceChanges(raw);
+      if (parsed === null) throw new Error("workspace/changes-invalid");
+      return { items: parsed.items, warning: parsed.warning };
+    },
+    terminal: async (request: { action: "open" | "send" | "close" | "list"; session?: string; command?: string }) => {
+      const workspaceId = ui.activeWorkspaceId;
+      const conversationId = ui.activeConversationId;
+      if (workspaceId === null || conversationId === null) throw new Error("session/not-found");
+      const raw = await transport.call("terminal", {
+        workspace_id: workspaceId,
+        conversation_id: conversationId,
+        ...request,
+      });
+      const result = parseTerminalResult(raw);
+      if (result === null) throw new Error("terminal/invalid");
+      return {
+        sessions: result.sessions,
+        output: result.output,
+        truncated: result.truncated,
+        running: false,
+        error: null,
+        unavailable: false,
+      };
+    },
+  }), [transport, ui.activeWorkspaceId, ui.activeConversationId]);
   const handleSurfaceRequest = (request: SurfaceRequestPayload): Promise<SurfaceResponse> => {
     const appId = surface === null ? "" : surface.appId;
     if (appId === "") {
@@ -887,7 +1013,7 @@ function AppShell(props: AppShellProps) {
           <SlotErrorBoundary name="ui.apps"><AppsSlot open={panel === "apps"} items={apps} error={appError} opened={appOpened} onOpenApp={onOpenApp} onClose={() => { onPanelChange(null); }} /></SlotErrorBoundary>
         </>
       ) : null}
-      inspector={<SlotErrorBoundary name="ui.inspector"><InspectorSlot open={inspectorOpen} tab={inspectorTab} files={visibleFiles} changes={changes} changesState={changesState} changesError={changesError} changesWarning={changesWarning} onRetryChanges={() => { setChangesAttempt((value) => value + 1); }} onTab={setInspectorTab} onClose={() => { onInspectorOpenChange(false); }} /></SlotErrorBoundary>}
+      inspector={<SlotErrorBoundary name="ui.inspector"><InspectorSlot open={inspectorOpen} api={inspectorApi} onClose={() => { onInspectorOpenChange(false); }} /></SlotErrorBoundary>}
       inspectorOpen={inspectorOpen}
       onToggleInspector={onToggleInspector}
       onRetryBoot={ui.actions.retryBoot}

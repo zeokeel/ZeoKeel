@@ -86,6 +86,7 @@ zk-ui-settings-provider = { path = "../../packages/ui/ui-settings-provider" }
 zk-ui-shell = { path = "../../packages/ui/ui-shell" }
 zk-kit-media = { path = "../../crates/zk-kit-media" }
 zk-kit-tools = { path = "../../crates/zk-kit-tools" }
+zk-kit-session = { path = "../../crates/zk-kit-session" }
 serde_json = { workspace = true }
 rig-core = { workspace = true }
 

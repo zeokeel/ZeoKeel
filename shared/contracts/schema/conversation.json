@@ -11,6 +11,11 @@
     "workspace_id"
   ],
   "properties": {
+    "archived": {
+      "description": "Archived: hidden from the default list, messages kept (Phase 2b, v6).",
+      "default": false,
+      "type": "boolean"
+    },
     "created_at_ms": {
       "description": "Creation time (ms since epoch).",
       "type": "integer",
@@ -20,6 +25,11 @@
     "id": {
       "description": "Stable id (uuid/ulid string).",
       "type": "string"
+    },
+    "pinned": {
+      "description": "Pinned to the top of its workspace list (Phase 2b, migration v6).",
+      "default": false,
+      "type": "boolean"
     },
     "title": {
       "description": "Display title.",

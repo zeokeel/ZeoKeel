@@ -65,6 +65,11 @@ Boot
 - 每个 `ui.gate.*` 必须有 fallback 文案与"下一步"动作；不允许白屏。
 - 登录页品牌文案来自 `channel.json` 的 `copy.login_*`，缺键即构建失败（禁止回落官方）。
 
+### 2.0 右栏与会话操作（Phase 2b，`2026-11-01-client-side-panels`）
+
+- **右栏**（`ui.slot.inspector`，⌘B）：tabs 顺序 files 10 / changes 20 / terminal 30（activity 40 预留）；tabs 支持 ←/→/Home/End；files 为**懒加载树**（展开目录只取直属子项，隐藏 `.git`/`.zeokeel`，符号链接不跟随/不展示，目录行 loading/error+行内重试，刷新保持已展开路径）；预览文本 ≤256 KiB（截断标「已截断」）、图片 png/jpeg/webp/gif ≤8 MiB，PDF/Office/HTML/二进制诚实降级；terminal 是**用户显式**命令（open/send/close/list，不生成工具行/审批，输出 ≤64 KiB、超时 ≤10 s、无 shell 显示「终端不可用」）；tab/宽度（240–720 且 ≤视口 50%，键盘可调）/折叠按**会话**持久化，窄窗 <768 自动收起保留展开状态。六态 + axe/键盘基线见交互契约。
+- **会话侧栏**：会话行 `⋯` 菜单（rename 非空 ≤200 / fork 同 workspace / copy id 带成功提示 / pin 置顶 / archive 隐藏不删）；「显示已归档」筛选可恢复；流式中 archive/fork 禁用；搜索框默认标题模式，切「内容」模式调 `session.search`（当前 workspace、防抖 ≥250 ms、取消旧请求、snippet 结果按会话展示、点击打开会话、归档命中带标记）。C18：所有会话操作/检索不跨 workspace。
+
 ### 2.1 composer 输入面（Phase 2a，`2026-11-01-client-composer-surface`）
 
 > 状态：已实现（交互契约 `specs/changes/2026-11-01-client-composer-surface/interaction.md`；证据

@@ -206,3 +206,12 @@
   有 68 项 HIGH/CRITICAL（含 1 CRITICAL）**无上游修复**（`FixedVersion` 为空，dpkg 包如 `bsdutils`/`curl`/`gzip` 等）；
   可修复项为 0。gate 10 按"无 *可修复* HIGH/CRITICAL"判定，残余项在此登记，供客户按自身补丁策略评估；
   后续跟进 debian 安全更新或改用更小运行时（distroless/scratch）时重扫。
+
+## Phase 2b（`2026-11-01-client-side-panels`）
+
+- **右栏终端无审批/审计**：terminal 是用户显式命令（非 agent 工具），不生成工具行/审批；输出不持久化（进程内），单次命令 ≤10 s、输出 ≤64 KiB、命令 ≤16 KiB；无 PTY/xterm，交互式程序（vim/htop）不可用。
+- **文件预览**：文本 ≤256 KiB 截断、图片 png/jpeg/webp/gif ≤8 MiB；PDF/Office/HTML/二进制/非 UTF-8 诚实降级（不内嵌、不改 CSP）；符号链接不跟随/不展示；预览只读。
+- **文件树懒加载**：单次列目录深度 ≤2、条目 ≤500（UI 请求 depth 1/limit 200）；`workspace.files` 旧无参调用保持 depth≤2/≤300；不做文件监听/自动刷新（手动刷新）。
+- **会话检索**：大小写不敏感子串（无索引/正则/高亮/滚动定位），仅当前 workspace、limit ≤50、query ≤200 字；结果点击仅打开会话；snippet ±60 字符，工具 `session_search` 仍返回完整 content。
+- **会话操作**：fork 复制消息但新会话不继承 pin/archive；archive 不删数据、不提供批量清理/回收站；昵称重名允许。
+- **交互基线（UNVERIFIED）**：`INS2-VIS-01` 像素基线需人工确认后 `pnpm e2e:ui:update`（agent 不自动接受）；`INS2-A11Y-01` 以 axe + 显式 ARIA 断言替代 aria snapshot；真人用户测试（≥5 人）未执行 → 不得声称“符合直觉”。

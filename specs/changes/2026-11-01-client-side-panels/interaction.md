@@ -7,7 +7,7 @@
 - 表面 / 入口：右栏（files/changes/terminal + 宽度/折叠）与会话侧栏（`⋯` 菜单、内容检索）
 - 归属包：`@zeokeel/ui-inspector`、`@zeokeel/ui-sessions`
 - 权威文档：`docs/19` §2/§11、`docs/26`（C18）、`docs/27` §2.5/§2.6、`docs/11` §8.6
-- 状态：planned（实现开始时改 active；planned 不参与门禁强制）
+- 状态：active（实现阶段；P0/P1 ID 均有 `@interaction:<ID>` 测试与证据）
 - 证据根：`target/evidence/2026-11-01-client-side-panels/interaction/`
 - 测试：`e2e/interaction/inspector-*.spec.ts`、`sessions-ops.spec.ts`、`sessions-search.spec.ts`（带 `@interaction:<ID>` 标签；实现时新建）
 

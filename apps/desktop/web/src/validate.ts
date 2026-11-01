@@ -28,7 +28,10 @@ import {
   ipc_command_responseSchema,
   ipc_eventSchema,
   ipc_meta_infoSchema,
+  ipc_terminal_resultSchema,
   session_messageSchema,
+  session_search_resultSchema,
+  workspace_file_read_resultSchema,
   workspace_changes_resultSchema,
   workspace_files_resultSchema,
   workspaceSchema,
@@ -77,6 +80,9 @@ export type BoundaryName =
   | "workspaceFilesResult"
   | "workspaceChangesResult"
   | "attachmentSaveResult"
+  | "workspaceFileReadResult"
+  | "sessionSearchResult"
+  | "terminalResult"
   | "questionAsked";
 
 const checks: Record<BoundaryName, ValidateFunction> = {
@@ -92,6 +98,9 @@ const checks: Record<BoundaryName, ValidateFunction> = {
   workspaceFilesResult: ajv.compile(workspace_files_resultSchema),
   workspaceChangesResult: ajv.compile(workspace_changes_resultSchema),
   attachmentSaveResult: ajv.compile(ipc_attachment_save_resultSchema),
+  workspaceFileReadResult: ajv.compile(workspace_file_read_resultSchema),
+  sessionSearchResult: ajv.compile(session_search_resultSchema),
+  terminalResult: ajv.compile(ipc_terminal_resultSchema),
   questionAsked: ajv.compile(agent_question_askedSchema),
 };
 
@@ -165,4 +174,16 @@ export function validateQuestionAsked(value: unknown): boolean {
 
 export function validateWorkspaceChangesResult(value: unknown): boolean {
   return validateBoundary("workspaceChangesResult", value);
+}
+
+export function validateWorkspaceFileReadResult(value: unknown): boolean {
+  return validateBoundary("workspaceFileReadResult", value);
+}
+
+export function validateSessionSearchResult(value: unknown): boolean {
+  return validateBoundary("sessionSearchResult", value);
+}
+
+export function validateTerminalResult(value: unknown): boolean {
+  return validateBoundary("terminalResult", value);
 }

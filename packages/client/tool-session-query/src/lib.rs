@@ -38,25 +38,21 @@ impl Tool for SessionQueryTool {
                     .get("query")
                     .and_then(serde_json::Value::as_str)
                     .ok_or_else(|| ToolError::InvalidArgs("query".to_owned()))?;
-                let conversations = store
-                    .list_conversations_in(&context.workspace_id)
+                // Single search implementation (kit); the tool keeps full content
+                // for agents, the IPC surface only exposes snippets (P2-6).
+                let result = zk_kit_session::search(&*store, &context.workspace_id, query, 50)
                     .map_err(|error| ToolError::Io(error.to_string()))?;
                 let mut out = Vec::new();
-                for conversation in conversations {
-                    if out.len() >= 50 {
-                        break;
-                    }
+                for hit in result.items {
                     let messages = store
-                        .messages_in(&context.workspace_id, &conversation.id)
+                        .messages_in(&context.workspace_id, &hit.conversation_id)
                         .map_err(|error| ToolError::Io(error.to_string()))?;
-                    for message in messages {
-                        if message.content.contains(query) {
-                            out.push(serde_json::json!({"conversation_id":conversation.id,"title":conversation.title,"message_id":message.id,"role":message.role,"content":message.content}));
-                            if out.len() >= 50 {
-                                break;
-                            }
-                        }
-                    }
+                    let Some(message) =
+                        messages.iter().find(|message| message.id == hit.message_id)
+                    else {
+                        continue;
+                    };
+                    out.push(serde_json::json!({"conversation_id":hit.conversation_id,"title":hit.title,"message_id":hit.message_id,"role":hit.role,"content":message.content}));
                 }
                 Ok(serde_json::json!({"matches":out}).to_string())
             }

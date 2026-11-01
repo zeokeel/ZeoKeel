@@ -139,4 +139,32 @@ fn export_schema() {
         "ipc-attachment-save-result.json",
         &schemars::schema_for!(zk_contract_ipc::results::AttachmentSaveResult),
     );
+    write(
+        "ipc-workspace-files.json",
+        &schemars::schema_for!(zk_contract_ipc::payloads::WorkspaceFilesPayload),
+    );
+    write(
+        "ipc-workspace-file-read.json",
+        &schemars::schema_for!(zk_contract_ipc::payloads::WorkspaceFileReadPayload),
+    );
+    write(
+        "ipc-terminal.json",
+        &schemars::schema_for!(zk_contract_ipc::payloads::TerminalPayload),
+    );
+    write(
+        "ipc-terminal-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::TerminalResult),
+    );
+    write(
+        "ipc-session-update.json",
+        &schemars::schema_for!(zk_contract_ipc::payloads::SessionUpdatePayload),
+    );
+    write(
+        "ipc-session-fork.json",
+        &schemars::schema_for!(zk_contract_ipc::payloads::SessionForkPayload),
+    );
+    write(
+        "ipc-session-search.json",
+        &schemars::schema_for!(zk_contract_ipc::payloads::SessionSearchPayload),
+    );
 }

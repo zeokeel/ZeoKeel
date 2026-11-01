@@ -43,14 +43,18 @@ import type {
   QuestionAskedPayload,
   QuestionDef,
   QuestionOption,
+  SessionSearchHit,
+  SessionSearchResult,
+  TerminalResult,
   WorkspaceChange,
   WorkspaceChangesResult,
+  WorkspaceFileReadResult,
   WorkspaceFilesResult,
 } from "../../../../shared/contracts/ts/contracts";
 
 // Wire DTOs are generated from the Rust contracts (T22); re-export for app callers so the app does
 // not hand-mirror boundary shapes (FileEntry/WorkspaceFilesResult/QuestionDef live only in contracts.ts).
-export type { FileEntry, QuestionAskedPayload, QuestionDef, QuestionOption, WorkspaceChange, WorkspaceChangesResult, WorkspaceFilesResult };
+export type { FileEntry, QuestionAskedPayload, QuestionDef, QuestionOption, SessionSearchHit, SessionSearchResult, TerminalResult, WorkspaceChange, WorkspaceChangesResult, WorkspaceFileReadResult, WorkspaceFilesResult };
 import {
   validateAgentEvent,
   validateAppSettings,
@@ -63,6 +67,9 @@ import {
   validateWorkspace,
   validateWorkspaceChangesResult,
   validateWorkspaceFilesResult,
+  validateSessionSearchResult,
+  validateTerminalResult,
+  validateWorkspaceFileReadResult,
 } from "./validate";
 
 export { isRecord, readBoolean, readNumber, readString };
@@ -93,6 +100,8 @@ function parseConversationRecord(value: Record<string, unknown>): Conversation |
     title,
     created_at_ms: createdAt,
     updated_at_ms: updatedAt ?? createdAt,
+    pinned: readBoolean(value, "pinned") ?? false,
+    archived: readBoolean(value, "archived") ?? false,
   };
 }
 
@@ -169,6 +178,58 @@ export interface ParsedWorkspaceChanges {
   items: WorkspaceChange[];
   /** Non-fatal scan notice (git unavailable/non-repo/truncated); null when clean. */
   warning: string | null;
+}
+
+/** Validates `workspace.file_read` against the generated schema. */
+export function parseWorkspaceFileReadResult(value: unknown): WorkspaceFileReadResult | null {
+  if (!isRecord(value) || !validateWorkspaceFileReadResult(value)) return null;
+  return {
+    path: readString(value, "path") ?? "",
+    kind: value["kind"] === "image" ? "image" : value["kind"] === "text" ? "text" : "unsupported",
+    mime: readString(value, "mime") ?? "application/octet-stream",
+    size: readNumber(value, "size") ?? 0,
+    truncated: readBoolean(value, "truncated") ?? false,
+    encoding: readString(value, "encoding") ?? "",
+    content: readString(value, "content") ?? "",
+    reason: readString(value, "reason") ?? "",
+  };
+}
+
+/** Validates `terminal` against the generated schema, then maps the typed DTO. */
+export function parseTerminalResult(value: unknown): TerminalResult | null {
+  if (!isRecord(value) || !validateTerminalResult(value)) return null;
+  const sessions = readArray(value, "sessions");
+  if (sessions === null) return null;
+  return {
+    sessions: sessions.filter((entry): entry is string => typeof entry === "string"),
+    output: readString(value, "output") ?? "",
+    truncated: readBoolean(value, "truncated") ?? false,
+    exit_code: readNumber(value, "exit_code"),
+    timed_out: readBoolean(value, "timed_out") ?? false,
+  };
+}
+
+/** Validates `session.search` against the generated schema, then maps the typed DTO. */
+export function parseSessionSearchResult(value: unknown): SessionSearchResult | null {
+  if (!isRecord(value) || !validateSessionSearchResult(value)) return null;
+  const items = readArray(value, "items");
+  if (items === null) return null;
+  const hits: SessionSearchHit[] = [];
+  for (const item of items) {
+    if (!isRecord(item)) continue;
+    const conversationId = readString(item, "conversation_id");
+    const messageId = readString(item, "message_id");
+    if (conversationId === null || messageId === null) continue;
+    hits.push({
+      conversation_id: conversationId,
+      title: readString(item, "title") ?? "",
+      message_id: messageId,
+      role: readString(item, "role") ?? "",
+      snippet: readString(item, "snippet") ?? "",
+      archived: readBoolean(item, "archived") ?? false,
+    });
+  }
+  return { items: hits, truncated: readBoolean(value, "truncated") ?? false };
 }
 
 /** Validates `workspace.changes` against the generated schema, then maps the typed DTO. */

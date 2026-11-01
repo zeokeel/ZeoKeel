@@ -2,7 +2,7 @@
 //! Shared command dispatch used by both the Tauri shell and the HTTP serve carrier.
 
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{Read as _, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
@@ -701,26 +701,12 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                 Err(error) => CommandResponse::err(error.to_string()),
             }
         }
-        commands::WORKSPACE_FILES => {
-            let Some(workspace_id) = payload.get("workspace_id").and_then(Value::as_str) else {
-                return CommandResponse::err("missing workspace_id");
-            };
-            match state.runtime.sessions().list_workspaces() {
-                Ok(workspaces) => match workspaces
-                    .iter()
-                    .find(|workspace| workspace.id == workspace_id)
-                {
-                    Some(workspace) => match list_workspace_files(&workspace.path) {
-                        Ok(result) => CommandResponse::ok(
-                            serde_json::to_value(&result).unwrap_or(Value::Null),
-                        ),
-                        Err(error) => CommandResponse::err(format!("workspace/files: {error}")),
-                    },
-                    None => CommandResponse::err("workspace/not-found"),
-                },
-                Err(error) => CommandResponse::err(error.to_string()),
-            }
-        }
+        commands::WORKSPACE_FILES => workspace_files(state, payload),
+        commands::WORKSPACE_FILE_READ => workspace_file_read(state, payload),
+        commands::TERMINAL => terminal_command(state, payload),
+        commands::SESSION_UPDATE => session_update(state, payload),
+        commands::SESSION_FORK => session_fork(state, payload),
+        commands::SESSION_SEARCH => session_search(state, payload),
         commands::WORKSPACE_ATTACHMENT_SAVE => attachment_save(state, payload),
         commands::CONNECTORS_CONFIGURE => {
             let Some(catalog) = payload.get("catalog") else {
@@ -913,13 +899,75 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
     }
 }
 
-/// Bounded, read-only file listing under one workspace root.
-fn list_workspace_files(root: &str) -> Result<WorkspaceFilesResult, String> {
-    const MAX_ENTRIES: usize = 300;
+/// One resolved workspace root from the store (canonical absolute path).
+fn workspace_root_of(state: &Arc<AppState>, workspace_id: &str) -> Result<PathBuf, String> {
+    let workspaces = state
+        .runtime
+        .sessions()
+        .list_workspaces()
+        .map_err(|error| error.to_string())?;
+    let Some(workspace) = workspaces
+        .into_iter()
+        .find(|workspace| workspace.id == workspace_id)
+    else {
+        return Err("workspace/not-found".to_owned());
+    };
+    std::fs::canonicalize(&workspace.path)
+        .map_err(|error| format!("workspace/path-unavailable: {error}"))
+}
+
+/// Split a workspace-relative forward-slash path into safe components.
+fn relative_parts(path: &str) -> Result<Vec<&str>, String> {
+    if path.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    if path.starts_with('/') || path.starts_with('\\') {
+        return Err("workspace/path-escape: absolute path".to_owned());
+    }
+    let parts: Vec<&str> = path.split('/').collect();
+    for part in &parts {
+        if part.is_empty() || *part == "." || *part == ".." {
+            return Err("workspace/path-escape: unsafe component".to_owned());
+        }
+        if part.contains('\\') || part.chars().any(char::is_control) {
+            return Err("workspace/path-escape: unsafe component".to_owned());
+        }
+    }
+    Ok(parts)
+}
+
+/// Bounded, read-only listing under one workspace root (lazy tree, Phase 2b R1).
+///
+/// `rel` is workspace-relative (`""` = root); `depth` counts levels below `rel`
+/// (1..=2); entries are sorted directory-first then by name. `.git`/`.zeokeel`
+/// are hidden and symlinks are neither followed nor shown.
+fn list_workspace_files(
+    root: &std::path::Path,
+    rel: &str,
+    depth: u32,
+    limit: u32,
+) -> Result<WorkspaceFilesResult, String> {
+    let parts = relative_parts(rel)?;
+    let base = if parts.is_empty() {
+        root.to_path_buf()
+    } else {
+        zk_composed::zk_kit_tools::safe_resolve_under(root, &parts).map_err(
+            |error| match error {
+                zk_contract_tool::ToolError::NotFound(_) => "workspace/path-not-found".to_owned(),
+                zk_contract_tool::ToolError::Denied(_)
+                | zk_contract_tool::ToolError::InvalidArgs(_) => "workspace/path-escape".to_owned(),
+                other => format!("workspace/path-unavailable: {other}"),
+            },
+        )?
+    };
+    if !base.is_dir() {
+        return Err("workspace/not-a-directory".to_owned());
+    }
+    let limit = usize::try_from(limit).unwrap_or(usize::MAX);
     let mut items: Vec<FileEntry> = Vec::new();
-    let mut stack = vec![(std::path::PathBuf::from(root), 0_usize)];
-    while let Some((dir, depth)) = stack.pop() {
-        if depth > 2 || items.len() >= MAX_ENTRIES {
+    let mut stack = vec![(base.clone(), 0_u32)];
+    while let Some((dir, depth_from_base)) = stack.pop() {
+        if depth_from_base >= depth || items.len() >= limit {
             continue;
         }
         let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -928,21 +976,32 @@ fn list_workspace_files(root: &str) -> Result<WorkspaceFilesResult, String> {
         let mut children: Vec<_> = entries.filter_map(Result::ok).collect();
         children.sort_by_key(|entry| entry.file_name());
         for entry in children {
-            if items.len() >= MAX_ENTRIES {
+            if items.len() >= limit {
                 break;
             }
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_symlink() {
+                continue;
+            }
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name == ".git" || name == ".zeokeel" {
+                continue;
+            }
             let path = entry.path();
-            let rel = path
+            let rel_path = path
                 .strip_prefix(root)
                 .map(|value| value.to_string_lossy().replace('\\', "/"))
                 .unwrap_or_default();
-            if rel.is_empty() || rel.starts_with(".git") || rel.contains("/.git/") {
+            if rel_path.is_empty() {
                 continue;
             }
-            let is_dir = entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false);
+            let is_dir = file_type.is_dir();
             items.push(FileEntry {
-                path: rel,
-                depth: u32::try_from(depth).unwrap_or(u32::MAX),
+                path: rel_path,
+                depth: depth_from_base,
                 kind: if is_dir {
                     FileKind::Dir
                 } else {
@@ -951,12 +1010,414 @@ fn list_workspace_files(root: &str) -> Result<WorkspaceFilesResult, String> {
                 badge: String::new(),
             });
             if is_dir {
-                stack.push((path, depth.saturating_add(1)));
+                stack.push((path, depth_from_base.saturating_add(1)));
             }
         }
     }
-    items.sort_unstable_by_key(|entry| entry.path.clone());
+    // Directory-first, then name, stable across the whole page.
+    items.sort_unstable_by(|left, right| {
+        let left_dir = left.kind == FileKind::Dir;
+        let right_dir = right.kind == FileKind::Dir;
+        right_dir
+            .cmp(&left_dir)
+            .then_with(|| left.path.cmp(&right.path))
+    });
     Ok(WorkspaceFilesResult { items })
+}
+
+/// `workspace.files`: lazy tree listing (no-argument payload = legacy behaviour).
+fn workspace_files(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
+    let request: zk_contract_ipc::payloads::WorkspaceFilesPayload =
+        match serde_json::from_value(payload.clone()) {
+            Ok(request) => request,
+            Err(error) => return CommandResponse::err(format!("workspace/invalid: {error}")),
+        };
+    let root = match workspace_root_of(state, &request.workspace_id) {
+        Ok(root) => root,
+        Err(error) => return CommandResponse::err(error),
+    };
+    let depth = request.depth.unwrap_or(2).clamp(1, 2);
+    let limit = request.limit.unwrap_or(300).clamp(1, 500);
+    match list_workspace_files(&root, &request.path, depth, limit) {
+        Ok(result) => CommandResponse::ok(json!(result)),
+        Err(error) => CommandResponse::err(error),
+    }
+}
+
+/// Text preview byte cap (R2: >256 KiB is truncated, not rejected).
+const FILE_TEXT_MAX_BYTES: u64 = 256 * 1024;
+/// Image preview byte cap (R2: >8 MiB degrades honestly).
+const FILE_IMAGE_MAX_BYTES: u64 = 8 * 1024 * 1024;
+/// Terminal per-command timeout cap (R3: ≤10 s).
+const TERMINAL_MAX_TIMEOUT_MS: u64 = 10_000;
+/// Terminal command line cap (R3: input ≤16 KiB).
+const TERMINAL_MAX_COMMAND_BYTES: usize = 16 * 1024;
+/// Terminal per-read output cap (R3: ≤64 KiB, marked truncated).
+const TERMINAL_MAX_OUTPUT_BYTES: usize = 64 * 1024;
+
+fn file_extension(path: &str) -> String {
+    std::path::Path::new(path)
+        .extension()
+        .map(|extension| extension.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default()
+}
+
+fn is_image_extension(extension: &str) -> bool {
+    matches!(extension, "png" | "jpg" | "jpeg" | "webp" | "gif")
+}
+
+fn is_text_extension(extension: &str) -> bool {
+    matches!(
+        extension,
+        "txt"
+            | "md"
+            | "json"
+            | "csv"
+            | "log"
+            | "yaml"
+            | "yml"
+            | "toml"
+            | "rs"
+            | "ts"
+            | "tsx"
+            | "js"
+            | "jsx"
+            | "py"
+            | "sh"
+            | "css"
+            | "xml"
+            | "sql"
+    )
+}
+
+/// `workspace.file_read`: safe read-only preview (text/image, honest degradation).
+fn workspace_file_read(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
+    let request: zk_contract_ipc::payloads::WorkspaceFileReadPayload =
+        match serde_json::from_value(payload.clone()) {
+            Ok(request) => request,
+            Err(error) => return CommandResponse::err(format!("workspace/invalid: {error}")),
+        };
+    let root = match workspace_root_of(state, &request.workspace_id) {
+        Ok(root) => root,
+        Err(error) => return CommandResponse::err(error),
+    };
+    let parts = match relative_parts(&request.path) {
+        Ok(parts) => parts,
+        Err(error) => return CommandResponse::err(error),
+    };
+    if parts.is_empty() {
+        return CommandResponse::err("workspace/path-escape: empty preview path");
+    }
+    let target = match zk_composed::zk_kit_tools::safe_resolve_under(&root, &parts) {
+        Ok(target) => target,
+        Err(error) => {
+            return CommandResponse::err(match error {
+                zk_contract_tool::ToolError::NotFound(_) => "workspace/path-not-found".to_owned(),
+                zk_contract_tool::ToolError::Denied(_)
+                | zk_contract_tool::ToolError::InvalidArgs(_) => "workspace/path-escape".to_owned(),
+                other => format!("workspace/path-unavailable: {other}"),
+            });
+        }
+    };
+    let metadata = match std::fs::metadata(&target) {
+        Ok(metadata) => metadata,
+        Err(error) => return CommandResponse::err(format!("workspace/path-not-found: {error}")),
+    };
+    if !metadata.is_file() {
+        return CommandResponse::err("file/unsupported: not a regular file");
+    }
+    let size = metadata.len();
+    let extension = file_extension(&request.path);
+    let requested = request
+        .max_bytes
+        .unwrap_or(FILE_TEXT_MAX_BYTES)
+        .clamp(1, FILE_TEXT_MAX_BYTES);
+    let mut result = zk_contract_session::WorkspaceFileReadResult {
+        path: request.path.clone(),
+        kind: zk_contract_session::FileReadKind::Unsupported,
+        mime: "application/octet-stream".to_owned(),
+        size,
+        truncated: false,
+        encoding: String::new(),
+        content: String::new(),
+        reason: String::new(),
+    };
+    if is_image_extension(&extension) {
+        if size > FILE_IMAGE_MAX_BYTES {
+            result.reason = "file/too-large: image exceeds 8 MiB".to_owned();
+            return CommandResponse::ok(json!(result));
+        }
+        let bytes = match std::fs::read(&target) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                return CommandResponse::err(format!("workspace/path-unavailable: {error}"));
+            }
+        };
+        result.kind = zk_contract_session::FileReadKind::Image;
+        result.mime = match extension.as_str() {
+            "png" => "image/png",
+            "jpg" | "jpeg" => "image/jpeg",
+            "webp" => "image/webp",
+            "gif" => "image/gif",
+            _ => "application/octet-stream",
+        }
+        .to_owned();
+        result.encoding = "base64".to_owned();
+        result.content = base64::engine::general_purpose::STANDARD.encode(bytes);
+        return CommandResponse::ok(json!(result));
+    }
+    if !is_text_extension(&extension) {
+        result.reason = if extension == "pdf" {
+            "file/unsupported: PDF preview is not embedded".to_owned()
+        } else if matches!(
+            extension.as_str(),
+            "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx"
+        ) {
+            "file/unsupported: office preview is not supported".to_owned()
+        } else {
+            "file/unsupported: binary type is not previewed".to_owned()
+        };
+        return CommandResponse::ok(json!(result));
+    }
+    let read_limit =
+        usize::try_from(size.min(requested).min(size.saturating_add(1))).unwrap_or(usize::MAX);
+    let mut bytes = Vec::new();
+    let file = match std::fs::File::open(&target) {
+        Ok(file) => file,
+        Err(error) => return CommandResponse::err(format!("workspace/path-unavailable: {error}")),
+    };
+    if let Err(error) = std::io::Read::take(file, u64::try_from(read_limit).unwrap_or(u64::MAX))
+        .read_to_end(&mut bytes)
+    {
+        return CommandResponse::err(format!("workspace/path-unavailable: {error}"));
+    }
+    let truncated = size > requested;
+    let decode_budget = usize::try_from(requested).unwrap_or(usize::MAX);
+    if bytes.len() > decode_budget {
+        bytes.truncate(decode_budget);
+    }
+    let content = match String::from_utf8(bytes) {
+        Ok(content) => content,
+        Err(_) => {
+            result.reason = "file/unsupported: not valid UTF-8".to_owned();
+            return CommandResponse::ok(json!(result));
+        }
+    };
+    result.kind = zk_contract_session::FileReadKind::Text;
+    result.mime = "text/plain".to_owned();
+    result.truncated = truncated;
+    result.encoding = "utf8".to_owned();
+    result.content = content;
+    CommandResponse::ok(json!(result))
+}
+
+fn terminal_context(
+    state: &Arc<AppState>,
+    workspace_id: &str,
+    conversation_id: &str,
+) -> Result<TurnContext, String> {
+    let conversations = state
+        .runtime
+        .sessions()
+        .list_conversations_in(workspace_id)
+        .map_err(|error| format!("workspace/not-found: {error}"))?;
+    if !conversations
+        .iter()
+        .any(|conversation| conversation.id == conversation_id)
+    {
+        return Err("session/workspace-mismatch".to_owned());
+    }
+    let root = workspace_root_of(state, workspace_id)?;
+    Ok(TurnContext {
+        conversation_id: conversation_id.to_owned(),
+        workspace_id: workspace_id.to_owned(),
+        workspace_root: root.to_string_lossy().into_owned(),
+    })
+}
+
+fn terminal_shell_kind() -> zk_composed::zk_kit_tools::persistent::ShellKind {
+    if cfg!(windows) {
+        zk_composed::zk_kit_tools::persistent::ShellKind::Pwsh
+    } else {
+        zk_composed::zk_kit_tools::persistent::ShellKind::Bash
+    }
+}
+
+fn terminal_error(error: &zk_contract_tool::ToolError) -> String {
+    let text = error.to_string();
+    if text.contains("TOOL_UNSUPPORTED_PLATFORM") {
+        format!("terminal/unavailable: {text}")
+    } else if text.contains("timed out") || text.contains("timeout") {
+        format!("terminal/timeout: {text}")
+    } else if text.contains("session") {
+        format!("terminal/session-invalid: {text}")
+    } else {
+        format!("terminal/failed: {text}")
+    }
+}
+
+/// `terminal`: user-driven persistent shell (not an agent tool; no approvals).
+fn terminal_command(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
+    let request: zk_contract_ipc::payloads::TerminalPayload =
+        match serde_json::from_value(payload.clone()) {
+            Ok(request) => request,
+            Err(error) => return CommandResponse::err(format!("terminal/invalid: {error}")),
+        };
+    let context = match terminal_context(state, &request.workspace_id, &request.conversation_id) {
+        Ok(context) => context,
+        Err(error) => return CommandResponse::err(error),
+    };
+    let kind = terminal_shell_kind();
+    use zk_composed::zk_kit_tools::persistent;
+    let session = request
+        .session
+        .clone()
+        .unwrap_or_else(|| persistent::DEFAULT_SESSION.to_owned());
+    let sessions = persistent::list_sessions(&context, kind);
+    let mut result = zk_contract_ipc::results::TerminalResult {
+        sessions,
+        output: String::new(),
+        truncated: false,
+        exit_code: None,
+        timed_out: false,
+    };
+    match request.action {
+        zk_contract_ipc::payloads::TerminalAction::Open => {
+            if let Err(error) = persistent::open_session(&context, kind, &session) {
+                return CommandResponse::err(terminal_error(&error));
+            }
+            result.sessions = persistent::list_sessions(&context, kind);
+            CommandResponse::ok(json!(result))
+        }
+        zk_contract_ipc::payloads::TerminalAction::List => {
+            result.sessions = persistent::list_sessions(&context, kind);
+            CommandResponse::ok(json!(result))
+        }
+        zk_contract_ipc::payloads::TerminalAction::Status => {
+            if !persistent::is_session_open(&context, kind, &session) {
+                return CommandResponse::err("terminal/session-not-open");
+            }
+            result.sessions = persistent::list_sessions(&context, kind);
+            CommandResponse::ok(json!(result))
+        }
+        zk_contract_ipc::payloads::TerminalAction::Close => {
+            match persistent::close_session(&context, kind, &session) {
+                Ok(_) => {
+                    result.sessions = persistent::list_sessions(&context, kind);
+                    CommandResponse::ok(json!(result))
+                }
+                Err(error) => CommandResponse::err(terminal_error(&error)),
+            }
+        }
+        zk_contract_ipc::payloads::TerminalAction::Send => {
+            let Some(command) = request.command.as_deref() else {
+                return CommandResponse::err("terminal/session-invalid: missing command");
+            };
+            if command.trim().is_empty() {
+                return CommandResponse::err("terminal/session-invalid: empty command");
+            }
+            if command.len() > TERMINAL_MAX_COMMAND_BYTES {
+                return CommandResponse::err("terminal/session-invalid: command too long");
+            }
+            let timeout = request
+                .timeout_ms
+                .unwrap_or(TERMINAL_MAX_TIMEOUT_MS)
+                .clamp(1, TERMINAL_MAX_TIMEOUT_MS);
+            match persistent::run_in_session(&context, kind, &session, command, timeout) {
+                Ok(output) => {
+                    if output.len() >= TERMINAL_MAX_OUTPUT_BYTES {
+                        // The persistent shell caps its own buffer at 64 KiB; mark it so the
+                        // UI can show an honest truncation banner.
+                        result.truncated = true;
+                    }
+                    let mut bytes = output.into_bytes();
+                    if bytes.len() > TERMINAL_MAX_OUTPUT_BYTES {
+                        bytes.truncate(TERMINAL_MAX_OUTPUT_BYTES);
+                        result.truncated = true;
+                    }
+                    result.output = String::from_utf8_lossy(&bytes).into_owned();
+                    result.sessions = persistent::list_sessions(&context, kind);
+                    CommandResponse::ok(json!(result))
+                }
+                Err(error) => CommandResponse::err(terminal_error(&error)),
+            }
+        }
+    }
+}
+
+/// `session.update`: rename / pin / archive one conversation (C18 workspace fixed).
+fn session_update(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
+    let request: zk_contract_ipc::payloads::SessionUpdatePayload =
+        match serde_json::from_value(payload.clone()) {
+            Ok(request) => request,
+            Err(error) => return CommandResponse::err(format!("session/invalid: {error}")),
+        };
+    let sessions = state.runtime.sessions();
+    let mut conversation = None;
+    if let Some(title) = request.title.as_deref() {
+        match sessions.rename_conversation(&request.workspace_id, &request.conversation_id, title) {
+            Ok(updated) => conversation = Some(updated),
+            Err(error) => return session_err(error),
+        }
+    }
+    if let Some(pinned) = request.pinned {
+        match sessions.set_pinned(&request.workspace_id, &request.conversation_id, pinned) {
+            Ok(updated) => conversation = Some(updated),
+            Err(error) => return session_err(error),
+        }
+    }
+    if let Some(archived) = request.archived {
+        match sessions.set_archived(&request.workspace_id, &request.conversation_id, archived) {
+            Ok(updated) => conversation = Some(updated),
+            Err(error) => return session_err(error),
+        }
+    }
+    match conversation {
+        Some(conversation) => CommandResponse::ok(json!(conversation)),
+        None => CommandResponse::err("session/invalid: no update field"),
+    }
+}
+
+/// `session.fork`: copy one conversation inside its workspace (C18).
+fn session_fork(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
+    let request: zk_contract_ipc::payloads::SessionForkPayload =
+        match serde_json::from_value(payload.clone()) {
+            Ok(request) => request,
+            Err(error) => return CommandResponse::err(format!("session/invalid: {error}")),
+        };
+    match state.runtime.sessions().fork_conversation(
+        &request.workspace_id,
+        &request.conversation_id,
+        request.title.as_deref(),
+    ) {
+        Ok(conversation) => CommandResponse::ok(json!(conversation)),
+        Err(error) => session_err(error),
+    }
+}
+
+/// `session.search`: current-workspace full-text search with snippet hits (C18).
+fn session_search(state: &Arc<AppState>, payload: &Value) -> CommandResponse {
+    let request: zk_contract_ipc::payloads::SessionSearchPayload =
+        match serde_json::from_value(payload.clone()) {
+            Ok(request) => request,
+            Err(error) => return CommandResponse::err(format!("session/invalid: {error}")),
+        };
+    let query = request.query.trim();
+    if query.is_empty() {
+        return CommandResponse::ok(json!(zk_contract_session::SessionSearchResult {
+            items: Vec::new(),
+            truncated: false,
+        }));
+    }
+    if query.chars().count() > 200 {
+        return CommandResponse::err("session/invalid: query exceeds 200 chars");
+    }
+    let limit = request.limit.unwrap_or(20).clamp(1, 50);
+    let sessions = state.runtime.sessions();
+    match zk_composed::zk_kit_session::search(&*sessions, &request.workspace_id, query, limit) {
+        Ok(result) => CommandResponse::ok(json!(result)),
+        Err(error) => session_err(error),
+    }
 }
 
 /// Composer attachment limit: one file, 1 MiB of raw bytes.
@@ -2986,7 +3447,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("zk-ipc-dto-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join("main.rs"), "fn main() {}\n").unwrap();
-        let files = super::list_workspace_files(root.to_str().unwrap()).unwrap();
+        let files = super::list_workspace_files(&root, "", 2, 300).unwrap();
         let files_value = serde_json::to_value(&files).unwrap();
         assert!(files_value["items"].is_array());
         assert_eq!(files_value["items"][0]["path"], "main.rs");
@@ -4039,5 +4500,409 @@ mod tests {
         );
         std::env::remove_var("ZEOKEEL_HOME");
         std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    /// Dispatches one command and returns its `data` (panicking on error; test-only).
+    fn call_ok(state: &std::sync::Arc<super::AppState>, name: &str, payload: Value) -> Value {
+        let response = super::dispatch(state, name, &payload);
+        assert!(response.ok, "{name}: {:?}", response.error);
+        response.data.unwrap_or(Value::Null)
+    }
+
+    fn phase2b_fixture(
+        home: &std::path::Path,
+    ) -> (
+        std::sync::Arc<super::AppState>,
+        String,
+        String,
+        std::path::PathBuf,
+    ) {
+        let ws_path = home.join("ws2b");
+        std::fs::create_dir_all(ws_path.join("demo-data")).unwrap();
+        std::fs::write(ws_path.join("demo-data/hello.txt"), "hello from phase2b\n").unwrap();
+        std::fs::write(ws_path.join("demo-data/old.txt"), "old\n").unwrap();
+        let state = super::AppState::new(zk_composed::build().expect("composed build"));
+        let workspace = call_ok(
+            &state,
+            zk_contract_ipc::commands::WORKSPACE_CREATE,
+            json!({
+                "path": ws_path.to_string_lossy(),
+                "title": "ws2b",
+            }),
+        );
+        let workspace_id = workspace["id"].as_str().expect("workspace id").to_owned();
+        let conversation = call_ok(
+            &state,
+            zk_contract_ipc::commands::SESSION_CREATE,
+            json!({
+                "workspace_id": workspace_id,
+                "title": "conv",
+            }),
+        );
+        let conversation_id = conversation["id"]
+            .as_str()
+            .expect("conversation id")
+            .to_owned();
+        (state, workspace_id, conversation_id, ws_path)
+    }
+
+    #[test]
+    fn workspace_files_keeps_legacy_shape_and_supports_lazy_expansion() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join("zeokeel-test-phase2b-files");
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", home.join("zeokeel-home"));
+        let (state, workspace_id, _, _) = phase2b_fixture(&home);
+        // Legacy no-argument call: depth≤2 bounded listing (nested file present).
+        let legacy = call_ok(
+            &state,
+            zk_contract_ipc::commands::WORKSPACE_FILES,
+            json!({
+                "workspace_id": workspace_id,
+            }),
+        );
+        let legacy_paths: Vec<String> = legacy["items"]
+            .as_array()
+            .expect("items")
+            .iter()
+            .filter_map(|entry| entry["path"].as_str().map(str::to_owned))
+            .collect();
+        assert!(legacy_paths
+            .iter()
+            .any(|path| path == "demo-data/hello.txt"));
+        // Lazy expansion of one directory: direct children only.
+        let lazy = call_ok(
+            &state,
+            zk_contract_ipc::commands::WORKSPACE_FILES,
+            json!({
+                "workspace_id": workspace_id,
+                "path": "demo-data",
+                "depth": 1,
+                "limit": 200,
+            }),
+        );
+        let lazy_paths: Vec<String> = lazy["items"]
+            .as_array()
+            .expect("items")
+            .iter()
+            .filter_map(|entry| entry["path"].as_str().map(str::to_owned))
+            .collect();
+        assert!(lazy_paths.iter().all(|path| path.starts_with("demo-data/")));
+        assert_eq!(lazy_paths.len(), 2);
+        // Traversal is rejected, never read.
+        let escaped = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::WORKSPACE_FILES,
+            &json!({
+                "workspace_id": workspace_id,
+                "path": "../",
+            }),
+        );
+        assert!(!escaped.ok);
+        assert!(escaped
+            .error
+            .unwrap_or_default()
+            .starts_with("workspace/path-escape"));
+        std::env::remove_var("ZEOKEEL_HOME");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn workspace_file_read_previews_text_images_and_degrades_honestly() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join("zeokeel-test-phase2b-read");
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", home.join("zeokeel-home"));
+        let (state, workspace_id, _, ws_path) = phase2b_fixture(&home);
+        let text = call_ok(
+            &state,
+            zk_contract_ipc::commands::WORKSPACE_FILE_READ,
+            json!({
+                "workspace_id": workspace_id,
+                "path": "demo-data/hello.txt",
+            }),
+        );
+        assert_eq!(text["kind"], "text");
+        assert_eq!(text["encoding"], "utf8");
+        assert_eq!(text["content"], "hello from phase2b\n");
+        assert_eq!(text["truncated"], false);
+
+        // Oversized text is truncated (not rejected) and flagged.
+        let big = "x".repeat(300 * 1024);
+        std::fs::write(ws_path.join("big.txt"), &big).unwrap();
+        let huge = call_ok(
+            &state,
+            zk_contract_ipc::commands::WORKSPACE_FILE_READ,
+            json!({
+                "workspace_id": workspace_id,
+                "path": "big.txt",
+            }),
+        );
+        assert_eq!(huge["truncated"], true);
+        assert_eq!(
+            huge["content"].as_str().unwrap_or_default().len(),
+            256 * 1024
+        );
+
+        // PNG image comes back base64-encoded without embedding CSP changes.
+        std::fs::write(ws_path.join("shot.png"), [0x89_u8, 0x50, 0x4e, 0x47]).unwrap();
+        let image = call_ok(
+            &state,
+            zk_contract_ipc::commands::WORKSPACE_FILE_READ,
+            json!({
+                "workspace_id": workspace_id,
+                "path": "shot.png",
+            }),
+        );
+        assert_eq!(image["kind"], "image");
+        assert_eq!(image["encoding"], "base64");
+
+        // PDF and binary files degrade with a readable reason.
+        std::fs::write(ws_path.join("doc.pdf"), b"%PDF-1.4").unwrap();
+        let pdf = call_ok(
+            &state,
+            zk_contract_ipc::commands::WORKSPACE_FILE_READ,
+            json!({
+                "workspace_id": workspace_id,
+                "path": "doc.pdf",
+            }),
+        );
+        assert_eq!(pdf["kind"], "unsupported");
+        assert!(pdf["reason"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("file/unsupported"));
+
+        // Symlink escape / traversal / missing file are rejected read-only.
+        for path in ["../escape.txt", "/etc/passwd", "missing.txt"] {
+            let response = super::dispatch(
+                &state,
+                zk_contract_ipc::commands::WORKSPACE_FILE_READ,
+                &json!({
+                    "workspace_id": workspace_id,
+                    "path": path,
+                }),
+            );
+            assert!(!response.ok, "{path} must fail");
+        }
+        std::env::remove_var("ZEOKEEL_HOME");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn terminal_runs_open_send_close_without_tool_rows() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join("zeokeel-test-phase2b-terminal");
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", home.join("zeokeel-home"));
+        let (state, workspace_id, conversation_id, _) = phase2b_fixture(&home);
+        let opened = call_ok(
+            &state,
+            zk_contract_ipc::commands::TERMINAL,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "open",
+                "session": "e2e",
+            }),
+        );
+        assert!(opened["sessions"]
+            .as_array()
+            .is_some_and(|list| !list.is_empty()));
+        let sent = call_ok(
+            &state,
+            zk_contract_ipc::commands::TERMINAL,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "send",
+                "session": "e2e",
+                "command": "printf term-ok",
+                "timeout_ms": 5000,
+            }),
+        );
+        assert!(sent["output"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("term-ok"));
+        let huge = call_ok(
+            &state,
+            zk_contract_ipc::commands::TERMINAL,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "send",
+                "session": "e2e",
+                "command": "head -c 100000 /dev/zero | tr '\\0' 'x'",
+                "timeout_ms": 8000,
+            }),
+        );
+        assert_eq!(
+            huge["truncated"], true,
+            "output over 64 KiB must be marked truncated"
+        );
+        let closed = call_ok(
+            &state,
+            zk_contract_ipc::commands::TERMINAL,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "action": "close",
+                "session": "e2e",
+            }),
+        );
+        assert!(!closed["sessions"]
+            .as_array()
+            .is_some_and(|list| list.iter().any(|id| id == "e2e")));
+        // Wrong conversation is rejected with the C18 error code.
+        let mismatched = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::TERMINAL,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": "not-a-conversation",
+                "action": "list",
+            }),
+        );
+        assert!(!mismatched.ok);
+        assert!(mismatched
+            .error
+            .unwrap_or_default()
+            .starts_with("session/workspace-mismatch"));
+        std::env::remove_var("ZEOKEEL_HOME");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn session_update_fork_and_search_respect_workspace_isolation() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join("zeokeel-test-phase2b-sessions");
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", home.join("zeokeel-home"));
+        let (state, workspace_id, conversation_id, _) = phase2b_fixture(&home);
+        // Seed two messages through the store (append is not an IPC surface).
+        let sessions = state.runtime.sessions();
+        for (id, role, content) in [
+            ("m1", "user", "alpha needle content"),
+            ("m2", "assistant", "beta reply"),
+        ] {
+            sessions
+                .append_message(&zk_contract_session::Message {
+                    id: id.to_owned(),
+                    conversation_id: conversation_id.clone(),
+                    role: role.to_owned(),
+                    content: content.to_owned(),
+                    created_at_ms: 1,
+                    status: "done".to_owned(),
+                    usage: None,
+                    turn_id: String::new(),
+                })
+                .expect("append message");
+        }
+        let renamed = call_ok(
+            &state,
+            zk_contract_ipc::commands::SESSION_UPDATE,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "title": "renamed",
+            }),
+        );
+        assert_eq!(renamed["title"], "renamed");
+        let pinned = call_ok(
+            &state,
+            zk_contract_ipc::commands::SESSION_UPDATE,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "pinned": true,
+            }),
+        );
+        assert_eq!(pinned["pinned"], true);
+        let archived = call_ok(
+            &state,
+            zk_contract_ipc::commands::SESSION_UPDATE,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "archived": true,
+            }),
+        );
+        assert_eq!(archived["archived"], true);
+        // Empty title is rejected (session/invalid) and leaves the row unchanged.
+        let empty = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SESSION_UPDATE,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+                "title": "   ",
+            }),
+        );
+        assert!(!empty.ok);
+        assert!(empty
+            .error
+            .unwrap_or_default()
+            .starts_with("session/invalid"));
+
+        let forked = call_ok(
+            &state,
+            zk_contract_ipc::commands::SESSION_FORK,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+            }),
+        );
+        let forked_id = forked["id"].as_str().expect("fork id").to_owned();
+        assert_ne!(forked_id, conversation_id);
+        assert_eq!(forked["workspace_id"], workspace_id);
+        assert_eq!(forked["archived"], false);
+        let copies = sessions
+            .messages_in(&workspace_id, &forked_id)
+            .expect("fork messages");
+        assert_eq!(copies.len(), 2);
+        assert!(copies
+            .iter()
+            .all(|message| message.content.contains("needle") || message.content.contains("beta")));
+
+        // Search is case-insensitive, snippet-only, and current-workspace only.
+        let hits = call_ok(
+            &state,
+            zk_contract_ipc::commands::SESSION_SEARCH,
+            json!({
+                "workspace_id": workspace_id,
+                "query": "NEEDLE",
+            }),
+        );
+        let items = hits["items"].as_array().expect("items");
+        assert_eq!(items.len(), 2); // source + fork copy
+        assert!(items.iter().any(|hit| hit["archived"] == true));
+        assert!(items.iter().any(|hit| hit["archived"] == false));
+        // Empty query short-circuits; over-long queries are rejected.
+        let empty_search = call_ok(
+            &state,
+            zk_contract_ipc::commands::SESSION_SEARCH,
+            json!({
+                "workspace_id": workspace_id,
+                "query": "   ",
+            }),
+        );
+        assert_eq!(empty_search["items"].as_array().map(Vec::len), Some(0));
+        let long_query = "x".repeat(201);
+        let long = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SESSION_SEARCH,
+            &json!({
+                "workspace_id": workspace_id,
+                "query": long_query,
+            }),
+        );
+        assert!(!long.ok);
+        std::env::remove_var("ZEOKEEL_HOME");
+        let _ = std::fs::remove_dir_all(&home);
     }
 }

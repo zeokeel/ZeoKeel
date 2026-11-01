@@ -87,6 +87,10 @@ export function testUi(overrides: TestUiOverrides = {}): UiValue {
       runCommand: noop,
       searchWorkspaceFiles: (): Promise<WorkspaceFileRef[]> => Promise.resolve([]),
       saveAttachment: (): Promise<AttachmentSaveResult> => Promise.reject(new Error("not configured")),
+      updateConversation: (): Promise<boolean> => Promise.resolve(true),
+      forkConversation: (): Promise<boolean> => Promise.resolve(true),
+      copyConversationId: (): Promise<boolean> => Promise.resolve(true),
+      searchSessions: (): Promise<{ items: []; truncated: boolean }> => Promise.resolve({ items: [], truncated: false }),
       closeSettings: noop,
       saveSettings: (settings: AppSettings): Promise<SettingsSaveOutcome> =>
         Promise.resolve({ status: "saved", settings, revision: 1 }),

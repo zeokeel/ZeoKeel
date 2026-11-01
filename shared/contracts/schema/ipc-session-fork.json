@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SessionForkPayload",
+  "description": "`session.fork` payload (same-workspace copy, C18).",
+  "type": "object",
+  "required": [
+    "conversation_id",
+    "workspace_id"
+  ],
+  "properties": {
+    "conversation_id": {
+      "description": "Source conversation id.",
+      "type": "string"
+    },
+    "title": {
+      "description": "Optional new title; absent derives \"<title> 副本\".",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "workspace_id": {
+      "description": "Owning workspace id (fork never crosses workspaces).",
+      "type": "string"
+    }
+  }
+}

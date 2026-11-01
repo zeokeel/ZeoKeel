@@ -8539,6 +8539,7 @@ dependencies = [
  "zk-contract-user",
  "zk-contract-wallet",
  "zk-kit-media",
+ "zk-kit-session",
  "zk-kit-tools",
  "zk-llm-rig",
  "zk-store-session-sqlite",
@@ -8914,6 +8915,7 @@ name = "zk-kit-session"
 version = "1.0.0-rc.1"
 dependencies = [
  "zk-contract-session",
+ "zk-store-session-sqlite",
 ]
 
 [[package]]
