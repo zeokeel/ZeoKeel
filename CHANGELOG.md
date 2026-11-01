@@ -1,6 +1,44 @@
 # Changelog
 
-## 未发布（客户端配置/审批 Phase 1c，2026-11-01）
+## 1.0.0-rc.2 (2026-11-02)
+
+> 发布候选（本地验证）：DSH 对齐的客户端设置/审批/MCP、composer、右栏与 activity 面板、
+> DSH 1:1 命令面、交互契约/直觉门禁。本地门禁：`pnpm e2e` 24/24、`pnpm e2e:ui` 85/85、
+> `cargo test --workspace`、`export_schema` 幂等；残余 UNVERIFIED 见 `KNOWN-LIMITATIONS.md`。
+
+### 客户端设置 IA / 审批卡 / 工具渲染（`2026-11-01-client-settings-ia`、`-approval-tool-rendering`）
+
+- 设置弹窗分页导航 + `ui.settings.pane` 扩展点 + `settings.get/set` revision 栅栏（sidecar 事务，冲突明确报错）。
+- 审批安全卡（风险等级/参数脱敏）、工具调用行持久化与重放（`turn_id`）、usage 事件（本轮+会话累计）、全量 i18n 键与 i18n 门禁转绿。
+
+### Composer（`2026-11-01-client-composer-surface`）
+
+- `/` 命令、`@` 工作区文件引用、附件（`.zeokeel/attachments/<conv>/`；≤1 MiB/文件、≤5/消息、8 类 allowlist、`safe_join_under` 防 symlink 逃逸）、模型只读标签 + 设置深链、usage 指示；键盘/IME/六态/a11y。
+
+### 右栏 side-panels（`2026-11-01-client-side-panels`）
+
+- 懒加载文件树、文本/图片预览（PDF 降级）、真实持久终端、tab/宽度/折叠会话级持久化。
+- 会话 rename/fork/copy id/pin/archive（SQLite v6）+ 标题/内容搜索（`session.search`，kit 单实现）。
+
+### Activity 面板（`2026-11-01-client-activity-panels`）
+
+- 右栏 activity tab（order 40）：jobs/subagents/agent-team/todo/present/schedules 聚合；2s 轮询（关闭即停、旧响应丢弃）；job 停止/subagent 中断/schedule 编辑删除内联二次确认；goal 只读 `goal.get`；turnTail present 交付卡。
+
+### DSH 1:1 命令面（`client-command-surface`、`-compact`、`-plan-mode`、`-skill-commands`）
+
+- `/` 菜单改为 DSH 命令集：`/file /model /permission /goal /export /feedback` + `/compact /plan /<skill>`；UI 动作仅 ⌘K。
+- 会话级 model/permission override（全局 config-mutex）；`/goal` GoalBar；`/export` Markdown；`/feedback` 本地 JSON；`/compact` 摘要压缩（原始历史保留 + `compacted_view`）；`/plan` plan mode（只读 + `exit_plan_mode`，阻断 mutating/delegation）；`/<skill>` 技能目录 + Instructions chip。
+
+### 工作区与会话（`client-workspace-new-session`）
+
+- 每个 Workspace 行 scoped `+` 新建会话；行内/顶部/⌘K 三入口统一 streaming guard（流式禁用并提示，不串消息）。
+
+### 交互契约/直觉门禁（`2026-11-01-ui-interaction-verification`）
+
+- `intuition.md`/`intuition-walkthrough.md` + `interaction.md` 唯一 ID；`pnpm e2e:ui` + `scripts/ui-interaction-gate.py`；证据 `target/evidence/<change>/interaction/<ID>.json`；C20 写进 AGENTS。
+
+### 审批策略与 MCP（`2026-11-01-client-config-approval-mcp` / `-mcp-config`）
+
 
 ### 审批策略（`2026-11-01-client-config-approval-mcp`）
 
