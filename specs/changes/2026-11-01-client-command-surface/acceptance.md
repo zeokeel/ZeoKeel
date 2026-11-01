@@ -1,5 +1,7 @@
 # 2026-11-01-client-command-surface · 验收与证据（Batch 1）
 
+> 提交后复跑（Lead，HEAD `1cd339c`）：`pnpm e2e` **23 passed**、`pnpm e2e:ui` **64 passed**、`cargo test --workspace export_schema` 后 `git diff` 0 变更。
+
 > 独立评审通过（`docs/reviews/2026-11-01-client-command-surface.md` §9）；C20 `intuition.md` + `intuition-walkthrough.md` 已交付（专家走查；真人用户测试 UNVERIFIED）。
 > 实现者：impl-settings；证据根 `target/evidence/2026-11-01-client-command-surface/`。
 

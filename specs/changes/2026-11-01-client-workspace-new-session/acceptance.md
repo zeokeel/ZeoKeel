@@ -1,5 +1,7 @@
 # 2026-11-01-client-workspace-new-session · 验收与证据
 
+> 提交后复跑（Lead，HEAD `180b8bd`）：`pnpm e2e` **23 passed**、`pnpm e2e:ui` **64 passed**、`export_schema` 幂等 0 diff。
+
 > 独立评审通过（`docs/reviews/2026-11-01-client-workspace-new-session.md` §8）；C20 `intuition.md` + `intuition-walkthrough.md` 已交付（专家走查；真人用户测试 UNVERIFIED）。
 > 实现者：impl-settings；证据根 `target/evidence/2026-11-01-client-workspace-new-session/`。
 
