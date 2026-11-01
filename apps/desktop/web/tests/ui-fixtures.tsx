@@ -73,6 +73,7 @@ export function testUi(overrides: TestUiOverrides = {}): UiValue {
     gatewayModels: [],
     goal: null,
     slashCommand: null,
+    compaction: null,
     actions: {
       send: noop,
       cancel: noop,
@@ -101,6 +102,7 @@ export function testUi(overrides: TestUiOverrides = {}): UiValue {
       setConversationOverride: (): Promise<boolean> => Promise.resolve(true),
       exportConversation: (): Promise<null> => Promise.resolve(null),
       submitFeedback: (): Promise<boolean> => Promise.resolve(true),
+      compactConversation: (): Promise<boolean> => Promise.resolve(true),
       closeSettings: noop,
       saveSettings: (settings: AppSettings): Promise<SettingsSaveOutcome> =>
         Promise.resolve({ status: "saved", settings, revision: 1 }),

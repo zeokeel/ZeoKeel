@@ -1,12 +1,12 @@
 # 2026-11-01-client-compact-command · 提案（Batch2-A：/compact）
 
-- 状态：`approved`
+- 状态：`done`
 - 评审：docs/reviews/2026-11-01-client-command-batch2.md
 - Owner：dsh-ref
 - 日期：2026-11-01
 - 关联：用户 DSH 1:1 Batch2；原父 spec `2026-11-01-client-command-backends` 已按 Lead D7 拆分并删除；本 spec 为 compact 子 spec；`target/audits/dsh-reference-inventory.md` §5；`docs/38` B8/history；`docs/19` §2.1b/§11；前置 Batch1 `2026-11-01-client-command-surface`
 - 评审：n/a（新增 spec；实现前需 C19/C20 独立评审）
-- 变更预算：**12 个文件**（见 §8；Lead 2026-11-01 书面批准 12 文件例外）
+- 变更预算：**12 个文件**（规划）→ **实际约 35 个路径**（Lead 2026-11-01 追认例外：单一目标 /compact，跨契约+新 kit+host+UI+测试+文档；复用 agent-rig `complete_raw`/`messages_in`/Batch1 catalog，无第二套实现；不拆分提交）
 
 ## 1. 背景 / 问题
 

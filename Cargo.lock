@@ -8538,6 +8538,7 @@ dependencies = [
  "zk-contract-update",
  "zk-contract-user",
  "zk-contract-wallet",
+ "zk-kit-compaction",
  "zk-kit-media",
  "zk-kit-session",
  "zk-kit-tools",
@@ -8698,6 +8699,7 @@ dependencies = [
  "zk-contract-agent",
  "zk-contract-config",
  "zk-contract-connector",
+ "zk-contract-session",
 ]
 
 [[package]]
@@ -8841,6 +8843,17 @@ version = "1.0.0-rc.1"
 dependencies = [
  "serde_json",
  "zk-contract-tool",
+]
+
+[[package]]
+name = "zk-kit-compaction"
+version = "1.0.0-rc.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "zk-contract-llm",
+ "zk-contract-session",
 ]
 
 [[package]]

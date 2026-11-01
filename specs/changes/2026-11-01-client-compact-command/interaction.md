@@ -3,7 +3,7 @@
 - 表面 / 入口：composer `/` → `/compact`；会话 compact 分隔
 - 归属包：`@zeokeel/ui-chat`（菜单/CompactDivider）+ `ui-kit`（actions）+ desktop-web
 - 权威：docs/19 §2.1b/§11、docs/27 §2.5–§2.8、docs/11 §8.6
-- 状态：`planned`（实现开始时与 intuition 一起 active）
+- 状态：`active`（实现开始时与 intuition 一起 active）
 - 证据根：`target/evidence/2026-11-01-client-compact-command/interaction/`
 - 测试：`e2e/interaction/command-compact.spec.ts`
 

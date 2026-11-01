@@ -6,19 +6,19 @@
 ## 0. 文档先行（C12）
 | # | 任务 | 写作用域 | 依赖 | 验证 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| 0 | docs/19 compact 分隔/失败/流式；docs/26 §5 IPC/错误码/marker；KNOWN 无自动压缩/原始仍占 DB | `docs/19`、`docs/26`、`KNOWN-LIMITATIONS.md` | — | `python3 scripts/docs-check.py` | ☐ |
+| 0 | docs/19 compact 分隔/失败/流式；docs/26 §5 IPC/错误码/marker；KNOWN 无自动压缩/原始仍占 DB | `docs/19`、`docs/26`、`KNOWN-LIMITATIONS.md` | — | `python3 scripts/docs-check.py` | ☑ |
 
 ## 1. 任务
 | # | 任务 | 写作用域 | 依赖 | 验证 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | 契约 `session.compact`/`session.compaction_get` + DTO/错误码；不放宽 ChatSendPayload | `packages/contracts/ipc/src/lib.rs` | 0 | `cargo test -p zk-contract-ipc`；`cargo test --workspace export_schema` | ☐ |
-| 2 | 生成物 schema/TS | `shared/contracts/schema/*`、`ts/*`（生成器写） | 1 | export_schema 幂等；schema-check | ☐ |
-| 3 | kit `zk-kit-compaction` summarizer（provider/gateway、token/摘要上限、错误） | `crates/zk-kit-compaction/{Cargo.toml,src/lib.rs}` | 1 | `cargo test -p zk-kit-compaction` | ☐ |
-| 4 | host compacted view（raw+marker 构造/回退；`messages_in` 原始语义不变；search/fork/audit raw）+ app 单测（压缩后原始可见） | `apps/desktop/src/ipc.rs`、`apps/desktop/web/tests/command-compact.test.tsx`（新） | 1,3 | `cargo test -p zk-desktop`；`pnpm --dir apps/desktop/web test:unit` | ☐ |
-| 5 | host compact/get/replay/streaming/noop/失败/归属；`session.compacted_view` | `apps/desktop/src/ipc.rs` | 3,4 | `cargo test -p zk-desktop` | ☐ |
-| 6 | UI 菜单真实化+CompactDivider+actions（raw 消息+compacted view 分隔） | `packages/ui/ui-chat/web/src/{AssistantComposer.tsx,CompactDivider.tsx}`、`apps/desktop/web/src/{App.tsx,state/controller.ts,i18n.tsx}` | 5 | typecheck/lint/i18n；UI 单测 | ☐ |
-| 7 | e2e（成功/noop/失败/流式/next turn/axe）+ 交互证据 | `e2e/m1-serve.spec.ts`、`e2e/interaction/command-compact.spec.ts`（新） | 5,6 | `pnpm e2e`；`pnpm e2e:ui --grep command-compact`；`pnpm e2e:ui:gate` | ☐ |
-| 8 | 收尾：acceptance 证据、interaction/intuition 改 active | 本 spec `acceptance.md` | 1–7 | spec-check/docs-check | ☐ |
+| 1 | 契约 `session.compact`/`session.compaction_get` + DTO/错误码；不放宽 ChatSendPayload | `packages/contracts/ipc/src/lib.rs` | 0 | `cargo test -p zk-contract-ipc`；`cargo test --workspace export_schema` | ☑ |
+| 2 | 生成物 schema/TS | `shared/contracts/schema/*`、`ts/*`（生成器写） | 1 | export_schema 幂等；schema-check | ☑ |
+| 3 | kit `zk-kit-compaction` summarizer（provider/gateway、token/摘要上限、错误） | `crates/zk-kit-compaction/{Cargo.toml,src/lib.rs}` | 1 | `cargo test -p zk-kit-compaction` | ☑ |
+| 4 | host compacted view（raw+marker 构造/回退；`messages_in` 原始语义不变；search/fork/audit raw）+ app 单测（压缩后原始可见） | `apps/desktop/src/ipc.rs`、`apps/desktop/web/tests/command-compact.test.tsx`（新） | 1,3 | `cargo test -p zk-desktop`；`pnpm --dir apps/desktop/web test:unit` | ☑ |
+| 5 | host compact/get/replay/streaming/noop/失败/归属；`session.compacted_view` | `apps/desktop/src/ipc.rs` | 3,4 | `cargo test -p zk-desktop` | ☑ |
+| 6 | UI 菜单真实化+CompactDivider+actions（raw 消息+compacted view 分隔） | `packages/ui/ui-chat/web/src/{AssistantComposer.tsx,CompactDivider.tsx}`、`apps/desktop/web/src/{App.tsx,state/controller.ts,i18n.tsx}` | 5 | typecheck/lint/i18n；UI 单测 | ☑ |
+| 7 | e2e（成功/noop/失败/流式/next turn/axe）+ 交互证据 | `e2e/m1-serve.spec.ts`、`e2e/interaction/command-compact.spec.ts`（新） | 5,6 | `pnpm e2e`；`pnpm e2e:ui --grep command-compact`；`pnpm e2e:ui:gate` | ☑ |
+| 8 | 收尾：acceptance 证据、interaction/intuition 改 active | 本 spec `acceptance.md` | 1–7 | spec-check/docs-check | ☑ |
 
 ## 2. 写作用域与预算
 - 只写：`packages/contracts/ipc/src/lib.rs`、`crates/zk-kit-compaction/**`、`apps/desktop/src/ipc.rs`、`apps/desktop/web/tests/command-compact.test.tsx`、
@@ -35,3 +35,11 @@
 - [ ] `pnpm -r typecheck/lint/test:unit/build`；i18n；`pnpm e2e`；`pnpm e2e:ui --grep command-compact`；`pnpm e2e:ui:gate`。
 - [ ] 无 migration；`messages_in` 原始语义保留；compacted view 仅 replay/分隔；search/fork/审计 raw；错误码登记；无第二套摘要/菜单；C18 归属不变；Lead 12 文件例外已记录。
 - [ ] interaction/intuition planned→active；用户测试 UNVERIFIED。
+
+## 6. 实现备注（2026-11-01，impl-settings）
+
+- 契约：`session.compact`/`session.compaction_get`/`session.compacted_view` + `CompactionMarker/CompactResult/CompactionGetResult/CompactedViewResult`；6 个新 schema（127 total）；IPC 增依赖 `zk-contract-session`（DTO 复用 Message）；不放宽 `ChatSendPayload`。
+- kit `zk-kit-compaction`：token 估算、边界规划（6 轮/12 条）、prompt（目标/决策/文件/未完成）、12k/2k 上限、provider 摘要 + 抽取式 fallback、MarkerContent JSON；4 个单测。
+- host `compact.rs`：marker 解析/最新 marker/compacted view（raw+marker，损坏/未知边界回退 raw）、归属校验、`compact/busy`（`AppState.running_conversations`，run_turn 起止登记）、too-large/unavailable/failed、append 前失败不改历史、同边界 no-op、全局 compact 串行；`replay_history` 在 marker 处注入摘要（user 历史文本），replay 使用 compacted view；`session.messages`/search/fork/审计仍 raw。summarizer：personal 真实 provider 经 `zk_composed::Runtime::summarize`（agent-rig `complete_raw`，无 tool/审批/agent turn）；mock/offline → kit 抽取式；enterprise 网关走同一 complete_raw（本机网关 UNVERIFIED）。
+- UI：slash compact 由 disabled 占位改 `execute`（流式 disabled + 统一文案）；`CompactDivider`（separator + 摘要展开 + 条数/usage）；App `compaction` 状态经 `session.compaction_get` 恢复、成功后 `retryMessages` 重载 raw（保证 divider 锚定持久化消息 id）；runtime 过滤 marker 气泡。
+- e2e：`e2e/interaction/command-compact.spec.ts` 3 个 P0/P1 + `e2e/m1-serve.spec.ts` compact 回归；测试/实现偏差：divider 用 `createdAt` 锚点的方案已废弃（assistant-ui 重写 id），改为成功后重载 raw 按 persisted id 锚定。

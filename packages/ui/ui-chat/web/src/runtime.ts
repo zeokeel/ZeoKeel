@@ -131,7 +131,8 @@ function appendText(message: AppendMessage): string {
 
 export function useChatRuntime(ui: UiValue): AssistantRuntime {
   return useExternalStoreRuntime<ChatMessage>({
-    messages: ui.messages,
+    // Compaction markers stay in the raw store but render as the divider, not a bubble.
+    messages: ui.messages.filter((message) => !message.id.startsWith("compaction:")),
     convertMessage: (message) => convertMessage(message, ui.t),
     isRunning: ui.streaming,
     isDisabled: ui.offline,

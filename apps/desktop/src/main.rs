@@ -14,6 +14,7 @@ mod approval;
 mod automation;
 mod changes;
 mod command_surface;
+mod compact;
 mod events;
 mod ipc;
 mod mcp;

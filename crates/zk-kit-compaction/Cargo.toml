@@ -1,0 +1,15 @@
+[package]
+name = "zk-kit-compaction"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+zk-contract-llm = { path = "../../packages/contracts/llm" }
+zk-contract-session = { path = "../../packages/contracts/session" }
+
+[lints]
+workspace = true

@@ -737,3 +737,15 @@ export interface ConversationExport {
 
 /** Local-only feedback category. */
 export type FeedbackCategory = "bug" | "idea" | "other";
+
+/** Persisted conversation compaction marker (`role=system`, `compaction:<uuid>`). */
+export interface CompactionMarker {
+  markerId: string;
+  summary: string;
+  throughMessageId: string;
+  createdMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  compressedMessages: number;
+  keepRecent: number;
+}

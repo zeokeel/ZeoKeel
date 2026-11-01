@@ -223,4 +223,28 @@ fn export_schema() {
         "feedback-submit-result.json",
         &schemars::schema_for!(zk_contract_ipc::results::FeedbackSubmitResult),
     );
+    write(
+        "ipc-session-compact.json",
+        &schemars::schema_for!(zk_contract_ipc::payloads::SessionCompactPayload),
+    );
+    write(
+        "ipc-compaction-get.json",
+        &schemars::schema_for!(zk_contract_ipc::payloads::CompactionGetPayload),
+    );
+    write(
+        "compaction-marker.json",
+        &schemars::schema_for!(zk_contract_ipc::results::CompactionMarker),
+    );
+    write(
+        "compact-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::CompactResult),
+    );
+    write(
+        "compaction-get-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::CompactionGetResult),
+    );
+    write(
+        "compacted-view-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::CompactedViewResult),
+    );
 }

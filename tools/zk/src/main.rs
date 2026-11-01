@@ -1969,6 +1969,7 @@ fn compose_cargo_toml(root: &Path, resolved: &Resolved) -> Result<String> {
     // desktop composition root never depends on kit/tool crates directly (C4/C2).
     out.push_str("zk-kit-tools = { path = \"../../crates/zk-kit-tools\" }\n");
     out.push_str("zk-kit-session = { path = \"../../crates/zk-kit-session\" }\n");
+    out.push_str("zk-kit-compaction = { path = \"../../crates/zk-kit-compaction\" }\n");
     out.push_str("serde_json = { workspace = true }\nrig-core = { workspace = true }\n\n[lints]\nworkspace = true\n");
     // CLI-only dep audit triage: rig-core is consumed by the embedding/media glue
     // generated in this crate's lib.rs; cargo-machete cannot see that dependency edge.
@@ -2042,7 +2043,9 @@ fn compose_lib(root: &Path, resolved: &Resolved) -> Result<String> {
 
     pub fn configure_agent_runtime(&self, settings: &zk_contract_config::AgentSettings) -> Result<(), String> { self.agent.configure_agent(settings) }
 
-    pub fn set_approval_preset(&self, preset: Option<&str>) -> Result<(), String> { self.agent.set_approval_preset(preset) }\n\n    pub fn sessions(&self) -> Arc<dyn zk_contract_session::SessionStore> {\n        Arc::clone(&self.sessions)\n    }\n\n    pub fn settings(&self) -> Arc<dyn zk_contract_config::SettingsStore> {\n        Arc::clone(&self.settings)\n    }\n\n    pub fn packages(&self) -> &'static [&'static str] {\n        PACKAGES\n    }\n}\n\n");
+    pub fn set_approval_preset(&self, preset: Option<&str>) -> Result<(), String> { self.agent.set_approval_preset(preset) }
+
+    pub fn summarize(&self, prompt: &str) -> Result<String, String> { self.agent.complete_raw(prompt) }\n\n    pub fn sessions(&self) -> Arc<dyn zk_contract_session::SessionStore> {\n        Arc::clone(&self.sessions)\n    }\n\n    pub fn settings(&self) -> Arc<dyn zk_contract_config::SettingsStore> {\n        Arc::clone(&self.settings)\n    }\n\n    pub fn packages(&self) -> &'static [&'static str] {\n        PACKAGES\n    }\n}\n\n");
     if let Some(update_pkg) = update {
         out.push_str(&format!(
             "pub fn check_update(current: &str, platform: &str) -> Result<Option<zk_contract_update::ReleaseInfo>, String> {{\n    {}::check(current, platform).map(|check| if check.available {{ check.release }} else {{ None }}).map_err(|error| error.to_string())\n}}\n\n",
@@ -2052,9 +2055,11 @@ fn compose_lib(root: &Path, resolved: &Resolved) -> Result<String> {
         out.push_str("pub fn check_update(_current: &str, _platform: &str) -> Result<Option<zk_contract_update::ReleaseInfo>, String> { Ok(None) }\n\n");
     }
     if llm.crate_name == "zk-llm-gateway" {
-        out.push_str("pub fn configure_llm(base_url: &str, access_token: &str, model: &str) {\n    zk_llm_gateway::set_credentials(base_url, access_token);\n    zk_llm_gateway::set_model(model);\n}\n\npub fn gateway_credentials() -> Option<(String, String)> { zk_llm_gateway::credentials() }\n\n");
+        out.push_str("pub fn configure_llm(base_url: &str, access_token: &str, model: &str) {\n    zk_llm_gateway::set_credentials(base_url, access_token);\n    zk_llm_gateway::set_model(model);\n}\n\npub fn gateway_credentials() -> Option<(String, String)> { zk_llm_gateway::credentials() }\n
+");
     } else {
-        out.push_str("pub fn configure_llm(_base_url: &str, _access_token: &str, _model: &str) {}\n\npub fn gateway_credentials() -> Option<(String, String)> { None }\n\n");
+        out.push_str("pub fn configure_llm(_base_url: &str, _access_token: &str, _model: &str) {}\n\npub fn gateway_credentials() -> Option<(String, String)> { None }\n
+");
     }
     out.push_str("pub fn build() -> Result<Runtime, String> {\n");
     out.push_str("    let mut tools: Vec<Arc<dyn zk_contract_tool::Tool>> = vec![\n");
@@ -2206,7 +2211,7 @@ fn compose_lib(root: &Path, resolved: &Resolved) -> Result<String> {
     // Generated facade for shared helpers used by the composition root (C4/C2):
     // the host calls `zk_composed::zk_kit_tools::safe_join_under(...)` instead of
     // depending on kit/tool crates directly.
-    out.push_str("pub use zk_kit_session;\npub use zk_kit_tools;\npub use zk_tool_goal;\n");
+    out.push_str("pub use zk_kit_compaction;\npub use zk_kit_session;\npub use zk_kit_tools;\npub use zk_tool_goal;\n");
     Ok(out)
 }
 

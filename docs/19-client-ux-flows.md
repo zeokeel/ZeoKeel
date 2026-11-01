@@ -65,6 +65,14 @@ Boot
 - 每个 `ui.gate.*` 必须有 fallback 文案与"下一步"动作；不允许白屏。
 - 登录页品牌文案来自 `channel.json` 的 `copy.login_*`，缺键即构建失败（禁止回落官方）。
 
+### 2.1c `/compact` 会话压缩（`2026-11-01-client-command-compact`）
+
+- composer `/`「指令」组 `/compact` 是真实命令（不再是 Batch 2 占位）；流式中禁用并提示「当前正在生成，停止后可压缩」；执行经 Batch1 唯一 catalog/`runCommand`，命令文本不发送。
+- host 读取**原始**消息视图，保留最近 6 轮/12 条（取先到），对更早 user/assistant/tool 文本用专用 summarizer（personal provider；enterprise 网关）生成摘要；**不产生 agent turn/tool 行/审批**，不自动压缩，只作用于当前 workspace/conversation。
+- 摘要以 `role=system` marker 消息持久化（id `compaction:<uuid>`，content JSON：summary/through_message_id/created_ms/input_tokens/output_tokens/compressed_messages/keep_recent）；**原始消息不删除**；`SessionStore::messages_in` 原始语义不变；`session.compacted_view`（marker + 最近窗口）仅供 agent replay、分隔 UI/摘要注入；`session_search`/fork/审计读 raw。
+- 下一轮 agent replay 在 marker 处注入摘要（作为 user 历史文本，不注入 marker JSON）。UI：raw 消息仍全部展示，在压缩边界插入分隔「较早消息已压缩」+ 摘要可展开 + 条数/tokens usage；刷新/重启由 `session.compaction_get` 恢复；失败/超限/流式不改历史、无分隔、可读错误；重复执行无新消息时 no-op 提示。
+- 上限：输入 ≤12k tokens、摘要 ≤2k tokens；无新消息（边界=已压缩末尾）no-op、不重复写；跨 workspace/不存在会话拒绝（既有 `session/*`）。mock/offline provider 用确定性抽取式摘要（KNOWN 标注）；enterprise 网关 summarizer 本机 UNVERIFIED。
+
 ### 2.0 会话侧栏：Workspace 行 scoped 新建（`2026-11-01-client-workspace-new-session`）
 
 - 每个 Workspace 行有 scoped「新建会话」按钮：hover 与键盘 focus-visible 可见，active 行常显；`aria-label` 含 workspace 名（`在 <workspace> 新建会话`，zh/en）；点击/Enter/Space 在**该** workspace `session.create` 并选中（切换 active workspace + 新会话），不经过 picker、不触发行选中/折叠、busy 防重复；失败 toast 且选择不变。

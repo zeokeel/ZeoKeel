@@ -141,6 +141,9 @@ fn oauth_command_names_are_stable_and_unique() {
         commands::SESSION_OVERRIDE_SET,
         commands::SESSION_EXPORT,
         commands::FEEDBACK_SUBMIT,
+        commands::SESSION_COMPACT,
+        commands::SESSION_COMPACTION_GET,
+        commands::SESSION_COMPACTED_VIEW,
     ];
     let mut sorted = names.to_vec();
     sorted.sort_unstable();
@@ -321,5 +324,26 @@ fn command_surface_payloads_round_trip() {
     assert_eq!(
         feedback,
         serde_json::from_str(&serde_json::to_string(&feedback).unwrap()).unwrap()
+    );
+}
+
+#[test]
+fn compaction_payloads_round_trip() {
+    use zk_contract_ipc::payloads::{CompactionGetPayload, SessionCompactPayload};
+    let compact = SessionCompactPayload {
+        workspace_id: "w".to_owned(),
+        conversation_id: "c".to_owned(),
+    };
+    assert_eq!(
+        compact,
+        serde_json::from_str(&serde_json::to_string(&compact).unwrap()).unwrap()
+    );
+    let get = CompactionGetPayload {
+        workspace_id: "w".to_owned(),
+        conversation_id: "c".to_owned(),
+    };
+    assert_eq!(
+        get,
+        serde_json::from_str(&serde_json::to_string(&get).unwrap()).unwrap()
     );
 }

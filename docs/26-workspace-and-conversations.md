@@ -254,3 +254,11 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at_m
 | `feedback.submit` | 本地 `.zeokeel/feedback/*.json`（category bug/idea/other、描述≤4 KiB、版本/edition/平台），**不联网**；企业版服务端反馈 UNVERIFIED |
 
 错误码：`session/invalid`（override/goal/export/feedback 参数与上限）、`workspace/not-found`、`session/workspace-mismatch`、`workspace/path-escape`（override/export/feedback 路径经 `safe_join_under`/`safe_resolve_under`）。config-mutex 排队 turn 被取消时跳过执行、不产生事件/错误。
+
+### 5.3 会话压缩（`/compact`，`2026-11-01-client-command-compact`）
+
+- IPC：`session.compact {workspace_id, conversation_id}` → `{marker, noop}`；`session.compaction_get` → 最新 marker/null；`session.compacted_view` → marker + replay 视图（只读）。错误码封闭集合：`compact/busy`、`compact/too-large`、`compact/unavailable`、`compact/failed`、`compact/noop`（noop 以结果 `noop=true` 表达，不作为错误）。
+- 数据：无 DB migration；marker 复用既有 messages 追加（`role=system`，id `compaction:<uuid>`，content 为 JSON）；`messages_in` 仍返回原始消息；raw 历史保留（磁盘不因压缩减少）；`compacted_view`/replay 在内存构造「marker + 最近窗口」；损坏/未知 through 回退 raw。
+- 归属：只操作当前 workspace/conversation（C18）；失败/超限/流式中在 append 前返回，历史不变；相同边界重复请求 no-op（幂等）；compact 串行。
+- 摘要：personal 本地 provider、enterprise 仅网关（C7）；mock/offline 用确定性抽取式摘要；不产生 agent turn/tool/审批；不写内容日志。
+- UI：`session.messages` 保持 raw；`CompactDivider` 用 marker 边界展示「较早消息已压缩」+ 摘要/条数/usage；`/compact` 流式禁用；无自动压缩。

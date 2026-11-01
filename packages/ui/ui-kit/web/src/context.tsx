@@ -6,6 +6,7 @@ import type {
   BootState,
   ChatMessage,
   CommandDescriptor,
+  CompactionMarker,
   Conversation,
   ConversationExport,
   ConversationOverride,
@@ -94,6 +95,8 @@ export interface UiActions {
   exportConversation: () => Promise<ConversationExport | null>;
   /** Store local-only feedback JSON (`feedback.submit`; no network). */
   submitFeedback: (category: FeedbackCategory, description: string) => Promise<boolean>;
+  /** Compact older history of the active conversation (`session.compact`; noop-safe). */
+  compactConversation: () => Promise<boolean>;
   /** Save the whole settings document under the current revision fence. */
   saveSettings: (settings: AppSettings) => Promise<SettingsSaveOutcome>;
   /** Re-read `settings.get` after a revision conflict; returns the fresh document. */
@@ -144,6 +147,8 @@ export interface UiValue {
   goal: GoalView | null;
   /** Pending composer `/` command intent (single executor in the app). */
   slashCommand: { name: string; query: string; token: number } | null;
+  /** Latest compaction marker of the active conversation (raw messages stay visible). */
+  compaction: CompactionMarker | null;
   actions: UiActions;
 }
 

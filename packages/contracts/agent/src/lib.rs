@@ -336,6 +336,14 @@ pub trait Agent: Send + Sync {
         Ok(())
     }
 
+    /// One raw completion call for dedicated host features (e.g. `/compact` summarizer).
+    ///
+    /// Unlike [`Agent::run`] this never runs tools/approval/agent-turn bookkeeping;
+    /// the default keeps third-party agents compiling (unsupported).
+    fn complete_raw(&self, _prompt: &str) -> Result<String, String> {
+        Err("agent does not support raw completion".to_owned())
+    }
+
     /// Swap the underlying model/provider at runtime (settings hot-reload).
     fn configure_model(
         &self,

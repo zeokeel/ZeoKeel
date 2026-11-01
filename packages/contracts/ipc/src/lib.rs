@@ -180,6 +180,12 @@ pub mod commands {
     pub const SESSION_EXPORT: &str = "session.export";
     /// Store local-only feedback JSON under `<workspace>/.zeokeel/feedback/`.
     pub const FEEDBACK_SUBMIT: &str = "feedback.submit";
+    /// Compact older conversation history into one system marker (`/compact`).
+    pub const SESSION_COMPACT: &str = "session.compact";
+    /// Read the latest compaction marker of one conversation.
+    pub const SESSION_COMPACTION_GET: &str = "session.compaction_get";
+    /// Read the compacted replay view (marker + recent raw messages; read-only).
+    pub const SESSION_COMPACTED_VIEW: &str = "session.compacted_view";
 }
 
 /// Typed command payloads (single source for `schemars` JSON Schema).
@@ -553,6 +559,24 @@ pub mod payloads {
         pub description: Option<String>,
     }
 
+    /// `session.compact` payload.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct SessionCompactPayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Conversation id.
+        pub conversation_id: String,
+    }
+
+    /// `session.compaction_get` / `session.compacted_view` payload.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct CompactionGetPayload {
+        /// Owning workspace id.
+        pub workspace_id: String,
+        /// Conversation id.
+        pub conversation_id: String,
+    }
+
     /// `session.search` payload (current workspace only, C18).
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
     pub struct SessionSearchPayload {
@@ -688,6 +712,55 @@ pub mod results {
         pub stored: String,
         /// Absolute path of the written JSON file.
         pub path: String,
+    }
+
+    /// Persisted conversation compaction marker (`role=system`, id `compaction:<uuid>`).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct CompactionMarker {
+        /// Marker message id (`compaction:<uuid>`).
+        pub marker_id: String,
+        /// Extractive/model summary (≤2k tokens by contract).
+        pub summary: String,
+        /// Last raw message covered by the summary.
+        pub through_message_id: String,
+        /// Marker creation time (ms since epoch).
+        pub created_ms: u64,
+        /// Estimated/actual input tokens summarized.
+        pub input_tokens: u64,
+        /// Estimated/actual summary tokens.
+        pub output_tokens: u64,
+        /// Number of raw messages folded into the summary.
+        pub compressed_messages: u32,
+        /// Recent raw messages/turns kept verbatim.
+        pub keep_recent: u32,
+    }
+
+    /// `session.compact` result (`noop` = boundary unchanged, nothing written).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct CompactResult {
+        /// Current marker after the call (unchanged on noop/failure).
+        #[serde(default)]
+        pub marker: Option<CompactionMarker>,
+        /// Nothing new to compact (idempotent repeat).
+        pub noop: bool,
+    }
+
+    /// `session.compaction_get` result.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct CompactionGetResult {
+        /// Latest marker, if any.
+        #[serde(default)]
+        pub marker: Option<CompactionMarker>,
+    }
+
+    /// `session.compacted_view` result (replay/divider only; raw store untouched).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct CompactedViewResult {
+        /// Latest marker, if any.
+        #[serde(default)]
+        pub marker: Option<CompactionMarker>,
+        /// Replay view: the marker message followed by recent raw messages.
+        pub messages: Vec<zk_contract_session::Message>,
     }
 
     /// `terminal` result: live shells + one output snapshot.

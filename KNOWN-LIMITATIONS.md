@@ -232,3 +232,11 @@
 - 暂不做 brand 点击新建与 `Mod+N`（proposal D2/D4 后置）；Workspace 行选择为显式 scoped，不提供 picker。
 - 无 workspace 时不渲染行按钮；全局入口禁用并提示。目标 workspace 不可用以 host `session.create` 错误为准（可读 toast，不新增逐行可用性探测），绝不静默建到默认 workspace。
 - busy 防重复为客户端抑制（无幂等键）；视觉基线（`SES2-WSNEW-VIS-01` 像素/aria snapshot）需人工确认后 `pnpm e2e:ui:update`（agent 不自动接受），当前仅留截图证据；真人用户测试（≥5 人）UNVERIFIED。
+
+## Conversation compaction（`/compact`，`2026-11-01-client-command-compact`）
+
+- **无自动压缩**：只接受显式 `/compact`；不做窗口溢出自动摘要/触发策略。
+- **原始历史仍占用磁盘/搜索**：marker 只折叠 replay 与 UI 分隔，`messages_in`/search/fork/审计仍读 raw；压缩不会减少 DB 体积（后续归档/GC 另议）。
+- **mock/offline provider 用抽取式摘要**（确定性截断拼接），非模型摘要；personal 真实 provider 经现有 rig 模型做一次 completion；enterprise 网关 summarizer 本机无网关环境 → UNVERIFIED。
+- 上限 12k/2k tokens、保留 6 轮/12 条为合约常量；超限/失败/流式中不写 marker、不改历史；重复同边界 no-op。
+- replay 注入把摘要当 user 历史文本（保留工具行纯文本摘要），不是原生 system prompt；视觉基线（CompactDivider）需人工确认（当前仅交互截图证据）；真人用户测试（≥5 人）UNVERIFIED。

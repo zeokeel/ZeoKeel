@@ -50,6 +50,8 @@ pub struct AppState {
     mcp_probes: Arc<crate::mcp::McpProbeBroker>,
     /// Host-cached enterprise gateway model ids (login/refresh updates; logout clears).
     gateway_models: Mutex<Vec<String>>,
+    /// Conversations with an actively running agent turn (`/compact` busy guard).
+    running_conversations: Mutex<std::collections::HashSet<String>>,
 }
 
 /// One background connector OAuth flow (`docs/07` §6): `pending|authorized|failed`.
@@ -86,12 +88,33 @@ impl AppState {
             oauth_flows: Mutex::new(HashMap::new()),
             mcp_probes: crate::mcp::McpProbeBroker::new(),
             gateway_models: Mutex::new(Vec::new()),
+            running_conversations: Mutex::new(std::collections::HashSet::new()),
         })
     }
 
     /// Runtime accessor (tests).
     pub fn runtime(&self) -> &Arc<zk_composed::Runtime> {
         &self.runtime
+    }
+
+    /// Whether one conversation currently runs an agent turn.
+    pub fn is_conversation_running(&self, conversation_id: &str) -> bool {
+        self.running_conversations
+            .lock()
+            .map(|running| running.contains(conversation_id))
+            .unwrap_or(false)
+    }
+
+    fn mark_conversation_running(&self, conversation_id: &str) {
+        if let Ok(mut running) = self.running_conversations.lock() {
+            running.insert(conversation_id.to_owned());
+        }
+    }
+
+    fn unmark_conversation_running(&self, conversation_id: &str) {
+        if let Ok(mut running) = self.running_conversations.lock() {
+            running.remove(conversation_id);
+        }
     }
 
     /// Record a non-fatal agent-settings startup error for the UI (`meta.get`).
@@ -799,6 +822,51 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             }
             match crate::command_surface::export_markdown_file(
                 &*state.runtime.sessions(),
+                &request.workspace_id,
+                &request.conversation_id,
+            ) {
+                Ok(result) => CommandResponse::ok(json!(result)),
+                Err(error) => CommandResponse::err(error),
+            }
+        }
+        commands::SESSION_COMPACT => {
+            let request: zk_contract_ipc::payloads::SessionCompactPayload =
+                match serde_json::from_value(payload.clone()) {
+                    Ok(request) => request,
+                    Err(error) => return CommandResponse::err(format!("compact/invalid: {error}")),
+                };
+            match crate::compact::compact_conversation(
+                state,
+                &request.workspace_id,
+                &request.conversation_id,
+            ) {
+                Ok(result) => CommandResponse::ok(json!(result)),
+                Err(error) => CommandResponse::err(error),
+            }
+        }
+        commands::SESSION_COMPACTION_GET => {
+            let request: zk_contract_ipc::payloads::CompactionGetPayload =
+                match serde_json::from_value(payload.clone()) {
+                    Ok(request) => request,
+                    Err(error) => return CommandResponse::err(format!("compact/invalid: {error}")),
+                };
+            match crate::compact::compaction_get(
+                &*state.runtime().sessions(),
+                &request.workspace_id,
+                &request.conversation_id,
+            ) {
+                Ok(result) => CommandResponse::ok(json!(result)),
+                Err(error) => CommandResponse::err(error),
+            }
+        }
+        commands::SESSION_COMPACTED_VIEW => {
+            let request: zk_contract_ipc::payloads::CompactionGetPayload =
+                match serde_json::from_value(payload.clone()) {
+                    Ok(request) => request,
+                    Err(error) => return CommandResponse::err(format!("compact/invalid: {error}")),
+                };
+            match crate::compact::compacted_view(
+                &*state.runtime().sessions(),
                 &request.workspace_id,
                 &request.conversation_id,
             ) {
@@ -2698,6 +2766,21 @@ fn run_turn(state: &Arc<AppState>, job: &TurnJob) {
         }
         return;
     }
+    // Mark the conversation as running so `/compact` can reject it (`compact/busy`).
+    state.mark_conversation_running(&job.conversation_id);
+    struct RunningGuard<'a> {
+        state: &'a Arc<AppState>,
+        conversation_id: &'a str,
+    }
+    impl Drop for RunningGuard<'_> {
+        fn drop(&mut self) {
+            self.state.unmark_conversation_running(self.conversation_id);
+        }
+    }
+    let _running_guard = RunningGuard {
+        state,
+        conversation_id: &job.conversation_id,
+    };
     // Global config mutex: one turn at a time may mutate the shared agent config
     // (model/agent/approval override). Queued turns cancelled before acquiring the
     // lock are skipped without events/errors (spec R4 P2-1).
@@ -2751,11 +2834,14 @@ fn run_turn(state: &Arc<AppState>, job: &TurnJob) {
     // B8: SQLite session store is the replay authority. Drop the just-persisted current
     // user message so the prompt is not duplicated; tool rows are text-only and are not
     // replayed (rig history needs paired tool-call ids).
-    let replay = state
+    let raw = state
         .runtime
         .sessions()
         .messages_in(&job.workspace_id, &job.conversation_id)
         .unwrap_or_default();
+    // Replay uses the compacted view (marker summary + recent raw messages); the
+    // store itself keeps raw history for UI/search/fork/audit.
+    let replay = crate::compact::compacted_messages(&raw);
     let history = replay_history(&replay, &job.text);
     let result = state.runtime.run_stream_in_shared_with_history(
         &context,
@@ -2813,9 +2899,28 @@ const MAX_REPLAY_MESSAGES: usize = 40;
 /// Only `user`/`assistant` text rows are replayed; the current prompt (already
 /// persisted as the last user row) is dropped, and the tail is capped so a long
 /// conversation cannot grow the prompt without bound.
+/// Render one compaction marker as an injected user-visible history summary.
+fn marker_summary(message: &Message) -> Option<String> {
+    if message.role != "system" || !message.id.starts_with(crate::compact::MARKER_PREFIX) {
+        return None;
+    }
+    let content = zk_composed::zk_kit_compaction::MarkerContent::parse(&message.content)?;
+    Some(format!(
+        "[Earlier conversation summary ({0} messages compressed)]\n{1}",
+        content.compressed_messages, content.summary
+    ))
+}
+
 fn replay_history(messages: &[Message], current_input: &str) -> Vec<HistoryMessage> {
     let mut history: Vec<HistoryMessage> = Vec::new();
     for message in messages {
+        if let Some(content) = marker_summary(message) {
+            history.push(HistoryMessage {
+                role: HistoryRole::User,
+                content,
+            });
+            continue;
+        }
         match message.role.as_str() {
             "user" => history.push(HistoryMessage {
                 role: HistoryRole::User,
@@ -5297,6 +5402,188 @@ mod tests {
         .unwrap());
         crate::command_surface::restore_global(&state.runtime, &global).unwrap();
         drop(guard);
+        std::env::remove_var("ZEOKEEL_HOME");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn compact_writes_marker_keeps_raw_history_and_is_idempotent() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-compact-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", home.join("zeokeel-home"));
+        let (state, workspace_id, conversation_id, _) = phase2b_fixture(&home);
+        let sessions = state.runtime().sessions();
+        // 16 small raw messages (8 user/assistant pairs) => compactable prefix + kept window.
+        for index in 0..16_u64 {
+            let role = if index % 2 == 0 { "user" } else { "assistant" };
+            sessions
+                .append_message(&zk_contract_session::Message {
+                    id: format!("m{index:02}"),
+                    conversation_id: conversation_id.clone(),
+                    role: role.to_owned(),
+                    content: format!("message {index} about the plan"),
+                    created_at_ms: index.saturating_add(1),
+                    status: "done".to_owned(),
+                    usage: None,
+                    turn_id: format!("turn-{index}"),
+                })
+                .unwrap();
+        }
+        let before_raw = sessions
+            .messages_in(&workspace_id, &conversation_id)
+            .unwrap();
+        let result = call_ok(
+            &state,
+            zk_contract_ipc::commands::SESSION_COMPACT,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+            }),
+        );
+        assert_eq!(result["noop"], false);
+        let marker = &result["marker"];
+        assert!(marker["marker_id"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("compaction:"));
+        assert!(marker["compressed_messages"].as_u64().unwrap_or(0) >= 4);
+        assert_eq!(marker["keep_recent"], 6);
+        // Raw store keeps every original message (only the marker is appended).
+        let after_raw = sessions
+            .messages_in(&workspace_id, &conversation_id)
+            .unwrap();
+        assert_eq!(after_raw.len(), before_raw.len() + 1);
+        assert_eq!(
+            after_raw
+                .iter()
+                .filter(|message| message.id.starts_with("m"))
+                .count(),
+            before_raw.len()
+        );
+        // Search still reads raw history (including compacted-away messages).
+        let hits = call_ok(
+            &state,
+            zk_contract_ipc::commands::SESSION_SEARCH,
+            json!({
+                "workspace_id": workspace_id,
+                "query": "message 0",
+            }),
+        );
+        assert!(hits["items"]
+            .as_array()
+            .is_some_and(|items| !items.is_empty()));
+        // Compacted view = marker + recent messages (through boundary).
+        let view = call_ok(
+            &state,
+            zk_contract_ipc::commands::SESSION_COMPACTED_VIEW,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+            }),
+        );
+        let view_messages = view["messages"].as_array().expect("view messages");
+        assert_eq!(view_messages[0]["role"], "system");
+        assert!(view_messages[0]["id"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("compaction:"));
+        assert!(view_messages.len() < after_raw.len());
+        // Replay injects the summary as a user history message (not the marker JSON).
+        let history = super::replay_history(&after_raw, "");
+        assert!(history
+            .iter()
+            .any(|message| message.role == HistoryRole::User
+                && message.content.contains("[Earlier conversation summary")));
+        // Same boundary again: no-op, no second marker.
+        let second = call_ok(
+            &state,
+            zk_contract_ipc::commands::SESSION_COMPACT,
+            json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+            }),
+        );
+        assert_eq!(second["noop"], true);
+        let after_second = sessions
+            .messages_in(&workspace_id, &conversation_id)
+            .unwrap();
+        assert_eq!(after_second.len(), after_raw.len());
+        std::env::remove_var("ZEOKEEL_HOME");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn compact_rejects_streaming_and_oversized_input_without_writing() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-compact-err-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", home.join("zeokeel-home"));
+        let (state, workspace_id, conversation_id, _) = phase2b_fixture(&home);
+        let sessions = state.runtime().sessions();
+        // Oversized input (mock extractive path still applies the 12k token cap).
+        for index in 0..16_u64 {
+            sessions
+                .append_message(&zk_contract_session::Message {
+                    id: format!("big{index:02}"),
+                    conversation_id: conversation_id.clone(),
+                    role: if index % 2 == 0 {
+                        "user".to_owned()
+                    } else {
+                        "assistant".to_owned()
+                    },
+                    content: "x".repeat(6000),
+                    created_at_ms: index.saturating_add(1),
+                    status: "done".to_owned(),
+                    usage: None,
+                    turn_id: format!("turn-{index}"),
+                })
+                .unwrap();
+        }
+        let before = sessions
+            .messages_in(&workspace_id, &conversation_id)
+            .unwrap()
+            .len();
+        let oversized = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SESSION_COMPACT,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+            }),
+        );
+        assert!(!oversized.ok);
+        assert!(oversized
+            .error
+            .unwrap_or_default()
+            .starts_with("compact/too-large"));
+        assert_eq!(
+            sessions
+                .messages_in(&workspace_id, &conversation_id)
+                .unwrap()
+                .len(),
+            before
+        );
+        // Streaming conversation is rejected with compact/busy and writes nothing.
+        state.mark_conversation_running(&conversation_id);
+        let busy = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SESSION_COMPACT,
+            &json!({
+                "workspace_id": workspace_id,
+                "conversation_id": conversation_id,
+            }),
+        );
+        state.unmark_conversation_running(&conversation_id);
+        assert!(!busy.ok);
+        assert!(busy.error.unwrap_or_default().starts_with("compact/busy"));
+        assert_eq!(
+            sessions
+                .messages_in(&workspace_id, &conversation_id)
+                .unwrap()
+                .len(),
+            before
+        );
         std::env::remove_var("ZEOKEEL_HOME");
         let _ = std::fs::remove_dir_all(&home);
     }

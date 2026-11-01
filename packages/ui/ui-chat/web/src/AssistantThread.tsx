@@ -5,6 +5,7 @@ import {
   ThreadPrimitive,
   useAuiState,
 } from "@assistant-ui/react";
+import { CompactDivider } from "./CompactDivider";
 import type { TextMessagePartProps } from "@assistant-ui/react";
 import { IconCopy, IconFolder, IconRetry, useUi } from "@zeokeel/ui-kit";
 import { ApprovalDataPart, ApprovalDecideContext } from "./ApprovalPart";
@@ -198,7 +199,9 @@ function AssistantMessage() {
 }
 
 export function AssistantThread() {
-  const { actions } = useUi();
+  const ui = useUi();
+  const { actions, compaction } = ui;
+
   return (
     <QuestionAnswerContext.Provider value={actions.answerQuestion}>
     <ApprovalDecideContext.Provider value={actions.decideApproval}>
@@ -210,7 +213,14 @@ export function AssistantThread() {
             </AuiIf>
             <div className="flex-1">
               <ThreadPrimitive.Messages>
-                {({ message }) => (message.role === "user" ? <UserMessage /> : <AssistantMessage />)}
+                {({ message }) => (
+                  <>
+                    {message.role === "user" ? <UserMessage /> : <AssistantMessage />}
+                    {compaction !== null && message.id === compaction.throughMessageId ? (
+                      <CompactDivider marker={compaction} />
+                    ) : null}
+                  </>
+                )}
               </ThreadPrimitive.Messages>
             </div>
             <ThreadPrimitive.ViewportFooter className="zk-thread-footer">

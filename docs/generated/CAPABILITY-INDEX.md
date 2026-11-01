@@ -2,7 +2,7 @@
 
 # Capability Index
 
-45 capabilities
+46 capabilities
 
 | id | path |
 | --- | --- |
@@ -29,6 +29,7 @@
 | `contract.user` | `packages/contracts/user/src/lib.rs` |
 | `contract.wallet` | `packages/contracts/wallet/src/lib.rs` |
 | `kit.approval` | `crates/zk-kit-approval/src/lib.rs` |
+| `kit.compaction` | `crates/zk-kit-compaction/src/lib.rs` |
 | `kit.content` | `crates/zk-kit-content/src/lib.rs` |
 | `kit.events` | `crates/zk-kit-events/src/lib.rs` |
 | `kit.extractor` | `crates/zk-kit-extractor/src/lib.rs` |

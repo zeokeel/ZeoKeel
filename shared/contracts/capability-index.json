@@ -92,6 +92,10 @@
     "path": "crates/zk-kit-approval/src/lib.rs"
   },
   {
+    "id": "kit.compaction",
+    "path": "crates/zk-kit-compaction/src/lib.rs"
+  },
+  {
     "id": "kit.content",
     "path": "crates/zk-kit-content/src/lib.rs"
   },

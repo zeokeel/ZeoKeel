@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+zk-contract-session = { path = "../session" }
 zk-contract-agent = { path = "../agent" }
 zk-contract-config = { path = "../config" }
 zk-contract-connector = { path = "../connector" }

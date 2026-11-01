@@ -372,6 +372,36 @@ export interface CommandResponse {
   ok: boolean;
 }
 
+export interface CompactResult {
+  marker?: CompactionMarker | null;
+  noop: boolean;
+}
+
+export interface CompactedViewResult {
+  marker?: CompactionMarker | null;
+  messages: Array<Message>;
+}
+
+export interface CompactionGetPayload {
+  conversation_id: string;
+  workspace_id: string;
+}
+
+export interface CompactionGetResult {
+  marker?: CompactionMarker | null;
+}
+
+export interface CompactionMarker {
+  compressed_messages: number;
+  created_ms: number;
+  input_tokens: number;
+  keep_recent: number;
+  marker_id: string;
+  output_tokens: number;
+  summary: string;
+  through_message_id: string;
+}
+
 export interface CompletionSettings {
   max_tokens?: number | null;
   parallel_tool_calls?: boolean | null;
@@ -739,6 +769,11 @@ export interface ServerModule {
   version: string;
 }
 
+export interface SessionCompactPayload {
+  conversation_id: string;
+  workspace_id: string;
+}
+
 export interface SessionCreatePayload {
   title?: string;
   workspace_id: string;
@@ -1053,6 +1088,14 @@ export const auth_loginSchema = {"$schema":"http://json-schema.org/draft-07/sche
 
 export const auth_sessionSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Authenticated client session (tokens kept in memory; persistence is a client-store concern).","properties":{"access_token":{"type":"string"},"expires_in":{"format":"uint64","minimum":0.0,"type":"integer"},"refresh_token":{"type":"string"},"role":{"type":"string"},"user_id":{"type":"string"},"username":{"type":"string"}},"required":["access_token","expires_in","refresh_token","role","user_id","username"],"title":"AuthSession","type":"object"} as const;
 
+export const compact_resultSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"CompactionMarker":{"description":"Persisted conversation compaction marker (`role=system`, id `compaction:<uuid>`).","properties":{"compressed_messages":{"description":"Number of raw messages folded into the summary.","format":"uint32","minimum":0.0,"type":"integer"},"created_ms":{"description":"Marker creation time (ms since epoch).","format":"uint64","minimum":0.0,"type":"integer"},"input_tokens":{"description":"Estimated/actual input tokens summarized.","format":"uint64","minimum":0.0,"type":"integer"},"keep_recent":{"description":"Recent raw messages/turns kept verbatim.","format":"uint32","minimum":0.0,"type":"integer"},"marker_id":{"description":"Marker message id (`compaction:<uuid>`).","type":"string"},"output_tokens":{"description":"Estimated/actual summary tokens.","format":"uint64","minimum":0.0,"type":"integer"},"summary":{"description":"Extractive/model summary (≤2k tokens by contract).","type":"string"},"through_message_id":{"description":"Last raw message covered by the summary.","type":"string"}},"required":["compressed_messages","created_ms","input_tokens","keep_recent","marker_id","output_tokens","summary","through_message_id"],"type":"object"}},"description":"`session.compact` result (`noop` = boundary unchanged, nothing written).","properties":{"marker":{"anyOf":[{"$ref":"#/definitions/CompactionMarker"},{"type":"null"}],"default":null,"description":"Current marker after the call (unchanged on noop/failure)."},"noop":{"description":"Nothing new to compact (idempotent repeat).","type":"boolean"}},"required":["noop"],"title":"CompactResult","type":"object"} as const;
+
+export const compacted_view_resultSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"AgentUsage":{"description":"Token usage reported by the provider for one agent turn.\n\nThe counters are required (a `usage` object is only present when the provider reported usage; unreported counters are normalized to `0` by the runtime), matching `specs/changes/2026-10-31-config-and-media/spec.md`. `cost_micros` stays optional because most providers do not report cost.","properties":{"cached_tokens":{"description":"The part of `input_tokens` read from a provider-managed cache.","format":"uint64","minimum":0.0,"type":"integer"},"cost_micros":{"description":"Provider-reported cost in micro-USD (1e-6 USD), when known.","format":"uint64","minimum":0.0,"type":["integer","null"]},"input_tokens":{"description":"Every input token (cached + uncached).","format":"uint64","minimum":0.0,"type":"integer"},"output_tokens":{"description":"Every output token, reasoning included.","format":"uint64","minimum":0.0,"type":"integer"},"reasoning_tokens":{"description":"The part of `output_tokens` spent on internal reasoning.","format":"uint64","minimum":0.0,"type":"integer"},"total_tokens":{"description":"`input_tokens + output_tokens`.","format":"uint64","minimum":0.0,"type":"integer"}},"required":["cached_tokens","input_tokens","output_tokens","reasoning_tokens","total_tokens"],"type":"object"},"CompactionMarker":{"description":"Persisted conversation compaction marker (`role=system`, id `compaction:<uuid>`).","properties":{"compressed_messages":{"description":"Number of raw messages folded into the summary.","format":"uint32","minimum":0.0,"type":"integer"},"created_ms":{"description":"Marker creation time (ms since epoch).","format":"uint64","minimum":0.0,"type":"integer"},"input_tokens":{"description":"Estimated/actual input tokens summarized.","format":"uint64","minimum":0.0,"type":"integer"},"keep_recent":{"description":"Recent raw messages/turns kept verbatim.","format":"uint32","minimum":0.0,"type":"integer"},"marker_id":{"description":"Marker message id (`compaction:<uuid>`).","type":"string"},"output_tokens":{"description":"Estimated/actual summary tokens.","format":"uint64","minimum":0.0,"type":"integer"},"summary":{"description":"Extractive/model summary (≤2k tokens by contract).","type":"string"},"through_message_id":{"description":"Last raw message covered by the summary.","type":"string"}},"required":["compressed_messages","created_ms","input_tokens","keep_recent","marker_id","output_tokens","summary","through_message_id"],"type":"object"},"Message":{"description":"One message inside a conversation.","properties":{"content":{"description":"Text content (tool records are JSON strings in M1).","type":"string"},"conversation_id":{"description":"Parent conversation id.","type":"string"},"created_at_ms":{"description":"Creation time (ms since epoch).","format":"uint64","minimum":0.0,"type":"integer"},"id":{"description":"Stable id.","type":"string"},"role":{"description":"Role: `user` | `assistant` | `tool` | `system`.","type":"string"},"status":{"default":"done","description":"Turn status: `done` | `cancelled` | `error` (M1 persistence for cancel markers).","type":"string"},"turn_id":{"default":"","description":"Owning agent turn; tool rows and the closing assistant row share it.\n\nLegacy rows parse as an empty string and are grouped by the legacy fallback rule (next assistant in the conversation).","type":"string"},"usage":{"anyOf":[{"$ref":"#/definitions/AgentUsage"},{"type":"null"}],"default":null,"description":"Provider token usage for an assistant turn, when reported.\n\nPersisted so usage survives restarts (round-4); legacy rows parse as `None`."}},"required":["content","conversation_id","created_at_ms","id","role"],"type":"object"}},"description":"`session.compacted_view` result (replay/divider only; raw store untouched).","properties":{"marker":{"anyOf":[{"$ref":"#/definitions/CompactionMarker"},{"type":"null"}],"default":null,"description":"Latest marker, if any."},"messages":{"description":"Replay view: the marker message followed by recent raw messages.","items":{"$ref":"#/definitions/Message"},"type":"array"}},"required":["messages"],"title":"CompactedViewResult","type":"object"} as const;
+
+export const compaction_get_resultSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"CompactionMarker":{"description":"Persisted conversation compaction marker (`role=system`, id `compaction:<uuid>`).","properties":{"compressed_messages":{"description":"Number of raw messages folded into the summary.","format":"uint32","minimum":0.0,"type":"integer"},"created_ms":{"description":"Marker creation time (ms since epoch).","format":"uint64","minimum":0.0,"type":"integer"},"input_tokens":{"description":"Estimated/actual input tokens summarized.","format":"uint64","minimum":0.0,"type":"integer"},"keep_recent":{"description":"Recent raw messages/turns kept verbatim.","format":"uint32","minimum":0.0,"type":"integer"},"marker_id":{"description":"Marker message id (`compaction:<uuid>`).","type":"string"},"output_tokens":{"description":"Estimated/actual summary tokens.","format":"uint64","minimum":0.0,"type":"integer"},"summary":{"description":"Extractive/model summary (≤2k tokens by contract).","type":"string"},"through_message_id":{"description":"Last raw message covered by the summary.","type":"string"}},"required":["compressed_messages","created_ms","input_tokens","keep_recent","marker_id","output_tokens","summary","through_message_id"],"type":"object"}},"description":"`session.compaction_get` result.","properties":{"marker":{"anyOf":[{"$ref":"#/definitions/CompactionMarker"},{"type":"null"}],"default":null,"description":"Latest marker, if any."}},"title":"CompactionGetResult","type":"object"} as const;
+
+export const compaction_markerSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"Persisted conversation compaction marker (`role=system`, id `compaction:<uuid>`).","properties":{"compressed_messages":{"description":"Number of raw messages folded into the summary.","format":"uint32","minimum":0.0,"type":"integer"},"created_ms":{"description":"Marker creation time (ms since epoch).","format":"uint64","minimum":0.0,"type":"integer"},"input_tokens":{"description":"Estimated/actual input tokens summarized.","format":"uint64","minimum":0.0,"type":"integer"},"keep_recent":{"description":"Recent raw messages/turns kept verbatim.","format":"uint32","minimum":0.0,"type":"integer"},"marker_id":{"description":"Marker message id (`compaction:<uuid>`).","type":"string"},"output_tokens":{"description":"Estimated/actual summary tokens.","format":"uint64","minimum":0.0,"type":"integer"},"summary":{"description":"Extractive/model summary (≤2k tokens by contract).","type":"string"},"through_message_id":{"description":"Last raw message covered by the summary.","type":"string"}},"required":["compressed_messages","created_ms","input_tokens","keep_recent","marker_id","output_tokens","summary","through_message_id"],"title":"CompactionMarker","type":"object"} as const;
+
 export const connector_catalog_itemSchema = {"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"ConnectorConfig":{"description":"Non-secret connector execution config delivered to clients (ADR-060).","properties":{"args":{"default":[],"description":"Verbatim argv for stdio.","items":{"type":"string"},"type":"array"},"command":{"default":"","description":"Executable for stdio (no shell; args verbatim).","type":"string"},"env":{"additionalProperties":{"type":"string"},"default":{},"description":"Allow-listed child environment (no static secrets).","type":"object"},"timeout_ms":{"default":0,"description":"Per-request timeout (ms; 0/absent => client default).","format":"uint64","minimum":0.0,"type":"integer"},"url":{"default":"","description":"HTTP(S) endpoint for http/sse transports.","type":"string"}},"type":"object"},"ConnectorOAuth":{"description":"OAuth public-client metadata (no client_secret; ADR-060, docs/07 §6).\n\nThe desktop client runs the authorization-code + PKCE flow itself: it opens the system browser at [`authorize_url`](Self::authorize_url), listens on an ephemeral loopback redirect (RFC 8252), then exchanges the code at [`token_url`](Self::token_url). Tokens stay in the client keychain; the server only stores this non-secret metadata.","properties":{"authorize_url":{"default":"","description":"OAuth authorize endpoint (non-secret; catalog `config.authorize_url`).","type":"string"},"client_id":{"type":"string"},"redirect_uri":{"type":"string"},"scopes":{"default":[],"items":{"type":"string"},"type":"array"},"token_url":{"default":"","description":"OAuth token endpoint (non-secret; catalog `config.token_url`).","type":"string"}},"required":["client_id","redirect_uri"],"type":"object"},"ConnectorTransport":{"description":"MCP transport.","enum":["stdio","http","sse"],"type":"string"}},"description":"One client connector catalog item (`GET /api/client/v1/connectors`, extended with `config`).","properties":{"config":{"allOf":[{"$ref":"#/definitions/ConnectorConfig"}],"default":{"args":[],"command":"","env":{},"timeout_ms":0,"url":""}},"enabled":{"default":false,"type":"boolean"},"id":{"type":"string"},"name":{"type":"string"},"oauth":{"anyOf":[{"$ref":"#/definitions/ConnectorOAuth"},{"type":"null"}],"default":null,"description":"OAuth public-client metadata (no secret); absent for non-OAuth connectors."},"transport":{"$ref":"#/definitions/ConnectorTransport"}},"required":["id","name","transport"],"title":"ConnectorCatalogItem","type":"object"} as const;
 
 export const connector_oauthSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"OAuth public-client metadata (no client_secret; ADR-060, docs/07 §6).\n\nThe desktop client runs the authorization-code + PKCE flow itself: it opens the system browser at [`authorize_url`](Self::authorize_url), listens on an ephemeral loopback redirect (RFC 8252), then exchanges the code at [`token_url`](Self::token_url). Tokens stay in the client keychain; the server only stores this non-secret metadata.","properties":{"authorize_url":{"default":"","description":"OAuth authorize endpoint (non-secret; catalog `config.authorize_url`).","type":"string"},"client_id":{"type":"string"},"redirect_uri":{"type":"string"},"scopes":{"default":[],"items":{"type":"string"},"type":"array"},"token_url":{"default":"","description":"OAuth token endpoint (non-secret; catalog `config.token_url`).","type":"string"}},"required":["client_id","redirect_uri"],"title":"ConnectorOAuth","type":"object"} as const;
@@ -1101,6 +1144,8 @@ export const ipc_command_requestSchema = {"$schema":"http://json-schema.org/draf
 
 export const ipc_command_responseSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"One command response.","properties":{"data":{"description":"Success payload (if any)."},"error":{"description":"Error message on failure.","type":["string","null"]},"ok":{"description":"True on success.","type":"boolean"}},"required":["ok"],"title":"CommandResponse","type":"object"} as const;
 
+export const ipc_compaction_getSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`session.compaction_get` / `session.compacted_view` payload.","properties":{"conversation_id":{"description":"Conversation id.","type":"string"},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["conversation_id","workspace_id"],"title":"CompactionGetPayload","type":"object"} as const;
+
 export const ipc_connectors_clear_resultSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`connectors.clear` result: whether the catalog config was cleared.","properties":{"cleared":{"description":"True on success (the command fails instead of returning false).","type":"boolean"}},"required":["cleared"],"title":"ConnectorsClearResult","type":"object"} as const;
 
 export const ipc_connectors_configure_resultSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`connectors.configure` result: number of MCP servers installed.","properties":{"configured":{"description":"Enabled servers installed from the catalog (0 when none are enabled).","format":"uint64","minimum":0.0,"type":"integer"}},"required":["configured"],"title":"ConnectorsConfigureResult","type":"object"} as const;
@@ -1134,6 +1179,8 @@ export const ipc_mcp_testSchema = {"$schema":"http://json-schema.org/draft-07/sc
 export const ipc_meta_infoSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`meta.get` result.","properties":{"agent_config_error":{"default":null,"description":"Boot-time agent config error when the runtime fell back to defaults.\n\nThe host serializes `null` when there is no error; absent is accepted too.","type":["string","null"]},"edition":{"description":"Edition (`personal` | `enterprise`) baked in by the composed build.","type":"string"},"packages":{"description":"Composed package ids.","items":{"type":"string"},"type":"array"},"version":{"description":"Composed app version.","type":"string"}},"required":["edition","packages","version"],"title":"MetaInfo","type":"object"} as const;
 
 export const ipc_question_answerSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`question.answer` payload.","properties":{"answers":{"description":"Answers keyed by question id (opaque JSON)."},"question_id":{"description":"Pending question batch id.","type":"string"}},"required":["answers","question_id"],"title":"QuestionAnswerPayload","type":"object"} as const;
+
+export const ipc_session_compactSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`session.compact` payload.","properties":{"conversation_id":{"description":"Conversation id.","type":"string"},"workspace_id":{"description":"Owning workspace id.","type":"string"}},"required":["conversation_id","workspace_id"],"title":"SessionCompactPayload","type":"object"} as const;
 
 export const ipc_session_createSchema = {"$schema":"http://json-schema.org/draft-07/schema#","description":"`session.create` payload.","properties":{"title":{"default":"","description":"Optional conversation title.","type":"string"},"workspace_id":{"description":"Owning workspace id (mandatory; sessions never auto-create).","type":"string"}},"required":["workspace_id"],"title":"SessionCreatePayload","type":"object"} as const;
 
@@ -1267,6 +1314,10 @@ export const SCHEMAS = {
   approval_policy: approval_policySchema,
   auth_login: auth_loginSchema,
   auth_session: auth_sessionSchema,
+  compact_result: compact_resultSchema,
+  compacted_view_result: compacted_view_resultSchema,
+  compaction_get_result: compaction_get_resultSchema,
+  compaction_marker: compaction_markerSchema,
   connector_catalog_item: connector_catalog_itemSchema,
   connector_oauth: connector_oauthSchema,
   connector: connectorSchema,
@@ -1291,6 +1342,7 @@ export const SCHEMAS = {
   ipc_chat_send: ipc_chat_sendSchema,
   ipc_command_request: ipc_command_requestSchema,
   ipc_command_response: ipc_command_responseSchema,
+  ipc_compaction_get: ipc_compaction_getSchema,
   ipc_connectors_clear_result: ipc_connectors_clear_resultSchema,
   ipc_connectors_configure_result: ipc_connectors_configure_resultSchema,
   ipc_connectors_configure: ipc_connectors_configureSchema,
@@ -1308,6 +1360,7 @@ export const SCHEMAS = {
   ipc_mcp_test: ipc_mcp_testSchema,
   ipc_meta_info: ipc_meta_infoSchema,
   ipc_question_answer: ipc_question_answerSchema,
+  ipc_session_compact: ipc_session_compactSchema,
   ipc_session_create: ipc_session_createSchema,
   ipc_session_export: ipc_session_exportSchema,
   ipc_session_fork: ipc_session_forkSchema,

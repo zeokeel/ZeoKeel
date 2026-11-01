@@ -65,10 +65,13 @@ describe("single command catalog (⌘K + composer /)", () => {
       "export",
       "skill",
     ]);
+    // Batch2 progress: `/compact` is a real command; plan/skill stay disabled placeholders.
     expect(slash.filter((command) => command.disabled === true).map((command) => command.name)).toEqual([
       "plan",
-      "compact",
       "skill",
     ]);
+    const compact = slash.find((command) => command.name === "compact");
+    expect(compact?.kind).toBe("execute");
+    expect(compact?.disabled).toBeUndefined();
     expect(slash.some((command) => command.id === "new-conversation")).toBe(false);
   });

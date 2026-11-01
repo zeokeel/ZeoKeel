@@ -1,0 +1,199 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CompactedViewResult",
+  "description": "`session.compacted_view` result (replay/divider only; raw store untouched).",
+  "type": "object",
+  "required": [
+    "messages"
+  ],
+  "properties": {
+    "marker": {
+      "description": "Latest marker, if any.",
+      "default": null,
+      "anyOf": [
+        {
+          "$ref": "#/definitions/CompactionMarker"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "messages": {
+      "description": "Replay view: the marker message followed by recent raw messages.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Message"
+      }
+    }
+  },
+  "definitions": {
+    "AgentUsage": {
+      "description": "Token usage reported by the provider for one agent turn.\n\nThe counters are required (a `usage` object is only present when the provider reported usage; unreported counters are normalized to `0` by the runtime), matching `specs/changes/2026-10-31-config-and-media/spec.md`. `cost_micros` stays optional because most providers do not report cost.",
+      "type": "object",
+      "required": [
+        "cached_tokens",
+        "input_tokens",
+        "output_tokens",
+        "reasoning_tokens",
+        "total_tokens"
+      ],
+      "properties": {
+        "cached_tokens": {
+          "description": "The part of `input_tokens` read from a provider-managed cache.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "cost_micros": {
+          "description": "Provider-reported cost in micro-USD (1e-6 USD), when known.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "input_tokens": {
+          "description": "Every input token (cached + uncached).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "output_tokens": {
+          "description": "Every output token, reasoning included.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "reasoning_tokens": {
+          "description": "The part of `output_tokens` spent on internal reasoning.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "total_tokens": {
+          "description": "`input_tokens + output_tokens`.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "CompactionMarker": {
+      "description": "Persisted conversation compaction marker (`role=system`, id `compaction:<uuid>`).",
+      "type": "object",
+      "required": [
+        "compressed_messages",
+        "created_ms",
+        "input_tokens",
+        "keep_recent",
+        "marker_id",
+        "output_tokens",
+        "summary",
+        "through_message_id"
+      ],
+      "properties": {
+        "compressed_messages": {
+          "description": "Number of raw messages folded into the summary.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "created_ms": {
+          "description": "Marker creation time (ms since epoch).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "input_tokens": {
+          "description": "Estimated/actual input tokens summarized.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "keep_recent": {
+          "description": "Recent raw messages/turns kept verbatim.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "marker_id": {
+          "description": "Marker message id (`compaction:<uuid>`).",
+          "type": "string"
+        },
+        "output_tokens": {
+          "description": "Estimated/actual summary tokens.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "summary": {
+          "description": "Extractive/model summary (≤2k tokens by contract).",
+          "type": "string"
+        },
+        "through_message_id": {
+          "description": "Last raw message covered by the summary.",
+          "type": "string"
+        }
+      }
+    },
+    "Message": {
+      "description": "One message inside a conversation.",
+      "type": "object",
+      "required": [
+        "content",
+        "conversation_id",
+        "created_at_ms",
+        "id",
+        "role"
+      ],
+      "properties": {
+        "content": {
+          "description": "Text content (tool records are JSON strings in M1).",
+          "type": "string"
+        },
+        "conversation_id": {
+          "description": "Parent conversation id.",
+          "type": "string"
+        },
+        "created_at_ms": {
+          "description": "Creation time (ms since epoch).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "id": {
+          "description": "Stable id.",
+          "type": "string"
+        },
+        "role": {
+          "description": "Role: `user` | `assistant` | `tool` | `system`.",
+          "type": "string"
+        },
+        "status": {
+          "description": "Turn status: `done` | `cancelled` | `error` (M1 persistence for cancel markers).",
+          "default": "done",
+          "type": "string"
+        },
+        "turn_id": {
+          "description": "Owning agent turn; tool rows and the closing assistant row share it.\n\nLegacy rows parse as an empty string and are grouped by the legacy fallback rule (next assistant in the conversation).",
+          "default": "",
+          "type": "string"
+        },
+        "usage": {
+          "description": "Provider token usage for an assistant turn, when reported.\n\nPersisted so usage survives restarts (round-4); legacy rows parse as `None`.",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AgentUsage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

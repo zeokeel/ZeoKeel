@@ -6,6 +6,7 @@
 - 状态 planned；证据根 target/evidence/2026-11-01-client-plan-mode/interaction/
 - 测试 e2e/interaction/command-plan.spec.ts
 
+- 状态：`planned`（实现开始时与 `intuition.md` 一起改 `active`）
 ## 1. 元素
 | 元素 | role/name | 键盘 | 默认焦点 |
 | --- | --- | --- | --- |

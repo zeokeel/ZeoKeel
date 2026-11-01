@@ -129,13 +129,13 @@ test.describe("composer Phase 2a interaction contract", () => {
 
       // Batch 2 placeholder: visible, disabled, inert (never executed/sent).
       await input.fill("");
-      await page.keyboard.type("/compact");
-      const placeholder = page.getByRole("option", { name: /压缩上下文/ });
+      await page.keyboard.type("/plan");
+      const placeholder = page.getByRole("option", { name: /计划/ });
       await expect(placeholder).toBeVisible();
       expect(await placeholder.isDisabled()).toBe(true);
       await page.keyboard.press("Enter");
       await expect(page.getByText("未实现（Batch 2）")).toBeVisible();
-      await expect(input).toHaveValue("/compact");
+      await expect(input).toHaveValue("/plan");
       await expect(page.getByTestId("user-text")).toHaveCount(0);
       await page.keyboard.press("Escape");
       await expect(input).toBeFocused();

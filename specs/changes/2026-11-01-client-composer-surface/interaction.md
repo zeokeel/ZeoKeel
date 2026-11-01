@@ -40,7 +40,7 @@
 | ID | 前置 | 人的动作（点击/按键/输入/拖放） | 期望（可见 + aria + 焦点 + 持久化） | 优先级 | 测试落点 | 证据 |
 | --- | --- | --- | --- | --- | --- | --- |
 | CMP2-CMD-01 | 已有会话 | 词首输入 `/`，输入过滤（如「模」），↑/↓，Esc | `/` 打开 DSH 命令 listbox（添加 file/goal + 指令 model/permission/export 等可见，**不含 UI 动作**）；过滤大小写不敏感；↑↓ 只移高亮、焦点留输入框；Esc 关闭且草稿保留、焦点回输入框（命令执行断言归 `CMD2-*`） | P0 | `composer-phase2a.spec.ts` | `CMP2-CMD-01.json` |
-| CMP2-CMD-02 | 菜单已打开 | 输入 `/zzz`；输入 `/compact` 后 Enter；Esc | 无匹配显示「没有匹配的命令」空态、不发送；Batch 2 占位（`/compact`/`/plan`/`/skill`）disabled 且 inert（不执行/不发送、显示「未实现（Batch 2）」）；Esc 保留草稿并回输入框 | P0 | `composer-phase2a.spec.ts` | `CMP2-CMD-02.json` |
+| CMP2-CMD-02 | 菜单已打开 | 输入 `/zzz`；输入 `/plan` 后 Enter；Esc | 无匹配显示「没有匹配的命令」空态、不发送；Batch 2 占位（`/plan`/`/skill`；`/compact` 已由 command-compact 真实化）disabled 且 inert（不执行/不发送、显示「未实现（Batch 2）」）；Esc 保留草稿并回输入框 | P0 | `composer-phase2a.spec.ts` | `CMP2-CMD-02.json` |
 | CMP2-AT-01 | 会话有 workspace | 词首输入 `@` 或点引用按钮 | 打开文件菜单（数据来自 `workspace.files`）；过滤 path（大小写不敏感）；目录/文件均可见并标注 kind | P0 | `composer-phase2a.spec.ts` | `CMP2-AT-01.json` |
 | CMP2-AT-02 | `@` 菜单已打开 | 选择文件/目录；重复选择同一路径；凑满 5 条后再加 | 生成原子引用 chip、从输入框移除 `@query`、去重、按添加顺序；引用+附件合并 ≤5，超出禁用新增并提示 | P0 | `composer-phase2a.spec.ts` | `CMP2-AT-02.json` |
 | CMP2-AT-03 | `@` 菜单已打开 | 文件列表空/加载中/错误/离线 | 显示对应状态与可读提示；不阻塞继续输入普通文本 | P1 | `composer-phase2a.spec.ts` | `CMP2-AT-03.json` |

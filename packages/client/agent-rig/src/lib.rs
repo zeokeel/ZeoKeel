@@ -932,6 +932,19 @@ impl Agent for RigAgent {
         Ok(())
     }
 
+    fn complete_raw(&self, prompt: &str) -> Result<String, String> {
+        let model = self
+            .model
+            .lock()
+            .map(|guard| guard.clone())
+            .map_err(|_| "model lock poisoned".to_owned())?;
+        let agent = AgentBuilder::new(model).name("zeokeel-summarizer").build();
+        self.runtime
+            .block_on(async { agent.prompt(prompt).await })
+            .map(|response| response.output())
+            .map_err(|error| error.to_string())
+    }
+
     fn set_approval_preset(&self, preset: Option<&str>) -> Result<(), String> {
         let policy = preset.map(zk_contract_config::ApprovalPolicy::parse);
         let source: Option<Arc<dyn ApprovalPolicySource>> = policy.map(|policy| {

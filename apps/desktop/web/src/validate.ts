@@ -27,6 +27,8 @@ import {
   ipc_chat_send_resultSchema,
   ipc_command_responseSchema,
   ipc_eventSchema,
+  compact_resultSchema,
+  compaction_get_resultSchema,
   conversation_override_resultSchema,
   feedback_submit_resultSchema,
   goal_resultSchema,
@@ -90,6 +92,8 @@ export type BoundaryName =
   | "goalResult"
   | "conversationOverrideResult"
   | "sessionExportResult"
+  | "compactResult"
+  | "compactionGetResult"
   | "feedbackSubmitResult"
   | "questionAsked";
 
@@ -113,6 +117,8 @@ const checks: Record<BoundaryName, ValidateFunction> = {
   conversationOverrideResult: ajv.compile(conversation_override_resultSchema),
   sessionExportResult: ajv.compile(session_export_resultSchema),
   feedbackSubmitResult: ajv.compile(feedback_submit_resultSchema),
+  compactResult: ajv.compile(compact_resultSchema),
+  compactionGetResult: ajv.compile(compaction_get_resultSchema),
   questionAsked: ajv.compile(agent_question_askedSchema),
 };
 
@@ -214,4 +220,12 @@ export function validateSessionExportResult(value: unknown): boolean {
 
 export function validateFeedbackSubmitResult(value: unknown): boolean {
   return validateBoundary("feedbackSubmitResult", value);
+}
+
+export function validateCompactResult(value: unknown): boolean {
+  return validateBoundary("compactResult", value);
+}
+
+export function validateCompactionGetResult(value: unknown): boolean {
+  return validateBoundary("compactionGetResult", value);
 }

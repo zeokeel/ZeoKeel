@@ -24,6 +24,7 @@ import {
   parseUserContent,
   validateAttachment,
 } from "../src/index";
+import { CompactDivider } from "../src/CompactDivider";
 
 afterEach(() => {
   cleanup();
@@ -111,6 +112,7 @@ function makeActions(overrides: Partial<UiActions> = {}): UiActions {
     setConversationOverride: (): Promise<boolean> => Promise.resolve(true),
     exportConversation: (): Promise<null> => Promise.resolve(null),
     submitFeedback: (): Promise<boolean> => Promise.resolve(true),
+    compactConversation: (): Promise<boolean> => Promise.resolve(true),
     saveSettings: (settings): Promise<{ status: "saved"; settings: typeof settings; revision: number }> =>
       Promise.resolve({ status: "saved", settings, revision: 1 }),
     reloadSettings: (): Promise<ReturnType<typeof defaultSettings>> =>
@@ -155,6 +157,7 @@ function makeUi(overrides: Partial<UiValue> = {}, actions: Partial<UiActions> = 
     gatewayModels: [],
     goal: null,
     slashCommand: null,
+    compaction: null,
     actions: makeActions(actions),
     ...overrides,
   };
@@ -425,5 +428,35 @@ describe("composer surface", () => {
     expect(screen.getByRole("status", { name: "usageUnreported" }).textContent).toBe(
       "usageUnreported",
     );
+  });
+});
+
+describe("compact divider", () => {
+  const marker = {
+    markerId: "compaction:abc",
+    summary: "goal: ship compaction",
+    throughMessageId: "m3",
+    createdMs: 1,
+    inputTokens: 30,
+    outputTokens: 12,
+    compressedMessages: 4,
+    keepRecent: 6,
+  };
+
+  it("shows the boundary label and expands the summary on demand", async () => {
+    render(
+      <UiProvider value={makeUi()}>
+        <CompactDivider marker={marker} />
+      </UiProvider>,
+    );
+    const separators = screen.getAllByRole("separator", { name: "compactDividerLabel" });
+    expect(separators.length).toBeGreaterThan(0);
+    expect(screen.getByText("compactCount")).toBeTruthy();
+    expect(screen.queryByText("goal: ship compaction")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "compactToggleShow" }));
+    expect(screen.getByRole("region", { name: "compactSummaryLabel" }).textContent).toContain(
+      "goal: ship compaction",
+    );
+    expect(screen.getByText(/compactUsage/)).toBeTruthy();
   });
 });

@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CompactionMarker",
+  "description": "Persisted conversation compaction marker (`role=system`, id `compaction:<uuid>`).",
+  "type": "object",
+  "required": [
+    "compressed_messages",
+    "created_ms",
+    "input_tokens",
+    "keep_recent",
+    "marker_id",
+    "output_tokens",
+    "summary",
+    "through_message_id"
+  ],
+  "properties": {
+    "compressed_messages": {
+      "description": "Number of raw messages folded into the summary.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "created_ms": {
+      "description": "Marker creation time (ms since epoch).",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "input_tokens": {
+      "description": "Estimated/actual input tokens summarized.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "keep_recent": {
+      "description": "Recent raw messages/turns kept verbatim.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "marker_id": {
+      "description": "Marker message id (`compaction:<uuid>`).",
+      "type": "string"
+    },
+    "output_tokens": {
+      "description": "Estimated/actual summary tokens.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "summary": {
+      "description": "Extractive/model summary (≤2k tokens by contract).",
+      "type": "string"
+    },
+    "through_message_id": {
+      "description": "Last raw message covered by the summary.",
+      "type": "string"
+    }
+  }
+}

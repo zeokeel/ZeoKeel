@@ -94,10 +94,10 @@ test.describe("command surface Batch 1 interaction contract", () => {
     await page.keyboard.press("Enter");
     await expect(page.getByText("不支持的命令")).toBeVisible();
     await expect(page.getByTestId("user-text")).toHaveCount(before);
-    await composer(page).fill("/compact");
-    const compact = page.getByRole("option", { name: /压缩上下文/ });
-    await expect(compact).toBeVisible();
-    expect(await compact.isDisabled()).toBe(true);
+    await composer(page).fill("/plan");
+    const placeholder = page.getByRole("option", { name: /计划/ });
+    await expect(placeholder).toBeVisible();
+    expect(await placeholder.isDisabled()).toBe(true);
     await page.keyboard.press("Enter");
     await expect(page.getByText("未实现（Batch 2）")).toBeVisible();
     await expect(page.getByTestId("user-text")).toHaveCount(before);

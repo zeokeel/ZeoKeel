@@ -21,6 +21,7 @@ import {
   type McpServerConfig,
   type CommandResult,
   type Conversation,
+  type CompactionMarker,
   type ConversationExport,
   type ConversationOverride,
   type EmbeddingSettings,
@@ -70,6 +71,8 @@ import {
   validateWorkspace,
   validateWorkspaceChangesResult,
   validateWorkspaceFilesResult,
+  validateCompactionGetResult,
+  validateCompactResult,
   validateConversationOverrideResult,
   validateFeedbackSubmitResult,
   validateGoalResult,
@@ -934,4 +937,38 @@ export function parseFeedbackSubmitResult(value: unknown): { stored: string; pat
   const path = readString(value, "path");
   if (path === null) return null;
   return { stored: readString(value, "stored") ?? "local", path };
+}
+
+/** Parse one marker object (camelCase view type; marker_id → markerId). */
+export function parseCompactionMarker(value: unknown): CompactionMarker | null {
+  if (!isRecord(value)) return null;
+  const markerId = readString(value, "marker_id");
+  const summary = readString(value, "summary");
+  const through = readString(value, "through_message_id");
+  if (markerId === null || summary === null || through === null) return null;
+  return {
+    markerId,
+    summary,
+    throughMessageId: through,
+    createdMs: readNumber(value, "created_ms") ?? 0,
+    inputTokens: readNumber(value, "input_tokens") ?? 0,
+    outputTokens: readNumber(value, "output_tokens") ?? 0,
+    compressedMessages: readNumber(value, "compressed_messages") ?? 0,
+    keepRecent: readNumber(value, "keep_recent") ?? 0,
+  };
+}
+
+/** `session.compaction_get` result → marker or null. */
+export function parseCompactionGetResult(value: unknown): { marker: CompactionMarker | null } | null {
+  if (!isRecord(value) || !validateCompactionGetResult(value)) return null;
+  return { marker: parseCompactionMarker(value["marker"]) };
+}
+
+/** `session.compact` result → { marker, noop }. */
+export function parseCompactResult(value: unknown): { marker: CompactionMarker | null; noop: boolean } | null {
+  if (!isRecord(value) || !validateCompactResult(value)) return null;
+  return {
+    marker: parseCompactionMarker(value["marker"]),
+    noop: readBoolean(value, "noop") ?? false,
+  };
 }

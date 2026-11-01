@@ -134,9 +134,9 @@ test.describe("M1 serve carrier (real dispatch + SQLite)", () => {
     await expect(composer).toHaveValue("");
     await expect(page.getByRole("dialog", { name: "会话级设置" })).toBeVisible();
     await page.keyboard.press("Escape");
-    // Batch 2 placeholder never executes or sends.
-    await composer.fill("/compact");
-    await expect(page.getByRole("option", { name: /压缩上下文/ })).toBeVisible();
+    // Batch 2 placeholder never executes or sends (`/compact` is a real command now).
+    await composer.fill("/plan");
+    await expect(page.getByRole("option", { name: /计划/ })).toBeVisible();
     await page.keyboard.press("Enter");
     await expect(page.getByText("未实现（Batch 2）")).toBeVisible();
     await expect(page.getByTestId("user-text")).toHaveCount(0);
@@ -273,4 +273,23 @@ test.describe("M1 serve carrier (real dispatch + SQLite)", () => {
     await expect(page.getByTestId("inspector-terminal-output")).toContainText("term-ok", { timeout: 20_000 });
     await page.screenshot({ path: "target/evidence/m1/serve-terminal-phase2b.png" });
   });
+});
+
+test("serve carrier /compact keeps raw messages and shows the compaction divider", async ({ page }) => {
+  await page.goto(`${SERVE}/`, { waitUntil: "networkidle" });
+  await expect(page.getByRole("complementary", { name: "工作区与会话" })).toBeVisible();
+  await page.getByRole("button", { name: "新建会话", exact: true }).last().click();
+  const composer = page.getByRole("textbox", { name: "消息输入框" });
+  for (let index = 0; index < 7; index += 1) {
+    await composer.fill(`compact-e2e-${String(index)}`);
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("user-text").last()).toHaveText(`compact-e2e-${String(index)}`);
+    await expect(page.getByRole("button", { name: "停止生成" })).toHaveCount(0, { timeout: 30_000 });
+  }
+  await composer.fill("/compact");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("较早消息已压缩").first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("separator", { name: "较早消息已压缩" }).first()).toBeVisible();
+  // Raw history stays visible (store keeps raw; only a system marker is appended).
+  await expect(page.getByTestId("user-text").first()).toHaveText("compact-e2e-0");
 });

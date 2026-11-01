@@ -46,6 +46,8 @@ impl Runtime {
 
     pub fn set_approval_preset(&self, preset: Option<&str>) -> Result<(), String> { self.agent.set_approval_preset(preset) }
 
+    pub fn summarize(&self, prompt: &str) -> Result<String, String> { self.agent.complete_raw(prompt) }
+
     pub fn sessions(&self) -> Arc<dyn zk_contract_session::SessionStore> {
         Arc::clone(&self.sessions)
     }
@@ -180,6 +182,7 @@ pub fn configure_media_from_settings(settings: &zk_contract_config::MediaSetting
 
 pub use inner::*;
 
+pub use zk_kit_compaction;
 pub use zk_kit_session;
 pub use zk_kit_tools;
 pub use zk_tool_goal;

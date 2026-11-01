@@ -10,6 +10,7 @@ import {
   type BrandConfig,
   type CommandDescriptor,
   type SettingsSaveOutcome,
+  type CompactionMarker,
   type ConversationExport,
   type ConversationOverride,
   type FeedbackCategory,
@@ -26,7 +27,7 @@ import { upgradeInfoOf } from "./upgrade";
 import { useAppController, type AppController } from "./state/controller";
 import { useResolvedTheme } from "./theme";
 import type { Transport } from "./types";
-import { parseConversation, parseConversationOverrideResult, parseFeedbackSubmitResult, parseFileEntries, parseGoalResult, parseSessionExportResult, parseSessionSearchResult, parseTerminalResult, parseUpdateRelease, parseWorkspaceChanges, parseWorkspaceFileReadResult } from "./protocol";
+import { parseCompactResult, parseCompactionGetResult, parseConversation, parseConversationOverrideResult, parseFeedbackSubmitResult, parseFileEntries, parseGoalResult, parseSessionExportResult, parseSessionSearchResult, parseTerminalResult, parseUpdateRelease, parseWorkspaceChanges, parseWorkspaceFileReadResult } from "./protocol";
 import { validateAttachmentSaveResult } from "./validate";
 import { downloadSkillArchive, fetchAppHtml, fetchApps, fetchConnectorCatalog, fetchSkills, fetchTombstones, openApp, sendInstallReceipt, toBase64, toggleConnector, type AppItem, type ConnectorItem, type SkillItem } from "./store";
 import { clearConnectorCatalog, reloadConnectorSessions, syncConnectorCatalog } from "./connectors-sync";
@@ -96,6 +97,7 @@ export interface CommandCatalogInput {
 /** DSH 1:1 slash commands (Batch 1) + Batch 2 placeholders (shared catalog rows). */
 export function buildSlashCommands(
   t: (key: string, vars?: Record<string, string | number>) => string,
+  streaming = false,
 ): CommandDescriptor[] {
   const row = (
     id: string,
@@ -117,7 +119,7 @@ export function buildSlashCommands(
     row("slash-goal", "goal", t("slashGoal"), t("commandGroupAdd"), "leadingInput"),
     row("slash-plan", "plan", t("slashPlan"), t("commandGroupAdd"), "disabled"),
     row("slash-feedback", "feedback", t("slashFeedback"), t("commandGroupAdd"), "action"),
-    row("slash-compact", "compact", t("slashCompact"), t("commandGroupCommand"), "disabled"),
+    { ...row("slash-compact", "compact", t("slashCompact"), t("commandGroupCommand"), "execute"), ...(streaming ? { disabled: true, disabledReason: t("compactStreamingBlocked") } : {}) },
     row("slash-permission", "permission", t("slashPermission"), t("commandGroupCommand"), "popupSelect"),
     row("slash-model", "model", t("slashModel"), t("commandGroupCommand"), "popupSelect"),
     row("slash-export", "export", t("slashExport"), t("commandGroupCommand"), "execute"),
@@ -169,7 +171,7 @@ export function buildCommandCatalog(input: CommandCatalogInput): CommandDescript
       { id: "open-apps", title: t("panelApps"), group: t("workspaceActions"), surface: "palette" },
     );
   }
-  return [...palette, ...buildSlashCommands(t)];
+  return [...palette, ...buildSlashCommands(t, streaming)];
 }
 
 export function App(props: { transport: Transport }) {
@@ -185,6 +187,7 @@ export function App(props: { transport: Transport }) {
   const [gatewayModels, setGatewayModels] = useState<string[]>([]);
   const [goal, setGoalState] = useState<GoalView | null>(null);
   const [slashCommand, setSlashCommand] = useState<{ name: string; query: string; token: number } | null>(null);
+  const [compaction, setCompaction] = useState<CompactionMarker | null>(null);
   const [gatewayModel, setGatewayModel] = useState<string>(loadGatewayModel);
   const [updateText, setUpdateText] = useState<string | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
@@ -234,6 +237,38 @@ export function App(props: { transport: Transport }) {
     setInspectorOpen((value) => !value);
   }, []);
 
+  /** `/compact`: summarize older history into a marker (raw history untouched). */
+  const compactConversation = useCallback(async (): Promise<boolean> => {
+    const workspaceId = state.activeWorkspaceId;
+    const conversationId = state.activeConversationId;
+    if (workspaceId === null || conversationId === null) {
+      controller.showToast(t("workspaceRequired"));
+      return false;
+    }
+    try {
+      const parsed = parseCompactResult(
+        await props.transport.call("session.compact", {
+          workspace_id: workspaceId,
+          conversation_id: conversationId,
+        }),
+      );
+      if (parsed === null) {
+        controller.showToast(t("compactFailed"));
+        return false;
+      }
+      setCompaction(parsed.marker);
+      controller.showToast(parsed.noop ? t("compactNoop") : t("compactDone"));
+      if (!parsed.noop) {
+        // Reload raw messages so the divider can anchor to the persisted message id.
+        controller.retryMessages();
+      }
+      return true;
+    } catch {
+      controller.showToast(t("compactFailed"));
+      return false;
+    }
+  }, [controller, props.transport, state.activeWorkspaceId, state.activeConversationId, t]);
+
   /** Single executor for the single catalog (⌘K palette + composer `/`). */
   const runCommand = useCallback(
     (id: string, query?: string): void => {
@@ -270,8 +305,12 @@ export function App(props: { transport: Transport }) {
       }
       // DSH `/` commands: same catalog, same executor; the composer reacts to the
       // intent (file picker / popups / dialogs) instead of duplicating executors.
+      if (id === "slash-compact") {
+        void compactConversation();
+        return;
+      }
       if (id.startsWith("slash-")) {
-        const command = buildSlashCommands(t).find((entry) => entry.id === id);
+        const command = buildSlashCommands(t, state.streaming).find((entry) => entry.id === id);
         if (command?.name === undefined || command.disabled === true) {
           controller.showToast(t("commandUnimplemented"));
           return;
@@ -279,7 +318,7 @@ export function App(props: { transport: Transport }) {
         setSlashCommand({ name: command.name, query: query ?? "", token: Date.now() });
       }
     },
-    [controller, openSettings, t],
+    [compactConversation, controller, openSettings, state.streaming, t],
   );
 
   /** Workspace file candidates for `@` (cached `workspace.files`; never a second IPC). */
@@ -597,6 +636,34 @@ export function App(props: { transport: Transport }) {
     return () => { cancelled = true; };
   }, [state.meta.edition, session, activeServerUrl, reportUpgrade]);
 
+  // Latest compaction marker is conversation-scoped (raw messages stay visible).
+  useEffect(() => {
+    const workspaceId = state.activeWorkspaceId;
+    const conversationId = state.activeConversationId;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      if (!active) return;
+      if (workspaceId === null || conversationId === null) {
+        setCompaction(null);
+        return;
+      }
+      void props.transport
+        .call("session.compaction_get", { workspace_id: workspaceId, conversation_id: conversationId })
+        .then((raw) => {
+          if (!active) return;
+          const parsed = parseCompactionGetResult(raw);
+          setCompaction(parsed === null ? null : parsed.marker);
+        })
+        .catch(() => {
+          if (active) setCompaction(null);
+        });
+    }, 0);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [props.transport, state.activeWorkspaceId, state.activeConversationId]);
+
   // Conversation goal is conversation-scoped; reload it when the selection changes.
   useEffect(() => {
     const workspaceId = state.activeWorkspaceId;
@@ -808,6 +875,7 @@ export function App(props: { transport: Transport }) {
     gatewayModels,
     goal,
     slashCommand,
+    compaction,
     actions: {
       send: controller.send,
       cancel: controller.cancel,
@@ -843,6 +911,7 @@ export function App(props: { transport: Transport }) {
       setConversationOverride,
       exportConversation,
       submitFeedback,
+      compactConversation,
       saveSettings: (next: AppSettings): Promise<SettingsSaveOutcome> => {
         const requiresRelogin =
           session !== null &&
