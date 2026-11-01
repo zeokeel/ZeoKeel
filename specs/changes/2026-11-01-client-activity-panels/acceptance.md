@@ -34,7 +34,7 @@
 | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | exit 0（含修复 HEAD 已存在的 `result_large_err`） | `.../logs/clippy.txt` |
 | `pnpm -r typecheck && pnpm -r lint && pnpm -r test:unit && pnpm -r build` | exit 0（21 test files / 134 tests；最终重跑 exit 0） | `.../logs/pnpm-gates.txt`、`.../logs/final-gates.txt` |
 | `bash scripts/i18n-check.sh` | exit 0 | `.../logs/i18n-check.txt` |
-| `pnpm e2e`（字面命令） | **等价序列 exit 0**（见 §1.1）：mock 段 8 passed + serve 段 24 passed（最终重跑同结果）；`restore-baseline.sh` 在未提交工作树上 exit 1 属预期。字面 `pnpm e2e` 的 `restore-baseline.sh` 依赖已提交基线（`git checkout` 生成物），未提交时其末尾 `compose --check` 必红；提交后由 Lead 复跑字面命令 | `.../logs/e2e.txt` |
+| `pnpm e2e`（字面命令） | **等价序列 exit 0**（见 §1.1）：mock 段 8 passed + serve 段 24 passed（最终重跑同结果）；`restore-baseline.sh` 在未提交工作树上 exit 1 属预期。字面 `pnpm e2e` 提交后已由 Lead 复跑：`HEAD 9a5f586` → **24 passed / exit 0**（`.../logs/pnpm-e2e-final.log`）；`export_schema && git diff --exit-code` 0 变更；`pnpm e2e:ui` 85 passed | `.../logs/e2e.txt` |
 | `pnpm e2e:ui`（全量交互 e2e） | exit 0（85 passed，含本 change 11 条 ACT2-*；最终重跑同样 85 passed） | `.../logs/e2e-ui.txt`、`.../logs/final-gates.txt` |
 | `python3 scripts/ui-interaction-gate.py --self-test && --strict` | exit 0（self-test 12 checks；strict：enforced=9 contracts，P0/P1=82 ids 全有 tag+证据，0 error） | `.../logs/interaction-gate.txt` |
 | `python3 scripts/spec-check.py` | exit 0（0 errors；2 warnings 为其它 in-progress spec） | `.../logs/spec-gates.txt` |
