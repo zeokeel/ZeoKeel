@@ -4304,25 +4304,32 @@ mod target_trim_tests {
             .unwrap();
         assert!(!composed.contains("zk-srv-"), "{composed}");
 
-        // (3) release gating: server build/image steps are enterprise-only.
+        // (3) release products: personal installers ship to GitHub Releases, while the
+        // enterprise server image (and embedded enterprise clients) is a separate job;
+        // server compilation happens only inside the image build.
         let release = std::fs::read_to_string(root.join(".github/workflows/release.yml")).unwrap();
-        let lines: Vec<&str> = release.lines().collect();
-        let mut gated = 0_usize;
-        for (index, line) in lines.iter().enumerate() {
-            if !(line.contains("cargo build --release -p zk-server")
-                || line.contains("Dockerfile.server"))
-            {
-                continue;
-            }
-            let start = index.saturating_sub(4);
-            let window = lines[start..=index].join("\n");
-            assert!(
-                window.contains("edition == 'enterprise'"),
-                "server artifact step is not enterprise-gated: {line}"
-            );
-            gated = gated.saturating_add(1);
-        }
-        assert!(gated >= 2, "release workflow server gating steps not found");
+        assert!(
+            release.contains("personal-installers") && release.contains("enterprise-clients"),
+            "release workflow must build both editions"
+        );
+        assert!(
+            release.contains("edition: personal") && release.contains("edition: enterprise"),
+            "release workflow must parameterize the desktop edition"
+        );
+        assert!(
+            release.contains("enterprise-image") && release.contains("Dockerfile.server"),
+            "enterprise image build/job missing from release workflow"
+        );
+        assert!(
+            !release.contains("cargo build --release -p zk-server"),
+            "server binary must be built inside the enterprise image, not in personal release steps"
+        );
+        let desktop =
+            std::fs::read_to_string(root.join(".github/workflows/build-desktop.yml")).unwrap();
+        assert!(
+            desktop.contains("compose --edition \"$EDITION\""),
+            "desktop builder must compose the requested edition"
+        );
     }
 
     #[test]
