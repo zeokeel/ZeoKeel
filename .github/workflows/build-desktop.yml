@@ -54,6 +54,7 @@ jobs:
           node-cache: pnpm
           python: "true"
       - name: Compose ${{ inputs.edition }} x ${{ inputs.channel }}
+        shell: bash
         run: |
           set -euo pipefail
           cargo run -q -p zk -- validate
@@ -67,6 +68,7 @@ jobs:
           print(f"composition verified: {edition}")
           PY
       - name: Build desktop web UI
+        shell: bash
         run: |
           pnpm install --frozen-lockfile
           pnpm --dir apps/desktop/web build
