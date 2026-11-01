@@ -14,6 +14,14 @@
 
 > Lead 2026-11-01 追认：实际约 35 个路径（规划 12），单目标且无第二套实现，不拆分。
 
+## 0.1 已知缺陷修复（P1，2026-11-01）
+
+> `m1-serve` 的 `/compact` 用例暴露：serve async dispatcher 内调用 `Agent::complete_raw` 时，
+> agent-rig 在 tokio runtime 中 `block_on` 自有 runtime → panic「Cannot start a runtime from
+> within a runtime」，请求不返回（mock provider 走抽取式摘要所以此前偶发通过）。
+> 修复：summarizer 的 completion 改在专用线程（`std::thread::scope`）执行（`agent-rig`），
+> 不改变同步 API；修复后提交后原样 `pnpm e2e` 复跑验证。
+
 ## 1. 验收命令与结果
 
 | 命令 | 结果 | 证据 |

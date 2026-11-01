@@ -1033,10 +1033,19 @@ impl Agent for RigAgent {
             .map(|guard| guard.clone())
             .map_err(|_| "model lock poisoned".to_owned())?;
         let agent = AgentBuilder::new(model).name("zeokeel-summarizer").build();
-        self.runtime
-            .block_on(async { agent.prompt(prompt).await })
-            .map(|response| response.output())
-            .map_err(|error| error.to_string())
+        // A summarizer call can be reached from an async host dispatcher (serve). Blocking on
+        // this agent's own runtime from inside a tokio runtime panics, so run the blocking
+        // completion on a dedicated thread; the summarizer is rare and has no shared state.
+        let outcome = std::thread::scope(|scope| {
+            let handle = scope.spawn(|| self.runtime.block_on(async { agent.prompt(prompt).await }));
+            handle.join()
+        });
+        match outcome {
+            Ok(result) => result
+                .map(|response| response.output())
+                .map_err(|error| error.to_string()),
+            Err(_) => Err("summarizer thread panicked".to_owned()),
+        }
     }
 
     fn set_approval_preset(&self, preset: Option<&str>) -> Result<(), String> {
