@@ -91,4 +91,12 @@ fn export_schema() {
         "workspace-changes-result.json",
         &schemars::schema_for!(zk_contract_ipc::results::WorkspaceChangesResult),
     );
+    write(
+        "ipc-settings-get-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::SettingsGetResult),
+    );
+    write(
+        "ipc-settings-set-result.json",
+        &schemars::schema_for!(zk_contract_ipc::results::SettingsSetResult),
+    );
 }

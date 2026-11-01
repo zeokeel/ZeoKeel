@@ -14,12 +14,18 @@ import {
   parseConversations,
   parseMessages,
   parseMeta,
-  parseSettings,
+  parseSettingsDocumentResult,
   parseStreamId,
   parseWorkspace,
   parseWorkspaces,
 } from "../protocol";
-import type { AppSettings, Conversation, Transport, Workspace } from "../types";
+import type {
+  AppSettings,
+  Conversation,
+  SettingsSaveOutcome,
+  Transport,
+  Workspace,
+} from "../types";
 import { upgradeInfoOf, type UpgradeInfo } from "../upgrade";
 import { appReducer, createInitialState, type AppState } from "./reducer";
 
@@ -91,7 +97,8 @@ export interface AppController {
   renameWorkspace: (workspaceId: string, title: string) => void;
   setDefaultWorkspace: (workspaceId: string) => void;
   removeWorkspace: (workspaceId: string, reassignTo?: string) => void;
-  saveSettings: (settings: AppSettings) => Promise<void>;
+  saveSettings: (settings: AppSettings) => Promise<SettingsSaveOutcome>;
+  reloadSettings: () => Promise<AppSettings>;
   applyServerUrl: (serverUrl: string) => void;
   decideApproval: (approvalId: string, decision: "approved" | "rejected") => void;
   answerQuestion: (questionId: string, answers: unknown) => void;
@@ -196,6 +203,7 @@ export function useAppController(transport: Transport): AppController {
         const workspace = defaultWorkspace(workspaces);
         const conversations = workspace === null ? [] : (conversationsByWorkspace[workspace.id] ?? []);
         const first = conversations[0];
+        const settingsDocument = parseSettingsDocumentResult(settingsRaw);
         dispatch({
           type: "boot_loaded",
           meta: parseMeta(metaRaw),
@@ -203,7 +211,8 @@ export function useAppController(transport: Transport): AppController {
           activeWorkspaceId: workspace === null ? null : workspace.id,
           conversationsByWorkspace,
           conversations,
-          settings: parseSettings(settingsRaw),
+          settings: settingsDocument.settings,
+          settingsRevision: settingsDocument.revision,
           activeId: first === undefined ? null : first.id,
         });
       } catch (error: unknown) {
@@ -623,14 +632,40 @@ export function useAppController(transport: Transport): AppController {
   }, []);
 
   const saveSettings = useCallback(
-    async (next: AppSettings): Promise<void> => {
-      const data = await transport.call("settings.set", { settings: next });
-      const saved = parseSettings(data);
-      dispatch({ type: "settings_saved", settings: saved });
-      showToast(translate(saved.locale, "settingsSaved"));
+    async (next: AppSettings): Promise<SettingsSaveOutcome> => {
+      try {
+        const data = await transport.call("settings.set", {
+          settings: next,
+          expected_revision: stateRef.current.settingsRevision,
+        });
+        const saved = parseSettingsDocumentResult(data);
+        dispatch({
+          type: "settings_saved",
+          settings: saved.settings,
+          revision: saved.revision,
+        });
+        showToast(translate(saved.settings.locale, "settingsSaved"));
+        return { status: "saved", settings: saved.settings, revision: saved.revision };
+      } catch (error: unknown) {
+        if (errorMessage(error).startsWith("settings/revision-conflict")) {
+          // Stale fence: keep the draft, let the dialog offer a reload.
+          return { status: "conflict" };
+        }
+        return {
+          status: "error",
+          message: friendlyError(error, stateRef.current.settings.locale),
+        };
+      }
     },
     [transport, showToast],
   );
+
+  const reloadSettings = useCallback(async (): Promise<AppSettings> => {
+    const data = await transport.call("settings.get", {});
+    const loaded = parseSettingsDocumentResult(data);
+    dispatch({ type: "settings_loaded", settings: loaded.settings, revision: loaded.revision });
+    return loaded.settings;
+  }, [transport]);
 
   const applyServerUrl = useCallback(
     (serverUrl: string): void => {
@@ -638,9 +673,14 @@ export function useAppController(transport: Transport): AppController {
         try {
           const data = await transport.call("settings.set", {
             settings: { ...stateRef.current.settings, server_url: serverUrl },
+            expected_revision: stateRef.current.settingsRevision,
           });
-          const saved = parseSettings(data);
-          dispatch({ type: "settings_saved", settings: saved });
+          const saved = parseSettingsDocumentResult(data);
+          dispatch({
+            type: "settings_saved",
+            settings: saved.settings,
+            revision: saved.revision,
+          });
         } catch {
           // Login already succeeded; persistence is retried on the next settings save.
         }
@@ -715,6 +755,7 @@ export function useAppController(transport: Transport): AppController {
     setDefaultWorkspace,
     removeWorkspace,
     saveSettings,
+    reloadSettings,
     applyServerUrl,
     decideApproval,
     answerQuestion,

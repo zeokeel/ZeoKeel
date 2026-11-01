@@ -424,6 +424,30 @@ export function parseSettings(value: unknown): AppSettings {
   };
 }
 
+/** `settings.get` / `settings.set` result: document + revision fence. */
+export interface SettingsDocumentResult {
+  settings: AppSettings;
+  revision: number;
+}
+
+/**
+ * Parse the `{ settings, revision }` envelope of `settings.get`/`settings.set`.
+ *
+ * A missing/invalid revision degrades to `0` (legacy host); the settings body is
+ * normalized by `parseSettings` (never throws, defaults on garbage).
+ */
+export function parseSettingsDocumentResult(value: unknown): SettingsDocumentResult {
+  if (!isRecord(value)) {
+    return { settings: defaultSettings(), revision: 0 };
+  }
+  const revision = readNumber(value, "revision");
+  return {
+    settings: parseSettings(value["settings"]),
+    revision:
+      revision !== null && revision >= 0 && Number.isSafeInteger(revision) ? revision : 0,
+  };
+}
+
 function parseWebSearchSettings(value: unknown): WebSearchSettings {
   const base = defaultWebSearchSettings();
   if (!isRecord(value)) {

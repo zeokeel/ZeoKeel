@@ -94,6 +94,8 @@ export function createMockTransport(options: MockOptions = {}): Transport {
   const streams = new Map<string, StreamState>();
   const listeners = new Set<(event: UiEvent) => void>();
   let settings: AppSettings = defaultSettings();
+  // Optimistic-concurrency fence mirror of the real host (`settings.meta.json`).
+  let settingsRevision = 0;
   let seq = 0;
   let streamCounter = 0;
 
@@ -352,14 +354,21 @@ export function createMockTransport(options: MockOptions = {}): Transport {
         return messagesByConversation.get(conversation.id) ?? [];
       }
       case "settings.get":
-        return parseSettings(settings);
+        return { settings: parseSettings(settings), revision: settingsRevision };
       case "settings.set": {
         const value = payload["settings"];
         if (!isRecord(value)) {
           throw new Error("settings.set: invalid settings payload");
         }
+        const expected = payload["expected_revision"];
+        if (expected !== undefined && expected !== null) {
+          if (typeof expected !== "number" || expected !== settingsRevision) {
+            throw new Error("settings/revision-conflict: stale expected_revision");
+          }
+        }
         settings = parseSettings(value);
-        return parseSettings(settings);
+        settingsRevision += 1;
+        return { settings: parseSettings(settings), revision: settingsRevision };
       }
       case "workspace.changes": {
         requireWorkspace(payload);

@@ -1,82 +1,33 @@
 /**
  * Settings form validation — pure, shared by the dialog and tests.
  * Errors are i18n keys (the dialog translates them via useUi().t).
+ *
+ * The form/error types themselves live in `@zeokeel/ui-kit` (shared with the
+ * `ui.settings.pane` contributions); this module only owns the mapping and
+ * validation rules.
  */
-import type { AgentSettings, AppSettings, Locale, ProviderKind, Theme, ToolChoiceSetting, WebSearchSettings } from "@zeokeel/ui-kit";
+import type {
+  AgentSettings,
+  AppSettings,
+  ParallelMode,
+  PromptCache,
+  ReasoningEffort,
+  SettingsErrors,
+  SettingsFieldError,
+  SettingsForm,
+  ToolChoiceSetting,
+  WebSearchSettings,
+} from "@zeokeel/ui-kit";
 
-export type ToolChoiceMode = "auto" | "none" | "required" | "specific";
-export type ParallelMode = "default" | "true" | "false";
-export type ReasoningEffort = "" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
-export type PromptCache = "" | "short" | "long";
-
-export interface SettingsForm {
-  providerKind: ProviderKind;
-  baseUrl: string;
-  model: string;
-  apiKey: string;
-  theme: Theme;
-  locale: Locale;
-  autoApproveReadOnly: boolean;
-  serverUrl: string;
-  // Agent config (strings so the form can represent "provider default" as empty).
-  maxSteps: string;
-  temperature: string;
-  maxTokens: string;
-  topP: string;
-  seed: string;
-  stop: string;
-  toolChoiceMode: ToolChoiceMode;
-  toolChoiceTools: string;
-  parallelToolCalls: ParallelMode;
-  reasoningEffort: ReasoningEffort;
-  promptCache: PromptCache;
-  memoryEnabled: boolean;
-  memoryDir: string;
-  hooksEnabled: boolean;
-  hooksLog: string;
-  scheduleEnabled: boolean;
-  scanSeconds: string;
-  // Tool/approval timeouts (ms, strings for empty/invalid UI states).
-  toolTimeoutMs: string;
-  approvalTimeoutMs: string;
-  // Embedding / vector index (empty dims means "provider default").
-  embeddingBaseUrl: string;
-  embeddingApiKey: string;
-  embeddingModel: string;
-  embeddingDims: string;
-  embeddingDir: string;
-  // Media capabilities (personal only; empty fields fall back to env).
-  mediaBaseUrl: string;
-  mediaApiKey: string;
-  mediaImageModel: string;
-  mediaAudioModel: string;
-  mediaTranscriptionModel: string;
-  mediaRerankModel: string;
-  // Web-search tool endpoint (empty base URL falls back to env/default).
-  webSearchBaseUrl: string;
-  webSearchTimeoutMs: string;
-}
-
-export type SettingsFieldError = string | null;
-
-export interface SettingsErrors {
-  baseUrl: SettingsFieldError;
-  model: SettingsFieldError;
-  maxSteps: SettingsFieldError;
-  temperature: SettingsFieldError;
-  maxTokens: SettingsFieldError;
-  topP: SettingsFieldError;
-  seed: SettingsFieldError;
-  toolChoiceTools: SettingsFieldError;
-  scanSeconds: SettingsFieldError;
-  toolTimeoutMs: SettingsFieldError;
-  approvalTimeoutMs: SettingsFieldError;
-  embeddingBaseUrl: SettingsFieldError;
-  embeddingDims: SettingsFieldError;
-  mediaBaseUrl: SettingsFieldError;
-  webSearchBaseUrl: SettingsFieldError;
-  webSearchTimeoutMs: SettingsFieldError;
-}
+export type {
+  ParallelMode,
+  PromptCache,
+  ReasoningEffort,
+  SettingsErrors,
+  SettingsFieldError,
+  SettingsForm,
+  ToolChoiceMode,
+} from "@zeokeel/ui-kit";
 
 export const EMPTY_SETTINGS_ERRORS: SettingsErrors = {
   baseUrl: null,

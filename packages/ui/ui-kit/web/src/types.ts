@@ -3,6 +3,8 @@
  * No app imports: ui-kit only depends on React.
  */
 
+import type { ComponentType } from "react";
+
 export type Locale = "zh-CN" | "en-US";
 
 export type Theme = "auto" | "light" | "dark";
@@ -332,17 +334,158 @@ export function defaultSettings(): AppSettings {
   };
 }
 
-/** Controlled props for the personal-only provider settings package. */
-export interface ProviderSettingsProps {
-  t: (key: string, vars?: Record<string, string | number>) => string;
+// ---------------------------------------------------------------------------
+// Settings panes (`ui.settings.pane` list slot; docs/16 §2.4)
+//
+// The shell owns the dialog draft (`SettingsForm`) and the single bottom save;
+// pane packages only render fields from `draft` through `update`. Pane packages
+// never branch on `edition` — the editions filter happens at compose time (C2).
+// ---------------------------------------------------------------------------
+
+/** Tool-choice form mode (maps to `ToolChoiceSetting`, `specific` uses the tool list). */
+export type ToolChoiceMode = "auto" | "none" | "required" | "specific";
+
+/** tri-state `parallel_tool_calls` form mode (`default` = provider default). */
+export type ParallelMode = "default" | "true" | "false";
+
+/** `reasoning_effort` form value (empty string = provider default). */
+export type ReasoningEffort = "" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+
+/** `prompt_cache` form value (empty string = provider default). */
+export type PromptCache = "" | "short" | "long";
+
+/**
+ * Settings dialog draft: the whole `AppSettings` document flattened into strings
+ * so "provider default" is representable as an empty input. One draft belongs to
+ * one settings-dialog session and survives pane switches; the shell merges it
+ * back into a complete `AppSettings` on the single bottom save.
+ */
+export interface SettingsForm {
   providerKind: ProviderKind;
   baseUrl: string;
   model: string;
   apiKey: string;
-  errors: { baseUrl: string | null; model: string | null };
-  isMock: boolean;
-  onProviderKind: (kind: ProviderKind) => void;
-  onBaseUrl: (value: string) => void;
-  onModel: (value: string) => void;
-  onApiKey: (value: string) => void;
+  theme: Theme;
+  locale: Locale;
+  autoApproveReadOnly: boolean;
+  serverUrl: string;
+  // Agent config (strings so the form can represent "provider default" as empty).
+  maxSteps: string;
+  temperature: string;
+  maxTokens: string;
+  topP: string;
+  seed: string;
+  stop: string;
+  toolChoiceMode: ToolChoiceMode;
+  toolChoiceTools: string;
+  parallelToolCalls: ParallelMode;
+  reasoningEffort: ReasoningEffort;
+  promptCache: PromptCache;
+  memoryEnabled: boolean;
+  memoryDir: string;
+  hooksEnabled: boolean;
+  hooksLog: string;
+  scheduleEnabled: boolean;
+  scanSeconds: string;
+  // Tool/approval timeouts (ms, strings for empty/invalid UI states).
+  toolTimeoutMs: string;
+  approvalTimeoutMs: string;
+  // Embedding / vector index (empty dims means "provider default").
+  embeddingBaseUrl: string;
+  embeddingApiKey: string;
+  embeddingModel: string;
+  embeddingDims: string;
+  embeddingDir: string;
+  // Media capabilities (personal only; empty fields fall back to env).
+  mediaBaseUrl: string;
+  mediaApiKey: string;
+  mediaImageModel: string;
+  mediaAudioModel: string;
+  mediaTranscriptionModel: string;
+  mediaRerankModel: string;
+  // Web-search tool endpoint (empty base URL falls back to env/default).
+  webSearchBaseUrl: string;
+  webSearchTimeoutMs: string;
+}
+
+/** One inline field error: an i18n key (the shell translates it), or `null`. */
+export type SettingsFieldError = string | null;
+
+/** Per-field validation errors for `SettingsForm` (i18n keys). */
+export interface SettingsErrors {
+  baseUrl: SettingsFieldError;
+  model: SettingsFieldError;
+  maxSteps: SettingsFieldError;
+  temperature: SettingsFieldError;
+  maxTokens: SettingsFieldError;
+  topP: SettingsFieldError;
+  seed: SettingsFieldError;
+  toolChoiceTools: SettingsFieldError;
+  scanSeconds: SettingsFieldError;
+  toolTimeoutMs: SettingsFieldError;
+  approvalTimeoutMs: SettingsFieldError;
+  embeddingBaseUrl: SettingsFieldError;
+  embeddingDims: SettingsFieldError;
+  mediaBaseUrl: SettingsFieldError;
+  webSearchBaseUrl: SettingsFieldError;
+  webSearchTimeoutMs: SettingsFieldError;
+}
+
+/** Props every `ui.settings.pane` contribution receives from the settings shell. */
+export interface SettingsPaneProps {
+  /** App translator (keys live in the app dictionary; pane copy is not hardcoded). */
+  t: (key: string, vars?: Record<string, string | number>) => string;
+  /** Current dialog draft (window-level; switching panes does not reset it). */
+  draft: SettingsForm;
+  /** Update one draft field (immutable, shell-owned state). */
+  update: <Key extends keyof SettingsForm>(key: Key, value: SettingsForm[Key]) => void;
+  /** Current validation errors (i18n keys). */
+  errors: SettingsErrors;
+  /** True while the single bottom save is in flight. */
+  saving: boolean;
+  /**
+   * App-level (not edition-level) facts/actions a pane may need.
+   *
+   * Which panes exist is decided at build time by `editions` (C2); a pane never
+   * branches on the edition. These fields are channel/session facts (locked
+   * address, enterprise session, gateway catalog, update check) and may be
+   * empty when the app does not provide them.
+   */
+  app: SettingsPaneAppProps;
+}
+
+/** App-level facts/actions injected into every settings pane (see `SettingsPaneProps`). */
+export interface SettingsPaneAppProps {
+  /** Channel-locked login address (C14/ADR-042): read-only when true. */
+  serverUrlLocked: boolean;
+  /** Enterprise session logout (absent when there is no login session). */
+  onLogout?: (() => void) | undefined;
+  /** Enterprise gateway model catalog (empty for personal compositions). */
+  gatewayModels: string[];
+  /** Currently selected gateway model. */
+  gatewayModel: string;
+  /** Gateway model selection (absent when the catalog is empty). */
+  onSelectGatewayModel?: ((model: string) => void) | undefined;
+  /** Update check action (absent when the edition/channel has no updater). */
+  onCheckUpdate?: (() => void) | undefined;
+  /** Latest update status text (already localized by the app). */
+  updateText: string | null;
+  /** True while the app is checking/downloading an update. */
+  updateBusy: boolean;
+}
+
+/** Outcome of one settings save attempt (the app owns revision + i18n mapping). */
+export type SettingsSaveOutcome =
+  | { status: "saved"; settings: AppSettings; revision: number }
+  | { status: "conflict" }
+  | { status: "error"; message: string };
+
+/** One ordered `ui.settings.pane` contribution emitted into `generated/registry.ts`. */
+export interface SettingsPaneContribution {
+  /** Stable pane id (last `component` segment; used for nav keys/labels). */
+  id: string;
+  /** Display order (ascending; ties broken by package id at compose time). */
+  order: number;
+  /** Pane component; renders fields for the current draft. */
+  Component: ComponentType<SettingsPaneProps>;
 }

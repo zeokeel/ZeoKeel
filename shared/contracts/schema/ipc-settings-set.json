@@ -7,6 +7,15 @@
     "settings"
   ],
   "properties": {
+    "expected_revision": {
+      "description": "Optimistic-concurrency fence: the `revision` the client last read.\n\n`None` (absent) keeps the legacy behaviour: no fence, always save (old clients / old documents stay compatible). A mismatch is rejected by the host without writing.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0.0
+    },
     "settings": {
       "description": "Full settings document (same schema as `zk-contract-config::AppSettings`).",
       "allOf": [

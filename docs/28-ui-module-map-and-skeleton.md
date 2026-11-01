@@ -69,7 +69,11 @@
 
 ### Commands / Settings
 - ⌘K 打开/关闭；↑↓/Enter/Esc；命令项类型（navigation/action/settings）。
-- 设置 dialog：provider/base_url/model/key（掩码/留空保持）、主题、语言、自动批准只读；Esc 关闭、焦点陷阱。
+- 设置 dialog（`2026-11-01-client-settings-ia` 落地）：左侧分区导航（窄窗 <720px 顶部横向 tab）+ 右侧 pane；全部 pane 由
+  `ui.settings.pane` 列表 slot 贡献（order 10 通用 / 20 模型 / 21 本地 Provider / 30 Agent / 40 工具与审批 / 50 网络与检索 /
+  60 嵌入 / 65 媒体 / 80 企业 / 90 关于），personal/enterprise 差异由构建期 `editions` 过滤，pane 内无 edition 分支。
+- 单一底部保存：合并全部 pane 草稿为整份 `AppSettings` 提交，`expected_revision` 栅栏冲突时保留草稿并提供「重新加载」；
+  切换 pane 不丢草稿；Esc 关闭、焦点陷阱、关闭后焦点回到入口；provider/api key 仍掩码、留空保持。
 
 ## 4.5 DSH 事实校正（来自三份模块摸排）
 
@@ -83,7 +87,8 @@
   ZeoKeel 的 `ui-commands` 暂定“`/` 菜单 + 快捷键参考 + 可选全局面板”；全局 ⌘K 是产品增强，不是 DSH 复刻。
 - DSH **右栏是 per-session docking surface**（normal/fullscreen、tab 不销毁、宽度由 frame 管）；ZeoKeel M1 只做固定宽度单栏、折叠；
   多 tab/拖拽/多 pane 后置。
-- DSH **设置**顶级页是 Account / General / Models / Built-in plugins；Subagent/Web search/Agent loop/Shell 挂在侧栏 Plugins 页下，Session log 是 General 一行；ZeoKeel M1 单 dialog 分节，分页/插件清单后置。
+- DSH **设置**顶级页是 Account / General / Models / Built-in plugins；Subagent/Web search/Agent loop/Shell 挂在侧栏 Plugins 页下，Session log 是 General 一行；
+  ZeoKeel 已按 settings-ia 变更为**分页 dialog**（10 个 pane 贡献，见 §4「Commands / Settings」）；设置内搜索/插件清单仍后置。
 - DSH **主题**是 Host bootstrap + token；ZeoKeel 沿用 app token/`data-theme`，不引入运行期主题包。
 - DSH **插件市场运行期装包**与 C2 冲突，ZeoKeel 不采用；Settings 插件仅只读清单（后续）。
 

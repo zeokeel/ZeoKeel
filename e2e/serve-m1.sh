@@ -24,6 +24,7 @@ printf 'delete me\n' > "$HOME_DIR/demo-data/old.txt"
 cat > "$HOME_DIR/.gitignore" <<'GITIGNORE'
 sessions.db*
 settings.json
+settings.meta.json
 agent-memory/
 .agents/
 GITIGNORE

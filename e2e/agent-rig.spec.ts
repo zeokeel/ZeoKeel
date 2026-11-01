@@ -127,6 +127,8 @@ test.describe("personal rig agent (real serve + fake upstream)", () => {
     await page.getByRole("button", { name: /设置|Settings/ }).first().click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
+    // Paginated settings: provider credentials live in the "本地 Provider" pane.
+    await dialog.getByRole("button", { name: /本地 Provider|Local provider/ }).click();
     await dialog.getByLabel("Provider 类型").selectOption("open_ai_compatible");
     await dialog.getByLabel("Base URL").fill(upstream2 ?? "");
     await dialog.getByLabel("模型", { exact: true }).fill("test-model");

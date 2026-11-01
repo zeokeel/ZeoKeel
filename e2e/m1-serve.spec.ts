@@ -77,7 +77,10 @@ test.describe("M1 serve carrier (real dispatch + SQLite)", () => {
   test("settings persist the schedule config across reload (serve + SQLite)", async ({ page }) => {
     await page.goto(`${SERVE}/`, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /设置|Settings/ }).first().click();
-    await expect(page.getByRole("dialog")).toBeVisible();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    // Paginated settings: scheduler lives in the Agent pane (order 30).
+    await dialog.getByRole("button", { name: /^Agent$/ }).click();
     await expect(page.getByText("调度/自动化")).toBeVisible();
 
     const schedule = page.getByLabel("启用定时调度");
@@ -93,6 +96,7 @@ test.describe("M1 serve carrier (real dispatch + SQLite)", () => {
     await page.reload({ waitUntil: "networkidle" });
     await page.getByRole("button", { name: /设置|Settings/ }).first().click();
     await expect(page.getByRole("dialog")).toBeVisible();
+    await page.getByRole("dialog").getByRole("button", { name: /^Agent$/ }).click();
     await expect(page.getByLabel("启用定时调度")).toBeChecked();
     await expect(page.getByLabel("扫描间隔（秒，5-3600）")).toHaveValue("30");
     await page.keyboard.press("Escape");
@@ -104,9 +108,13 @@ test.describe("M1 serve carrier (real dispatch + SQLite)", () => {
     });
     expect(response.ok()).toBeTruthy();
     const body: unknown = await response.json();
+    // settings.get returns `{ settings, revision }` (revision fence, spec R4).
     expect(body).toMatchObject({
       ok: true,
-      data: { agent: { schedule: { enabled: true, scan_seconds: 30 } } },
+      data: {
+        settings: { agent: { schedule: { enabled: true, scan_seconds: 30 } } },
+        revision: expect.any(Number),
+      },
     });
     await page.screenshot({ path: "target/evidence/m1/serve-settings-schedule.png" });
   });

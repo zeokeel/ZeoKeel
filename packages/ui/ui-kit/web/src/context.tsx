@@ -7,6 +7,7 @@ import type {
   Locale,
   Meta,
   ResolvedTheme,
+  SettingsSaveOutcome,
   ThreadLoadState,
   Workspace,
 } from "./types";
@@ -45,7 +46,10 @@ export interface UiActions {
   selectConversation: (conversationId: string) => void;
   openSettings: () => void;
   closeSettings: () => void;
-  saveSettings: (settings: AppSettings) => Promise<void>;
+  /** Save the whole settings document under the current revision fence. */
+  saveSettings: (settings: AppSettings) => Promise<SettingsSaveOutcome>;
+  /** Re-read `settings.get` after a revision conflict; returns the fresh document. */
+  reloadSettings: () => Promise<AppSettings>;
   toggleSidebar: () => void;
   /** Open the shell command palette (ui-commands); the palette owns close/Esc. */
   openCommands: () => void;

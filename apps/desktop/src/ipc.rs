@@ -525,12 +525,30 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             }
         }
         commands::SETTINGS_GET => match state.runtime.settings().load() {
-            Ok(settings) => CommandResponse::ok(masked_settings(&settings)),
+            Ok(settings) => match state.runtime.settings().revision() {
+                Ok(revision) => CommandResponse::ok(json!({
+                    "settings": masked_settings(&settings),
+                    "revision": revision,
+                })),
+                Err(error) => CommandResponse::err(error.to_string()),
+            },
             Err(error) => CommandResponse::err(error.to_string()),
         },
         commands::SETTINGS_SET => {
             let Some(value) = payload.get("settings") else {
                 return CommandResponse::err("missing settings");
+            };
+            // Optional optimistic-concurrency fence (absent = legacy unfenced save).
+            let expected_revision = match payload.get("expected_revision") {
+                None | Some(Value::Null) => None,
+                Some(value) => match value.as_u64() {
+                    Some(revision) => Some(revision),
+                    None => {
+                        return CommandResponse::err(
+                            "invalid expected_revision: must be an unsigned integer",
+                        )
+                    }
+                },
             };
             let mut settings: AppSettings = match serde_json::from_value(value.clone()) {
                 Ok(settings) => settings,
@@ -539,6 +557,20 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
             // The UI never receives stored secrets (masked by settings.get); an
             // empty field means "keep the existing secret" (provider + embedding).
             let existing = state.runtime.settings().load().ok();
+            // Reject a stale fence BEFORE any runtime side effect: a conflict must
+            // not write settings nor re-point the running agent/provider.
+            let current_revision = match state.runtime.settings().revision() {
+                Ok(revision) => revision,
+                Err(error) => return CommandResponse::err(error.to_string()),
+            };
+            if expected_revision.is_some_and(|expected| expected != current_revision) {
+                if let Some(expected) = expected_revision {
+                    return CommandResponse::err(settings_conflict_error(
+                        expected,
+                        current_revision,
+                    ));
+                }
+            }
             keep_existing_secrets(&mut settings, existing.as_ref());
             if let Err(error) = validate_settings(&settings) {
                 return CommandResponse::err(error);
@@ -585,8 +617,18 @@ pub fn dispatch(state: &Arc<AppState>, name: &str, payload: &Value) -> CommandRe
                     return CommandResponse::err(format!("provider configure failed: {error}"));
                 }
             }
-            match state.runtime.settings().save(&settings) {
-                Ok(()) => CommandResponse::ok(masked_settings(&settings)),
+            match state
+                .runtime
+                .settings()
+                .save_with_revision(&settings, expected_revision)
+            {
+                Ok(revision) => CommandResponse::ok(json!({
+                    "settings": masked_settings(&settings),
+                    "revision": revision,
+                })),
+                Err(zk_contract_config::ConfigError::Conflict(message)) => {
+                    CommandResponse::err(format!("settings/revision-conflict: {message}"))
+                }
                 Err(error) => CommandResponse::err(error.to_string()),
             }
         }
@@ -1480,6 +1522,12 @@ fn masked_settings(settings: &AppSettings) -> Value {
     value
 }
 
+/// Readable revision-conflict error. The `settings/revision-conflict` prefix is
+/// the stable code the UI maps to its i18n message (nothing is written).
+fn settings_conflict_error(expected: u64, current: u64) -> String {
+    format!("settings/revision-conflict: expected revision {expected}, current revision {current}")
+}
+
 /// Whether an embedding section carries any non-default configuration.
 fn embedding_attempted(embedding: &zk_contract_config::EmbeddingSettings) -> bool {
     embedding.is_configured()
@@ -2346,16 +2394,18 @@ mod tests {
         );
         assert!(got.ok, "{:?}", got.error);
         let got_data = got.data.unwrap_or(serde_json::Value::Null);
+        // settings.get returns `{ settings, revision }` (revision fence, spec R4).
+        assert_eq!(got_data["revision"], serde_json::json!(1));
         assert_eq!(
-            got_data["web_search"]["base_url"],
+            got_data["settings"]["web_search"]["base_url"],
             serde_json::Value::String("https://search.example.invalid/api".to_owned())
         );
         assert_eq!(
-            got_data["web_search"]["timeout_ms"],
+            got_data["settings"]["web_search"]["timeout_ms"],
             serde_json::json!(30_000)
         );
         assert_eq!(
-            got_data["provider"]["api_key"],
+            got_data["settings"]["provider"]["api_key"],
             serde_json::Value::String(String::new())
         );
 
@@ -2385,6 +2435,109 @@ mod tests {
             unchanged.web_search.base_url,
             "https://search.example.invalid/api"
         );
+
+        zk_contract_config::clear_runtime_settings().unwrap();
+        std::env::remove_var("ZEOKEEL_HOME");
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
+    fn settings_set_revision_fence_rejects_stale_writes() {
+        let _home_guard = HOME_LOCK.lock().unwrap();
+        let home = std::env::temp_dir().join(format!("zk-revision-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("ZEOKEEL_HOME", &home);
+        let state = super::AppState::new(zk_composed::build().expect("composed build"));
+        zk_contract_config::clear_runtime_settings().unwrap();
+
+        // Fresh store starts at revision 0.
+        let got = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SETTINGS_GET,
+            &serde_json::json!({}),
+        );
+        assert!(got.ok, "{:?}", got.error);
+        assert_eq!(
+            got.data.unwrap_or(serde_json::Value::Null)["revision"],
+            serde_json::json!(0)
+        );
+
+        // Fenced save with the current revision → accepted, revision 1.
+        let dark = zk_contract_config::AppSettings {
+            theme: "dark".to_owned(),
+            ..zk_contract_config::AppSettings::default()
+        };
+        let saved = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SETTINGS_SET,
+            &serde_json::json!({"settings": dark, "expected_revision": 0}),
+        );
+        assert!(saved.ok, "{:?}", saved.error);
+        let saved_data = saved.data.unwrap_or(serde_json::Value::Null);
+        assert_eq!(saved_data["revision"], serde_json::json!(1));
+        assert_eq!(
+            saved_data["settings"]["theme"],
+            serde_json::Value::String("dark".to_owned())
+        );
+
+        // Stale fence → rejected with the stable code, nothing written.
+        let light = zk_contract_config::AppSettings {
+            theme: "light".to_owned(),
+            ..zk_contract_config::AppSettings::default()
+        };
+        let rejected = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SETTINGS_SET,
+            &serde_json::json!({"settings": light, "expected_revision": 0}),
+        );
+        assert!(!rejected.ok, "stale revision must be rejected");
+        assert!(
+            rejected
+                .error
+                .as_deref()
+                .is_some_and(|error| error.starts_with("settings/revision-conflict")),
+            "{:?}",
+            rejected.error
+        );
+        assert_eq!(state.runtime().settings().load().unwrap().theme, "dark");
+        assert_eq!(state.runtime().settings().revision().unwrap(), 1);
+
+        // Retry with the current revision → accepted, revision 2.
+        let retried = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SETTINGS_SET,
+            &serde_json::json!({"settings": light, "expected_revision": 1}),
+        );
+        assert!(retried.ok, "{:?}", retried.error);
+        assert_eq!(
+            retried.data.unwrap_or(serde_json::Value::Null)["revision"],
+            serde_json::json!(2)
+        );
+
+        // Legacy client (no expected_revision) keeps the old unfenced behaviour.
+        let auto = zk_contract_config::AppSettings {
+            theme: "auto".to_owned(),
+            ..zk_contract_config::AppSettings::default()
+        };
+        let legacy = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SETTINGS_SET,
+            &serde_json::json!({"settings": auto}),
+        );
+        assert!(legacy.ok, "{:?}", legacy.error);
+        assert_eq!(
+            legacy.data.unwrap_or(serde_json::Value::Null)["revision"],
+            serde_json::json!(3)
+        );
+
+        // A malformed fence is a payload error (not a silent unfenced save).
+        let bad = super::dispatch(
+            &state,
+            zk_contract_ipc::commands::SETTINGS_SET,
+            &serde_json::json!({"settings": dark, "expected_revision": "one"}),
+        );
+        assert!(!bad.ok);
+        assert_eq!(state.runtime().settings().revision().unwrap(), 3);
 
         zk_contract_config::clear_runtime_settings().unwrap();
         std::env::remove_var("ZEOKEEL_HOME");

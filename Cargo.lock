@@ -9253,7 +9253,9 @@ name = "zk-store-settings-json"
 version = "1.0.0-rc.1"
 dependencies = [
  "dirs 6.0.0",
+ "serde",
  "serde_json",
+ "sha2 0.10.9",
  "zk-contract-config",
 ]
 

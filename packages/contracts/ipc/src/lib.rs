@@ -245,6 +245,13 @@ pub mod payloads {
     pub struct SettingsSetPayload {
         /// Full settings document (same schema as `zk-contract-config::AppSettings`).
         pub settings: zk_contract_config::AppSettings,
+        /// Optimistic-concurrency fence: the `revision` the client last read.
+        ///
+        /// `None` (absent) keeps the legacy behaviour: no fence, always save
+        /// (old clients / old documents stay compatible). A mismatch is rejected
+        /// by the host without writing.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub expected_revision: Option<u64>,
     }
 
     /// `approval.decide` payload.
@@ -324,5 +331,31 @@ pub mod results {
         /// Human-readable non-fatal warning (omitted when the scan was clean).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub warning: Option<String>,
+    }
+
+    /// `settings.get` result: the stored settings plus their revision fence.
+    ///
+    /// `revision` is a monotonically increasing save counter kept next to the
+    /// settings document (`settings.meta.json`); it is `0` for a fresh/invalid
+    /// store. Passing it back as `expected_revision` on `settings.set` rejects
+    /// concurrent overwrites.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct SettingsGetResult {
+        /// Stored settings document (secrets masked by the host).
+        pub settings: zk_contract_config::AppSettings,
+        /// Current revision (increments on every successful save).
+        pub revision: u64,
+    }
+
+    /// `settings.set` result: the persisted settings plus their new revision.
+    ///
+    /// Same shape as [`SettingsGetResult`] so the client does not need a second
+    /// read after saving.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+    pub struct SettingsSetResult {
+        /// Persisted settings document (secrets masked by the host).
+        pub settings: zk_contract_config::AppSettings,
+        /// Revision after this save (`previous + 1`).
+        pub revision: u64,
     }
 }

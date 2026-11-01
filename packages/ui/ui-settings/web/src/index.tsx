@@ -1,14 +1,28 @@
+/**
+ * Settings dialog shell (`ui.settings` slot).
+ *
+ * Owns the dialog chrome, the window-level draft, the section navigation and the
+ * single bottom save. The sections themselves are `ui.settings.pane` list-slot
+ * contributions rendered from `generated/registry.ts` (`SettingsPanes`); this
+ * shell hardcodes no business fields and branches on no edition (C2).
+ *
+ * Concurrency: `settings.get` returns `{settings, revision}`; the save action
+ * sends the current revision as `expected_revision`. A conflict keeps the draft
+ * and offers "reload" (the app re-reads and returns the fresh document).
+ */
 import * as Dialog from "@radix-ui/react-dialog";
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BrandLogo,
   Button,
+  defaultSettings,
   IconClose,
   useUi,
   type AppSettings,
-  type Locale,
-  type ProviderSettingsProps,
-  type Theme,
+  type SettingsErrors,
+  type SettingsForm,
+  type SettingsPaneContribution,
+  type SettingsPaneProps,
 } from "@zeokeel/ui-kit";
 import {
   EMPTY_SETTINGS_ERRORS,
@@ -16,56 +30,89 @@ import {
   hasSettingsErrors,
   toForm,
   validateSettings,
-  type SettingsErrors,
-  type SettingsFieldError,
-  type SettingsForm,
 } from "./settings-validation";
-const labelClass = "text-[12px] font-medium text-muted-foreground";
-const inputClass =
-  "w-full rounded-control border border-border bg-background px-2.5 py-2 text-[13px] text-foreground placeholder:text-muted-foreground disabled:opacity-55";
+import { AgentPane } from "./panes/AgentPane";
+import { AboutPane } from "./panes/AboutPane";
+import { EmbeddingPane } from "./panes/EmbeddingPane";
+import { EnterprisePane } from "./panes/EnterprisePane";
+import { GeneralPane } from "./panes/GeneralPane";
+import { MediaPane } from "./panes/MediaPane";
+import { ModelsPane } from "./panes/ModelsPane";
+import { SearchPane } from "./panes/SearchPane";
+import { ToolsPane } from "./panes/ToolsPane";
 
-function themeOf(value: string): Theme {
-  return value === "light" || value === "dark" ? value : "auto";
+/** Nav label for a pane id: `general` → `settingsPaneGeneral` (missing key falls back to the key). */
+function paneLabelKey(id: string): string {
+  const [first = "", ...rest] = id.split(/[-_]/);
+  const camel = [
+    first.charAt(0).toUpperCase() + first.slice(1),
+    ...rest.map((part) => part.charAt(0).toUpperCase() + part.slice(1)),
+  ].join("");
+  return `settingsPane${camel}`;
 }
 
-function localeOf(value: string): Locale {
-  return value === "en-US" ? "en-US" : "zh-CN";
-}
+/**
+ * Error key → pane id, in display order: after a failed submit the shell jumps to
+ * the first pane that holds an invalid field, then focuses that field.
+ */
+const ERROR_PANES: readonly (readonly [keyof SettingsErrors, string])[] = [
+  ["baseUrl", "provider"],
+  ["model", "provider"],
+  ["temperature", "models"],
+  ["maxTokens", "models"],
+  ["topP", "models"],
+  ["seed", "models"],
+  ["toolChoiceTools", "models"],
+  ["maxSteps", "agent"],
+  ["scanSeconds", "agent"],
+  ["toolTimeoutMs", "tools"],
+  ["approvalTimeoutMs", "tools"],
+  ["webSearchBaseUrl", "search"],
+  ["webSearchTimeoutMs", "search"],
+  ["embeddingBaseUrl", "embedding"],
+  ["embeddingDims", "embedding"],
+  ["mediaBaseUrl", "media"],
+];
 
 export interface SettingsDialogProps {
-  gatewayModels?: string[];
-  gatewayModel?: string;
-  onSelectGatewayModel?: (model: string) => void;
-  onCheckUpdate?: (() => void) | undefined;
-  renderProvider?: ((props: ProviderSettingsProps) => ReactNode) | undefined;
-  updateText?: string | null;
-  updateBusy?: boolean;
-  /** Personal only: render local embedding/vector-index credentials (C7). Default true. */
-  showEmbedding?: boolean;
-  /** Personal only: render media-capability credentials (C7). Default true. */
-  showMedia?: boolean;
-  /** Enterprise only: render the login server address (docs/19 §3.3). */
-  showServerUrl?: boolean;
-  /** Channel-locked address (C14/ADR-042): read-only. */
-  serverUrlLocked?: boolean;
-  /** Enterprise only: sign out (wired by the app; dependency: auth.logout IPC). */
-  onLogout?: (() => void) | undefined;
+  /** Ordered `ui.settings.pane` contributions from the generated registry. */
+  panes: readonly SettingsPaneContribution[];
+  /** App-level (not edition-level) facts/actions the panes may use. */
+  app: SettingsPaneProps["app"];
 }
 
 /** `settings.dialog` slot: reads settings/open state and actions from useUi. */
-export function SettingsDialog(props: SettingsDialogProps = {}) {
+export function SettingsDialog(props: SettingsDialogProps) {
   const ui = useUi();
-  const models = props.gatewayModels ?? [];
   const { t, settings, settingsOpen, actions } = ui;
-  // The app remounts this dialog with a key on open, so the form always reflects persisted settings.
+  const panes = props.panes;
+  // The app remounts this dialog with a key on open, so the draft always starts
+  // from the persisted settings (window-level draft session, docs/19 §3.4).
   const [form, setForm] = useState<SettingsForm>(() => toForm(settings));
   const [errors, setErrors] = useState<SettingsErrors>(EMPTY_SETTINGS_ERRORS);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
+  const [selectedId, setSelectedId] = useState<string>(() => panes[0]?.id ?? "");
+  const [submitAttempt, setSubmitAttempt] = useState(0);
   // The dialog is opened from app state (no `Dialog.Trigger`), so Radix has no
   // opener to restore focus to. Remember the element that had focus when the
   // dialog opened and put it back on close (WCAG focus order / B12).
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+
+  const activeIndex = panes.findIndex((pane) => pane.id === selectedId);
+  const active = activeIndex < 0 ? panes[0] : panes[activeIndex];
+  const activeId = active?.id ?? "";
+
+  // Focus the first invalid field after a failed submit (pane switch included).
+  useEffect(() => {
+    if (submitAttempt === 0) {
+      return;
+    }
+    const invalid = contentRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    invalid?.focus();
+  }, [submitAttempt, errors, activeId]);
 
   const update = <Key extends keyof SettingsForm>(key: Key, value: SettingsForm[Key]): void => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -75,56 +122,73 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
     event.preventDefault();
     const nextErrors = validateSettings(form);
     setErrors(nextErrors);
+    setSaveError(null);
+    setConflict(false);
+    setSubmitAttempt((attempt) => attempt + 1);
     if (hasSettingsErrors(nextErrors)) {
+      // Jump to the first pane that contains an invalid field.
+      for (const [key, paneId] of ERROR_PANES) {
+        if (nextErrors[key] !== null && panes.some((pane) => pane.id === paneId)) {
+          setSelectedId(paneId);
+          return;
+        }
+      }
       return;
     }
     setSaving(true);
-    setSaveError(null);
     const next: AppSettings = formToSettings(form, settings.schema);
+    void actions.saveSettings(next).then((outcome) => {
+      if (outcome.status === "saved") {
+        // The app dispatches `settings_saved` (closes the dialog and resets the
+        // baseline from the returned document); nothing left to do here.
+        return;
+      }
+      setSaving(false);
+      if (outcome.status === "conflict") {
+        setConflict(true);
+        setSaveError(t("settingsRevisionConflict"));
+        return;
+      }
+      setSaveError(outcome.message);
+    });
+  };
+
+  const handleReload = (): void => {
     void actions
-      .saveSettings(next)
-      .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : t("settingsSaveFailed");
-        setSaveError(message);
+      .reloadSettings()
+      .then((fresh) => {
+        setForm(toForm(fresh));
+        setErrors(EMPTY_SETTINGS_ERRORS);
+        setSaveError(null);
+        setConflict(false);
       })
-      .finally(() => {
-        setSaving(false);
+      .catch((error: unknown) => {
+        setSaveError(error instanceof Error ? error.message : t("settingsSaveFailed"));
       });
   };
 
-  const isMock = form.providerKind === "mock";
-  const showEmbedding = props.showEmbedding ?? true;
-  const showMedia = props.showMedia ?? true;
-  const fieldError = (error: SettingsFieldError): ReactNode =>
-    error === null ? null : (
-      <span className="text-[12px] text-destructive" role="alert">{t(error)}</span>
-    );
-  const numeric = (id: string, label: string, value: string, onChange: (next: string) => void, error: SettingsFieldError, extra: { step?: string; min?: number; max?: number } = {}): ReactNode => (
-    <label className="flex flex-col gap-1" htmlFor={id}>
-      <span className={labelClass}>{label}</span>
-      <input
-        id={id}
-        className={inputClass}
-        type="number"
-        inputMode="decimal"
-        value={value}
-        step={extra.step ?? "1"}
-        min={extra.min}
-        max={extra.max}
-        onChange={(event) => { onChange(event.target.value); }}
-        aria-invalid={error !== null}
-        aria-label={label}
-      />
-      {fieldError(error)}
-    </label>
-  );
+  const handleRestoreDefaults = (): void => {
+    setForm(toForm(defaultSettings()));
+    setErrors(EMPTY_SETTINGS_ERRORS);
+    setSaveError(null);
+    setConflict(false);
+  };
+
+  const paneProps: SettingsPaneProps = {
+    t,
+    draft: form,
+    update,
+    errors,
+    saving,
+    app: props.app,
+  };
 
   return (
     <Dialog.Root open={settingsOpen} onOpenChange={actions.closeSettings}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-[var(--zk-overlay)]" />
         <Dialog.Content
-          className="fixed start-1/2 top-1/2 z-50 max-h-[86vh] w-[min(640px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl bg-popover p-6 shadow-[var(--zk-shadow-lift)]"
+          className="fixed start-1/2 top-1/2 z-50 flex max-h-[86vh] w-[min(880px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-popover shadow-[var(--zk-shadow-lift)]"
           aria-describedby="settings-description"
           onOpenAutoFocus={() => {
             restoreFocusRef.current =
@@ -138,7 +202,7 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
             }
           }}
         >
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start justify-between gap-4 px-5 pt-5">
             <div className="flex items-center gap-2.5">
               <BrandLogo className="h-6 w-6 rounded-document" decorative />
               <Dialog.Title className="text-[20px] font-semibold tracking-[-0.01em] text-foreground">
@@ -157,409 +221,72 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
           </div>
           <Dialog.Description
             id="settings-description"
-            className="mt-1.5 mb-5 text-[13px] text-muted-foreground"
+            className="mt-1.5 mb-3 px-5 text-[13px] text-muted-foreground"
           >
-            {props.showServerUrl === true ? t("settingsDescriptionEnterprise") : t("settingsDescription")}
+            {t("settingsDescription")}
           </Dialog.Description>
 
-          <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
-            {props.renderProvider?.({
-              t,
-              providerKind: form.providerKind,
-              baseUrl: form.baseUrl,
-              model: form.model,
-              apiKey: form.apiKey,
-              errors,
-              isMock,
-              onProviderKind: (kind) => { update("providerKind", kind); },
-              onBaseUrl: (value) => { update("baseUrl", value); },
-              onModel: (value) => { update("model", value); },
-              onApiKey: (value) => { update("apiKey", value); },
-            })}
-            {props.showServerUrl === true ? (
-              <fieldset className="rounded-document bg-muted p-4">
-                <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
-                  {t("settingsServerUrl")}
-                </legend>
-                <div className="grid gap-1.5">
-                  <label className="flex flex-col gap-1" htmlFor="settings-server-url">
-                    <input
-                      id="settings-server-url"
-                      aria-label={t("settingsServerUrl")}
-                      className={inputClass}
-                      type="url"
-                      inputMode="url"
-                      value={form.serverUrl}
-                      disabled={props.serverUrlLocked === true}
-                      onChange={(event) => { update("serverUrl", event.target.value); }}
-                      placeholder="https://zeokeel.example.com"
-                      aria-describedby="settings-server-hint"
-                    />
-                  </label>
-                  <p id="settings-server-hint" className="text-[12px] text-muted-foreground">
-                    {props.serverUrlLocked === true ? t("settingsServerUrlLocked") : t("settingsServerUrlHint")}
-                  </p>
-                </div>
-              </fieldset>
-            ) : null}
-            <fieldset className="rounded-document bg-muted p-4">
-              <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
-                {t("settingsSectionAppearance")}
-              </legend>
-              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                <label className="flex flex-col gap-1" htmlFor="settings-theme">
-                  <span className={labelClass}>{t("settingsTheme")}</span>
-                  <select
-                    id="settings-theme"
-                    className={inputClass}
-                    value={form.theme}
-                    onChange={(event) => {
-                      update("theme", themeOf(event.target.value));
-                    }}
-                  >
-                    <option value="auto">{t("settingsThemeAuto")}</option>
-                    <option value="light">{t("settingsThemeLight")}</option>
-                    <option value="dark">{t("settingsThemeDark")}</option>
-                  </select>
-                </label>
+          <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit} noValidate>
+            <div className="flex min-h-0 flex-1 flex-col gap-3 px-5 min-[720px]:flex-row">
+              <nav
+                aria-label={t("settingsSections")}
+                className="flex shrink-0 gap-1 overflow-x-auto pb-1 min-[720px]:w-44 min-[720px]:flex-col min-[720px]:overflow-y-auto min-[720px]:pe-2 min-[720px]:pb-0"
+              >
+                {panes.map((pane) => {
+                  const isActive = pane.id === activeId;
+                  return (
+                    <button
+                      key={pane.id}
+                      type="button"
+                      aria-current={isActive ? "page" : undefined}
+                      className={`shrink-0 whitespace-nowrap rounded-control px-2.5 py-1.5 text-start text-[13px] transition-colors ${
+                        isActive
+                          ? "bg-muted font-medium text-foreground"
+                          : "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"
+                      }`}
+                      onClick={() => {
+                        setSelectedId(pane.id);
+                      }}
+                    >
+                      {t(paneLabelKey(pane.id))}
+                    </button>
+                  );
+                })}
+              </nav>
 
-                <label className="flex flex-col gap-1" htmlFor="settings-locale">
-                  <span className={labelClass}>{t("settingsLanguage")}</span>
-                  <select
-                    id="settings-locale"
-                    className={inputClass}
-                    value={form.locale}
-                    onChange={(event) => {
-                      update("locale", localeOf(event.target.value));
-                    }}
-                  >
-                    <option value="zh-CN">{t("settingsLanguageZh")}</option>
-                    <option value="en-US">{t("settingsLanguageEn")}</option>
-                  </select>
-                </label>
+              <div
+                ref={contentRef}
+                data-zk-settings-content=""
+                className="min-h-0 flex-1 overflow-y-auto pe-1"
+              >
+                {active === undefined ? (
+                  <div className="flex flex-col items-start gap-3 rounded-document bg-muted p-4">
+                    <p className="text-[13px] text-muted-foreground">{t("settingsEmptyPanes")}</p>
+                    <Button type="button" variant="default" size="sm" onClick={handleRestoreDefaults}>
+                      {t("settingsRestoreDefaults")}
+                    </Button>
+                  </div>
+                ) : (
+                  <active.Component {...paneProps} />
+                )}
               </div>
-            </fieldset>
-            <fieldset className="rounded-document bg-muted p-4">
-              <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
-                {t("settingsSectionAgent")}
-              </legend>
-              <p className="mb-3 text-[12px] text-muted-foreground">{t("settingsAgentDescription")}</p>
-              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                {numeric("settings-max-steps", t("settingsMaxSteps"), form.maxSteps, (value) => { update("maxSteps", value); }, errors.maxSteps, { min: 1, max: 200 })}
-                {numeric("settings-temperature", t("settingsTemperature"), form.temperature, (value) => { update("temperature", value); }, errors.temperature, { step: "0.1", min: 0, max: 2 })}
-                {numeric("settings-max-tokens", t("settingsMaxTokens"), form.maxTokens, (value) => { update("maxTokens", value); }, errors.maxTokens, { min: 1 })}
-                {numeric("settings-top-p", t("settingsTopP"), form.topP, (value) => { update("topP", value); }, errors.topP, { step: "0.05", min: 0, max: 1 })}
-                {numeric("settings-seed", t("settingsSeed"), form.seed, (value) => { update("seed", value); }, errors.seed, { min: 0 })}
-                <label className="flex flex-col gap-1" htmlFor="settings-tool-choice">
-                  <span className={labelClass}>{t("settingsToolChoice")}</span>
-                  <select
-                    id="settings-tool-choice"
-                    className={inputClass}
-                    value={form.toolChoiceMode}
-                    onChange={(event) => { update("toolChoiceMode", event.target.value === "none" || event.target.value === "required" || event.target.value === "specific" ? event.target.value : "auto"); }}
-                  >
-                    <option value="auto">{t("settingsToolChoiceAuto")}</option>
-                    <option value="none">{t("settingsToolChoiceNone")}</option>
-                    <option value="required">{t("settingsToolChoiceRequired")}</option>
-                    <option value="specific">{t("settingsToolChoiceSpecific")}</option>
-                  </select>
-                </label>
-                {form.toolChoiceMode === "specific" ? (
-                  <label className="flex flex-col gap-1" htmlFor="settings-tool-choice-tools">
-                    <span className={labelClass}>{t("settingsToolChoiceTools")}</span>
-                    <input
-                      id="settings-tool-choice-tools"
-                      className={inputClass}
-                      value={form.toolChoiceTools}
-                      placeholder="fs.read, fs.write"
-                      onChange={(event) => { update("toolChoiceTools", event.target.value); }}
-                      aria-invalid={errors.toolChoiceTools !== null}
-                    />
-                    {fieldError(errors.toolChoiceTools)}
-                  </label>
-                ) : null}
-                <label className="flex flex-col gap-1" htmlFor="settings-parallel-tool-calls">
-                  <span className={labelClass}>{t("settingsParallelToolCalls")}</span>
-                  <select
-                    id="settings-parallel-tool-calls"
-                    className={inputClass}
-                    value={form.parallelToolCalls}
-                    onChange={(event) => { update("parallelToolCalls", event.target.value === "true" ? "true" : event.target.value === "false" ? "false" : "default"); }}
-                  >
-                    <option value="default">{t("settingsParallelDefault")}</option>
-                    <option value="true">{t("settingsParallelOn")}</option>
-                    <option value="false">{t("settingsParallelOff")}</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1" htmlFor="settings-reasoning-effort">
-                  <span className={labelClass}>{t("settingsReasoningEffort")}</span>
-                  <select
-                    id="settings-reasoning-effort"
-                    className={inputClass}
-                    value={form.reasoningEffort}
-                    onChange={(event) => { const value = event.target.value; update("reasoningEffort", value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh" || value === "max" ? value : ""); }}
-                  >
-                    <option value="">{t("settingsReasoningDefault")}</option>
-                    <option value="minimal">minimal</option>
-                    <option value="low">low</option>
-                    <option value="medium">medium</option>
-                    <option value="high">high</option>
-                    <option value="xhigh">xhigh</option>
-                    <option value="max">max</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1" htmlFor="settings-prompt-cache">
-                  <span className={labelClass}>{t("settingsPromptCache")}</span>
-                  <select
-                    id="settings-prompt-cache"
-                    className={inputClass}
-                    value={form.promptCache}
-                    onChange={(event) => { update("promptCache", event.target.value === "short" || event.target.value === "long" ? event.target.value : ""); }}
-                  >
-                    <option value="">{t("settingsPromptCacheDefault")}</option>
-                    <option value="short">{t("settingsPromptCacheShort")}</option>
-                    <option value="long">{t("settingsPromptCacheLong")}</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 sm:col-span-2" htmlFor="settings-stop">
-                  <span className={labelClass}>{t("settingsStop")}</span>
-                  <textarea
-                    id="settings-stop"
-                    className={`${inputClass} min-h-[60px] font-mono`}
-                    value={form.stop}
-                    onChange={(event) => { update("stop", event.target.value); }}
-                    aria-describedby="settings-stop-hint"
-                  />
-                  <span id="settings-stop-hint" className="text-[12px] text-muted-foreground">{t("settingsStopHint")}</span>
-                </label>
-                <label className="flex items-center gap-3 rounded-control bg-background px-3 py-2" htmlFor="settings-memory-enabled">
-                  <input
-                    id="settings-memory-enabled"
-                    type="checkbox"
-                    checked={form.memoryEnabled}
-                    onChange={(event) => { update("memoryEnabled", event.target.checked); }}
-                  />
-                  <span className="text-[13px] text-foreground">{t("settingsMemoryEnabled")}</span>
-                </label>
-                <label className="flex flex-col gap-1" htmlFor="settings-memory-dir">
-                  <span className={labelClass}>{t("settingsMemoryDir")}</span>
-                  <input
-                    id="settings-memory-dir"
-                    className={inputClass}
-                    value={form.memoryDir}
-                    onChange={(event) => { update("memoryDir", event.target.value); }}
-                    placeholder="$ZEOKEEL_HOME/agent-memory"
-                  />
-                  <span className="text-[12px] text-muted-foreground">{t("settingsMemoryDirHint")}</span>
-                </label>
-                <label className="flex items-center gap-3 rounded-control bg-background px-3 py-2" htmlFor="settings-hooks-enabled">
-                  <input
-                    id="settings-hooks-enabled"
-                    type="checkbox"
-                    checked={form.hooksEnabled}
-                    onChange={(event) => { update("hooksEnabled", event.target.checked); }}
-                  />
-                  <span className="text-[13px] text-foreground">{t("settingsHooksEnabled")}</span>
-                </label>
-                <label className="flex flex-col gap-1" htmlFor="settings-hooks-log">
-                  <span className={labelClass}>{t("settingsHooksLog")}</span>
-                  <input
-                    id="settings-hooks-log"
-                    className={inputClass}
-                    value={form.hooksLog}
-                    onChange={(event) => { update("hooksLog", event.target.value); }}
-                    placeholder="/tmp/zeokeel-hooks.jsonl"
-                  />
-                  <span className="text-[12px] text-muted-foreground">{t("settingsHooksLogHint")}</span>
-                </label>
-              </div>
-            </fieldset>
-            <fieldset className="rounded-document bg-muted p-4">
-              <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
-                {t("settingsSectionSchedule")}
-              </legend>
-              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                <label className="flex items-center gap-3 rounded-control bg-background px-3 py-2" htmlFor="settings-schedule-enabled">
-                  <input
-                    id="settings-schedule-enabled"
-                    type="checkbox"
-                    checked={form.scheduleEnabled}
-                    onChange={(event) => { update("scheduleEnabled", event.target.checked); }}
-                  />
-                  <span className="text-[13px] text-foreground">{t("settingsScheduleEnabled")}</span>
-                </label>
-                {numeric("settings-scan-seconds", t("settingsScanSeconds"), form.scanSeconds, (value) => { update("scanSeconds", value); }, errors.scanSeconds, { min: 5, max: 3600 })}
-              </div>
-              <p className="mt-2 text-[12px] text-muted-foreground">{t("settingsScheduleHint")}</p>
-            </fieldset>
-            <fieldset className="rounded-document bg-muted p-4">
-              <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
-                {t("settingsSectionTools")}
-              </legend>
-              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                {numeric("settings-tool-timeout", t("settingsToolTimeout"), form.toolTimeoutMs, (value) => { update("toolTimeoutMs", value); }, errors.toolTimeoutMs, { min: 1000, max: 600000 })}
-                {numeric("settings-approval-timeout", t("settingsApprovalTimeout"), form.approvalTimeoutMs, (value) => { update("approvalTimeoutMs", value); }, errors.approvalTimeoutMs, { min: 1000, max: 1800000 })}
-              </div>
-              <p className="mt-2 text-[12px] text-muted-foreground">{t("settingsToolsHint")}</p>
-            </fieldset>
-            <fieldset className="rounded-document bg-muted p-4">
-              <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
-                {t("settingsSectionWebSearch")}
-              </legend>
-              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                <label className="flex flex-col gap-1 sm:col-span-2" htmlFor="settings-web-search-base-url">
-                  <span className={labelClass}>{t("settingsWebSearchBaseUrl")}</span>
-                  <input
-                    id="settings-web-search-base-url"
-                    aria-label={t("settingsWebSearchBaseUrl")}
-                    className={inputClass}
-                    type="url"
-                    inputMode="url"
-                    value={form.webSearchBaseUrl}
-                    onChange={(event) => { update("webSearchBaseUrl", event.target.value); }}
-                    placeholder="https://api.duckduckgo.com/"
-                    aria-invalid={errors.webSearchBaseUrl !== null}
-                    aria-describedby="settings-web-search-base-url-hint"
-                  />
-                  {fieldError(errors.webSearchBaseUrl)}
-                  <span id="settings-web-search-base-url-hint" className="text-[12px] text-muted-foreground">
-                    {t("settingsWebSearchBaseUrlHint")}
-                  </span>
-                </label>
-                {numeric("settings-web-search-timeout", t("settingsWebSearchTimeout"), form.webSearchTimeoutMs, (value) => { update("webSearchTimeoutMs", value); }, errors.webSearchTimeoutMs, { min: 1000, max: 120000 })}
-              </div>
-              <p className="mt-2 text-[12px] text-muted-foreground">{t("settingsWebSearchHint")}</p>
-            </fieldset>
-            {showEmbedding ? (
-            <fieldset className="rounded-document bg-muted p-4">
-              <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
-                {t("settingsSectionEmbedding")}
-              </legend>
-              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                <label className="flex flex-col gap-1 sm:col-span-2" htmlFor="settings-embedding-base-url">
-                  <span className={labelClass}>{t("settingsEmbeddingBaseUrl")}</span>
-                  <input
-                    id="settings-embedding-base-url"
-                    aria-label={t("settingsEmbeddingBaseUrl")}
-                    className={inputClass}
-                    type="url"
-                    inputMode="url"
-                    value={form.embeddingBaseUrl}
-                    onChange={(event) => { update("embeddingBaseUrl", event.target.value); }}
-                    placeholder="https://api.example.com/v1"
-                    aria-invalid={errors.embeddingBaseUrl !== null}
-                  />
-                  {fieldError(errors.embeddingBaseUrl)}
-                </label>
-                <label className="flex flex-col gap-1" htmlFor="settings-embedding-api-key">
-                  <span className={labelClass}>{t("settingsEmbeddingApiKey")}</span>
-                  <input
-                    id="settings-embedding-api-key"
-                    aria-label={t("settingsEmbeddingApiKey")}
-                    className={inputClass}
-                    type="password"
-                    autoComplete="off"
-                    spellCheck={false}
-                    value={form.embeddingApiKey}
-                    onChange={(event) => { update("embeddingApiKey", event.target.value); }}
-                    placeholder="sk-..."
-                  />
-                  <span className="text-[12px] text-muted-foreground">{t("settingsEmbeddingApiKeyHint")}</span>
-                </label>
-                <label className="flex flex-col gap-1" htmlFor="settings-embedding-model">
-                  <span className={labelClass}>{t("settingsEmbeddingModel")}</span>
-                  <input
-                    id="settings-embedding-model"
-                    aria-label={t("settingsEmbeddingModel")}
-                    className={inputClass}
-                    value={form.embeddingModel}
-                    onChange={(event) => { update("embeddingModel", event.target.value); }}
-                    placeholder="text-embedding-3-small"
-                  />
-                </label>
-                {numeric("settings-embedding-dims", t("settingsEmbeddingDims"), form.embeddingDims, (value) => { update("embeddingDims", value); }, errors.embeddingDims, { min: 1, max: 65536 })}
-                <label className="flex flex-col gap-1 sm:col-span-2" htmlFor="settings-embedding-dir">
-                  <span className={labelClass}>{t("settingsEmbeddingDir")}</span>
-                  <input
-                    id="settings-embedding-dir"
-                    aria-label={t("settingsEmbeddingDir")}
-                    className={inputClass}
-                    value={form.embeddingDir}
-                    onChange={(event) => { update("embeddingDir", event.target.value); }}
-                    placeholder="$ZEOKEEL_HOME/vector-index"
-                  />
-                </label>
-              </div>
-              <p className="mt-2 text-[12px] text-muted-foreground">{t("settingsEmbeddingHint")}</p>
-            </fieldset>
-            ) : null}
-            {showMedia ? (
-            <fieldset className="rounded-document bg-muted p-4">
-              <legend className="px-1.5 text-[12px] font-medium text-muted-foreground">
-                {t("settingsSectionMedia")}
-              </legend>
-              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                <label className="flex flex-col gap-1 sm:col-span-2" htmlFor="settings-media-base-url">
-                  <span className={labelClass}>{t("settingsMediaBaseUrl")}</span>
-                  <input
-                    id="settings-media-base-url"
-                    aria-label={t("settingsMediaBaseUrl")}
-                    className={inputClass}
-                    type="url"
-                    inputMode="url"
-                    value={form.mediaBaseUrl}
-                    onChange={(event) => { update("mediaBaseUrl", event.target.value); }}
-                    placeholder="https://api.example.com/v1"
-                    aria-invalid={errors.mediaBaseUrl !== null}
-                  />
-                  {fieldError(errors.mediaBaseUrl)}
-                </label>
-                <label className="flex flex-col gap-1" htmlFor="settings-media-api-key">
-                  <span className={labelClass}>{t("settingsMediaApiKey")}</span>
-                  <input
-                    id="settings-media-api-key"
-                    aria-label={t("settingsMediaApiKey")}
-                    className={inputClass}
-                    type="password"
-                    autoComplete="off"
-                    spellCheck={false}
-                    value={form.mediaApiKey}
-                    onChange={(event) => { update("mediaApiKey", event.target.value); }}
-                    placeholder="sk-..."
-                  />
-                  <span className="text-[12px] text-muted-foreground">{t("settingsMediaApiKeyHint")}</span>
-                </label>
-                <label className="flex flex-col gap-1" htmlFor="settings-media-image-model">
-                  <span className={labelClass}>{t("settingsMediaImageModel")}</span>
-                  <input id="settings-media-image-model" aria-label={t("settingsMediaImageModel")} className={inputClass} value={form.mediaImageModel} onChange={(event) => { update("mediaImageModel", event.target.value); }} placeholder="dall-e-3" />
-                </label>
-                <label className="flex flex-col gap-1" htmlFor="settings-media-audio-model">
-                  <span className={labelClass}>{t("settingsMediaAudioModel")}</span>
-                  <input id="settings-media-audio-model" aria-label={t("settingsMediaAudioModel")} className={inputClass} value={form.mediaAudioModel} onChange={(event) => { update("mediaAudioModel", event.target.value); }} placeholder="tts-1" />
-                </label>
-                <label className="flex flex-col gap-1" htmlFor="settings-media-transcription-model">
-                  <span className={labelClass}>{t("settingsMediaTranscriptionModel")}</span>
-                  <input id="settings-media-transcription-model" aria-label={t("settingsMediaTranscriptionModel")} className={inputClass} value={form.mediaTranscriptionModel} onChange={(event) => { update("mediaTranscriptionModel", event.target.value); }} placeholder="whisper-1" />
-                </label>
-                <label className="flex flex-col gap-1" htmlFor="settings-media-rerank-model">
-                  <span className={labelClass}>{t("settingsMediaRerankModel")}</span>
-                  <input id="settings-media-rerank-model" aria-label={t("settingsMediaRerankModel")} className={inputClass} value={form.mediaRerankModel} onChange={(event) => { update("mediaRerankModel", event.target.value); }} placeholder="rerank-1" />
-                </label>
-              </div>
-              <p className="mt-2 text-[12px] text-muted-foreground">{t("settingsMediaHint")}</p>
-            </fieldset>
-            ) : null}
+            </div>
 
-            {saveError !== null ? (
-              <p
-                className="rounded-document bg-muted px-3 py-2 text-[13px] text-destructive"
+            {saveError === null ? null : (
+              <div
+                className="mx-5 mt-3 flex flex-wrap items-center gap-2 rounded-document bg-muted px-3 py-2"
                 role="alert"
               >
-                {t("settingsSaveFailed")}: {saveError}
-              </p>
-            ) : null}
+                <p className="text-[13px] text-destructive">{saveError}</p>
+                {conflict ? (
+                  <Button type="button" variant="default" size="sm" onClick={handleReload}>
+                    {t("settingsReload")}
+                  </Button>
+                ) : null}
+              </div>
+            )}
 
-            <div className="flex justify-end gap-2">
+            <div className="mt-3 flex justify-end gap-2 px-5 pb-5">
               <Dialog.Close asChild>
                 <Button variant="ghost" disabled={saving}>
                   {t("settingsCancel")}
@@ -569,49 +296,25 @@ export function SettingsDialog(props: SettingsDialogProps = {}) {
                 {saving ? t("settingsSaving") : t("settingsSave")}
               </Button>
             </div>
-            {props.onCheckUpdate !== undefined ? (
-            <section className="grid gap-2 border-t border-border pt-3">
-              <h3 className={labelClass}>{t("settingsUpdates")}</h3>
-              <div className="flex items-center gap-2">
-                <Button type="button" variant="default" size="sm" disabled={props.updateBusy === true} onClick={props.onCheckUpdate}>
-                  {props.updateBusy === true ? t("settingsCheckingUpdate") : t("settingsCheckUpdate")}
-                </Button>
-                {props.updateText !== null && props.updateText !== undefined ? <span className="text-[12px] text-muted-foreground">{props.updateText}</span> : null}
-              </div>
-            </section>
-          ) : null}
-          {models.length > 0 ? (
-            <section className="grid gap-2 border-t border-border pt-3">
-              <h3 className={labelClass}>{t("settingsGatewayModel")}</h3>
-              <select
-                aria-label={t("settingsGatewayModel")}
-                className={inputClass}
-                value={props.gatewayModel ?? ""}
-                onChange={(event) => { props.onSelectGatewayModel?.(event.target.value); }}
-              >
-                {models.map((model) => <option key={model} value={model}>{model}</option>)}
-              </select>
-            </section>
-          ) : null}
-          {props.onLogout !== undefined ? (
-            <section className="grid gap-2 border-t border-border pt-3">
-              <h3 className={labelClass}>{t("settingsLogout")}</h3>
-              <div>
-                <Button type="button" variant="destructive" size="sm" onClick={props.onLogout}>
-                  {t("settingsLogout")}
-                </Button>
-              </div>
-            </section>
-          ) : null}
-        </form>
+          </form>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
   );
 }
 
+/** `components` map consumed by `zk compose` (zk.toml contribution components). */
 export const components = {
   "settings.dialog": SettingsDialog,
+  "settings.pane.general": GeneralPane,
+  "settings.pane.models": ModelsPane,
+  "settings.pane.agent": AgentPane,
+  "settings.pane.tools": ToolsPane,
+  "settings.pane.search": SearchPane,
+  "settings.pane.embedding": EmbeddingPane,
+  "settings.pane.media": MediaPane,
+  "settings.pane.enterprise": EnterprisePane,
+  "settings.pane.about": AboutPane,
 } as const;
 
 export { formToSettings, toForm, validateSettings } from "./settings-validation";

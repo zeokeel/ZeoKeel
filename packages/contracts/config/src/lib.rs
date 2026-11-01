@@ -647,6 +647,10 @@ pub enum ConfigError {
     /// Invalid value.
     #[error("config invalid: {0}")]
     Invalid(String),
+    /// Revision fence mismatch: the caller's `expected_revision` is stale, so
+    /// nothing was written. The host maps this to `settings/revision-conflict`.
+    #[error("config revision conflict: {0}")]
+    Conflict(String),
 }
 
 /// Replaceable settings store (JSON file in M1, keychain later).
@@ -655,6 +659,30 @@ pub trait SettingsStore: Send + Sync {
     fn load(&self) -> Result<AppSettings, ConfigError>;
     /// Persist settings.
     fn save(&self, settings: &AppSettings) -> Result<(), ConfigError>;
+    /// Current settings revision (monotonic save counter).
+    ///
+    /// Stores without revision tracking (third-party implementations) keep the
+    /// default `0`; the host then treats every save as unfenced.
+    fn revision(&self) -> Result<u64, ConfigError> {
+        Ok(0)
+    }
+    /// Persist settings under an optimistic-concurrency fence.
+    ///
+    /// `expected` is the revision the caller last read; `None` means "no fence"
+    /// (legacy client / legacy document). Returns the new revision.
+    ///
+    /// The default implementation ignores the fence and delegates to
+    /// [`SettingsStore::save`], returning revision `0` (keeps third-party stores
+    /// source-compatible; the JSON store overrides it with a real revision).
+    fn save_with_revision(
+        &self,
+        settings: &AppSettings,
+        expected: Option<u64>,
+    ) -> Result<u64, ConfigError> {
+        let _unfenced = expected;
+        self.save(settings)?;
+        Ok(0)
+    }
 }
 
 /// Non-secret settings snapshot published to the local agent runtime.

@@ -3,7 +3,7 @@ id = "zeokeel/ui-settings-provider"
 kind = "ui"
 version = "0.1.0"
 license = "MIT"
-summary = "Personal-only local provider settings"
+summary = "Personal-only local provider settings pane"
 
 [role]
 name = "ui.slot.settings-provider"
@@ -16,6 +16,7 @@ rust = { crate = "zk-ui-settings-provider" }
 ui = { package = "@zeokeel/ui-settings-provider" }
 
 [[ui.contributions]]
-slot = "ui.settings.provider"
-component = "settings.provider"
-order = 10
+slot = "ui.settings.pane"
+component = "settings.pane.provider"
+order = 21
+editions = ["personal"]

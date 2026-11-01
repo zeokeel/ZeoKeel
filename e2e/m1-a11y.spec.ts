@@ -68,6 +68,46 @@ test.describe("B12 client a11y matrix (real serve carrier)", () => {
     await expect(opener).toBeFocused();
   });
 
+  test("settings panes: every pane opens, single save, axe clean per pane", async ({ page }) => {
+    await openClient(page);
+    await page.getByRole("button", { name: /设置|Settings/ }).first().click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    // Personal composition contributes these panes (docs/16 §2.4).
+    const panes = [/通用|General/, /模型$|Models/, /本地 Provider|Local provider/, /^Agent$/, /工具与审批|Tools and approval/, /网络与检索|Network and search/, /嵌入与向量索引|Embedding and vector index/, /媒体能力|Media/, /关于与更新|About and updates/];
+    for (const pane of panes) {
+      const tab = dialog.getByRole("button", { name: pane });
+      await expect(tab).toBeVisible();
+      await tab.click();
+      await expect(tab).toHaveAttribute("aria-current", "page");
+      await expectNoSeriousViolations(page, `client/settings-pane-${String(panes.indexOf(pane))}`);
+    }
+    // One bottom save for the whole document.
+    await expect(dialog.getByRole("button", { name: /保存|Save/ })).toHaveCount(1);
+    await page.screenshot({ path: `${OUT}/client-settings-about.png`, fullPage: false });
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+  });
+
+  test("settings dialog at 375px: nav becomes horizontal tabs, no horizontal scroll", async ({ page }) => {
+    await openClient(page);
+    // Open first (the 375px shell collapses the sidebar), then shrink to phone width.
+    await page.getByRole("button", { name: /设置|Settings/ }).first().click();
+    await page.setViewportSize({ width: 375, height: 800 });
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    // Narrow layout: content column must not overflow horizontally.
+    const overflow = await page.evaluate(() => {
+      const content = document.querySelector("[role=dialog] [data-zk-settings-content]");
+      return content === null ? -1 : content.scrollWidth - content.clientWidth;
+    });
+    expect(overflow).toBeLessThanOrEqual(1);
+    await expectNoSeriousViolations(page, "client/settings-narrow");
+    await page.screenshot({ path: `${OUT}/client-settings-narrow.png`, fullPage: false });
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+  });
+
   test("command palette (Ctrl+K): axe clean, arrow-key navigation, Esc closes", async ({ page }) => {
     await openClient(page);
     await page.keyboard.press("Control+k");

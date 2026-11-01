@@ -46,7 +46,7 @@ Boot
 | 输入 | `ui.composer` | `ui-composer` | 空、 composing（IME）、附件中、超长、发送失败 |
 | 工具调用 | `ui.toolcall` | `ui-tools` | pending/running/success/failed/cancelled |
 | 审批 | `ui.approval` | `ui-approval` | 等待、超时、批准/拒绝、记住选择 |
-| 设置 | `ui.settings` | `ui-settings` | 保存中、失败、需重启、需重登 |
+| 设置（分页） | `ui.settings` + list slot `ui.settings.pane` | `ui-settings`（外壳）+ 各 pane 贡献包 | 保存中、失败、需重登、**revision 冲突**、空 pane 列表、pane 渲染异常局部降级 |
 | 更新 | `ui.update` | `client-update` | 检查中/有新版/下载/校验/安装/重启/失败/回滚 |
 | 诊断 | `ui.diagnostics` | `client-diagnostics` | 包清单、错误链、日志导出、重启 |
 | 技能/连接器 | `ui.skills`/`ui.connectors` | `client-skill`/`client-connector` | 空/加载/错误/无权限/离线/已禁用 |
@@ -87,6 +87,25 @@ Boot
 1. 启动 → 首配页：输入服务端地址 → 校验 https/可达性/渠道 → 保存本地。
 2. 登录页只读展示已保存地址；修改地址在**设置**中进行，保存后需重新登录。
 3. 服务端地址不可用时提供"重试/去设置修改/导出诊断"，不自动扫描局域网。
+
+### 3.4 设置弹窗（分页 + 单一保存 + revision 冲突）
+
+> 状态：**已实现**（`specs/changes/2026-11-01-client-settings-ia`，2026-11-01；证据 `target/evidence/2026-11-01-client-settings-ia/`）。
+
+入口：侧栏「设置」或 ⌘/Ctrl+K →「设置」。Dialog 保持 M1 形态（不做独立路由/窗口）。
+
+- **布局**：左导航（每个 `ui.settings.pane` 贡献一项，按 `order` 升序）+ 右侧当前 pane；默认选中第一个可用 pane。
+  窄窗（< 720px）导航退化为顶部横向 tab，内容区不横向滚动。企业地址锁定提示、退出登录、企业模型在「企业」pane（仅 enterprise 贡献）。
+- **pane 来源**：全部内建 pane（通用/模型/本地 Provider/Agent/工具与审批/网络与检索/嵌入/媒体/企业/关于）都是
+  `ui.settings.pane` 贡献；`editions` 在构建期过滤（personal 无企业 pane；enterprise 无 provider/embedding/media），pane 内无 edition 分支。
+  无任何 pane 贡献时显示空态 +「恢复默认」入口，不白屏；单个 pane 渲染异常由 `SlotErrorBoundary` 局部降级，仍可切到其它 pane。
+- **草稿**：草稿属于设置窗口会话（完整 `SettingsForm`），切 pane 不丢；关闭再打开以已保存设置为基线。
+- **保存**：只有底部一个保存按钮；提交时把全部 pane 草稿合并为完整 `AppSettings` 一次提交，校验失败不提交并聚焦首个错误字段。
+  成功后用返回的 `{settings, revision}` 重置外壳与所有草稿基线，关闭弹窗；失败（保存中/失败/成功三态可见）保留草稿。
+- **revision 栅栏**：打开时 `settings.get` 返回 `{settings, revision}`；保存携带 `expected_revision`。
+  不一致时宿主拒绝写盘并返回 `settings/revision-conflict`；前端保留草稿并提示「设置已在别处更新，请重新加载」（提供重新加载动作）。
+  旧客户端不传 `expected_revision` 保持旧行为（不校验，兼容）。
+- **无障碍**：Tab 顺序 = 导航 → 当前 pane 字段 → 底部保存/取消；Esc 关闭；关闭后焦点回到打开入口；axe 0 serious/critical。
 
 ## 4. 审批卡（安全关键 UI）
 

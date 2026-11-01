@@ -39,7 +39,7 @@ export function readyTransport(
     const workspaceId = payload["workspace_id"];
     return conversations.filter((conversation) => conversation.workspace_id === workspaceId);
   });
-  transport.handle("settings.get", () => defaultSettings());
+  transport.handle("settings.get", () => ({ settings: defaultSettings(), revision: 0 }));
   transport.handle("session.messages", () => []);
   transport.handle("session.create", (payload) => {
     created += 1;
@@ -58,7 +58,7 @@ export function readyTransport(
     workspace_id: WORKSPACE.id,
   }));
   transport.handle("chat.cancel", () => ({}));
-  transport.handle("settings.set", (payload) => payload["settings"]);
+  transport.handle("settings.set", (payload) => ({ settings: payload["settings"], revision: 1 }));
   transport.handle("approval.decide", () => ({}));
   transport.handle("workspace.create", (payload) => ({
     id: "ws-created",

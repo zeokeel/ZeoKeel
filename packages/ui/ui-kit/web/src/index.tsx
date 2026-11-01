@@ -3,6 +3,7 @@
  * Only depends on React; no app or sibling UI package imports.
  */
 export * from "./types";
+export * from "./settings-fields";
 export * from "./context";
 export * from "./BrandLogo";
 export * from "./icons";

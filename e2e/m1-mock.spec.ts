@@ -18,9 +18,12 @@ test.describe("M1 mock UI (human flow)", () => {
   test("settings validate and Esc closes; axe has no serious issues", async ({ page }) => {
     await page.goto("/?mock=1", { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /设置|Settings/ }).first().click();
-    await expect(page.getByText(/模型 provider|Model provider/)).toBeVisible();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
+    // Paginated settings: the provider fields live in the "本地 Provider" pane (order 21).
+    await expect(dialog.getByRole("button", { name: /通用|General/ })).toHaveAttribute("aria-current", "page");
+    await dialog.getByRole("button", { name: /本地 Provider|Local provider/ }).click();
+    await expect(dialog.getByText(/模型 Provider|Model Provider/)).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
     const results = await new AxeBuilder({ page }).analyze();

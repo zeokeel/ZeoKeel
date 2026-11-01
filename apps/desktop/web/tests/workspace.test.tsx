@@ -39,6 +39,8 @@ describe("workspace reducer", () => {
       },
       conversations: [CONVERSATION],
       settings: defaultSettings(),
+
+      settingsRevision: 0,
       activeId: CONVERSATION.id,
     });
     expect(state.activeWorkspaceId).toBe(WORKSPACE.id);
@@ -77,7 +79,7 @@ describe("workspace first run", () => {
     const transport = new FakeTransport();
     transport.handle("meta.get", () => META);
     transport.handle("workspace.list", () => []);
-    transport.handle("settings.get", () => defaultSettings());
+    transport.handle("settings.get", () => ({ settings: defaultSettings(), revision: 0 }));
     transport.handle("session.list", () => []);
     transport.handle("workspace.create", (payload) => ({
       id: "ws-created",
@@ -88,7 +90,7 @@ describe("workspace first run", () => {
       updated_at_ms: 1,
     }));
     transport.handle("workspace.set_default", () => [{ ...WORKSPACE, id: "ws-created", path: "~", title: "主目录" }]);
-    transport.handle("settings.set", (payload) => payload["settings"]);
+    transport.handle("settings.set", (payload) => ({ settings: payload["settings"], revision: 1 }));
     transport.handle("approval.decide", () => ({}));
 
     render(<App transport={transport} />);

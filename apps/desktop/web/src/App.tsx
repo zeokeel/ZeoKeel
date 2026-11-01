@@ -7,10 +7,11 @@ import {
   readString,
   type AppSettings,
   type BrandConfig,
+  type SettingsSaveOutcome,
   type UiValue,
 } from "@zeokeel/ui-kit";
 import { BRAND } from "./generated/brand";
-import { AppSurfaceSlot, AppsSlot, ChatSlot, CommandsSlot, ConnectorsSlot, InspectorSlot, LoginSlot, SessionsSlot, SettingsProviderSlot, SettingsSlot, ShellSlot, SkillsSlot } from "./generated/registry";
+import { AppSurfaceSlot, AppsSlot, ChatSlot, CommandsSlot, ConnectorsSlot, InspectorSlot, LoginSlot, SessionsSlot, SettingsPanes, SettingsSlot, ShellSlot, SkillsSlot } from "./generated/registry";
 import { translate } from "./i18n";
 import { UpgradeGate } from "./UpgradeGate";
 import { upgradeInfoOf } from "./upgrade";
@@ -253,22 +254,24 @@ export function App(props: { transport: Transport }) {
       closeSettings: () => {
         controller.setSettingsOpen(false);
       },
-      saveSettings: (next: AppSettings): Promise<void> => {
+      saveSettings: (next: AppSettings): Promise<SettingsSaveOutcome> => {
         const requiresRelogin =
           session !== null &&
           normalizeUrl(next.server_url) !== "" &&
           normalizeUrl(next.server_url) !== normalizeUrl(state.settings.server_url) &&
           normalizeUrl(next.server_url) !== (sessionServerUrl ?? "");
-        return controller.saveSettings(next).then(() => {
-          if (requiresRelogin) {
+        return controller.saveSettings(next).then((outcome) => {
+          if (outcome.status === "saved" && requiresRelogin) {
             clearSession();
             setSession(null);
             setSessionServerUrl(null);
             setGatewayModels([]);
             setLoginError(t("settingsReloginRequired"));
           }
+          return outcome;
         });
       },
+      reloadSettings: controller.reloadSettings,
       toggleSidebar: controller.toggleSidebar,
       openCommands: () => { controller.setCommandsOpen(true); },
       retryBoot: controller.retryBoot,
@@ -450,7 +453,6 @@ export function App(props: { transport: Transport }) {
             void props.transport.call("auth.configure", { server_url: effectiveUrl, access_token: session.access_token, model }).catch(() => undefined);
           }
         }}
-        showServerUrl={state.meta.edition === "enterprise"}
         serverUrlLocked={CHANNEL_SERVER_URL !== ""}
         onLogout={logout}
       />
@@ -485,13 +487,12 @@ interface AppShellProps {
   surface: SurfaceState | null;
   onCloseSurface: () => void;
   onSurfaceRequest: (request: SurfaceRequestPayload) => Promise<unknown>;
-  showServerUrl: boolean;
   serverUrlLocked: boolean;
   onLogout: () => void;
 }
 
 function AppShell(props: AppShellProps) {
-  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel, updateText, updateBusy, onCheckUpdate, skills, connectors, installed, contentError, contentBusy, onInstall, onAuthorize, onToggleConnector, authorized, apps, appOpened, appError, onOpenApp, surface, onCloseSurface, onSurfaceRequest, showServerUrl, serverUrlLocked, onLogout } = props;
+  const { ui, controller, transport, gatewayModels, gatewayModel, onSelectGatewayModel, updateText, updateBusy, onCheckUpdate, skills, connectors, installed, contentError, contentBusy, onInstall, onAuthorize, onToggleConnector, authorized, apps, appOpened, appError, onOpenApp, surface, onCloseSurface, onSurfaceRequest, serverUrlLocked, onLogout } = props;
   const t = ui.t;
   const state = controller.state;
   const enterprise = state.meta.edition === "enterprise";
@@ -632,18 +633,17 @@ function AppShell(props: AppShellProps) {
         <SlotErrorBoundary name="ui.settings">
           <SettingsSlot
             key={state.settingsOpen ? "open" : "closed"}
-            gatewayModels={gatewayModels}
-            gatewayModel={gatewayModel}
-            onSelectGatewayModel={onSelectGatewayModel}
-            onCheckUpdate={onCheckUpdate}
-            updateText={updateText}
-            updateBusy={updateBusy}
-            renderProvider={SettingsProviderSlot}
-            showEmbedding={ui.meta.edition === "personal"}
-            showMedia={ui.meta.edition === "personal"}
-            showServerUrl={showServerUrl}
-            serverUrlLocked={serverUrlLocked}
-            onLogout={onLogout}
+            panes={SettingsPanes}
+            app={{
+              serverUrlLocked,
+              onLogout,
+              gatewayModels,
+              gatewayModel,
+              onSelectGatewayModel,
+              onCheckUpdate,
+              updateText,
+              updateBusy,
+            }}
           />
         </SlotErrorBoundary>
       )}

@@ -26,6 +26,8 @@ export interface AppState {
   bootError: string | null;
   meta: Meta;
   settings: AppSettings;
+  /** Settings revision fence (from `settings.get`; increments on each save). */
+  settingsRevision: number;
   settingsOpen: boolean;
   workspaces: Workspace[];
   activeWorkspaceId: string | null;
@@ -59,6 +61,7 @@ export type AppAction =
       conversationsByWorkspace: Record<string, Conversation[]>;
       conversations: Conversation[];
       settings: AppSettings;
+      settingsRevision: number;
       activeId: string | null;
     }
   | { type: "boot_failed"; message: string }
@@ -93,7 +96,8 @@ export type AppAction =
   | { type: "agent_event"; event: AgentEvent; now: number }
   | { type: "offline_changed"; offline: boolean }
   | { type: "settings_open"; open: boolean }
-  | { type: "settings_saved"; settings: AppSettings }
+  | { type: "settings_saved"; settings: AppSettings; revision: number }
+  | { type: "settings_loaded"; settings: AppSettings; revision: number }
   | { type: "toast"; message: string | null }
   | { type: "sidebar_toggled"; open: boolean }
   | { type: "commands_open"; open: boolean }
@@ -107,6 +111,7 @@ export function createInitialState(): AppState {
     bootError: null,
     meta: { edition: "personal", version: "0.0.0", packages: [], agentConfigError: null },
     settings: defaultSettings(),
+    settingsRevision: 0,
     settingsOpen: false,
     workspaces: [],
     activeWorkspaceId: null,
@@ -351,6 +356,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         conversationsByWorkspace: action.conversationsByWorkspace,
         conversations: action.conversations,
         settings: action.settings,
+        settingsRevision: action.settingsRevision,
         activeConversationId: activeId,
         messages: [],
         messagesState: activeId === null ? "idle" : "loading",
@@ -641,7 +647,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "settings_open":
       return { ...state, settingsOpen: action.open };
     case "settings_saved":
-      return { ...state, settings: action.settings, settingsOpen: false };
+      return {
+        ...state,
+        settings: action.settings,
+        settingsRevision: action.revision,
+        settingsOpen: false,
+      };
+    case "settings_loaded":
+      return { ...state, settings: action.settings, settingsRevision: action.revision };
     case "toast":
       return { ...state, toast: action.message };
     case "sidebar_toggled":

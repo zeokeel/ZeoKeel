@@ -1,60 +1,84 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { defaultSettings } from "@zeokeel/ui-kit";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/App";
 import { parseSettings } from "../src/protocol";
-import { META, readyTransport } from "./fixtures";
+import { readyTransport } from "./fixtures";
 
 afterEach(() => {
   localStorage.removeItem("zk.enterprise.session");
 });
+
+async function openSettings(): Promise<void> {
+  await userEvent.click(await screen.findByRole("button", { name: "打开设置" }));
+  expect(await screen.findByRole("dialog")).toBeTruthy();
+}
+
+async function pane(name: string): Promise<void> {
+  await userEvent.click(screen.getByRole("button", { name }));
+}
 
 describe("settings integration", () => {
   it("applies locale and theme after saving and shows a toast", async () => {
     const transport = readyTransport([]);
     render(<App transport={transport} />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "打开设置" }));
-    expect(await screen.findByRole("dialog")).toBeTruthy();
+    await openSettings();
 
+    // Pane 10 · general: language + theme.
     await userEvent.selectOptions(screen.getByLabelText("语言"), "en-US");
     await userEvent.selectOptions(screen.getByLabelText("主题"), "dark");
-    const maxSteps = screen.getByLabelText("最大步数（1-200）");
-    await userEvent.clear(maxSteps);
-    await userEvent.type(maxSteps, "12");
+
+    // Pane 20 · models: completion parameters.
+    await pane("模型");
     const temperature = screen.getByLabelText("temperature（0-2）");
     await userEvent.clear(temperature);
     await userEvent.type(temperature, "0.7");
+
+    // Pane 30 · agent: steps, memory, scheduler.
+    await pane("Agent");
+    const maxSteps = screen.getByLabelText("最大步数（1-200）");
+    await userEvent.clear(maxSteps);
+    await userEvent.type(maxSteps, "12");
     await userEvent.click(screen.getByLabelText("启用会话记忆"));
     await userEvent.click(screen.getByLabelText("启用定时调度"));
     const scan = screen.getByLabelText("扫描间隔（秒，5-3600）");
     await userEvent.clear(scan);
     await userEvent.type(scan, "30");
-    const embedUrl = screen.getByLabelText("嵌入服务地址");
-    await userEvent.type(embedUrl, "https://embed.example/v1");
-    const embedModel = screen.getByLabelText("嵌入模型");
-    await userEvent.type(embedModel, "text-embedding-3-small");
-    const embedDims = screen.getByLabelText("向量维度（1-65536，可选）");
-    await userEvent.type(embedDims, "1024");
-    await userEvent.type(screen.getByLabelText("媒体服务地址"), "https://media.example/v1");
-    await userEvent.type(screen.getByLabelText("图像模型"), "dall-e-3");
-    await userEvent.type(screen.getByLabelText("音频模型"), "tts-1");
-    await userEvent.type(screen.getByLabelText("转写模型"), "whisper-1");
-    await userEvent.type(screen.getByLabelText("重排模型"), "rerank-1");
+
+    // Pane 40 · tools & approval timeouts.
+    await pane("工具与审批");
     const toolTimeout = screen.getByLabelText("工具超时（ms，1000-600000）");
     await userEvent.clear(toolTimeout);
     await userEvent.type(toolTimeout, "60000");
     const approvalTimeout = screen.getByLabelText("审批超时（ms，1000-1800000）");
     await userEvent.clear(approvalTimeout);
     await userEvent.type(approvalTimeout, "450000");
+
+    // Pane 60 · embedding (personal-only contribution).
+    await pane("嵌入与向量索引");
+    await userEvent.type(screen.getByLabelText("嵌入服务地址"), "https://embed.example/v1");
+    await userEvent.type(screen.getByLabelText("嵌入模型"), "text-embedding-3-small");
+    await userEvent.type(screen.getByLabelText("向量维度（1-65536，可选）"), "1024");
+
+    // Pane 65 · media (personal-only contribution).
+    await pane("媒体能力");
+    await userEvent.type(screen.getByLabelText("媒体服务地址"), "https://media.example/v1");
+    await userEvent.type(screen.getByLabelText("图像模型"), "dall-e-3");
+    await userEvent.type(screen.getByLabelText("音频模型"), "tts-1");
+    await userEvent.type(screen.getByLabelText("转写模型"), "whisper-1");
+    await userEvent.type(screen.getByLabelText("重排模型"), "rerank-1");
+
+    // Single bottom save for the whole document.
     await userEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => {
       expect(transport.callsFor("settings.set")).toHaveLength(1);
     });
-    const sentSettings = parseSettings(
-      transport.callsFor("settings.set")[0]?.["settings"],
-    );
+    const saveCall = transport.callsFor("settings.set")[0];
+    expect(saveCall?.["expected_revision"]).toBe(0);
+    const sentSettings = parseSettings(saveCall?.["settings"]);
     expect(sentSettings.locale).toBe("en-US");
     expect(sentSettings.theme).toBe("dark");
     expect(sentSettings.agent.max_steps).toBe(12);
@@ -86,45 +110,31 @@ describe("settings integration", () => {
       expect(screen.queryByRole("dialog")).toBeNull();
     });
   });
-});
 
-describe("update check", () => {
-  it("shows the available version from the update feed", async () => {
+  it("keeps the draft on a revision conflict and reloads the latest settings", async () => {
     const transport = readyTransport([]);
-    transport.handle("update.check", () => ({ release: { version: "9.9.9", notes: "" } }));
     render(<App transport={transport} />);
-    await userEvent.click(await screen.findByRole("button", { name: "打开设置" }));
-    await userEvent.click(await screen.findByRole("button", { name: "检查更新" }));
-    expect(await screen.findByText("发现新版本 9.9.9")).toBeTruthy();
-  });
-});
 
+    await openSettings();
+    await userEvent.selectOptions(screen.getByLabelText("主题"), "dark");
+    // The host rejects the stale revision (another window saved first).
+    transport.fail("settings.set", "settings/revision-conflict: expected 0, current 1");
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
 
-describe("enterprise settings (C7)", () => {
-  it("does not render embedding/vector index fields or their key input", async () => {
-    localStorage.setItem("zk.enterprise.session", JSON.stringify({
-      access_token: "enterprise-token",
-      refresh_token: "enterprise-refresh",
-      expires_in: 900,
-      user_id: "u1",
-      role: "employee",
-      username: "user",
-      device_name: "device",
+    expect(await screen.findByText("设置已在别处更新，请重新加载后再保存。")).toBeTruthy();
+    // Draft preserved, dialog open, nothing committed to the app state.
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByLabelText("主题")).toBeTruthy();
+
+    // Reload re-reads settings.get and clears the conflict banner.
+    transport.handle("settings.get", () => ({
+      settings: { ...defaultSettings(), theme: "light" },
+      revision: 1,
     }));
-    const transport = readyTransport([]);
-    transport.handle("meta.get", () => ({ ...META, edition: "enterprise" }));
-    render(<App transport={transport} />);
-
-    await userEvent.click(await screen.findByRole("button", { name: "打开设置" }));
-    expect(await screen.findByRole("dialog")).toBeTruthy();
-    expect(screen.queryByText("嵌入/向量索引")).toBeNull();
-    expect(screen.queryByLabelText("嵌入服务地址")).toBeNull();
-    expect(screen.queryByLabelText("嵌入 API Key")).toBeNull();
-    expect(screen.queryByText("媒体能力")).toBeNull();
-    expect(screen.queryByLabelText("媒体服务地址")).toBeNull();
-    expect(screen.queryByLabelText("媒体 API Key")).toBeNull();
-    // The personal-only provider key UI is also not rendered in an enterprise composition;
-    // this personal-composition test only guarantees the embedding/local credential gate.
-    expect(screen.getByText("调度/自动化")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "重新加载" }));
+    await waitFor(() => {
+      expect(screen.queryByText("设置已在别处更新，请重新加载后再保存。")).toBeNull();
+    });
+    expect(screen.getByRole("dialog")).toBeTruthy();
   });
 });

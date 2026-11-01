@@ -1,6 +1,8 @@
 import {
   defaultSettings,
+  type AppSettings,
   type Conversation,
+  type SettingsSaveOutcome,
   type UiActions,
   type UiValue,
   type Workspace,
@@ -76,7 +78,9 @@ export function testUi(overrides: TestUiOverrides = {}): UiValue {
       selectConversation: noop,
       openSettings: noop,
       closeSettings: noop,
-      saveSettings: (): Promise<void> => Promise.resolve(),
+      saveSettings: (settings: AppSettings): Promise<SettingsSaveOutcome> =>
+        Promise.resolve({ status: "saved", settings, revision: 1 }),
+      reloadSettings: (): Promise<AppSettings> => Promise.resolve(defaultSettings()),
       toggleSidebar: noop,
       openCommands: noop,
       retryBoot: noop,

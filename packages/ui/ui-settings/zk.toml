@@ -15,7 +15,58 @@ editions = ["personal", "enterprise"]
 rust = { crate = "zk-ui-settings" }
 ui = { package = "@zeokeel/ui-settings" }
 
+# Dialog shell: navigation + draft + single bottom save (docs/16 §2.4).
 [[ui.contributions]]
 slot = "ui.settings"
 component = "settings.dialog"
 order = 10
+
+# Built-in panes are contributions too (no second hardcoded list). Orders are
+# frozen in docs/16 §2.4; `editions` is filtered by `zk compose` at build time.
+[[ui.contributions]]
+slot = "ui.settings.pane"
+component = "settings.pane.general"
+order = 10
+
+[[ui.contributions]]
+slot = "ui.settings.pane"
+component = "settings.pane.models"
+order = 20
+
+[[ui.contributions]]
+slot = "ui.settings.pane"
+component = "settings.pane.agent"
+order = 30
+
+[[ui.contributions]]
+slot = "ui.settings.pane"
+component = "settings.pane.tools"
+order = 40
+
+[[ui.contributions]]
+slot = "ui.settings.pane"
+component = "settings.pane.search"
+order = 50
+
+[[ui.contributions]]
+slot = "ui.settings.pane"
+component = "settings.pane.embedding"
+order = 60
+editions = ["personal"]
+
+[[ui.contributions]]
+slot = "ui.settings.pane"
+component = "settings.pane.media"
+order = 65
+editions = ["personal"]
+
+[[ui.contributions]]
+slot = "ui.settings.pane"
+component = "settings.pane.enterprise"
+order = 80
+editions = ["enterprise"]
+
+[[ui.contributions]]
+slot = "ui.settings.pane"
+component = "settings.pane.about"
+order = 90

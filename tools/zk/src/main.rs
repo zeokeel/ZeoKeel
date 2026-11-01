@@ -728,6 +728,10 @@ struct UiContributionDecl {
     component: String,
     #[serde(default)]
     order: i32,
+    /// Optional edition allow-list (`[]` = every edition). Applied at compose
+    /// time (build-time composition, C2); never emitted into the registry.
+    #[serde(default)]
+    editions: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -890,6 +894,12 @@ struct Resolved {
     channel: String,
     /// Composition targets selected by the edition (`desktop`/`server`; R8.2/F6).
     targets: Vec<String>,
+    /// Effective edition match set for `[[ui.contributions]].editions`:
+    /// the edition chain (`base_edition` closure) **minus the baseline root
+    /// edition** (when the current edition is not that root), so `"personal"`
+    /// contributions never leak into enterprise/OEM builds while
+    /// `"enterprise"` contributions still reach OEM editions.
+    allowed_editions: BTreeSet<String>,
     packages: Vec<Selected>,
     manifests: BTreeMap<String, Manifest>,
     roles: BTreeMap<String, RoleDef>,
@@ -961,6 +971,22 @@ fn edition_closure(root: &Path, name: &str) -> Result<BTreeSet<String>> {
         }
     }
     Ok(set)
+}
+
+/// Terminal base of `name`'s `base_edition` chain (the baseline root edition).
+fn edition_root(root: &Path, name: &str) -> Result<Option<String>> {
+    let mut seen = BTreeSet::new();
+    let mut current = name.to_owned();
+    loop {
+        if !seen.insert(current.clone()) {
+            bail!("edition base cycle at {current}");
+        }
+        let file = load_edition(root, &current)?;
+        match file.edition.base_edition {
+            Some(base) => current = base,
+            None => return Ok(Some(current)),
+        }
+    }
 }
 
 /// Composition targets for an edition (base-chain union; R8.2/F6).
@@ -1179,7 +1205,16 @@ fn resolve(root: &Path, flags: &Flags) -> Result<Resolved> {
 
     let mut chain = Vec::new();
     let mut packages = resolve_edition(root, &flags.edition, &mut chain)?;
-    let allowed_editions = edition_closure(root, &flags.edition)?;
+    let mut allowed_editions = edition_closure(root, &flags.edition)?;
+    // The baseline root edition (no `base_edition`, e.g. `personal`) is an
+    // implementation base, not an "applies to my descendants" tag: a pane tagged
+    // `editions = ["personal"]` is personal-only, while `editions = ["enterprise"]`
+    // also applies to OEM editions derived from enterprise.
+    if let Some(root_edition) = edition_root(root, &flags.edition)? {
+        if root_edition != flags.edition {
+            allowed_editions.remove(&root_edition);
+        }
+    }
     let mut profile_chain = Vec::new();
     resolve_profile(root, &flags.profile, &mut packages, &mut profile_chain)?;
 
@@ -1264,6 +1299,7 @@ fn resolve(root: &Path, flags: &Flags) -> Result<Resolved> {
         edition: flags.edition.clone(),
         channel: flags.channel.clone(),
         targets,
+        allowed_editions,
         packages: selected,
         manifests,
         roles: config.roles,
@@ -1385,6 +1421,31 @@ fn load_personal_only(root: &Path, config: &RootConfig) -> Result<Vec<String>> {
     Ok(parsed.packages)
 }
 
+/// `[[ui.contributions]].editions` must name an existing `editions/<name>.toml`
+/// (docs/16 §2.4, docs/24 §1.5); unknown editions are an error, not a warning.
+fn validate_contribution_editions(
+    root: &Path,
+    manifests: &BTreeMap<String, Manifest>,
+) -> Result<()> {
+    let known = list_editions(root)?;
+    for manifest in manifests.values() {
+        for contribution in manifest.ui_contributions() {
+            for edition in &contribution.editions {
+                if !known.iter().any(|name| name == edition) {
+                    bail!(
+                        "package {}: ui contribution {} declares unknown edition {edition:?} \
+                         (known: {}; docs/16 §2.4)",
+                        manifest.id,
+                        contribution.slot,
+                        known.join(", ")
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn validate(root: &Path) -> Result<()> {
     let mut flags = Flags {
         edition: "personal".to_owned(),
@@ -1394,6 +1455,7 @@ fn validate(root: &Path) -> Result<()> {
     let config = load_root(root)?;
     let manifests = scan_manifests(root)?;
     validate_contracts(&config, &manifests)?;
+    validate_contribution_editions(root, &manifests)?;
     let personal_only = load_personal_only(root, &config)?;
     for edition in config
         .roles
@@ -2767,24 +2829,62 @@ fn brand_json(resolved: &Resolved) -> Result<String> {
     Ok(format!("{}\n", stable_json(&value)?))
 }
 
-fn slot_binding(slot: &str) -> Option<&'static str> {
+/// How one `[[ui.contributions]]` slot is generated into the registry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SlotBinding {
+    /// Exactly one provider (or a stub when absent): `export const X = cN["component"];`
+    Single(&'static str),
+    /// Ordered multi-contribution list: `export const X = [{ id, order, Component }];`
+    List(&'static str),
+}
+
+fn slot_binding(slot: &str) -> Option<SlotBinding> {
     match slot {
-        "ui.sessions" => Some("SessionsSlot"),
-        "ui.chat" => Some("ChatSlot"),
-        "ui.settings" => Some("SettingsSlot"),
-        "ui.shell" => Some("ShellSlot"),
-        "ui.inspector" => Some("InspectorSlot"),
-        "ui.commands" => Some("CommandsSlot"),
-        "ui.login" => Some("LoginSlot"),
-        "ui.settings.provider" => Some("SettingsProviderSlot"),
-        "ui.skills" => Some("SkillsSlot"),
-        "ui.connectors" => Some("ConnectorsSlot"),
-        "ui.apps" => Some("AppsSlot"),
-        "ui.app.surface" => Some("AppSurfaceSlot"),
-        "ui.approval" => Some("ApprovalSlot"),
-        "ui.toolcall" => Some("ToolSlot"),
+        "ui.sessions" => Some(SlotBinding::Single("SessionsSlot")),
+        "ui.chat" => Some(SlotBinding::Single("ChatSlot")),
+        "ui.settings" => Some(SlotBinding::Single("SettingsSlot")),
+        "ui.settings.pane" => Some(SlotBinding::List("SettingsPanes")),
+        "ui.shell" => Some(SlotBinding::Single("ShellSlot")),
+        "ui.inspector" => Some(SlotBinding::Single("InspectorSlot")),
+        "ui.commands" => Some(SlotBinding::Single("CommandsSlot")),
+        "ui.login" => Some(SlotBinding::Single("LoginSlot")),
+        "ui.skills" => Some(SlotBinding::Single("SkillsSlot")),
+        "ui.connectors" => Some(SlotBinding::Single("ConnectorsSlot")),
+        "ui.apps" => Some(SlotBinding::Single("AppsSlot")),
+        "ui.app.surface" => Some(SlotBinding::Single("AppSurfaceSlot")),
+        "ui.approval" => Some(SlotBinding::Single("ApprovalSlot")),
+        "ui.toolcall" => Some(SlotBinding::Single("ToolSlot")),
         _ => None,
     }
+}
+
+/// Whether a contribution is active in the current composition.
+///
+/// `editions` is empty ⇒ every edition; otherwise at least one listed edition
+/// must be in the current edition closure (so an OEM edition inherits its
+/// `base_edition`'s contributions). Filtering happens here — build time, no
+/// runtime edition branching (C2).
+fn contribution_active(resolved: &Resolved, contribution: &UiContributionDecl) -> bool {
+    contribution.editions.is_empty()
+        || contribution
+            .editions
+            .iter()
+            .any(|edition| resolved.allowed_editions.contains(edition))
+}
+
+/// Stable list-slot entry id: last `component` segment
+/// (`settings.pane.general` → `general`; docs/24 §3.1).
+fn pane_id(component: &str) -> String {
+    component.rsplit('.').next().unwrap_or(component).to_owned()
+}
+
+/// One collected list-slot contribution, sorted before emission.
+struct ListEntry {
+    id: String,
+    order: i32,
+    package_id: String,
+    package_index: usize,
+    component: String,
 }
 
 fn admin_registry_ts(resolved: &Resolved) -> String {
@@ -2843,6 +2943,8 @@ fn ui_registry_ts(resolved: &Resolved) -> String {
     let mut imports = String::new();
     let mut spreads = String::new();
     let mut bindings = String::new();
+    let mut list_entries: Vec<ListEntry> = Vec::new();
+    let mut list_binding: Option<&'static str> = None;
     let mut index = 0usize;
     for pkg in &resolved.packages {
         let Some(manifest) = resolved.manifests.get(&pkg.package_id) else {
@@ -2863,20 +2965,48 @@ fn ui_registry_ts(resolved: &Resolved) -> String {
         ));
         spreads.push_str(&format!("  ...c{index},\n"));
         for contribution in manifest.ui_contributions() {
-            if let Some(binding) = slot_binding(&contribution.slot) {
-                bindings.push_str(&format!(
+            if !contribution_active(resolved, contribution) {
+                continue;
+            }
+            match slot_binding(&contribution.slot) {
+                Some(SlotBinding::Single(binding)) => bindings.push_str(&format!(
                     "export const {binding} = c{index}[\"{}\"];\n",
-                    contribution.component
-                ));
+                    escape_ts(&contribution.component)
+                )),
+                Some(SlotBinding::List(binding)) => {
+                    list_binding = Some(binding);
+                    list_entries.push(ListEntry {
+                        id: pane_id(&contribution.component),
+                        order: contribution.order,
+                        package_id: manifest.id.clone(),
+                        package_index: index,
+                        component: contribution.component.clone(),
+                    });
+                }
+                None => {}
             }
         }
         index = index.saturating_add(1);
     }
-    let settings_provider_stub = if bindings.contains("SettingsProviderSlot") {
-        String::new()
-    } else {
-        "import type { ProviderSettingsProps } from \"@zeokeel/ui-kit\";\nexport function SettingsProviderSlot(_props: ProviderSettingsProps) { return null; }\n".to_owned()
-    };
+    // Stable order: `order` ascending, then package id lexicographic (docs/24 §3.1).
+    list_entries.sort_by(|left, right| {
+        left.order
+            .cmp(&right.order)
+            .then_with(|| left.package_id.cmp(&right.package_id))
+    });
+    let mut list_ts = String::new();
+    for entry in &list_entries {
+        list_ts.push_str(&format!(
+            "  {{ id: \"{}\", order: {}, Component: c{}[\"{}\"] }},\n",
+            escape_ts(&entry.id),
+            entry.order,
+            entry.package_index,
+            escape_ts(&entry.component)
+        ));
+    }
+    // Always export the list binding (possibly empty): the app shell imports it
+    // unconditionally, and an edition without pane contributions must still build.
+    let list_name = list_binding.unwrap_or("SettingsPanes");
     let skills_stub = if bindings.contains("SkillsSlot") {
         String::new()
     } else {
@@ -2905,7 +3035,7 @@ fn ui_registry_ts(resolved: &Resolved) -> String {
         "export function LoginSlot(_props: { serverUrl: string | null; channelLocked: boolean; loading: boolean; error: string | null; onSubmit: (input: { serverUrl?: string; username: string; password: string; deviceName: string }) => void }) { return null; }\n".to_owned()
     };
     format!(
-        "// @generated by zk compose -- do not edit\n\n{imports}\nexport const COMPONENTS = {{\n{spreads}}} as const;\n\n{bindings}{login_stub}{settings_provider_stub}{skills_stub}{connectors_stub}{apps_stub}{app_surface_stub}"
+        "// @generated by zk compose -- do not edit\n\nimport type {{ SettingsPaneContribution }} from \"@zeokeel/ui-kit\";\n{imports}\nexport const COMPONENTS = {{\n{spreads}}} as const;\n\nexport const {list_name}: ReadonlyArray<SettingsPaneContribution> = [\n{list_ts}];\n\n{bindings}{login_stub}{skills_stub}{connectors_stub}{apps_stub}{app_surface_stub}"
     )
 }
 
@@ -2919,12 +3049,16 @@ fn ui_contributions_json(resolved: &Resolved) -> Result<String> {
             continue;
         }
         for contribution in manifest.ui_contributions() {
+            if !contribution_active(resolved, contribution) {
+                continue;
+            }
             out.push(serde_json::json!({
                 "package": manifest.id,
                 "role": pkg.role,
                 "slot": contribution.slot,
                 "component": contribution.component,
                 "order": contribution.order,
+                "editions": contribution.editions,
             }));
         }
     }
@@ -4346,5 +4480,396 @@ mod target_trim_tests {
             .get(&root.join("crates/zk-composed/Cargo.toml"))
             .unwrap();
         assert!(composed.contains("zk-srv-"), "{composed}");
+    }
+}
+
+#[cfg(test)]
+mod ui_registry_tests {
+    // test-only: assertions may unwrap / panic on fixture mismatches.
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+    use super::*;
+
+    /// Build the minimal `Manifest` shape the registry generator consumes.
+    fn ui_manifest(id: &str, contributions: &[(&str, &str, i32, &[&str])]) -> Manifest {
+        let mut text = format!(
+            "schema = 1\nid = \"{id}\"\nkind = \"ui\"\nversion = \"0.1.0\"\n\
+             facets = {{ ui = {{ package = \"@{id}\" }} }}\n"
+        );
+        for (slot, component, order, editions) in contributions {
+            let list = editions
+                .iter()
+                .map(|edition| format!("\"{edition}\""))
+                .collect::<Vec<_>>()
+                .join(", ");
+            text.push_str(&format!(
+                "[[ui.contributions]]\nslot = \"{slot}\"\ncomponent = \"{component}\"\n\
+                 order = {order}\neditions = [{list}]\n"
+            ));
+        }
+        toml::from_str(&text).unwrap()
+    }
+
+    /// Synthetic composition: only the fields the registry generator reads matter.
+    fn resolved_with(entries: &[(&str, Manifest)], edition: &str, allowed: &[&str]) -> Resolved {
+        let mut manifests = BTreeMap::new();
+        let mut packages = Vec::new();
+        for (package_id, manifest) in entries {
+            packages.push(Selected {
+                role: format!("ui.slot.{}", manifest.id),
+                package_id: (*package_id).to_owned(),
+                crate_name: "zk-test".to_owned(),
+                contract: "zk-contract-ui".to_owned(),
+                cardinality: "singleton".to_owned(),
+            });
+            manifests.insert((*package_id).to_owned(), manifest.clone());
+        }
+        Resolved {
+            edition: edition.to_owned(),
+            channel: "official".to_owned(),
+            targets: vec!["desktop".to_owned()],
+            allowed_editions: allowed.iter().map(|name| (*name).to_owned()).collect(),
+            packages,
+            manifests,
+            roles: BTreeMap::new(),
+            paths: Paths::default(),
+            brand: Brand {
+                name: String::new(),
+                powered_by: String::new(),
+                logo: BrandLogo::default(),
+            },
+            channel_dir: PathBuf::new(),
+            channel_server_url: String::new(),
+            app_id: String::new(),
+            deep_link_scheme: String::new(),
+            app_origin_scheme: String::new(),
+            accent: String::new(),
+            data_dir_name: String::new(),
+            product_home_dir: String::new(),
+        }
+    }
+
+    fn position(haystack: &str, needle: &str) -> usize {
+        haystack
+            .find(needle)
+            .unwrap_or_else(|| panic!("missing {needle} in {haystack}"))
+    }
+
+    #[test]
+    fn list_slot_is_ordered_and_stable_for_same_order() {
+        let b = ui_manifest(
+            "zeokeel/ui-b",
+            &[
+                ("ui.settings.pane", "settings.pane.agent", 30, &[]),
+                ("ui.settings.pane", "settings.pane.general", 10, &[]),
+            ],
+        );
+        let a = ui_manifest(
+            "zeokeel/ui-a",
+            &[("ui.settings.pane", "settings.pane.models", 20, &[])],
+        );
+        let ts = ui_registry_ts(&resolved_with(
+            &[("zeokeel/ui-b", b), ("zeokeel/ui-a", a)],
+            "personal",
+            &["personal"],
+        ));
+        assert!(
+            ts.contains("export const SettingsPanes: ReadonlyArray<SettingsPaneContribution> = [")
+        );
+        let general = position(&ts, "\"general\"");
+        let models = position(&ts, "\"models\"");
+        let agent = position(&ts, "\"agent\"");
+        assert!(
+            general < models && models < agent,
+            "order ascending expected: {ts}"
+        );
+        // `editions` never leaks into the generated array.
+        assert!(!ts.contains("editions"), "{ts}");
+    }
+
+    #[test]
+    fn same_order_breaks_ties_by_package_id() {
+        let b = ui_manifest(
+            "zeokeel/ui-b",
+            &[("ui.settings.pane", "settings.pane.b", 20, &[])],
+        );
+        let a = ui_manifest(
+            "zeokeel/ui-a",
+            &[("ui.settings.pane", "settings.pane.a", 20, &[])],
+        );
+        let ts = ui_registry_ts(&resolved_with(
+            &[("zeokeel/ui-b", b), ("zeokeel/ui-a", a)],
+            "personal",
+            &["personal"],
+        ));
+        assert!(
+            position(&ts, "\"a\"") < position(&ts, "\"b\""),
+            "same order must sort by package id: {ts}"
+        );
+    }
+
+    #[test]
+    fn edition_filter_applies_to_list_and_single_slots() {
+        let manifest = ui_manifest(
+            "zeokeel/ui-edition",
+            &[
+                (
+                    "ui.settings.pane",
+                    "settings.pane.enterprise",
+                    80,
+                    &["enterprise"],
+                ),
+                ("ui.settings.pane", "settings.pane.shared", 10, &[]),
+                ("ui.chat", "chat.thread", 10, &["enterprise"]),
+            ],
+        );
+        let personal = ui_registry_ts(&resolved_with(
+            &[("zeokeel/ui-edition", manifest.clone())],
+            "personal",
+            &["personal"],
+        ));
+        assert!(personal.contains("\"shared\""));
+        assert!(!personal.contains("\"enterprise\""));
+        // Single slots are filtered too (the edition-owned component is not exported).
+        assert!(!personal.contains("export const ChatSlot"));
+
+        let enterprise = ui_registry_ts(&resolved_with(
+            &[("zeokeel/ui-edition", manifest)],
+            "enterprise",
+            &["enterprise", "personal"],
+        ));
+        assert!(enterprise.contains("\"enterprise\""));
+        assert!(enterprise.contains("export const ChatSlot"));
+    }
+
+    #[test]
+    fn missing_list_contributions_generate_an_empty_array() {
+        let manifest = ui_manifest(
+            "zeokeel/ui-no-panes",
+            &[("ui.chat", "chat.thread", 10, &[])],
+        );
+        let ts = ui_registry_ts(&resolved_with(
+            &[("zeokeel/ui-no-panes", manifest)],
+            "personal",
+            &["personal"],
+        ));
+        assert!(
+            ts.contains(
+                "export const SettingsPanes: ReadonlyArray<SettingsPaneContribution> = [\n];"
+            ),
+            "empty list must still be exported: {ts}"
+        );
+    }
+
+    #[test]
+    fn contributions_json_records_editions_and_filters_inactive_ones() {
+        let manifest = ui_manifest(
+            "zeokeel/ui-edition",
+            &[
+                ("ui.settings.pane", "settings.pane.shared", 10, &[]),
+                (
+                    "ui.settings.pane",
+                    "settings.pane.personal",
+                    60,
+                    &["personal"],
+                ),
+                (
+                    "ui.settings.pane",
+                    "settings.pane.enterprise",
+                    80,
+                    &["enterprise"],
+                ),
+            ],
+        );
+        let json = ui_contributions_json(&resolved_with(
+            &[("zeokeel/ui-edition", manifest)],
+            "personal",
+            &["personal"],
+        ))
+        .unwrap();
+        let list: Vec<serde_json::Value> = serde_json::from_str(&json).unwrap();
+        assert_eq!(list.len(), 2);
+        assert!(list
+            .iter()
+            .any(|entry| entry["component"] == "settings.pane.shared"));
+        assert!(list
+            .iter()
+            .any(|entry| entry["component"] == "settings.pane.personal"));
+        assert!(!list
+            .iter()
+            .any(|entry| entry["component"] == "settings.pane.enterprise"));
+        assert!(list.iter().all(|entry| entry.get("editions").is_some()));
+    }
+
+    #[test]
+    fn slot_binding_kinds_are_explicit() {
+        assert_eq!(
+            slot_binding("ui.settings.pane"),
+            Some(SlotBinding::List("SettingsPanes"))
+        );
+        assert_eq!(
+            slot_binding("ui.settings"),
+            Some(SlotBinding::Single("SettingsSlot"))
+        );
+        assert_eq!(slot_binding("ui.unknown"), None);
+        assert_eq!(pane_id("settings.pane.general"), "general");
+        assert_eq!(pane_id("single"), "single");
+    }
+
+    fn repo_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    fn resolve_for(edition: &str) -> Resolved {
+        resolve(
+            &repo_root(),
+            &Flags {
+                edition: edition.to_owned(),
+                profile: "default".to_owned(),
+                channel: "official".to_owned(),
+            },
+        )
+        .unwrap()
+    }
+
+    /// Ordered `(id, order)` pairs from the generated `SettingsPanes` array.
+    fn pane_entries(ts: &str) -> Vec<(String, i32)> {
+        let body = ts
+            .split_once("export const SettingsPanes:")
+            .map_or("", |(_head, rest)| rest);
+        body.lines()
+            .filter(|line| line.contains("order:"))
+            .filter_map(|line| {
+                let (_before_id, after_id) = line.split_once("id: \"")?;
+                let (id, _after_component) = after_id.split_once('"')?;
+                let (_before_order, after_order) = line.split_once("order: ")?;
+                let (order, _rest) = after_order.split_once(',')?;
+                Some((id.to_owned(), order.trim().parse::<i32>().ok()?))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn personal_composition_pane_snapshot_is_ordered_and_edition_filtered() {
+        let ts = ui_registry_ts(&resolve_for("personal"));
+        let panes = pane_entries(&ts);
+        assert_eq!(
+            panes,
+            vec![
+                ("general".to_owned(), 10),
+                ("models".to_owned(), 20),
+                ("provider".to_owned(), 21),
+                ("agent".to_owned(), 30),
+                ("tools".to_owned(), 40),
+                ("search".to_owned(), 50),
+                ("embedding".to_owned(), 60),
+                ("media".to_owned(), 65),
+                ("about".to_owned(), 90),
+            ],
+            "{ts}"
+        );
+        // Provider pane comes from the personal-only package on the list slot.
+        assert!(ts.contains("c6[\"settings.pane.provider\"]"), "{ts}");
+        assert!(ts.contains("export const SettingsSlot = c5[\"settings.dialog\"]"));
+        // The old single provider slot is gone; the pane list replaces it.
+        assert!(!ts.contains("SettingsProviderSlot"), "{ts}");
+    }
+
+    #[test]
+    fn enterprise_composition_excludes_personal_only_panes() {
+        let ts = ui_registry_ts(&resolve_for("enterprise"));
+        let panes = pane_entries(&ts);
+        let ids: Vec<&str> = panes.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec![
+                "general",
+                "models",
+                "agent",
+                "tools",
+                "search",
+                "enterprise",
+                "about"
+            ],
+            "{ts}"
+        );
+        assert!(!ts.contains("settings.pane.provider"), "{ts}");
+        assert!(!ts.contains("settings.pane.embedding"), "{ts}");
+        assert!(!ts.contains("settings.pane.media"), "{ts}");
+        assert!(ts.contains("settings.pane.enterprise"), "{ts}");
+    }
+
+    #[test]
+    fn edition_root_is_the_baseline_edition() {
+        for edition in ["personal", "enterprise", "oem-deep"] {
+            assert_eq!(
+                edition_root(&repo_root(), edition).unwrap().as_deref(),
+                Some("personal"),
+                "{edition}"
+            );
+        }
+    }
+
+    #[test]
+    fn oem_editions_inherit_enterprise_contributions_but_not_personal_ones() {
+        let manifest = ui_manifest(
+            "zeokeel/ui-oem",
+            &[
+                (
+                    "ui.settings.pane",
+                    "settings.pane.enterprise",
+                    80,
+                    &["enterprise"],
+                ),
+                ("ui.settings.pane", "settings.pane.media", 65, &["personal"]),
+            ],
+        );
+        // oem-deep chain = {oem-deep, enterprise, personal} with the root removed.
+        let ts = ui_registry_ts(&resolved_with(
+            &[("zeokeel/ui-oem", manifest)],
+            "oem-deep",
+            &["oem-deep", "enterprise"],
+        ));
+        assert!(ts.contains("settings.pane.enterprise"), "{ts}");
+        assert!(!ts.contains("settings.pane.media"), "{ts}");
+    }
+
+    #[test]
+    fn contribution_editions_must_name_an_existing_edition() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("zk-contribution-editions-{stamp}"));
+        std::fs::create_dir_all(root.join("editions")).unwrap();
+        std::fs::write(
+            root.join("editions/personal.toml"),
+            "[edition]\nname = \"personal\"\n",
+        )
+        .unwrap();
+        let mut manifests = BTreeMap::new();
+        let known = ui_manifest(
+            "zeokeel/ui-known",
+            &[(
+                "ui.settings.pane",
+                "settings.pane.general",
+                10,
+                &["personal"],
+            )],
+        );
+        assert!(validate_contribution_editions(
+            &root,
+            &BTreeMap::from([("zeokeel/ui-known".to_owned(), known)])
+        )
+        .is_ok());
+        manifests.insert(
+            "zeokeel/ui-unknown".to_owned(),
+            ui_manifest(
+                "zeokeel/ui-unknown",
+                &[("ui.settings.pane", "settings.pane.mystery", 10, &["nope"])],
+            ),
+        );
+        let error = validate_contribution_editions(&root, &manifests).expect_err("unknown edition");
+        assert!(error.to_string().contains("unknown edition"), "{error}");
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

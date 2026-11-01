@@ -62,20 +62,69 @@ order = 10
 | --- | --- | --- | --- |
 | `ui.sessions` | `ui.slot.sessions` | `sessions.sidebar` | 侧栏（**平铺 Workspace 列表**/会话列表） |
 | `ui.chat` | `ui.slot.chat` | `chat.thread` | 对话区（含 composer/工具卡/审批/空态） |
-| `ui.settings` | `ui.slot.settings` | `settings.dialog` | 设置弹窗 |
+| `ui.settings` | `ui.slot.settings` | `settings.dialog` | 设置弹窗外壳（导航/保存/草稿会话） |
+| `ui.settings.pane` | `ui.slot.settings-pane` | `settings.pane.*` | 设置分区内容（**多贡献 list slot**，见 §2.4） |
 | `ui.shell` | `ui.shell` | `shell.frame` | 应用框架（布局/header/status/overlay；app 已接入） |
 | `ui.inspector` | `ui.slot.inspector` | `inspector.panel` | 右侧检查器（已接入） |
 | `ui.commands` | `ui.slot.commands` | `commands.palette` | ⌘K 命令面板（已接入） |
 
 M1 **active** slot 为 `ui.shell` + 内容三槽 `ui.sessions/chat/settings` + `ui.commands` + `ui.inspector`；新增 slot 必须同时改 `tools/zk` 的 `slot_binding` 与本文，否则 `registry.ts` 不生成。
+`ui.settings.pane`（M1 设置 IA 变更新增）是**列表类型 slot**：一个 slot 聚合多个包的有序贡献，生成 `SettingsPanes` 数组而不是单个组件（§2.4）。
 
 ### 2.3 生成器行为（M1 实际）
 
 1. 扫描 `packages/ui/*/zk.toml` 的 `[[ui.contributions]]`；
 2. 生成 `registry.ts`：`import { components as cN } from "<ui.package>"`、`COMPONENTS`、`XxxSlot = cN["component"]`；
-3. 生成 `shared/contracts/ui-contributions.json`（package/role/slot/component/order）；
+   列表类型 slot（§2.4）改为生成有序数组（如 `SettingsPanes`）；
+3. 生成 `shared/contracts/ui-contributions.json`（package/role/slot/component/order + `editions`）；
 4. `--check` 逐字节比较；生成物禁止手改（C11）。
 5. **不校验** `props_schema`/slot props 兼容/组件闭包（T21）；M1 由 TypeScript 编译 + 运行时 guard 保证。
+
+### 2.4 多贡献 slot 与 edition 过滤（`ui.settings.pane`）
+
+设置分区**没有第二套内建列表**：全部 pane（含「通用/模型/Agent/工具与审批/网络与检索/嵌入/媒体/企业/关于」）都由 UI 包在自身
+`zk.toml` 的 `[[ui.contributions]]` 声明，`ui-settings` 只是外壳（左导航 + pane 渲染 + 单一底部保存）。
+
+```toml
+[[ui.contributions]]
+slot = "ui.settings.pane"
+component = "settings.pane.general"
+order = 10
+# 可选：只在这些 edition 生效；缺省 = 全部 edition
+editions = ["personal"]
+```
+
+生成规则（`zk compose`，T0 快照 + `--check`）：
+
+- 只收集「包被当前组合选中」且「`editions` 缺省或与当前 edition 匹配集相交」的贡献；
+  `editions` 在构建期过滤，pane 内部**不做**运行期 edition 分支（C2）。
+  匹配集 = 该 edition 的 `base_edition` 链，**减去基线根 edition（无 `base_edition` 者，如 `personal`）**：
+  因此 `editions=["personal"]` 是 personal 专属（不会继承进 enterprise/OEM），而 `editions=["enterprise"]`
+  对 enterprise 及其 OEM 派生 edition 生效。`zk validate` 校验 `editions` 取值必须存在。
+- 排序：`order` 升序；同 `order` 按包 id 字典序稳定排序；`order` 只用于展示顺序，不参与路由。
+- 空列表合法：没有任何 pane 贡献时生成 `SettingsPanes = []`，外壳渲染空态（「恢复默认」入口），不白屏。
+- 生成物只含 `{ id, order, Component }`；`editions` 只存在于 `zk.toml`，不进生成数组。
+- `zk validate` 校验 `editions` 取值必须对应已存在的 `editions/<name>.toml`；未知 edition = 错误退出。
+
+固化 order 表（`ui.settings.pane`；新增 pane 取未占用 order，同 order 时按包 id 稳定排序）：
+
+| order | pane | 归属包 | editions |
+| --- | --- | --- | --- |
+| 10 | 通用/外观 | `ui-settings` | 全部 |
+| 20 | 模型 | `ui-settings` | 全部 |
+| 21 | 本地 Provider | `ui-settings-provider` | `personal` |
+| 30 | Agent | `ui-settings` | 全部 |
+| 40 | 工具与审批 | `ui-settings` | 全部 |
+| 50 | 网络与检索 | `ui-settings` | 全部 |
+| 60 | 嵌入/向量索引 | `ui-settings` | `personal` |
+| 65 | 媒体能力 | `ui-settings` | `personal` |
+| 80 | 企业 | `ui-settings` | `enterprise` |
+| 90 | 关于与更新 | `ui-settings` | 全部 |
+
+pane props 统一为 `SettingsPaneProps { t, draft, update, errors, saving, app }`（共享类型在 `@zeokeel/ui-kit`）：
+草稿是设置窗口会话级的完整 `SettingsForm`，切 pane 不丢；保存由外壳合并为一整份 `AppSettings` 提交。
+`app` 承载 pane 需要的**应用级（非 edition 级）**事实/动作：`serverUrlLocked`、`onLogout`、`gatewayModels/gatewayModel/onSelectGatewayModel`、
+`onCheckUpdate/updateText/updateBusy`；pane 仍不按 edition 分支（哪个 pane 存在由构建期 `editions` 决定）。
 
 ## 3. 边界与共享（M1）
 

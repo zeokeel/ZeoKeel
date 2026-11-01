@@ -173,9 +173,10 @@ idempotency = "safe"
 audit = false
 
 [[ui.contributions]]                 # UI facet 的静态贡献（slotId 见 16 §3）
-slot = "ui.settings.section"
-component = "tool-fs.settings"
+slot = "ui.settings.pane"
+component = "tool-fs.settings.pane"
 order = 20
+editions = ["personal"]              # 可选；缺省 = 全部 edition（构建期过滤，见 §3.1）
 props_schema = "schema/tool-fs.settings.props.json"
 
 [[jobs]]                             # 后台作业（仅服务端包；示例仅示字段）
@@ -195,6 +196,8 @@ dir = "migrations"                  # 文件由 zk db lock 全局编号
 - `[role]` 与 `[[roles]]` 只能二选一；每个 role 元素字段相同。
 - 命令/路由**不得在源码里手写第二份**；运行期 `Register()` 只做一致性校验（见 §4）。
 - 管理台页面也声明 `[[ui.contributions]]`（slot/component/order/props_schema）；页面角色与权限点见 `08` §3。
+- `[[ui.contributions]].editions` 可选（`Vec<String>`，缺省空 = 全部 edition）；取值必须是已存在的 `editions/<name>.toml`，
+  `zk validate` 校验，未知 edition = error。该字段只用于 `zk compose` 的**构建期过滤**，不写进生成数组；运行期无 edition 分支（C2）。
 - `[jobs]` 统一用 `[[jobs]]`（name/schedule/idempotency/timeout/on_error），禁止无 schema 的键值占位。
 - edition 归属只写在 `[role].editions`；ADR-020 早期示意的包级 `[editions]` 表已废弃，以本节为准。
 - 版本/源/哈希由 `zk.lock` 解析，不在 manifest 手写路径/版本范围。
@@ -266,6 +269,32 @@ protected = false
 
 - 生成物头部 `@generated` + 输入哈希 + `@edition/@profile/@channel`；入库基线见 §1.2（`personal×default×official`），
   其它组合只在 CI 临时目录生成；`--check` 永不写源文件。
+
+### 3.1 UI registry 生成规则（`zk compose`；含 list slot）
+
+单组件 slot（`ui.sessions`/`ui.chat`/`ui.settings`/…）：每个 slot 至多一个贡献，生成 `export const <Slot> = cN["component"]`；
+同 slot 多贡献 = `zk validate` 错误（list slot 除外）。
+
+list slot（当前仅 `ui.settings.pane`）：`slot_binding` 声明为列表类型，生成有序数组：
+
+```ts
+// apps/desktop/web/src/generated/registry.ts（生成片段）
+export const SettingsPanes: ReadonlyArray<SettingsPaneContribution> = [
+  { id: "general", order: 10, Component: c5["settings.pane.general"] },
+  { id: "provider", order: 21, Component: c6["settings.pane.provider"] },
+  // ...
+];
+```
+
+规则（T0 快照 + `--check` 逐字节比较）：
+
+- 只收集**被当前组合选中**的包的贡献；未选中包 / `editions` 与当前 edition 闭包不相交的贡献**不出现**（也不报错）。
+- edition 过滤发生在生成期：`editions` 缺省或与当前 edition 匹配集相交才收集；匹配集 = `base_edition` 链减去基线根 edition
+  （如 `personal`）——`editions=["personal"]` 不继承进 enterprise/OEM，`editions=["enterprise"]` 对 OEM 派生 edition 仍生效；
+  生成数组不含 `editions` 字段。
+- 排序：`order` 升序 + 同 order 按包 id 字典序稳定排序；`id` 取 `component` 最后一个 `.` 之后的段（如 `settings.pane.general` → `general`）。
+- 空列表合法：无任何贡献时生成 `export const SettingsPanes: ReadonlyArray<SettingsPaneContribution> = [];`（外壳显示空态）。
+- personal / enterprise 两套快照单测必须覆盖：贡献顺序、edition 过滤、空列表、单 slot 与 list slot 互不重复导出。
 
 ## 4. 路由/命令真源时序
 

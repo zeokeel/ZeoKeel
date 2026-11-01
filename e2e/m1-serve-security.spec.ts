@@ -31,8 +31,8 @@ test.describe("serve carrier security", () => {
     const got = await request.post(`${SERVE}/ipc`, {
       data: { name: "settings.get", payload: {} },
     });
-    const body = (await got.json()) as { data: { provider: { api_key: string } } };
-    expect(body.data.provider.api_key).toBe("");
+    const body = (await got.json()) as { data: { settings: { provider: { api_key: string } } } };
+    expect(body.data.settings.provider.api_key).toBe("");
     expect(JSON.stringify(body)).not.toContain("sk-SECRET-TEST");
 
     // Restore a provider that does not hot-swap away the env fake upstream: later suites in

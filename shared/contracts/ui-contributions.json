@@ -1,6 +1,7 @@
 [
   {
     "component": "chat.thread",
+    "editions": [],
     "order": 10,
     "package": "zeokeel/ui-chat",
     "role": "ui.slot.chat",
@@ -8,6 +9,7 @@
   },
   {
     "component": "commands.palette",
+    "editions": [],
     "order": 10,
     "package": "zeokeel/ui-commands",
     "role": "ui.slot.commands",
@@ -15,6 +17,7 @@
   },
   {
     "component": "inspector.panel",
+    "editions": [],
     "order": 10,
     "package": "zeokeel/ui-inspector",
     "role": "ui.slot.inspector",
@@ -22,6 +25,7 @@
   },
   {
     "component": "sessions.sidebar",
+    "editions": [],
     "order": 10,
     "package": "zeokeel/ui-sessions",
     "role": "ui.slot.sessions",
@@ -29,20 +33,93 @@
   },
   {
     "component": "settings.dialog",
+    "editions": [],
     "order": 10,
     "package": "zeokeel/ui-settings",
     "role": "ui.slot.settings",
     "slot": "ui.settings"
   },
   {
-    "component": "settings.provider",
+    "component": "settings.pane.general",
+    "editions": [],
     "order": 10,
+    "package": "zeokeel/ui-settings",
+    "role": "ui.slot.settings",
+    "slot": "ui.settings.pane"
+  },
+  {
+    "component": "settings.pane.models",
+    "editions": [],
+    "order": 20,
+    "package": "zeokeel/ui-settings",
+    "role": "ui.slot.settings",
+    "slot": "ui.settings.pane"
+  },
+  {
+    "component": "settings.pane.agent",
+    "editions": [],
+    "order": 30,
+    "package": "zeokeel/ui-settings",
+    "role": "ui.slot.settings",
+    "slot": "ui.settings.pane"
+  },
+  {
+    "component": "settings.pane.tools",
+    "editions": [],
+    "order": 40,
+    "package": "zeokeel/ui-settings",
+    "role": "ui.slot.settings",
+    "slot": "ui.settings.pane"
+  },
+  {
+    "component": "settings.pane.search",
+    "editions": [],
+    "order": 50,
+    "package": "zeokeel/ui-settings",
+    "role": "ui.slot.settings",
+    "slot": "ui.settings.pane"
+  },
+  {
+    "component": "settings.pane.embedding",
+    "editions": [
+      "personal"
+    ],
+    "order": 60,
+    "package": "zeokeel/ui-settings",
+    "role": "ui.slot.settings",
+    "slot": "ui.settings.pane"
+  },
+  {
+    "component": "settings.pane.media",
+    "editions": [
+      "personal"
+    ],
+    "order": 65,
+    "package": "zeokeel/ui-settings",
+    "role": "ui.slot.settings",
+    "slot": "ui.settings.pane"
+  },
+  {
+    "component": "settings.pane.about",
+    "editions": [],
+    "order": 90,
+    "package": "zeokeel/ui-settings",
+    "role": "ui.slot.settings",
+    "slot": "ui.settings.pane"
+  },
+  {
+    "component": "settings.pane.provider",
+    "editions": [
+      "personal"
+    ],
+    "order": 21,
     "package": "zeokeel/ui-settings-provider",
     "role": "ui.slot.settings-provider",
-    "slot": "ui.settings.provider"
+    "slot": "ui.settings.pane"
   },
   {
     "component": "shell.frame",
+    "editions": [],
     "order": 10,
     "package": "zeokeel/ui-shell",
     "role": "ui.shell",

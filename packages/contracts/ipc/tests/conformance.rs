@@ -60,6 +60,49 @@ fn workspace_changes_result_round_trips_and_warning_is_omitted_when_absent() {
 }
 
 #[test]
+fn settings_revision_dtos_fence_compatibly() {
+    use zk_contract_config::AppSettings;
+    use zk_contract_ipc::payloads::SettingsSetPayload;
+    use zk_contract_ipc::results::{SettingsGetResult, SettingsSetResult};
+
+    let settings = AppSettings::default();
+
+    // Legacy payload: `expected_revision` absent deserializes to `None` (no fence).
+    let legacy: SettingsSetPayload =
+        serde_json::from_value(serde_json::json!({ "settings": settings }))
+            .expect("legacy settings.set payload must stay accepted");
+    assert_eq!(legacy.expected_revision, None);
+    // `None` is omitted on the wire (old hosts/clients keep the same shape).
+    assert!(!serde_json::to_string(&legacy)
+        .expect("serialize")
+        .contains("expected_revision"));
+
+    // New payload: the fence round-trips.
+    let fenced = SettingsSetPayload {
+        settings: settings.clone(),
+        expected_revision: Some(7),
+    };
+    let text = serde_json::to_string(&fenced).expect("serialize fenced payload");
+    assert!(text.contains("\"expected_revision\":7"));
+    let back: SettingsSetPayload = serde_json::from_str(&text).expect("parse fenced payload");
+    assert_eq!(back, fenced);
+
+    // get/set results are structurally identical and keep the revision.
+    let got = SettingsGetResult {
+        settings: settings.clone(),
+        revision: 3,
+    };
+    let put = SettingsSetResult {
+        settings,
+        revision: 4,
+    };
+    let got_value = serde_json::to_value(&got).expect("get result");
+    let put_value = serde_json::to_value(&put).expect("set result");
+    assert_eq!(got_value.get("revision"), Some(&serde_json::json!(3)));
+    assert_eq!(put_value.get("revision"), Some(&serde_json::json!(4)));
+}
+
+#[test]
 fn oauth_command_names_are_stable_and_unique() {
     use zk_contract_ipc::commands;
 

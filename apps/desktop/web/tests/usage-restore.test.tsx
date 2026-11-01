@@ -34,6 +34,8 @@ function bootedState() {
     conversationsByWorkspace: { [WORKSPACE.id]: [CONVERSATION] },
     conversations: [CONVERSATION],
     settings: defaultSettings(),
+
+    settingsRevision: 0,
     activeId: CONVERSATION.id,
   });
 }

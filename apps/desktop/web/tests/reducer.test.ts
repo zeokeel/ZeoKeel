@@ -12,6 +12,8 @@ function loadedState(): AppState {
     conversationsByWorkspace: { [WORKSPACE.id]: [CONVERSATION] },
     conversations: [CONVERSATION],
     settings: defaultSettings(),
+
+    settingsRevision: 0,
     activeId: CONVERSATION.id,
   });
   state = appReducer(state, {
@@ -180,6 +182,8 @@ describe("chat reducer", () => {
       conversationsByWorkspace: { [WORKSPACE.id]: [CONVERSATION] },
       conversations: [CONVERSATION],
       settings: defaultSettings(),
+
+      settingsRevision: 0,
       activeId: CONVERSATION.id,
     });
     expect(state.boot).toBe("ready");

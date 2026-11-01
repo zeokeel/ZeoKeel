@@ -490,3 +490,43 @@ fn web_search_settings_defaults_validation_and_legacy_parse() {
     .unwrap();
     assert_eq!(legacy.web_search, WebSearchSettings::default());
 }
+
+/// Third-party stores that only implement `load`/`save` keep working: the
+/// revision methods are defaulted (`revision()=0`, fence ignored, returns `0`).
+#[test]
+fn settings_store_revision_defaults_keep_third_party_stores_compatible() {
+    use std::sync::Mutex;
+    use zk_contract_config::{ConfigError, SettingsStore};
+
+    #[derive(Default)]
+    struct MemoryStore {
+        settings: Mutex<AppSettings>,
+    }
+
+    impl SettingsStore for MemoryStore {
+        fn load(&self) -> Result<AppSettings, ConfigError> {
+            Ok(self.settings.lock().unwrap().clone())
+        }
+        fn save(&self, settings: &AppSettings) -> Result<(), ConfigError> {
+            *self.settings.lock().unwrap() = settings.clone();
+            Ok(())
+        }
+    }
+
+    let store = MemoryStore::default();
+    assert_eq!(store.revision().unwrap(), 0);
+    let mut next = AppSettings {
+        theme: "dark".to_owned(),
+        ..AppSettings::default()
+    };
+    next.locale = "en-US".to_owned();
+    // A stale expected revision is ignored by the default implementation (legacy behaviour).
+    assert_eq!(store.save_with_revision(&next, Some(41)).unwrap(), 0);
+    assert_eq!(store.load().unwrap().theme, "dark");
+    // The fence-mismatch error is a distinct, readable variant (host maps it to
+    // `settings/revision-conflict`).
+    assert_eq!(
+        ConfigError::Conflict("stale".to_owned()).to_string(),
+        "config revision conflict: stale"
+    );
+}
