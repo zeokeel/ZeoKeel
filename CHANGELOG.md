@@ -5,6 +5,18 @@
 > 发布候选（本地验证）。`1.0.0` 正式版需 rc 验收 + 远端 CI/release 实跑通过后由用户确认；
 > 全部残余项见根 [`KNOWN-LIMITATIONS.md`](KNOWN-LIMITATIONS.md)。
 
+### 发布产物重新规划（2026-11-01）
+
+- **问题**：此前 release workflow 固定以 `enterprise×official` 组合构建桌面安装包，导致 GitHub Release 上的
+  Windows/macOS/Linux 安装包其实是企业版客户端（打开是登录框）；且企业客户端没有随服务端镜像分发。
+- **个人版（GitHub Releases）**：三平台安装包用 `personal×official` 组合构建，打开直接进入应用（无登录）；
+  同时生成 `latest.json` 个人更新 feed + `SHA256SUMS` + CycloneDX SBOM。
+- **企业版（Docker 镜像包）**：单个 `zeokeel-enterprise-<ver>-official.tar.gz`，内含 server/postgres/caddy
+  三个镜像；企业客户端三平台安装包内嵌在 server 镜像 `/srv/updates`，部署后从服务端 `/portal` 下载并登录。
+- **速度**：桌面安装包（个人/企业并行 6 个矩阵）与 Docker 镜像构建并行；个人版 Release 在个人安装包完成后立即创建，
+  企业镜像包完成后追加到同一 Release，不再等待串行的 dist/镜像阶段；Docker 构建启用 buildx GHA 缓存。
+- `deploy/docker-compose.yml` 默认从镜像内 `/srv/updates` 提供客户端；需要热替换时设 `UPDATE_DIR` 覆盖。
+
 ### Windows 客户端修复（2026-10-31 hotfix）
 
 - **不再弹出 cmd 控制台窗口**：Windows release 构建启用 `windows_subsystem = "windows"`（GUI 子系统），

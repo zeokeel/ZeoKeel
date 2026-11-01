@@ -34,7 +34,9 @@ services:
       # here so a deployment cannot silently run without the key it will encrypt with.
       ZEOKEEL_MASTER_KEY: ${MASTER_KEY:?MASTER_KEY is required (docs/06 §5)}
       ZEOKEEL_COOKIE_SECURE: ${COOKIE_SECURE:-1}
-      ZEOKEEL_UPDATE_DIR: /data/updates
+      # Client installers are embedded in the image (/srv/updates); override UPDATE_DIR to
+      # serve a host-mounted directory instead (docs/09 §5, deploy/enterprise-updates/README.md).
+      ZEOKEEL_UPDATE_DIR: ${UPDATE_DIR:-/srv/updates}
       ZEOKEEL_APP_DB_DIR: /data/app-db
       ZEOKEEL_AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-180}
       ZEOKEEL_USAGE_RETENTION_DAYS: ${USAGE_RETENTION_DAYS:-365}
@@ -45,8 +47,6 @@ services:
       ZEOKEEL_ADMIN_DIST: /srv/admin
     volumes:
       - ./data:/data
-      # Updates are replaceable without rebuilding the image (docs/09 §5/§7.2).
-      - ./updates:/data/updates:ro
     expose: ["8787"]
     stop_grace_period: 45s
     healthcheck:

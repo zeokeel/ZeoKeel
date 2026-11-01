@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 产品版本 | `1.0.0-rc.1` | `Cargo.toml` workspace、根 `package.json`、`apps/desktop/web`、`apps/admin/web`、`apps/desktop/tauri.conf.json` 一致 |
 | 内部 workspace 包版本 | `0.1.0` | `packages/**/web/package.json` 为私有 `@zeokeel/*` 工作区包（不单独发布），版本不随产品版本；仅产品表面升到 rc |
-| git tag / GitHub Release | **v1.0.0-rc.1 已创建** | annotated tag 指向 rc.1 最终 commit；GitHub Release 由 release workflow 产出：三平台安装器（AppImage/deb/dmg/nsis）、server/postgres/caddy 镜像 tar、CycloneDX SBOM、`SHA256SUMS`、完整 dist 归档与 UNVERIFIED 说明。**personal×official** 安装器需另行 `workflow_dispatch`（C1/C13），本条 Release 为 enterprise×official |
+| git tag / GitHub Release | **v1.0.0-rc.1 已创建** | 发布产物（2026-11-01 重新规划）：**个人版** GitHub Release 三平台安装器（AppImage/deb/dmg/nsis，打开直接进应用、无登录）+ `latest.json` 个人更新 feed + `SHA256SUMS` + CycloneDX SBOM；**企业版**单个 `zeokeel-enterprise-<ver>-official.tar.gz` 镜像包（server+postgres+caddy），企业客户端安装器内嵌在 server 镜像 `/srv/updates`，部署后由服务端 `/portal` 提供下载并登录 |
 | GitHub Actions（hosted runner） | **VERIFIED** | CI（9 jobs：rust/web/integration/e2e/a11y/oem/client-upgrade/docker/docs）与 security（strict 14 门禁）在 hosted runner 实跑通过；release workflow 在 tag 上产出真实安装包/镜像/SBOM/Release。`upgrade-drill` 与 macOS notarize 为环境项，见 §2 |
 | 1.0.0 正式版 | 未发布 | 需 rc 验收 + 远端 CI/release 实跑通过后由用户确认 |
 

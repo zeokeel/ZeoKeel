@@ -1,0 +1,117 @@
+name: build-desktop
+
+# Reusable desktop installer builder for both editions.
+# Called from release.yml with a matrix (personal/enterprise x linux/macos/windows).
+on:
+  workflow_call:
+    inputs:
+      edition:
+        description: "personal | enterprise"
+        required: true
+        type: string
+      channel:
+        description: "official"
+        required: true
+        type: string
+      version:
+        description: "1.0.0-rc.1 (tag without v)"
+        required: true
+        type: string
+      name:
+        description: "linux | macos | windows"
+        required: true
+        type: string
+      os:
+        description: "GitHub runner label"
+        required: true
+        type: string
+      targets:
+        description: 'Tauri bundle targets JSON, e.g. ["appimage","deb"]'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ inputs.os }}
+    timeout-minutes: 90
+    env:
+      EDITION: ${{ inputs.edition }}
+      CHANNEL: ${{ inputs.channel }}
+      VERSION: ${{ inputs.version }}
+      NAME: ${{ inputs.name }}
+      TAURI_TARGETS: ${{ inputs.targets }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          system-deps: "true"
+          rust: "true"
+          pnpm: "true"
+          node: "true"
+          node-cache: pnpm
+          python: "true"
+      - name: Compose ${{ inputs.edition }} x ${{ inputs.channel }}
+        run: |
+          set -euo pipefail
+          cargo run -q -p zk -- validate
+          cargo run -q -p zk -- compose --edition "$EDITION" --profile default --channel "$CHANNEL"
+          python3 - <<'PY'
+          import pathlib, os, sys
+          lib = pathlib.Path("crates/zk-composed/src/lib.rs").read_text()
+          edition = os.environ["EDITION"]
+          if f'pub const EDITION: &str = "{edition}";' not in lib:
+              sys.exit(f"composition edition mismatch: expected {edition}")
+          print(f"composition verified: {edition}")
+          PY
+      - name: Build desktop web UI
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --dir apps/desktop/web build
+      - name: Bundle icons from the channel logo
+        shell: bash
+        run: pnpm dlx @tauri-apps/cli@2 icon apps/desktop/icons/icon.png --output apps/desktop/icons
+      - name: Edition/version-aware tauri config override
+        shell: bash
+        run: |
+          python - "$EDITION" "$CHANNEL" "$VERSION" "$RUNNER_TEMP/tauri-release.json" >/dev/null <<'PY'
+          import json, os, pathlib, sys
+          edition, channel, version, out = sys.argv[1:5]
+          meta = json.loads(pathlib.Path(f"brands/{channel}/channel.json").read_text())
+          identity = meta["identity"]
+          targets = json.loads(os.environ["TAURI_TARGETS"])
+          icons = [
+              pathlib.Path("apps/desktop/icons", name).resolve().as_posix()
+              for name in ("32x32.png", "128x128.png", "128x128@2x.png", "icon.icns", "icon.ico")
+              if pathlib.Path("apps/desktop/icons", name).exists()
+          ]
+          override = {
+              "productName": identity["product_name"],
+              "identifier": identity["app_id"],
+              "version": version,
+              "bundle": {"active": True, "targets": targets, "icon": icons},
+          }
+          pathlib.Path(out).write_text(json.dumps(override))
+          print(f"tauri override: {edition} {version} {targets}")
+          PY
+      - name: tauri build (${{ inputs.edition }})
+        shell: bash
+        run: |
+          pnpm dlx @tauri-apps/cli@2 build \
+            --config apps/desktop/tauri.conf.json \
+            --config "$RUNNER_TEMP/tauri-release.json"
+      - name: Collect installers
+        shell: bash
+        run: |
+          mkdir -p clients
+          find target/release/bundle -type f \
+            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.dmg' -o -name '*.exe' -o -name '*.msi' \) \
+            -exec cp -v {} clients/ \;
+          test -n "$(ls -A clients)"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: clients-${{ inputs.edition }}-${{ inputs.name }}
+          path: clients
+          if-no-files-found: error

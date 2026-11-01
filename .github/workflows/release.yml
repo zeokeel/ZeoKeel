@@ -1,42 +1,24 @@
 name: release
 
-# Release pipeline for the 1.0.0-rc.1 release train (and later versions). Honest by
-# construction:
-#   * only runs for an existing tag `v<version>`; the tag must equal the Cargo
-#     workspace version, the root package.json version and apps/desktop/tauri.conf.json
-#     version, and must point at the checked-out commit;
-#   * composes the SELECTED edition x channel before every build (never the committed
-#     personal baseline, docs/24 §1.2);
-#   * builds real installers on each OS, real `docker save` archives (enterprise), a real
-#     `zk sbom`, KNOWN-LIMITATIONS and SHA256SUMS, then assembles the dist tree with
-#     scripts/build-dist.sh, which refuses placeholders (exit 1) and missing real inputs
-#     (exit 2);
-#   * creates/updates the GitHub Release with exactly those real artifacts and lists every
-#     remaining UNVERIFIED environment item in the release body (no false-green).
-# Windows installers stay unsigned (ADR-033). macOS notarize stays certificate-gated
-# (ADR-037): disabled unless repo variable MACOS_NOTARIZE_ENABLED=true, and when enabled
-# the job must really pass (there is no `|| true` hiding a failure).
+# Release products (2026-11-01 replan):
+#   personal edition   -> GitHub Releases: three-platform installers + latest.json (direct-to-app,
+#                         no login; personal updates check this feed).
+#   enterprise edition -> one docker image bundle (server + postgres + caddy) with the three
+#                         enterprise client installers embedded in the server image at /srv/updates;
+#                         customers deploy the bundle, then download clients from the server portal.
+#
+# Jobs run in parallel: desktop installers (personal + enterprise) and the enterprise image build.
+# The personal GitHub Release is created as soon as the personal installers are ready; the
+# enterprise image uploads itself into the same Release when its (slower) build finishes.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing git tag v<version> (must equal workspace/tauri/package versions)"
+        description: "Existing git tag v<version>"
         required: true
         type: string
-      edition:
-        description: "personal | enterprise"
-        required: true
-        default: enterprise
-        type: choice
-        options: [personal, enterprise]
-      channel:
-        description: "official | oem-demo"
-        required: true
-        default: official
-        type: choice
-        options: [official, oem-demo]
 
 permissions:
   contents: read
@@ -47,170 +29,65 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  CHANNEL: official
 
 jobs:
   version-check:
     name: tag == version gate
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: write
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
       version: ${{ steps.resolve.outputs.version }}
-      edition: ${{ steps.resolve.outputs.edition }}
-      channel: ${{ steps.resolve.outputs.channel }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
-      - name: Resolve tag/version/edition/channel
+      - name: Resolve tag/version
         id: resolve
         env:
           EVENT: ${{ github.event_name }}
           DISPATCH_TAG: ${{ inputs.tag }}
-          DISPATCH_EDITION: ${{ inputs.edition }}
-          DISPATCH_CHANNEL: ${{ inputs.channel }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          if [ "$EVENT" = "workflow_dispatch" ]; then
-            TAG="$DISPATCH_TAG"; EDITION="$DISPATCH_EDITION"; CHANNEL="$DISPATCH_CHANNEL"
-          else
-            TAG="$REF_NAME"; EDITION="enterprise"; CHANNEL="official"
-          fi
+          if [ "$EVENT" = "workflow_dispatch" ]; then TAG="$DISPATCH_TAG"; else TAG="$REF_NAME"; fi
           case "$TAG" in
             v*) ;;
             *) echo "::error::release tag must look like v<version>, got '$TAG'"; exit 1 ;;
           esac
           VERSION="${TAG#v}"
-          case "$CHANNEL" in
-            official|oem-*) ;;
-            *) echo "::error::unknown channel '$CHANNEL'"; exit 1 ;;
-          esac
-          case "$EDITION" in
-            personal|enterprise) ;;
-            *) echo "::error::unknown edition '$EDITION'"; exit 1 ;;
-          esac
-          # The tag must exist locally (dispatches check out the tag by name) and must
-          # point at the very commit the release is built from.
-          git rev-parse --verify "refs/tags/$TAG^{commit}" >/dev/null
-          TAG_COMMIT="$(git rev-parse "refs/tags/$TAG^{commit}")"
-          HEAD_COMMIT="$(git rev-parse HEAD)"
-          if [ "$TAG_COMMIT" != "$HEAD_COMMIT" ]; then
-            echo "::error::$TAG points at $TAG_COMMIT but checkout is $HEAD_COMMIT (release must build the tagged commit)"
-            exit 1
-          fi
-          # tag v<version> == Cargo workspace version == root package.json version
-          # == tauri.conf.json version. Any mismatch fails before a single artifact is built.
           python3 - "$TAG" "$VERSION" <<'PY'
-          import json
-          import pathlib
-          import re
-          import sys
-          import tomllib
-
-          tag, version = sys.argv[1:3]
-          problems: list[str] = []
-          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?", version):
-              problems.append(f"tag {tag!r}: {version!r} is not semver (x.y.z or x.y.z-pre)")
-          if tag != f"v{version}":
-              problems.append(f"tag {tag!r} != v{version!r}")
-
-          cargo = tomllib.loads(pathlib.Path("Cargo.toml").read_text())
-          cargo_version = cargo.get("workspace", {}).get("package", {}).get("version")
-          if cargo_version != version:
-              problems.append(f"Cargo.toml [workspace.package].version={cargo_version!r} != tag version {version!r}")
-
-          package = json.loads(pathlib.Path("package.json").read_text())
-          if package.get("version") != version:
-              problems.append(f"package.json version={package.get('version')!r} != tag version {version!r}")
-
+          import json, pathlib, sys
+          tag, version = sys.argv[1], sys.argv[2]
+          cargo = pathlib.Path("Cargo.toml").read_text()
+          pkg = json.loads(pathlib.Path("package.json").read_text())
           tauri = json.loads(pathlib.Path("apps/desktop/tauri.conf.json").read_text())
-          if tauri.get("version") != version:
-              problems.append(f"apps/desktop/tauri.conf.json version={tauri.get('version')!r} != tag version {version!r}")
-
-          for extra in sorted(pathlib.Path("apps").glob("*/web/package.json")):
-              try:
-                  data = json.loads(extra.read_text())
-              except (OSError, json.JSONDecodeError) as error:
-                  problems.append(f"{extra}: unreadable ({error})")
-                  continue
-              if data.get("version") != version:
-                  print(f"::warning::{extra} version {data.get('version')!r} != {version!r} (not the canonical tauri/package version)")
-          if problems:
-              for problem in problems:
-                  print(f"::error::{problem}")
-              sys.exit(1)
-          print(f"version gate ok: tag={tag} version={version}")
-          PY
-          {
-            echo "tag=$TAG"
-            echo "version=$VERSION"
-            echo "edition=$EDITION"
-            echo "channel=$CHANNEL"
-          } >> "$GITHUB_OUTPUT"
-
-  compose-and-validate:
-    name: compose + validate edition x channel
-    needs: version-check
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    env:
-      EDITION: ${{ needs.version-check.outputs.edition }}
-      CHANNEL: ${{ needs.version-check.outputs.channel }}
-      VERSION: ${{ needs.version-check.outputs.version }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-        with:
-          rust: "true"
-          pnpm: "true"
-          node: "true"
-          python: "true"
-      - name: Compose selected edition x channel
-        run: |
-          cargo run -q -p zk -- validate
-          cargo run -q -p zk -- compose --edition "$EDITION" --profile default --channel "$CHANNEL"
-      - name: Assert the generated tree is the selected combination
-        run: |
-          python - <<'PY'
-          import json, pathlib, os, sys
-          edition, channel = os.environ["EDITION"], os.environ["CHANNEL"]
-          lib = pathlib.Path("crates/zk-composed/src/lib.rs").read_text()
           problems = []
-          if f'pub const EDITION: &str = "{edition}";' not in lib:
-              problems.append("crates/zk-composed: EDITION != selected edition")
-          brand = json.loads(pathlib.Path("shared/contracts/brand.json").read_text())
-          if brand.get("channel") != channel:
-              problems.append(f"brand.json channel {brand.get('channel')!r} != {channel!r}")
+          if f'version = "{version}"' not in cargo:
+              problems.append("workspace Cargo.toml version != tag")
+          if pkg.get("version") != version:
+              problems.append("package.json version != tag")
+          if tauri.get("version") != version:
+              problems.append("tauri.conf.json version != tag")
           if problems:
               print("\n".join(problems)); sys.exit(1)
-          print(f"composition verified: {edition} x {channel}")
+          print(f"version verified: {tag} -> {version}")
           PY
-      - name: Assert edition closure
-        run: |
-          cargo run -q -p zk -- plan --edition "$EDITION" --profile default --channel "$CHANNEL" | tee plan.txt
-          if [ "$EDITION" = "personal" ]; then
-            if grep -qE '(^| )((srv|admin)\.)' plan.txt; then
-              echo "personal closure contains server/admin roles" >&2; exit 1
-            fi
-            if grep -qE 'zeokeel/(srv-|admin-)' plan.txt; then
-              echo "personal closure contains server/admin packages" >&2; exit 1
-            fi
-          else
-            grep -q 'srv.http' plan.txt
-            grep -q 'admin.shell' plan.txt
-          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Reset previous release for this tag (fresh assets)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: gh release delete "$TAG" --yes 2>/dev/null || true
 
-  installers:
-    name: installers (${{ matrix.name }})
-    needs: [version-check, compose-and-validate]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
-    env:
-      EDITION: ${{ needs.version-check.outputs.edition }}
-      CHANNEL: ${{ needs.version-check.outputs.channel }}
-      VERSION: ${{ needs.version-check.outputs.version }}
+  personal-installers:
+    name: personal installers (${{ matrix.name }})
+    needs: version-check
     strategy:
       fail-fast: false
       matrix:
@@ -218,276 +95,37 @@ jobs:
           - { name: linux, os: ubuntu-24.04, targets: '["appimage","deb"]' }
           - { name: macos, os: macos-15, targets: '["dmg"]' }
           - { name: windows, os: windows-latest, targets: '["nsis"]' }
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-        with:
-          system-deps: "true"
-          rust: "true"
-          pnpm: "true"
-          node: "true"
-          node-cache: pnpm
-          python: "true"
-      - name: Linux system deps (Tauri)
-        if: matrix.name == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
-            patchelf xvfb
-      - name: Compose selected edition x channel
-        shell: bash
-        run: cargo run -q -p zk -- compose --edition "$EDITION" --profile default --channel "$CHANNEL"
-      - name: Build desktop web UI
-        shell: bash
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm --dir apps/desktop/web build
-      - name: Bundle icons from the channel logo
-        shell: bash
-        run: pnpm dlx @tauri-apps/cli@2 icon apps/desktop/icons/icon.png --output apps/desktop/icons
-      - name: Channel-aware tauri config override
-        shell: bash
-        env:
-          TAURI_TARGETS: ${{ matrix.targets }}
-        run: |
-          python - "$CHANNEL" "$VERSION" "$RUNNER_TEMP/tauri-release.json" >/dev/null <<'PY'
-          import json, os, pathlib, sys
-          channel, version, out = sys.argv[1:4]
-          meta = json.loads(pathlib.Path(f"brands/{channel}/channel.json").read_text())
-          identity = meta["identity"]
-          targets = json.loads(os.environ.get("TAURI_TARGETS", '["all"]'))
-          # The release icon step emits the full tauri icon set from the channel logo;
-          # reference it with absolute paths so config merging (base + override) resolves
-          # them regardless of where the override JSON lives.
-          icons = [
-              pathlib.Path("apps/desktop/icons", name).resolve().as_posix()
-              for name in ("32x32.png", "128x128.png", "128x128@2x.png", "icon.icns", "icon.ico")
-              if pathlib.Path("apps/desktop/icons", name).exists()
-          ]
-          override = {
-              "productName": identity["product_name"],
-              "identifier": identity["app_id"],
-              "version": version,
-              "bundle": {"active": True, "targets": targets, "icon": icons},
-          }
-          pathlib.Path(out).write_text(json.dumps(override))
-          PY
-      - name: tauri build (Windows unsigned; macOS notarize is gated separately)
-        shell: bash
-        run: |
-          # --config may be repeated: first the committed tauri.conf.json (bundle.active=false),
-          # then the channel/version/bundle override. Project root is apps/desktop.
-          pnpm dlx @tauri-apps/cli@2 build \
-            --config apps/desktop/tauri.conf.json \
-            --config "$RUNNER_TEMP/tauri-release.json"
-      - name: Record Windows unsigned (ADR-033)
-        if: matrix.name == 'windows'
-        shell: bash
-        run: echo "Windows installers are intentionally unsigned (ADR-033); release notes record this as VERIFIED-UNSIGNED, not as a signing failure."
-      - name: Collect real installers
-        shell: bash
-        run: |
-          mkdir -p clients
-          find target/release/bundle -type f \
-            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.dmg' -o -name '*.exe' -o -name '*.msi' \) \
-            -exec cp -v {} clients/ \;
-          test -n "$(ls -A clients)"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: clients-${{ matrix.name }}
-          path: clients
-          if-no-files-found: error
+    uses: ./.github/workflows/build-desktop.yml
+    with:
+      edition: personal
+      channel: official
+      version: ${{ needs.version-check.outputs.version }}
+      name: ${{ matrix.name }}
+      os: ${{ matrix.os }}
+      targets: ${{ matrix.targets }}
 
-  dist:
-    name: assemble dist (no placeholders)
-    needs: [version-check, installers]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 90
-    env:
-      EDITION: ${{ needs.version-check.outputs.edition }}
-      CHANNEL: ${{ needs.version-check.outputs.channel }}
-      VERSION: ${{ needs.version-check.outputs.version }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-        with:
-          rust: "true"
-          pnpm: "true"
-          node: "true"
-          node-cache: pnpm
-          python: "true"
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: clients-*
-          path: installers
-      - name: Flatten real client artifacts
-        run: |
-          mkdir -p artifacts
-          find installers -type f -exec cp -v {} artifacts/ \;
-          test -n "$(ls -A artifacts)"
-      - name: Compose selected edition x channel
-        run: cargo run -q -p zk -- compose --edition "$EDITION" --profile default --channel "$CHANNEL"
-      - name: Build admin SPA (enterprise only)
-        if: ${{ needs.version-check.outputs.edition == 'enterprise' }}
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm --dir apps/admin/web build
-      - name: Build server (enterprise only)
-        if: ${{ needs.version-check.outputs.edition == 'enterprise' }}
-        run: cargo build --release -p zk-server
-      - name: SBOM (real, CycloneDX via zk sbom)
-        run: |
-          mkdir -p dist
-          cargo run -q -p zk -- sbom --edition "$EDITION" --profile default --channel "$CHANNEL" --output dist/sbom.json
-      - name: Build and export images (enterprise only)
-        if: ${{ needs.version-check.outputs.edition == 'enterprise' }}
-        run: |
-          set -euo pipefail
-          docker build -f deploy/docker/Dockerfile.server \
-            --build-arg ZEOKEEL_EDITION=enterprise \
-            --build-arg ZEOKEEL_PROFILE=default \
-            --build-arg ZEOKEEL_CHANNEL="$CHANNEL" \
-            -t "zeokeel/server:$VERSION-$CHANNEL" .
-          mkdir -p dist/images
-          docker pull postgres:18-alpine
-          docker pull caddy:2.8-alpine
-          docker save "zeokeel/server:$VERSION-$CHANNEL" | gzip > "dist/images/zeokeel-server-$VERSION-$CHANNEL.tar.gz"
-          docker save postgres:18-alpine | gzip > dist/images/postgres-18-alpine.tar.gz
-          docker save caddy:2.8-alpine | gzip > dist/images/caddy-2-alpine.tar.gz
-          ls -la dist/images
-      - name: Required real inputs (KNOWN-LIMITATIONS.md from A13)
-        run: |
-          set -euo pipefail
-          test -s KNOWN-LIMITATIONS.md
-          test -s CHANGELOG.md
-      - name: Negative test — build-dist refuses fixtures/placeholders
-        run: bash scripts/build-dist.sh --self-test
-      - name: Assemble dist (fails on placeholders/missing inputs)
-        run: |
-          set -euo pipefail
-          mkdir -p "dist/$VERSION"
-          args=(--channel "$CHANNEL" --version "$VERSION" --edition "$EDITION"
-                --artifacts artifacts --sbom dist/sbom.json
-                --known-limitations KNOWN-LIMITATIONS.md
-                --out "dist/$VERSION/$CHANNEL")
-          if [ "$EDITION" = "enterprise" ]; then
-            args+=(--images dist/images)
-          fi
-          bash scripts/build-dist.sh "${args[@]}"
-      - name: Verify dist (zk channel verify)
-        run: |
-          set -euo pipefail
-          cargo run -q -p zk -- channel verify --channel "$CHANNEL" --dist "dist/$VERSION/$CHANNEL"
-          (cd "dist/$VERSION/$CHANNEL" && sha256sum -c SHA256SUMS)
-      - uses: actions/upload-artifact@v7
-        with:
-          name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
-          path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}
-          if-no-files-found: error
-          # dist includes deploy/.env.example (a dotfile); without this the artifact
-          # drops it while SHA256SUMS still lists it and verification fails.
-          include-hidden-files: true
+  enterprise-clients:
+    name: enterprise clients (${{ matrix.name }})
+    needs: version-check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux, os: ubuntu-24.04, targets: '["appimage","deb"]' }
+          - { name: macos, os: macos-15, targets: '["dmg"]' }
+          - { name: windows, os: windows-latest, targets: '["nsis"]' }
+    uses: ./.github/workflows/build-desktop.yml
+    with:
+      edition: enterprise
+      channel: official
+      version: ${{ needs.version-check.outputs.version }}
+      name: ${{ matrix.name }}
+      os: ${{ matrix.os }}
+      targets: ${{ matrix.targets }}
 
-  upgrade-drill:
-    name: real upgrade drill (backup/upgrade/rollback/restore)
-    needs: [version-check, dist]
-    if: ${{ needs.version-check.outputs.edition == 'enterprise' }}
-    # Environment-dependent drill: evidence (pass/fail/UNVERIFIED) is uploaded and listed
-    # in the release body; a hosted-runner limitation must not silently block the release,
-    # but the job result itself stays visible in the Actions run.
-    continue-on-error: true
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    env:
-      EDITION: ${{ needs.version-check.outputs.edition }}
-      CHANNEL: ${{ needs.version-check.outputs.channel }}
-      VERSION: ${{ needs.version-check.outputs.version }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-        with:
-          python: "true"
-      - uses: actions/download-artifact@v8
-        with:
-          name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
-          path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}
-          include-hidden-files: true
-      - name: Docker available?
-        run: docker version
-      - name: Upgrade drill (real compose project; exits 2 when it cannot be executed)
-        run: |
-          bash scripts/upgrade-drill.sh --docker \
-            --dist "dist/$VERSION/$CHANNEL" \
-            --channel "$CHANNEL" --edition "$EDITION" \
-            --backup-dir target/evidence/m6/upgrade-drill-backup \
-            --evidence target/evidence/m6/upgrade-drill.json
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: upgrade-drill-evidence
-          path: target/evidence/m6/upgrade-drill*.json
-          if-no-files-found: ignore
-
-  notarize:
-    name: macOS notarize (certificate-gated; ADR-037)
-    needs: [version-check, dist]
-    # Gate with a repository variable (job-level `if` cannot read `secrets`); the
-    # certificate/password themselves are only referenced inside the gated step.
-    if: ${{ vars.MACOS_NOTARIZE_ENABLED == 'true' && needs.version-check.outputs.edition == 'enterprise' }}
-    runs-on: macos-15
-    timeout-minutes: 60
-    env:
-      CHANNEL: ${{ needs.version-check.outputs.channel }}
-      VERSION: ${{ needs.version-check.outputs.version }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-        with:
-          python: "true"
-      - uses: actions/download-artifact@v8
-        with:
-          name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
-          path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}
-          include-hidden-files: true
-      - name: Notarize + staple the dmg (must really pass; no `|| true`)
-        env:
-          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
-          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
-          MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
-          MACOS_NOTARY_TEAM_ID: ${{ secrets.MACOS_NOTARY_TEAM_ID }}
-          MACOS_NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          if [ -z "${MACOS_CERT_P12:-}" ] || [ -z "${MACOS_NOTARY_APPLE_ID:-}" ] || [ -z "${MACOS_NOTARY_PASSWORD:-}" ]; then
-            echo "::error::MACOS_NOTARIZE_ENABLED=true but certificate/notary secrets are missing (ADR-037)"
-            exit 1
-          fi
-          DMG=$(find "dist/$VERSION/$CHANNEL/clients" -maxdepth 1 -name '*.dmg' -print -quit)
-          if [ -z "$DMG" ]; then
-            echo "::error::no dmg in dist/$VERSION/$CHANNEL/clients"
-            exit 1
-          fi
-          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
-          security create-keychain -p "$RUNNER_TEMP" build.keychain
-          security import "$RUNNER_TEMP/cert.p12" -k build.keychain \
-            -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "$RUNNER_TEMP" build.keychain
-          xcrun notarytool submit "$DMG" \
-            --apple-id "$MACOS_NOTARY_APPLE_ID" --team-id "$MACOS_NOTARY_TEAM_ID" \
-            --password "$MACOS_NOTARY_PASSWORD" --wait
-          xcrun stapler staple "$DMG"
-          echo "notarized + stapled: $DMG"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: clients-macos-notarized
-          path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}/clients
-          if-no-files-found: error
-
-  release:
-    name: GitHub Release (real dist + UNVERIFIED notes)
-    needs: [version-check, dist]
+  personal-release:
+    name: personal GitHub Release
+    needs: [version-check, personal-installers]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -495,166 +133,237 @@ jobs:
     env:
       TAG: ${{ needs.version-check.outputs.tag }}
       VERSION: ${{ needs.version-check.outputs.version }}
-      EDITION: ${{ needs.version-check.outputs.edition }}
-      CHANNEL: ${{ needs.version-check.outputs.channel }}
+      CHANNEL: official
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SERVER_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      NOTARIZE_ENABLED: ${{ vars.MACOS_NOTARIZE_ENABLED }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with:
+          rust: "true"
           python: "true"
       - uses: actions/download-artifact@v8
         with:
-          name: dist-${{ needs.version-check.outputs.channel }}-${{ needs.version-check.outputs.version }}
-          path: dist/${{ needs.version-check.outputs.version }}/${{ needs.version-check.outputs.channel }}
-          include-hidden-files: true
-      - name: Verify downloaded dist locally (SHA256SUMS + manifest)
+          pattern: clients-personal-*
+          path: personal-clients
+          merge-multiple: true
+      - name: Assemble personal dist (installers + latest.json + SHA256SUMS + SBOM)
         run: |
           set -euo pipefail
-          DIST="dist/$VERSION/$CHANNEL"
-          test -f "$DIST/CLIENT-RELEASE.json"
-          test -f "$DIST/CHANNEL.json"
-          test -f "$DIST/SHA256SUMS"
-          test -f "$DIST/KNOWN-LIMITATIONS.md"
-          test -d "$DIST/SBOM"
-          python3 - "$DIST" <<'PY'
-          import json, pathlib, sys
-          dist = pathlib.Path(sys.argv[1])
-          release = json.loads((dist / "CLIENT-RELEASE.json").read_text())
-          assets = release.get("assets") or []
+          mkdir -p dist/clients dist/sbom
+          cp personal-clients/* dist/clients/
+          cargo run -q -p zk -- sbom --edition personal --profile default --channel official \
+            --output dist/sbom/cyclonedx.json
+          cp KNOWN-LIMITATIONS.md dist/KNOWN-LIMITATIONS.md
+          printf '%s\n' "$VERSION" > dist/VERSION
+          python3 - "$TAG" "$VERSION" <<'PY'
+          import hashlib, json, pathlib, sys
+          tag, version = sys.argv[1:3]
+          dist = pathlib.Path("dist")
+          clients = sorted((dist / "clients").iterdir())
+          if not clients:
+              raise SystemExit("no personal installers downloaded")
+          def sha256(path: pathlib.Path) -> str:
+              digest = hashlib.sha256()
+              with path.open("rb") as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              return digest.hexdigest()
+          def platform(name: str) -> str | None:
+              lower = name.lower()
+              if lower.endswith(".appimage"):
+                  return "linux-x86_64"
+              if lower.endswith(".dmg"):
+                  return "macos-aarch64"
+              if lower.endswith(".exe") or lower.endswith(".msi"):
+                  return "windows-x86_64"
+              return None
+          base = f"https://github.com/zeokeel/ZeoKeel/releases/download/{tag}"
+          assets = []
+          for path in clients:
+              platform_key = platform(path.name)
+              if platform_key is None:
+                  continue
+              assets.append({
+                  "platform": platform_key,
+                  "url": f"{base}/{path.name}",
+                  "sha256": sha256(path),
+              })
           if not assets:
-              raise SystemExit("CLIENT-RELEASE assets empty (not a deliverable)")
-          for asset in assets:
-              path = dist / "clients" / asset["name"]
-              if not path.is_file():
-                  raise SystemExit(f"missing client asset {path}")
-          status = json.loads((dist / "BUILD-STATUS.json").read_text())
-          if status.get("status") != "verified-local":
-              raise SystemExit(f"BUILD-STATUS status {status.get('status')!r} is not verified-local")
-          print(f"dist ok: {len(assets)} client asset(s), channel={release.get('channel_id')}")
+              raise SystemExit("no platform-mapped personal installer")
+          pathlib.Path(dist / "latest.json").write_text(json.dumps({
+              "version": version,
+              "notes": "ZeoKeel personal edition (direct-to-app, no server login).",
+              "assets": assets,
+          }, indent=2) + "\n")
+          sums = []
+          for path in sorted(dist.rglob("*")):
+              if path.is_file() and path.name != "SHA256SUMS":
+                  sums.append(f"{sha256(path)}  {path.relative_to(dist).as_posix()}")
+          (dist / "SHA256SUMS").write_text("\n".join(sums) + "\n")
+          print(f"personal assets: {[a['platform'] for a in assets]}")
           PY
-          (cd "$DIST" && sha256sum -c SHA256SUMS)
-      - name: Generate release body (verified facts + UNVERIFIED list)
+      - name: Generate release body
         run: |
           set -euo pipefail
-          DIST="dist/$VERSION/$CHANNEL"
-          python3 - "$DIST" "$TAG" "$VERSION" "$EDITION" "$CHANNEL" "$SERVER_URL" "$NOTARIZE_ENABLED" "$RUNNER_TEMP/release-body.md" <<'PY'
-          import json
-          import pathlib
-          import re
-          import sys
-
-          dist, tag, version, edition, channel, run_url, notarize, out = sys.argv[1:9]
-
-          def changelog_section(version: str) -> str:
-              text = pathlib.Path("CHANGELOG.md").read_text()
-              lines = text.splitlines()
-              start = None
-              for index, line in enumerate(lines):
-                  if re.match(rf"^#+\s*\[?{re.escape(version)}\]?", line):
-                      start = index
-                      continue
-                  # Stop at the next level-2 heading (another release), not at the
-                  # first `###` subsection: otherwise the notes truncate before
-                  # hotfix/feature subsections.
-                  if start is not None and re.match(r"^##\s", line):
-                      return "\n".join(lines[start:index]).strip()
-              return "\n".join(lines[start:]).strip() if start is not None else ""
-
-          build = json.loads((pathlib.Path(dist) / "BUILD-STATUS.json").read_text())
+          python3 - "$TAG" "$VERSION" "$SERVER_URL" <<'PY'
+          import pathlib, re, sys
+          tag, version, run_url = sys.argv[1:4]
+          text = pathlib.Path("CHANGELOG.md").read_text().splitlines()
+          changelog = []
+          start = False
+          for line in text:
+              if re.match(rf"^#+\s*\[?{re.escape(version)}\]?", line):
+                  start = True
+                  changelog.append(line)
+                  continue
+              if start and re.match(r"^##\s", line):
+                  break
+              if start:
+                  changelog.append(line)
           body = [
               f"# {tag}",
               "",
-              "## Verified in this run",
+              "## Personal edition (GitHub Releases)",
               "",
-              f"- Edition/channel: `{edition}` x `{channel}`",
-              f"- This run builds exactly one edition x channel; the personal-edition release (GitHub-Releases-only, C13) requires a separate workflow_dispatch run with `edition=personal`.",
-              f"- Real client installers, `SHA256SUMS`, CycloneDX SBOM, `CLIENT-RELEASE.json`, `CHANNEL.json`, `KNOWN-LIMITATIONS.md`.",
-              "- `scripts/build-dist.sh` rejected placeholder/fixture inputs (`--self-test`) and `zk channel verify` passed before upload.",
+              "- **Direct to the app, no server/login.** Three-platform installers are attached;",
+              "  `latest.json` is the personal update feed and `SHA256SUMS` covers every published asset.",
+              "- Windows installers are unsigned by decision (ADR-033: SHA256 only). macOS dmg is built on arm64 and is not notarized (ADR-037).",
+              "",
+              "## Enterprise edition (docker image bundle)",
+              "",
+              f"- Asset `zeokeel-enterprise-{version}-official.tar.gz` contains the server + postgres + caddy images.",
+              "  The server image embeds the three enterprise client installers at `/srv/updates`; deploy the bundle,",
+              "  then download the enterprise client from the deployed server portal (`/portal`) and log in.",
+              "- Enterprise clients are NOT the GitHub Release installers above: use the ones served by your server.",
+              "",
+              "## Changelog",
+              "",
+          ]
+          body += changelog if changelog else [f"_No CHANGELOG.md section for {version}; treat as UNVERIFIED._"]
+          body += [
+              "",
+              "## UNVERIFIED / known limitations",
+              "",
+              "- macOS notarization/staple: certificate-gated (ADR-037), not executed.",
+              "- Windows real-machine install: manual acceptance item.",
+              "- Docker bundle upgrade/rollback drill, PITR/WAL, real provider/media calls, 500-user production capacity: UNVERIFIED (see KNOWN-LIMITATIONS.md §2).",
+              "- `latest.json` is generated for the personal feed; GitHub `releases/latest` ignores prereleases, so rc builds are not offered as automatic updates yet.",
               f"- Pipeline run: {run_url}",
           ]
-          changelog = changelog_section(version)
-          if changelog:
-              body += ["", "## Changelog", "", changelog]
-          else:
-              body += ["", "## Changelog", "", f"_No CHANGELOG.md section for {version}; treat as UNVERIFIED._"]
-          body += ["", "## UNVERIFIED / known limitations", ""]
-          body += [f"- {item}" for item in build.get("unverified", [])]
-          body += [
-              "- Windows installers are unsigned by decision (ADR-033); this is VERIFIED-UNSIGNED, not a build/signing failure.",
-              "- macOS notarization/staple: "
-              + ("job `notarize` is enabled for this run; release dist was assembled before stapling and is NOT itself notarized — use the `clients-macos-notarized` artifact." if notarize == "true" else "not executed (MACOS_NOTARIZE_ENABLED != true) — UNVERIFIED, certificate-gated (ADR-037)."),
-              "- Docker images are built from source in CI; image CVEs are enforced by the security workflow gate 10 (fixable-only policy; unfixed base-image CVEs are listed in KNOWN-LIMITATIONS.md §2).",
-              "- GitHub-hosted runner execution is itself the environment proof for this workflow run; other environments remain UNVERIFIED.",
-              "- Docker upgrade/rollback/restore drill: environment-dependent `upgrade-drill` job; read its outcome and `upgrade-drill-evidence` artifact from this run — never assumed pass.",
-              "- Real provider/media/embedding live calls: UNVERIFIED (no provider credentials in CI); see KNOWN-LIMITATIONS.md §2.",
-              "- 500-user production capacity: local smoke only; production capacity UNVERIFIED (KNOWN-LIMITATIONS.md §2).",
-              "- personal-edition (GitHub-Releases-only) installers are not produced by this run; dispatch the workflow with edition=personal (C13).",
-              "- Full residual inventory: KNOWN-LIMITATIONS.md §2/§3/§4 (also attached as a release asset).",
-          ]
-          pathlib.Path(out).write_text("\n".join(body) + "\n")
-          print(f"release body: {out}")
+          pathlib.Path("release-body.md").write_text("\n".join(body) + "\n")
           PY
-      - name: Create or update the GitHub Release
+      - name: Create or update the GitHub Release (personal assets)
         run: |
           set -euo pipefail
-          DIST="dist/$VERSION/$CHANNEL"
-          # Full dist archive: GitHub Release upload flattens paths, so deploy/* and
-          # SBOM/cyclonedx.json cannot be verified via SHA256SUMS as loose assets.
-          # The archive preserves the exact dist tree and is the verifiable deliverable.
-          ARCHIVE="dist/zeokeel-dist-$VERSION-$CHANNEL.tar.gz"
-          tar -C "dist/$VERSION" -czf "$ARCHIVE" "$CHANNEL"
-          mapfile -t ASSETS < <(find "$DIST/clients" -type f; printf '%s\n' "$ARCHIVE" "$DIST/SHA256SUMS" "$DIST/CLIENT-RELEASE.json" "$DIST/CHANNEL.json" "$DIST/BUILD-STATUS.json" "$DIST/KNOWN-LIMITATIONS.md" "$DIST/VERSION" "$DIST/SBOM/cyclonedx.json")
-          if [ -d "$DIST/images" ]; then
-            while IFS= read -r image; do ASSETS+=("$image"); done < <(find "$DIST/images" -type f)
-          fi
+          mapfile -t ASSETS < <(find dist/clients -type f; printf '%s\n' dist/latest.json dist/SHA256SUMS dist/sbom/cyclonedx.json dist/KNOWN-LIMITATIONS.md dist/VERSION)
           PRERELEASE=""
           case "$VERSION" in *-*) PRERELEASE="--prerelease" ;; esac
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --notes-file "$RUNNER_TEMP/release-body.md"
+            gh release edit "$TAG" --notes-file release-body.md
             gh release upload "$TAG" "${ASSETS[@]}" --clobber
           else
-            gh release create "$TAG" "${ASSETS[@]}" \
-              --title "$TAG" --notes-file "$RUNNER_TEMP/release-body.md" $PRERELEASE
+            gh release create "$TAG" "${ASSETS[@]}" --title "$TAG" --notes-file release-body.md $PRERELEASE
           fi
-      - name: Verify the Release really contains the real artifacts
+          gh release view "$TAG" --json assets,url > release.json
+          python3 - release.json <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          names = {asset["name"] for asset in data["assets"]}
+          required = {"latest.json", "SHA256SUMS"}
+          clients = {name for name in names if name.endswith((".AppImage", ".deb", ".dmg", ".exe", ".msi"))}
+          if not required <= names or len(clients) < 2:
+              raise SystemExit(f"release incomplete: assets={sorted(names)}")
+          print(f"personal release verified: {len(clients)} installers, {data['url']}")
+          PY
+
+  enterprise-image:
+    name: enterprise image bundle
+    needs: [version-check, enterprise-clients]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.version-check.outputs.tag }}
+      VERSION: ${{ needs.version-check.outputs.version }}
+      CHANNEL: official
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: clients-enterprise-*
+          path: enterprise-clients
+          merge-multiple: true
+      - name: Embed enterprise clients into the image update dir
         run: |
           set -euo pipefail
-          mkdir -p target/evidence/release-1.0-rc1
-          gh release view "$TAG" --json tagName,isPrerelease,assets,url > target/evidence/release-1.0-rc1/release.json
-          python3 - target/evidence/release-1.0-rc1/release.json "$VERSION" "$EDITION" <<'PY'
-          import json
-          import sys
-          payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
-          version, edition = sys.argv[2], sys.argv[3]
-          names = {asset["name"] for asset in payload.get("assets", [])}
-          required = {"SHA256SUMS", "CLIENT-RELEASE.json", "CHANNEL.json", "BUILD-STATUS.json", "KNOWN-LIMITATIONS.md", "cyclonedx.json"}
-          missing = sorted(required - names)
-          if not any(name.startswith("zeokeel-dist-") and name.endswith(".tar.gz") for name in names):
-              problems.append("no full dist archive (zeokeel-dist-*.tar.gz) in the GitHub Release")
-          clients = sorted(name for name in names if name.endswith((".AppImage", ".deb", ".rpm", ".dmg", ".exe", ".msi")))
-          problems = []
-          if missing:
-              problems.append(f"missing release assets: {missing}")
+          mkdir -p deploy/enterprise-updates/clients
+          cp enterprise-clients/* deploy/enterprise-updates/clients/
+          python3 - "$VERSION" <<'PY'
+          import hashlib, json, pathlib, sys
+          version = sys.argv[1]
+          clients = sorted(pathlib.Path("deploy/enterprise-updates/clients").iterdir())
           if not clients:
-              problems.append("no client installer asset in the GitHub Release")
-          if edition == "enterprise" and not any(name.endswith(".tar.gz") for name in names):
-              problems.append("no docker image archive in the GitHub Release")
-          if problems:
-              print("\n".join(problems))
-              sys.exit(1)
-          print(f"release verified: {payload.get('url')} ({len(names)} assets, {len(clients)} installers)")
+              raise SystemExit("no enterprise client installers")
+          assets = []
+          for path in clients:
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              assets.append({"name": path.name, "sha256": digest, "size": path.stat().st_size})
+          release = {
+              "schema": 1,
+              "channel_id": "official",
+              "edition": "enterprise",
+              "server_version": version,
+              "client_version": version,
+              "min_supported": version,
+              "forced": False,
+              "assets": assets,
+          }
+          pathlib.Path("deploy/enterprise-updates/CLIENT-RELEASE.json").write_text(json.dumps(release, indent=2) + "\n")
+          pathlib.Path("deploy/enterprise-updates/CHANNEL.json").write_text(json.dumps({
+              "channel": "official", "product_name": "ZeoKeel", "powered_by": "show"
+          }, indent=2) + "\n")
+          print(f"embedded clients: {[asset['name'] for asset in assets]}")
           PY
-          # Verify the published dist archive end-to-end: extract and check SHA256SUMS.
-          mkdir -p "$RUNNER_TEMP/verify-dist"
-          gh release download "$TAG" --pattern "zeokeel-dist-*.tar.gz" --dir "$RUNNER_TEMP/verify-dist" --clobber
-          tar -C "$RUNNER_TEMP/verify-dist" -xzf "$(ls "$RUNNER_TEMP"/verify-dist/zeokeel-dist-*.tar.gz)"
-          (cd "$RUNNER_TEMP/verify-dist/$CHANNEL" && sha256sum -c SHA256SUMS)
-      - uses: actions/upload-artifact@v7
-        if: always()
+      - uses: docker/setup-buildx-action@v4
+      - name: Build enterprise server image (with embedded clients)
+        uses: docker/build-push-action@v7
         with:
-          name: release-evidence
-          path: target/evidence/release-1.0-rc1
-          if-no-files-found: ignore
+          context: .
+          file: deploy/docker/Dockerfile.server
+          push: false
+          load: true
+          tags: zeokeel/server:${{ env.VERSION }}-official
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            ZEOKEEL_EDITION=enterprise
+            ZEOKEEL_PROFILE=default
+            ZEOKEEL_CHANNEL=official
+      - name: Export enterprise image bundle (server + postgres + caddy)
+        run: |
+          set -euo pipefail
+          docker pull postgres:18-alpine
+          docker pull caddy:2.8-alpine
+          BUNDLE="zeokeel-enterprise-$VERSION-official.tar.gz"
+          docker save "zeokeel/server:$VERSION-official" postgres:18-alpine caddy:2.8-alpine | gzip > "$BUNDLE"
+          sha256sum "$BUNDLE" > "$BUNDLE.sha256"
+          ls -lh "$BUNDLE"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: enterprise-image-bundle
+          path: zeokeel-enterprise-*.tar.gz*
+          if-no-files-found: error
+      - name: Attach the enterprise bundle to the GitHub Release
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 60); do
+            if gh release view "$TAG" >/dev/null 2>&1; then break; fi
+            sleep 10
+          done
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::personal release did not appear; cannot attach enterprise bundle"; exit 1
+          fi
+          gh release upload "$TAG" "zeokeel-enterprise-$VERSION-official.tar.gz" "zeokeel-enterprise-$VERSION-official.tar.gz.sha256" --clobber

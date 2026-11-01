@@ -39,9 +39,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && useradd --system --uid 10001 --home /srv/zeokeel --shell /usr/sbin/nologin zeokeel
 COPY --from=server-build /src/target/release/zk-server /usr/local/bin/zk-server
 COPY --from=admin-build /src/apps/admin/web/dist /srv/admin
+# Enterprise client installers + CLIENT-RELEASE.json are produced by the release workflow and
+# copied into the image so the deployed server portal can serve them (no external download host).
+COPY deploy/enterprise-updates/ /srv/updates/
 RUN mkdir -p /srv/zeokeel && chown -R zeokeel:zeokeel /srv/zeokeel
 USER zeokeel
 ENV ZEOKEEL_ADMIN_DIST=/srv/admin
+ENV ZEOKEEL_UPDATE_DIR=/srv/updates
 ENV ZEOKEEL_SERVER_ADDR=0.0.0.0:8787
 EXPOSE 8787
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=5 \

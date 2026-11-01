@@ -13,7 +13,7 @@
 ```bash
 cd deploy
 cp .env.example .env && chmod 600 .env     # 填 6 键；SERVER_IMAGE 用 tag（交付时用 tag@digest）
-mkdir -p data updates caddy/certs          # /data 持久卷 + 可替换更新目录 + manual TLS 证书
+mkdir -p data caddy/certs                 # /data 持久卷 + manual TLS 证书
 sudo chown -R 10001:10001 data             # 容器内 uid 10001
 docker compose config >/dev/null           # 先做一次配置校验
 docker compose up -d
@@ -22,7 +22,7 @@ curl -kfsS https://$DOMAIN/readyz
 open https://$DOMAIN/admin/
 ```
 - 端口：只有 caddy 发布 `80/443`；server 仅内部 `8787`（`expose 8787`，与二进制一致；`docs/20` §2 的 8080 是历史写法）。
-- `/data`（`./data` bind）保存应用 SQLite/日志，**master.key 也应放这里并离线备份**；`./updates` 只读挂载为更新清单目录（`ZEOKEEL_UPDATE_DIR=/data/updates`）。
+- `/data`（`./data` bind）保存应用 SQLite/日志，**master.key 也应放这里并离线备份**；客户端更新清单默认来自**镜像内嵌**的 `/srv/updates`（服务端 `/portal` 可直接下载企业版客户端）；如需热替换更新面，设 `UPDATE_DIR=/data/updates` 并把目录只读挂载到该路径（`deploy/enterprise-updates/README.md`）。
 - `TLS_MODE=auto|manual|internal` 由 `deploy/caddy/entrypoint.sh` 选择 `Caddyfile.auto|manual|internal`；`manual` 需要 `deploy/caddy/certs/{fullchain,privkey}.pem`。
 
 ## 3. 构建镜像
@@ -42,7 +42,7 @@ bash scripts/restore.sh ./backups/<stamp>   # 需先注入 MASTER_KEY 到 .env
 - 恢复后自动等待 `/readyz`；`master.key` 不随备份恢复，必须手工放回（离线保管）。
 
 ## 5. 升级 / 回滚（人工，`ADR-041`）
-1. `bash scripts/backup.sh`；2. 下载并校验镜像 tar + `SHA256SUMS`；3. `docker load`；
+1. `bash scripts/backup.sh`；2. 下载 `zeokeel-enterprise-<ver>-official.tar.gz` 并校验 `.sha256`；3. `docker load`；
 4. 修改 `.env` 的 `SERVER_IMAGE`（建议 `tag@digest`）；5. `docker compose up -d server caddy`；
 6. 验证 `/readyz`、门户、管理台；7. 失败：改回旧 `SERVER_IMAGE` 并 `compose up -d`，跨迁移回滚用备份恢复。
 - 真实演练：`bash scripts/upgrade-drill.sh --docker --dist dist/<ver>/<channel>`（仓库根目录执行；无 Docker 时明确 `exit 2 UNVERIFIED`）。
