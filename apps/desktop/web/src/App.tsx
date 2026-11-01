@@ -134,7 +134,14 @@ export function buildSlashCommands(
 export function buildCommandCatalog(input: CommandCatalogInput): CommandDescriptor[] {
   const { t, enterprise, streaming, lastSendText } = input;
   const palette: CommandDescriptor[] = [
-    { id: "new-conversation", title: t("newConversation"), group: t("workspaceActions"), surface: "palette" },
+    {
+      id: "new-conversation",
+      title: t("newConversation"),
+      group: t("workspaceActions"),
+      surface: "palette",
+      disabled: streaming,
+      ...(streaming ? { disabledReason: t("newConversationStreamingBlocked") } : {}),
+    },
     { id: "toggle-sidebar", title: t("sidebarToggle"), group: t("workspaceActions"), surface: "palette" },
     { id: "open-settings", title: t("settingsTitle"), group: t("settings"), surface: "palette" },
     { id: "toggle-inspector", title: t("inspectorToggle"), group: t("workspaceActions"), surface: "palette" },
@@ -232,7 +239,7 @@ export function App(props: { transport: Transport }) {
     (id: string, query?: string): void => {
       switch (id) {
         case "new-conversation":
-          controller.createConversation();
+          void controller.createConversation();
           return;
         case "toggle-sidebar":
           controller.toggleSidebar();

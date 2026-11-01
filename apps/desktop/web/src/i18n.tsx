@@ -65,6 +65,8 @@ const zhCN = {
 
   sidebarClose: "收起会话列表",
   newConversation: "新建会话",
+  workspaceNewSession: "在 {title} 新建会话",
+  newConversationStreamingBlocked: "当前正在生成，停止后可新建",
   conversationsEmpty: "还没有会话，点击“新建会话”开始。",
   conversationNewTitle: "新会话",
   sessionListAria: "会话列表",
@@ -628,6 +630,8 @@ const enUS: Record<MessageKey, string> = {
 
   sidebarClose: "Collapse conversations",
   newConversation: "New conversation",
+  workspaceNewSession: "New conversation in {title}",
+  newConversationStreamingBlocked: "Generating now; stop before creating a conversation",
   conversationsEmpty: "No conversations yet. Select “New conversation” to start.",
   conversationNewTitle: "New conversation",
   sessionListAria: "Conversation list",

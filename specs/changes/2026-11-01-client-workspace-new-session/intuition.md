@@ -2,7 +2,7 @@
 
 > 本文件与 `interaction.md` 同目录（第六件，`docs/19` §11.1、`docs/27` §2.7/§2.8、`docs/11` §8.6）。
 > 只写本 surface 的直觉判据与映射；原则表/走查方法不在本文件复制。
-> 状态：`planned`（实现开始时**与 `interaction.md` 同时**改 `active`；planned 只 WARN）。
+> 状态：`active`（实现开始时**与 `interaction.md` 同时**改 `active`；planned 只 WARN）。
 > 证据根：`target/evidence/2026-11-01-client-workspace-new-session/intuition/`；走查见 `intuition-walkthrough.md`。
 > `e2e proxy` 只证明可观察行为，不证明用户觉得直观；最终需 fresh-context 评审 + ≥5 人用户测试（当前 **UNVERIFIED**）。
 
@@ -29,4 +29,4 @@
 - P1：`SES2-WSNEW-03` → INT-04/05/06/08/10。
 - 用户测试（≥5 人 think-aloud）：**UNVERIFIED**（未执行；发布前按 `intuition-walkthrough.md` §4；未执行前任何 acceptance/发布文案不得声称“符合直觉/直观”）。
 - 未解决 P0 摩擦：**无 P0 摩擦**（见 `intuition-walkthrough.md` §3；F1/F2 已关闭）。
-- 状态：`planned`；实现开始时**与 `interaction.md` 同时**改 `active` 并补 e2e 证据/走查复核。
+- 状态：`active`；实现开始时**与 `interaction.md` 同时**改 `active` 并补 e2e 证据/走查复核。

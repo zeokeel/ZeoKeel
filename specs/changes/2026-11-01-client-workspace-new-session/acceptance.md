@@ -1,78 +1,70 @@
-# 2026-11-01-client-workspace-new-session · 验收
+# 2026-11-01-client-workspace-new-session · 验收与证据
 
-> 本 spec 已通过 C19/C20 独立评审：docs/reviews/2026-11-01-client-workspace-new-session.md（最终 APPROVED）。
+> 独立评审通过（`docs/reviews/2026-11-01-client-workspace-new-session.md` §8）；C20 `intuition.md` + `intuition-walkthrough.md` 已交付（专家走查；真人用户测试 UNVERIFIED）。
+> 实现者：impl-settings；证据根 `target/evidence/2026-11-01-client-workspace-new-session/`。
 
-- 状态：`draft`（proposal §7 D1–D4 **已定（Lead 2026-11-01）**，D3 修订为流式禁用；待独立评审，未批准前不实现）
-- 验收人：待独立评审 / 实现者回填
-- 评审：n/a（新增 spec；实现前需 C19/C20 独立评审）
-- 证据根：`target/evidence/2026-11-01-client-workspace-new-session/`
-- 交互/直觉：`interaction.md`、`intuition.md`、`intuition-walkthrough.md`（均 `planned`；实现开始时一起改 `active`）
+- 验收人：impl-settings（实现者回填）
+- 日期：2026-11-01
+- PR/commit：未提交（共享工作树；由 Lead 汇总提交）
+- 状态：`done`（本地实现与证据齐全；UNVERIFIED 见 §1 备注）
 
-## 1. 门禁与证据
+## 1. 验收命令与结果
 
 | 命令 | 结果 | 证据 |
 | --- | --- | --- |
-| `python3 scripts/spec-check.py` | 待跑 | `.../logs/spec-check.txt` |
-| `python3 scripts/docs-check.py` | 待跑 | `.../logs/docs-check.txt` |
-| `pnpm -r typecheck && pnpm -r lint && pnpm -r test:unit && pnpm -r build` | 待跑 | `.../logs/pnpm-gates.txt` |
-| `bash scripts/i18n-check.sh` | 待跑 | `.../logs/i18n-check.txt` |
-| `pnpm e2e`（既有 m1 不回归） | 待跑 | `.../logs/e2e.log` |
-| `pnpm e2e:ui --grep "workspace-new"`（工具已落地） | 待跑 | `.../interaction/<ID>.json` |
-| `pnpm e2e:ui:gate`（工具已落地） | 待跑 | `.../logs/interaction-gate.txt` |
+| `pnpm -r typecheck` | **exit 0** | `logs/pnpm-final.log` |
+| `pnpm -r lint` | **exit 0** | `logs/pnpm-final.log` |
+| `pnpm -r test:unit` | **exit 0**（desktop-web 131，含 createConversation guard/catalog 断言） | `logs/pnpm-final.log` |
+| `pnpm -r build` | **exit 0** | `logs/pnpm-final.log` |
+| `pnpm e2e`（mock 8 + m1-serve 10，含既有回归） | **mock 8/8、m1-serve 10/10（exit 0）**；等价序列执行（工作树未提交） | `logs/e2e-main.log`、`logs/gates-run.log` |
+| `pnpm e2e:ui --grep "workspace-new"`（本 spec 3 个 P0/P1） | **3/3 passed（exit 0）**，3 份证据 + 截图 | `logs/e2e-interaction.log` + `interaction/<ID>.json` |
+| `pnpm e2e:ui`（完整交互套件） | **64/64 passed（exit 0）**（61 既有 + 3 本 spec；修复了 scoped `+` 引起的 2 处既有选择器歧义） | `logs/e2e-ui-full.log` |
+| `python3 scripts/ui-interaction-gate.py` / `--strict` | **self-test 0 / gate 0 / strict 0**（enforced P0/P1=62；intuition 5 contracts/60 rows） | `logs/gates-summary.txt` |
+| `python3 scripts/spec-check.py` / `docs-check.py` | **0 / 0** | `logs/gates-summary.txt` |
+| `bash scripts/i18n-check.sh` | **0** | `logs/gates-summary.txt` |
+| 视觉/ARIA 基线 `SES2-WSNEW-VIS-01`（P2，不进门禁） | **UNVERIFIED**：像素/aria snapshot 需人工确认后 `pnpm e2e:ui:update`（agent 不自动接受），当前仅截图证据 | `interaction/SES2-WSNEW-VIS-01.png` |
+| 真人用户测试（≥5 人 think-aloud） | **UNVERIFIED**（发布前执行；C20） | `intuition-walkthrough.md` §4 |
 
-## 1.5 交互验收（ID → 测试 → 证据）
+## 2. 手工检查（对应 spec R1–R5）
 
-> 状态：`planned`；实现时把 `interaction.md`/`intuition.md` 改 `active` 并逐项填实际测试/证据。
+- [x] R1：每 Workspace 行 scoped `+`；hover/focus-visible 可见、active 行常显；`aria-label` 含 workspace 名；点击/Enter/Space 在目标 workspace 创建并选中（active workspace + 新会话切换），不经 picker、不误建到原 active；不触发行选中/折叠（事件 `stopPropagation` + 独立按钮），按钮 busy 防重复；失败 toast、选择不变；无 workspace 不渲染。
+- [x] R2：active 行按钮常显；scoped/global/header `+`/⌘K `new-conversation` 都走 controller `createConversation` 同一入口（唯一 streaming/busy/workspace guard）；非流式 scoped 用行 workspace、全局/⌘K 用 active workspace；无 workspace 禁用/`workspaceRequired`。
+- [x] R3：`streaming=true` 三入口全部禁用 + 同一文案「当前正在生成，停止后可新建」（scoped/global `title`+`aria-disabled`、⌘K descriptor `disabledReason`）；不建/不切/不串消息；停止后恢复；删除旧「同 workspace 允许/跨 workspace 确认 Modal」路径。
+- [x] R4：失败可读 toast、当前选择不变、按钮恢复；目标 workspace 不可用以 host `session.create` 错误为准；快速重复点击仅 1 个（busy）；标题沿用 `conversationNewTitle`；不改 `session.create` 契约。
+- [x] R5：按钮可读名称含 workspace、focus ring、Tab 顺序在折叠/标题/+/⋯ 合理、Esc 不误关侧栏（既有）；axe 0 serious；无新增 slot/包/DB/契约；i18n zh/en；与 DSH 差异（无 brand 点击/`Mod+N`、单流）已记录 KNOWN。
 
-| ID | 优先级 | 测试 | 证据 |
-| --- | --- | --- | --- |
-| SES2-WSNEW-01 | P0 | `e2e/interaction/sessions-workspace-new.spec.ts` | `.../SES2-WSNEW-01.json` |
-| SES2-WSNEW-02 | P0 | 同上 | `.../SES2-WSNEW-02.json` |
-| SES2-WSNEW-03 | P1 | 同上 | `.../SES2-WSNEW-03.json` |
-| SES2-WSNEW-VIS-01 | P2（不进门禁） | 同上 | — |
+## 3. 交互 ID 覆盖
 
-## 1.6 直觉验收（C20）
+| ID | 测试（`e2e/interaction/sessions-workspace-new.spec.ts`） | 证据 |
+| --- | --- | --- |
+| SES2-WSNEW-01 | 双 workspace：行 + 在目标 workspace 建会话并选中、另一 workspace 不变、无 picker | `SES2-WSNEW-01.json` |
+| SES2-WSNEW-02 | 键盘/focus-visible、active 常显、aria-label 含名、点击不折叠、Enter 创建、axe 0 | `SES2-WSNEW-02.json` |
+| SES2-WSNEW-03 | streaming 三入口统一禁用（scoped/global 同步快照 + ⌘K descriptor 单测）、不建不切、完成后恢复 | `SES2-WSNEW-03.json` |
+| SES2-WSNEW-VIS-01（P2） | Workspace 行截图（hover/active 态） | `SES2-WSNEW-VIS-01.png`（像素基线 UNVERIFIED） |
 
-- 文件：`intuition.md`（planned，≥3 INT，P0 全覆盖）+ `intuition-walkthrough.md`（3 persona × 3 top task + 摩擦表，P0 无 OPEN）。
-- P0 摩擦：见 walkthrough §3；均已用最小修法落到 design/tasks 并关闭。
-- 用户测试：**UNVERIFIED**（未执行；发布前 ≥5 人 think-aloud，证据 `target/evidence/2026-11-01-client-workspace-new-session/usability/`）；**未完成前不得声称“符合直觉/直观”**。
-- 评审：待 fresh-context 评审员按走查复核（P0 摩擦未关闭 → 不通过）。
+## 4. 文档与决策
 
-## 2. 手工检查
+- [x] `docs/19` §2.0.1 会话侧栏 Workspace 行 scoped 新建 + 三入口 streaming guard + DSH 差异。
+- [x] `KNOWN-LIMITATIONS`：单流假设（无 per-session 后台流）、无 brand 点击/`Mod+N`、无 picker/逐行探测、busy 客户端抑制、视觉基线 UNVERIFIED。
+- [x] 决策沿用 proposal §7 D1–D4（Lead 2026-11-01）；无新增 ADR/D 编号/capability/slot/契约。
 
-- [ ] 每个 Workspace 行有 scoped `+`；hover 显示、keyboard focus 显示、active 行常显；`aria-label` 含 workspace 名
-- [ ] 点击/Enter/Space 在**该** workspace 建会话并选中；不经过 picker；active workspace 正确切换；其它 workspace 会话不变
-- [ ] 行内按钮不触发整行选中/折叠；Tab 顺序：折叠→标题→新建→`⋯`；按钮独立 focus ring
-- [ ] 全局「新建会话」/header `+`/⌘K `new-conversation` 与 scoped 一样受 streaming guard（同一禁用/提示）；非流式按 active workspace 规则；无 workspace 不建、按钮不可见/禁用提示
-- [ ] 流式中所有 Workspace 行 `+` 禁用 + tooltip/aria；停止后恢复；不建/不切/不串消息；无确认 Modal
-- [ ] 失败（workspace 不可用/session.create 失败）以 host 错误为准；可读提示、选择不变、按钮恢复；快速重复只建 1 个
-- [ ] 折叠 workspace 新建后自动展开并滚动到新会话；reduced-motion 无额外动画
-- [ ] i18n zh/en；axe 0 serious；无新增契约/迁移/slot/第二套建会话路径
+## 5. 回滚
 
-## 2.5 评审条目关闭（2026-11-01 workspace 评审）
+- 回退 commit；无 DB/schema/IPC 变更（仍 `session.create{workspace_id,title?}`）；已建会话归属正确 workspace，移除按钮无数据影响。
 
-| 条目 | 处理 |
-| --- | --- |
-| P0-1 流式新建清空/串消息 | 删除「同 workspace 允许/跨 workspace 确认 Modal」；修订 D3：**streaming 时 scoped/global/⌘K 三入口统一禁用** + 同一 tooltip/aria「当前正在生成，停止后可新建」，停止后恢复；不切 activeConversationId；补三入口禁用/恢复/不串消息单测+e2e；proposal 记录 DSH per-session 流差异 |
-| P1-1 行数超阈值 | proposal §8 记录 Lead 书面批准 8 文件/约 643 行；P2-3 追加 KNOWN 后总 9（≤10） |
-| P2-1 默认焦点 | 确认 Modal 路径已删除（流式禁用替代）；无 data-autofocus 需求 |
-| P2-2 R4 unavailable | 统一为「以 host `session.create` 错误为准；本地仅明显无效（空 path/id）禁用」，不新增逐行可用性探测 |
-| P2-3 KNOWN | tasks #0 写作用域与预算加入 `KNOWN-LIMITATIONS`（brand/Mod+N 后置、单流模型差异） |
-| P2-4 门禁文案 | tasks/acceptance 改为已落地的 `pnpm e2e:ui --grep "workspace-new"` / `pnpm e2e:ui:gate` |
+## 6. 剩余风险 / 后续
 
-## 3. 文档与决策
+| 项 | 影响 | 后续 |
+| --- | --- | --- |
+| 单流：流式中禁止新建 | 中 | 另 spec 评估 per-session 后台流（DSH parity） |
+| 无 `Mod+N`/brand 点击入口 | 低 | proposal D2/D4 后置 |
+| 像素/aria 基线未确认；用户测试未执行 | 中 | reviewer 确认 + ≥5 人 think-aloud |
 
-- [ ] `docs/19` §2 已回写 scoped 新建/可见性/流式禁用/无 workspace 边界；`KNOWN-LIMITATIONS` 已记录 brand/`Mod+N` 后置与单流模型差异
-- [x] proposal §7 D1–D4 已由 Lead 2026-11-01 定稿（D3 修订为流式禁用）；状态保持 `draft`，待独立评审
-- [x] **P1-1 预算例外**：Lead 书面批准 8 文件/约 643 行；P2-3 追加 KNOWN 后总 9（≤10，不拆分）
-- [ ] 无 ADR（无契约/数据/安全边界变化）
+## 7. 结论
 
-## 4. 数据/兼容/回滚
+- [x] `done`：本地实现与证据齐全（UNVERIFIED 项见 §1）
+- [ ] `abandoned`：——
 
-- [ ] 无 DB/文件/契约变更；旧客户端/旧会话兼容；`session.create` 不变
-- [ ] 回滚移除按钮/action 即可；已建会话归属不变；C18 不变量保持
+## 8. 复用证据（C17）
 
-## 5. 结论
-
-- 当前：`draft`；交互/直觉 `planned`；待用户拍板 + 独立评审后实现。
-- 完成时必须填实际命令/证据；用户测试未执行标 UNVERIFIED，不得声称符合直觉。
+- 复用：ui-sessions 既有行样式/图标按钮/Icons、`UiActions.createConversation`（扩展可选 workspaceId 参数，非第二套路径）、controller 唯一 `createConversation` guard、i18n 字典、既有 server `session.create`；无新建包/slot/契约/Modal。

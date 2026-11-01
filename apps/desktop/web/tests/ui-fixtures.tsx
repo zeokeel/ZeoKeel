@@ -77,7 +77,7 @@ export function testUi(overrides: TestUiOverrides = {}): UiValue {
       send: noop,
       cancel: noop,
       retry: noop,
-      createConversation: noop,
+      createConversation: (): Promise<boolean> => Promise.resolve(true),
       createWorkspace: noop,
       selectWorkspace: noop,
       renameWorkspace: noop,

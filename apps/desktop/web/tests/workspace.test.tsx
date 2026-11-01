@@ -97,7 +97,7 @@ describe("workspace first run", () => {
     expect(await screen.findByRole("heading", { name: "先选择一个工作区" })).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "使用默认 ~" }));
 
-    expect(await screen.findByRole("button", { name: /主目录/ })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: /^主目录/ })).toBeTruthy();
     expect(transport.callsFor("workspace.create")[0]).toMatchObject({ path: "~" });
     expect(transport.callsFor("session.create")).toHaveLength(0);
     expect(screen.queryByRole("textbox", { name: "消息输入框" })).toBeNull();

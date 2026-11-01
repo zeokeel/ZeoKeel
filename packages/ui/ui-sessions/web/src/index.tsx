@@ -57,6 +57,7 @@ export function Sidebar() {
   const [contentHits, setContentHits] = useState<SessionSearchHit[]>([]);
   const [contentState, setContentState] = useState<"idle" | "loading" | "error" | "truncated">("idle");
   const [showArchived, setShowArchived] = useState(false);
+  const [creatingIn, setCreatingIn] = useState<string | null>(null);
   const [opsMenuId, setOpsMenuId] = useState<string | null>(null);
   const [convRenameId, setConvRenameId] = useState<string | null>(null);
   const [convRenameValue, setConvRenameValue] = useState("");
@@ -121,6 +122,31 @@ export function Sidebar() {
         (conversation) => showArchived || conversation.archived !== true,
       ),
     [conversationsByWorkspace, showArchived],
+  );
+
+  // Creating a conversation in a collapsed workspace must reveal it (active row expanded).
+  useEffect(() => {
+    if (activeWorkspaceId === null) return undefined;
+    const timer = window.setTimeout(() => {
+      setCollapsed((previous) => {
+        if (!previous.has(activeWorkspaceId)) return previous;
+        const next = new Set(previous);
+        next.delete(activeWorkspaceId);
+        return next;
+      });
+    }, 0);
+    return () => { window.clearTimeout(timer); };
+  }, [activeWorkspaceId]);
+
+  const startWorkspaceConversation = useCallback(
+    (workspaceId: string): void => {
+      if (streaming || creatingIn !== null || workspaceId === "") return;
+      setCreatingIn(workspaceId);
+      void actions.createConversation(workspaceId).finally(() => {
+        setCreatingIn((current) => (current === workspaceId ? null : current));
+      });
+    },
+    [actions, creatingIn, streaming],
   );
 
   const normalizedQuery = query.trim().toLowerCase();
@@ -291,9 +317,12 @@ export function Sidebar() {
           </button>
           <button
             type="button"
-            className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground disabled:opacity-40"
             aria-label={t("newConversation")}
-            onClick={actions.createConversation}
+            aria-disabled={streaming || activeWorkspaceId === null}
+            disabled={streaming || activeWorkspaceId === null}
+            title={streaming ? t("newConversationStreamingBlocked") : activeWorkspaceId === null ? t("workspaceRequired") : t("newConversation")}
+            onClick={() => { void actions.createConversation(); }}
           >
             <IconPlus />
           </button>
@@ -303,9 +332,10 @@ export function Sidebar() {
       <div className="px-2">
         <Button
           className="w-full justify-start px-2 py-[5px] text-[12px]"
-          onClick={actions.createConversation}
-          disabled={activeWorkspaceId === null}
-          title={activeWorkspaceId === null ? t("workspaceRequired") : undefined}
+          onClick={() => { void actions.createConversation(); }}
+          disabled={streaming || activeWorkspaceId === null}
+          aria-disabled={streaming || activeWorkspaceId === null}
+          title={streaming ? t("newConversationStreamingBlocked") : activeWorkspaceId === null ? t("workspaceRequired") : undefined}
         >
           <IconPlus />
           <span>{t("newConversation")}</span>
@@ -565,6 +595,23 @@ export function Sidebar() {
                             {t("workspaceDefault")}
                           </span>
                         ) : null}
+                      </button>
+                      <button
+                        type="button"
+                        className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground focus-visible:opacity-100 disabled:opacity-40 ${
+                          workspaceActive ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                        }`}
+                        aria-label={t("workspaceNewSession", { title: workspace.title })}
+                        aria-disabled={streaming || creatingIn === workspace.id}
+                        aria-busy={creatingIn === workspace.id}
+                        disabled={streaming || creatingIn !== null || workspace.id === "" || workspace.path === ""}
+                        title={streaming ? t("newConversationStreamingBlocked") : t("workspaceNewSession", { title: workspace.title })}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          startWorkspaceConversation(workspace.id);
+                        }}
+                      >
+                        <IconPlus />
                       </button>
                       <button
                         type="button"

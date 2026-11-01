@@ -4,7 +4,7 @@ import AxeBuilder from "@axe-core/playwright";
 test.describe("workspace UI (mock)", () => {
   test("default workspace ~ is listed and the first run does not create sessions", async ({ page }) => {
     await page.goto("/?mock=1", { waitUntil: "networkidle" });
-    await expect(page.getByRole("button", { name: /主目录/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^主目录/ })).toBeVisible();
     await expect(page.getByText("默认").first()).toBeVisible();
     await expect(page.getByRole("textbox", { name: "消息输入框" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "新建会话" }).last()).toBeVisible();
@@ -13,7 +13,7 @@ test.describe("workspace UI (mock)", () => {
     await expect(page.getByRole("heading", { name: "先选择一个工作区" })).toBeVisible();
     await expect(page.getByRole("textbox")).toHaveCount(0);
     await page.getByRole("button", { name: "使用默认 ~" }).click();
-    await expect(page.getByRole("button", { name: /主目录/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^主目录/ })).toBeVisible();
     await expect(page.getByRole("textbox", { name: "消息输入框" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "新建会话" }).last()).toBeVisible();
     await page.screenshot({ path: "target/evidence/m1/e2e-workspace-first-run.png" });
@@ -37,7 +37,7 @@ test.describe("workspace UI (mock)", () => {
     await expect(page.getByText("Hello from ZeoKeel", { exact: false })).toBeVisible({ timeout: 15_000 });
 
     // The default workspace must not show the new conversation (isolation).
-    await page.getByRole("button", { name: /主目录/ }).first().click();
+    await page.getByRole("button", { name: /^主目录/ }).first().click();
     await expect(page.getByRole("textbox", { name: "消息输入框" })).toHaveCount(0);
     await expect(page.getByText(/e2e 工作区隔离/)).toHaveCount(0);
 
@@ -67,10 +67,10 @@ test.describe("workspace UI (mock)", () => {
     await dialog.getByRole("button", { name: "确认移除" }).click();
     await expect(page.getByRole("button", { name: /remove-ws/ })).toHaveCount(0);
     // Conversations were reassigned to the default workspace.
-    await expect(page.getByRole("button", { name: /主目录/ }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /^主目录/ }).first()).toBeVisible();
 
     // The default workspace cannot be removed directly.
-    await page.getByRole("button", { name: /主目录/ }).first().hover();
+    await page.getByRole("button", { name: /^主目录/ }).first().hover();
     await page.getByRole("button", { name: "工作区操作" }).first().click();
     await page.getByRole("menuitem", { name: "移除" }).click();
     await expect(page.getByText("默认工作区不能直接移除，请先把其它工作区设为默认。")).toBeVisible();

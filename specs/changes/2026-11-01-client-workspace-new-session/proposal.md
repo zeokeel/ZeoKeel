@@ -1,6 +1,6 @@
 # 2026-11-01-client-workspace-new-session · 提案
 
-- 状态：`approved`
+- 状态：`done`
 - Owner：dsh-ref
 - 日期：2026-11-01
 - 关联：用户 2026-11-01「新建会话要在工作区旁边也有一个新建会话的功能」；`research/dsh-ui-modules/navigation.md` §1.1/§2.1（Workspace 行/目标选择、brand、hover/focus）；`docs/26`（C18）、`docs/19` §2/§11、`docs/27` §2.5–§2.8、`docs/11` §8.6；前置：`2026-11-01-client-side-panels`（Workspace 行/会话操作）、`2026-11-01-client-command-surface`（⌘K 与 `/` 分流）

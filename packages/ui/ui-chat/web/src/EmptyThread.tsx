@@ -42,7 +42,7 @@ export function EmptyThread() {
       ) : (
         <div className="mt-4 flex flex-col items-center gap-2">
           <p className="text-[12.5px] text-muted-foreground">{t("workspaceNoSessions")}</p>
-          <Button variant="primary" size="sm" onClick={actions.createConversation}>
+          <Button variant="primary" size="sm" onClick={() => { void actions.createConversation(); }}>
             {t("newConversation")}
           </Button>
         </div>

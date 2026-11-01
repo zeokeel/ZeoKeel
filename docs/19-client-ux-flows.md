@@ -65,6 +65,12 @@ Boot
 - 每个 `ui.gate.*` 必须有 fallback 文案与"下一步"动作；不允许白屏。
 - 登录页品牌文案来自 `channel.json` 的 `copy.login_*`，缺键即构建失败（禁止回落官方）。
 
+### 2.0 会话侧栏：Workspace 行 scoped 新建（`2026-11-01-client-workspace-new-session`）
+
+- 每个 Workspace 行有 scoped「新建会话」按钮：hover 与键盘 focus-visible 可见，active 行常显；`aria-label` 含 workspace 名（`在 <workspace> 新建会话`，zh/en）；点击/Enter/Space 在**该** workspace `session.create` 并选中（切换 active workspace + 新会话），不经过 picker、不触发行选中/折叠、busy 防重复；失败 toast 且选择不变。
+- **三入口统一 streaming guard**：scoped 行按钮、侧栏/header `+`、⌘K `new-conversation` 都走同一 `createConversation` guard；`streaming=true` 时全部禁用并显示同一文案「当前正在生成，停止后可新建」（按钮 tooltip/aria + ⌘K disabledReason），不建会话、不切换、不串消息；停止/取消后恢复。非流式：scoped 用该行 workspace，全局/⌘K 用 active workspace；无 workspace 时禁用/提示。删除旧的「同 workspace 允许/跨 workspace 确认 Modal」路径（本版无任何流式新建确认弹窗）。
+- 与 DSH 差异：暂不做 brand 点击与 `Mod+N`（proposal D2/D4 后置）；不做 per-session 后台流（ZeoKeel 当前单流），见 `KNOWN-LIMITATIONS.md`。
+
 ### 2.0 右栏与会话操作（Phase 2b，`2026-11-01-client-side-panels`）
 
 - **右栏**（`ui.slot.inspector`，⌘B）：tabs 顺序 files 10 / changes 20 / terminal 30（activity 40 预留）；tabs 支持 ←/→/Home/End；files 为**懒加载树**（展开目录只取直属子项，隐藏 `.git`/`.zeokeel`，符号链接不跟随/不展示，目录行 loading/error+行内重试，刷新保持已展开路径）；预览文本 ≤256 KiB（截断标「已截断」）、图片 png/jpeg/webp/gif ≤8 MiB，PDF/Office/HTML/二进制诚实降级；terminal 是**用户显式**命令（open/send/close/list，不生成工具行/审批，输出 ≤64 KiB、超时 ≤10 s、无 shell 显示「终端不可用」）；tab/宽度（240–720 且 ≤视口 50%，键盘可调）/折叠按**会话**持久化，窄窗 <768 自动收起保留展开状态。六态 + axe/键盘基线见交互契约。

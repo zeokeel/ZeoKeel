@@ -7,7 +7,7 @@
 - 表面 / 入口：会话侧栏 Workspace 行 scoped「新建会话」
 - 归属包：`@zeokeel/ui-sessions`（+ `@zeokeel/ui-kit` action / `apps/desktop/web` controller/i18n）
 - 权威文档：`docs/19` §2/§11、`docs/26`（C18）、`docs/27` §2.5–§2.8、`research/dsh-ui-modules/navigation.md` §1.1/§2.1
-- 状态：`planned`（实现开始时与 `intuition.md` 一起改 `active`）
+- 状态：`active`（实现阶段；P0/P1 ID 均有 `@interaction:<ID>` 测试与证据）
 - 证据根：`target/evidence/2026-11-01-client-workspace-new-session/interaction/`
 - 测试：`e2e/interaction/sessions-workspace-new.spec.ts`（`@interaction:<ID>` 标签；实现时新建）
 

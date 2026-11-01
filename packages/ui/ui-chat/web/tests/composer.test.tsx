@@ -90,7 +90,7 @@ function makeActions(overrides: Partial<UiActions> = {}): UiActions {
     removeWorkspace: noop,
     cancel: noop,
     retry: noop,
-    createConversation: noop,
+    createConversation: (): Promise<boolean> => Promise.resolve(true),
     selectConversation: noop,
     openSettings: noop,
     openSettingsPane: noop,

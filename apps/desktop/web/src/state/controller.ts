@@ -86,7 +86,7 @@ function errorMessage(error: unknown): string {
 
 export interface AppController {
   state: AppState;
-  createConversation: () => void;
+  createConversation: (workspaceId?: string) => Promise<boolean>;
   selectConversation: (conversationId: string) => void;
   /** Re-list the active workspace conversations without changing the selection. */
   refreshActiveConversations: () => Promise<void>;
@@ -339,29 +339,57 @@ export function useAppController(transport: Transport): AppController {
     };
   }, [state.toast]);
 
-  const createConversation = useCallback(() => {
-    const current = stateRef.current;
-    if (current.activeWorkspaceId === null) {
-      showToast(translate(current.settings.locale, "workspaceRequired"));
-      return;
-    }
-    const title = translate(current.settings.locale, "conversationNewTitle");
-    void (async () => {
+  /**
+   * Single conversation-create entry for all three entry points (workspace row
+   * `+`, sidebar/header `+`, ⌘K `new-conversation`). One streaming guard +
+   * workspace resolution live here (no per-entry duplicates).
+   */
+  const createConversation = useCallback(
+    async (workspaceId?: string): Promise<boolean> => {
+      const current = stateRef.current;
+      if (current.streaming) {
+        showToast(translate(current.settings.locale, "newConversationStreamingBlocked"));
+        return false;
+      }
+      const target = workspaceId ?? current.activeWorkspaceId;
+      if (target === null) {
+        showToast(translate(current.settings.locale, "workspaceRequired"));
+        return false;
+      }
+      if (!current.workspaces.some((workspace) => workspace.id === target)) {
+        showToast(translate(current.settings.locale, "workspaceRequired"));
+        return false;
+      }
+      const title = translate(current.settings.locale, "conversationNewTitle");
       try {
         const data = await transport.call("session.create", {
-          workspace_id: current.activeWorkspaceId,
+          workspace_id: target,
           title,
         });
         const conversation = parseConversation(data);
         if (conversation === null) {
           throw new Error("session.create: invalid response");
         }
+        if (conversation.workspace_id !== "" && conversation.workspace_id !== target) {
+          throw new Error("session.create: workspace mismatch");
+        }
         dispatch({ type: "conversation_created", conversation });
+        if (target !== stateRef.current.activeWorkspaceId) {
+          // Select the target workspace and its new conversation (C18: no cross-workspace leak).
+          dispatch({
+            type: "conversation_activated",
+            workspaceId: target,
+            conversationId: conversation.id,
+          });
+        }
+        return true;
       } catch (error: unknown) {
         showToast(friendlyError(error, stateRef.current.settings.locale));
+        return false;
       }
-    })();
-  }, [transport, showToast]);
+    },
+    [transport, showToast],
+  );
 
   const selectConversation = useCallback(
     (conversationId: string) => {

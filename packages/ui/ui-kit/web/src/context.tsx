@@ -51,7 +51,7 @@ export interface UiActions {
   removeWorkspace: (workspaceId: string, reassignTo?: string) => void;
   cancel: () => void;
   retry: () => void;
-  createConversation: () => void;
+  createConversation: (workspaceId?: string) => Promise<boolean>;
   selectConversation: (conversationId: string) => void;
   openSettings: () => void;
   /** Open settings and deep-link to one `ui.settings.pane` id (validation app-side). */

@@ -225,3 +225,10 @@
 - `/feedback` 仅本地保存（不联网、无服务端上传；企业版服务端反馈通道 UNVERIFIED）。
 - 会话 override 为本地持久化 + 全局 config-mutex；排队 turn 取消跳过语义已实现，真实并发压力下（>2 会话高频）未做长时压测 → UNVERIFIED。
 - 交互基线 `CMD2-VIS-01` 像素/aria snapshot 需人工确认后 `pnpm e2e:ui:update`（agent 不自动接受）；真人用户测试（≥5 人）未执行（不得声称“符合直觉”）。
+
+## Workspace scoped new conversation（`2026-11-01-client-workspace-new-session`）
+
+- **单流假设**：`streaming=true` 时 scoped/global/⌘K 三入口统一禁用并提示「当前正在生成，停止后可新建」；不实现 DSH 的 per-session 后台流（不做 per-conversation 流状态），另 spec 评估。
+- 暂不做 brand 点击新建与 `Mod+N`（proposal D2/D4 后置）；Workspace 行选择为显式 scoped，不提供 picker。
+- 无 workspace 时不渲染行按钮；全局入口禁用并提示。目标 workspace 不可用以 host `session.create` 错误为准（可读 toast，不新增逐行可用性探测），绝不静默建到默认 workspace。
+- busy 防重复为客户端抑制（无幂等键）；视觉基线（`SES2-WSNEW-VIS-01` 像素/aria snapshot）需人工确认后 `pnpm e2e:ui:update`（agent 不自动接受），当前仅留截图证据；真人用户测试（≥5 人）UNVERIFIED。

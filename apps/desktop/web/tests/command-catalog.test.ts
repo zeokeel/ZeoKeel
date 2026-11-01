@@ -39,6 +39,10 @@ describe("single command catalog (⌘K + composer /)", () => {
     expect(idle.find((command) => command.id === "retry")?.disabled).toBe(true);
     const streaming = buildCommandCatalog({ t, enterprise: false, streaming: true, lastSendText: "hi" })
       .filter((command) => command.surface === "palette");
+    // All three create entries share one streaming guard; ⌘K shows the reason.
+    const newConversation = streaming.find((command) => command.id === "new-conversation");
+    expect(newConversation?.disabled).toBe(true);
+        expect(newConversation?.disabledReason).toBe("当前正在生成，停止后可新建");
     expect(streaming.find((command) => command.id === "cancel")?.disabled).toBe(false);
     expect(streaming.find((command) => command.id === "retry")?.disabled).toBe(true);
     const afterTurn = buildCommandCatalog({ t, enterprise: false, streaming: false, lastSendText: "hi" })

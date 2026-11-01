@@ -10,7 +10,7 @@ test.describe("sessions sidebar interaction baseline", () => {
       await openClient(page);
       const navigation = page.getByRole("navigation", { name: "工作区" });
 
-      await page.getByRole("button", { name: "新建会话" }).last().click();
+      await page.getByRole("button", { name: "新建会话", exact: true }).last().click();
 
       const input = composerInput(page);
       await expect(input).toBeVisible();
