@@ -79,11 +79,9 @@ jobs:
           PY
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-      - name: Reset previous release for this tag (fresh assets)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.resolve.outputs.tag }}
-        run: gh release delete "$TAG" --yes 2>/dev/null || true
+      # Do not delete an existing release here: the release is created/updated only after the
+      # installers are built (personal-release), so a failed build can no longer erase a
+      # previously published release for this tag.
 
   personal-installers:
     name: personal installers (${{ matrix.name }})

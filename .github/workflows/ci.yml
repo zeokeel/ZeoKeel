@@ -142,9 +142,10 @@ jobs:
       - name: Apps e2e (real PG + real wasm app lifecycle)
         run: bash scripts/apps-e2e.sh
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: failure()
         with:
           name: integration-evidence
+          retention-days: 7
           path: |
             target/evidence/m4
             target/evidence/m6
@@ -162,6 +163,7 @@ jobs:
           pnpm: "true"
           node: "true"
           node-cache: pnpm
+          playwright: "true"
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - name: Client e2e (M0/M1, serve carrier, axe in m1-mock/m1-workspace-ui)
@@ -171,9 +173,10 @@ jobs:
       - name: Schedule executor auto-run e2e
         run: bash e2e/serve-schedule.sh
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: failure()
         with:
           name: e2e-evidence
+          retention-days: 7
           path: target/evidence
           if-no-files-found: ignore
 
@@ -193,6 +196,7 @@ jobs:
           pnpm: "true"
           node: "true"
           node-cache: pnpm
+          playwright: "true"
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - name: UI interaction e2e (serve carrier, @interaction tags, evidence JSON)
@@ -203,6 +207,7 @@ jobs:
         if: always()
         with:
           name: ui-interaction-evidence
+          retention-days: 7
           path: target/evidence/2026-11-01-ui-interaction-verification
           if-no-files-found: ignore
 
@@ -222,6 +227,7 @@ jobs:
           node: "true"
           node-cache: pnpm
           go: "true"
+          playwright: "true"
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - name: Local PostgreSQL
@@ -239,9 +245,10 @@ jobs:
       - name: Admin + portal a11y (admin pages + portal axe, serious/critical = 0)
         run: bash scripts/admin-e2e.sh
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: failure()
         with:
           name: a11y-evidence
+          retention-days: 7
           path: |
             target/evidence/m2
             target/evidence/m3
@@ -272,6 +279,7 @@ jobs:
           pnpm: "true"
           node: "true"
           node-cache: pnpm
+          playwright: "true"
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - name: Local PostgreSQL
@@ -283,9 +291,10 @@ jobs:
       - name: Forced client upgrade e2e (real server 426 + non-dismissable UpgradeGate)
         run: bash scripts/client-upgrade-e2e.sh
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: failure()
         with:
           name: client-upgrade-evidence
+          retention-days: 7
           path: target/evidence/client-upgrade
           if-no-files-found: ignore
 
@@ -319,8 +328,9 @@ jobs:
           SERVER_IMAGE: zeokeel/server:ci
           MASTER_KEY: ci-master-key
         run: docker compose -f deploy/docker-compose.yml config >/dev/null
-      - name: Build server image
-        run: docker build -f deploy/docker/Dockerfile.server -t zeokeel/server:ci .
+      # The image build itself runs once in security.yml hardening (gate 10 prerequisite,
+      # buildx + gha cache). Keeping a second plain `docker build` here only duplicated
+      # ~10 min/push, so this job now validates compose + produces the SBOM only.
       - name: SBOM (CycloneDX, offline)
         run: |
           cargo run -q -p zk -- sbom --edition enterprise --profile default --channel official --output target/evidence/sbom/zeokeel-enterprise.cdx.json
@@ -329,3 +339,4 @@ jobs:
         with:
           name: sbom-cyclonedx
           path: target/evidence/sbom/
+          retention-days: 7
